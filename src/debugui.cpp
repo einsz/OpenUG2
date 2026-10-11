@@ -890,8 +890,11 @@ extern "C" void dbgui_frame(void) {
        Events come from the shipped 0x3414c catalog; picking one masks the A*
        graph to that event's corridor and makes its road closures solid. ---- */
     if (ImGui::CollapsingHeader("Race & Track Manager", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::SliderFloat("Opponent pace",&g_dbg.race_pace,40,180,"%.0f km/h");
-        ImGui::TextDisabled("Corners, traffic and fitted vehicle limits reduce this pace.");
+        bool car_pace=g_dbg.race_pace<0;
+        if(ImGui::Checkbox("Opponent pace from car physics",&car_pace))g_dbg.race_pace=car_pace?-1:110;
+        if(car_pace)ImGui::TextDisabled("Each opponent drives at its own car's flat-out speed.");
+        else ImGui::SliderFloat("Opponent pace",&g_dbg.race_pace,40,180,"%.0f km/h");
+        ImGui::TextDisabled("Corners, braking reach, traffic and vehicle limits reduce this pace.");
         int mode = g_dbg.mode;
         if (ImGui::RadioButton("Freeroam Mode", mode == MODE_FREEROAM)) {
             g_dbg.want_mode = MODE_FREEROAM; g_dbg.want_event = -1; g_dbg.mode_request = 1;

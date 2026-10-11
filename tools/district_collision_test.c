@@ -497,7 +497,41 @@ static void test_wall_index_matches_linear(void) {
            hits_total, far_push);
 }
 
+static void test_wall_contact_precision(void) {
+    const float local[4][3] = {{2,-40,0},{2,40,0},{2,40,3},{2,-40,3}};
+    for (int rotation = 0; rotation < 3; rotation++)
+    for (int translated = 0; translated < 2; translated++)
+    for (int winding = 0; winding < 2; winding++) {
+        float angle = rotation * .71f, co = cosf(angle), sn = sinf(angle);
+        float offset = translated ? 1000 : 0, verts[20] = {0};
+        uint16_t idx[] = {0,1,2,0,2,3};
+        for (int k = 0; k < 4; k++) {
+            verts[k*5] = offset + co*local[k][0] - sn*local[k][1];
+            verts[k*5+1] = -offset + sn*local[k][0] + co*local[k][1];
+            verts[k*5+2] = local[k][2];
+        }
+        if (winding) for (int t = 0; t < 6; t += 3) {
+            uint16_t swap = idx[t]; idx[t] = idx[t+2]; idx[t+2] = swap;
+        }
+        N2Mesh mesh = {.verts=verts,.nverts=4,.idx=idx,.nidx=6,
+                       .cat=N2_OTHER,.scen=N2_SC_WALL};
+        N2Scene scene = {&mesh,1,1};
+        /* Derive the perpendicular from the stored edge, including rounding
+           of the authored coordinates, rather than assuming the ideal angle. */
+        double dx = (double)verts[5]-verts[0], dy = (double)verts[6]-verts[1];
+        double length = hypot(dx,dy), nx = dy/length, ny = -dx/length;
+        float x = (float)(((double)verts[0]+verts[5])*.5 + .35*nx);
+        float y = (float)(((double)verts[1]+verts[6])*.5 + .35*ny);
+        PhysWallContact hit;
+        assert(cw_mesh_feature(&scene,0,x,y,.5f,.1f,1.5f,&hit));
+        assert(fabs(hit.nx*ny-hit.ny*nx) < 1e-5);
+        assert(fabs(hypot(hit.nx,hit.ny)-1) < 1e-5);
+    }
+    puts("clipped wall normals stay perpendicular at city coordinates");
+}
+
 int main(void) {
+    test_wall_contact_precision();
     test_concave_boundary_outline();
     test_powered_wall_slide();
     test_long_authored_wall();

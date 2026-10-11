@@ -71,7 +71,7 @@ typedef struct {
     float eye[3], view[2];
     int traffic_target; /* 0..N_TRAFFIC_MAX, roaming racers are independent */
     int ambient_only; /* road races retain traffic, without free-roam rivals */
-    float race_pace; /* km/h; zero retains the conservative diagnostic pace */
+    float race_pace; /* km/h; <0 each car's own flat-out speed, 0 conservative diagnostic pace */
     const AiCar *ambient;
     const AiTraffic *ambient_routes;
     int ambient_count;
@@ -169,12 +169,14 @@ float ai_course_heading(const N2Path *path,const float pos[3]);
 float ai_course_lateral(const N2Path *path,const float pos[3]);
 float ai_drag_lane_target(const AiTrafficWorld *world,const AiCar *car,const AiDrive *line,
         float current,const float *lanes,int count,int direction);
-typedef struct { WRace progress; AiDrive drive; PhysManual gearbox; float offset,finish_at; int blocked,finishing; } AiRace;
-/* Returns opponent count. Solo downhill returns zero with its player course
+/* pass_side: sign of the committed passing offset, zero when no pass is active. */
+typedef struct { WRace progress; AiDrive drive; PhysManual gearbox; float offset,finish_at,pass_side; int blocked,finishing; } AiRace;
+/* Places numbered source grids as one field, with the player in its last slot.
+   Returns opponent count. Solo downhill returns zero with its player course
    and a borrowed player driver in drivers[0] for the physics checker. */
 int ai_race_prepare(const char *tracks_root,const WEvent *event,WRace *race,
         const AiTrafficWorld *world,N2Path *path,AiCar cars[N_RACE_AI],AiRace drivers[N_RACE_AI],
-        const AiCar *player);
+        AiCar *player);
 void ai_race_step(AiCar cars[N_RACE_AI],AiRace drivers[N_RACE_AI],int k,int count,
         int circuit,const AiTrafficWorld *world,const AiCar *player);
 

@@ -102,7 +102,9 @@ typedef struct {
     uint16_t *wall_idx;
     int wall_nverts, wall_nidx;
     uint32_t world_model_key; /* source model identity, independent of truncated names */
+    uint32_t world_base_model_key; /* first authored LOD key, even if its model is missing */
     unsigned char wall_policy; /* 0 original, 1 removed, 2 replacement only */
+    unsigned char ground_disabled; /* non-driving surface; retain its draw category */
     float wall_height; /* model-wide replacement height; zero for exact local edits */
     /* Source-marked knockdown panel; all material slices share the placement id. */
     uint64_t placement_id; /* All world placement slices, including fixed scenery. */
@@ -771,6 +773,10 @@ static int n2_scen_class(const char *nm) {
     if (!strncmp(nm, "TRN", 3) || !strncmp(nm, "PAN", 3)) return N2_SC_TERRAIN;
     if (!strncmp(nm, "XB",  2)) return N2_SC_BUILDING;   /* buildings/barriers */
     if (!strncmp(nm, "XO", 2)) {
+        /* The object family also contains full industrial buildings. */
+        const unsigned char *name=(const unsigned char *)nm;long len=(long)strlen(nm);
+        if (n2_icontains(name,len,"INDUSTRIALOFFICES") || n2_icontains(name,len,"INDUSTRIALSHED") ||
+            n2_icontains(name,len,"GASSTATION")) return N2_SC_BUILDING;
         /* Authored obstacle roles also occur in the object family. Do not
            confuse wall-mounted lights with the walls they illuminate. */
         if (strstr(nm,"GUARD") || strstr(nm,"BARRIER") || strstr(nm,"FENCE") ||
@@ -2858,7 +2864,8 @@ static float n2_ground_z_ref(N2Scene *s, float x, float y, float fallback, float
         /* road + terrain ONLY: SKY (the skydome spans every XY up to Z~8000)
            and GLOW must be excluded or the query returns a point on the dome
            and launches the car kilometres into the air. */
-        if (s->meshes[m].cat != N2_ROAD && s->meshes[m].cat != N2_TERRAIN) continue;
+        if (s->meshes[m].ground_disabled ||
+            (s->meshes[m].cat != N2_ROAD && s->meshes[m].cat != N2_TERRAIN)) continue;
         N2Mesh *me = &s->meshes[m];
         for (int t = 0; t + 2 < me->nidx; t += 3) {
             float *a = me->verts + me->idx[t]*5;
@@ -3728,6 +3735,7 @@ static int n2_tex_noise(const N2Tex *t) {
  * mmap'd and queried without re-scanning it per texture. */
 typedef struct { long hbeg, hsize, dbase; } N2TpkBlk;
 typedef struct { N2TpkBlk *blk; int nblk; } N2Tpk;
+/* TPK rejection fixes adapted from luigiazoreng/OpenUG2 (MIT), addbcbe/55a53e5. */
 static N2Tpk n2_tpk_open(const unsigned char *d, long len) {
     N2Tpk t; t.blk = NULL; t.nblk = 0; int cap = 0;
     long ph = -1; uint32_t phs = 0;
@@ -3736,10 +3744,15 @@ static N2Tpk n2_tpk_open(const unsigned char *d, long len) {
             ph = i + 8; phs = n2_u32(d + i + 4);
         } else if (ph >= 0 && d[i]==0x02 && d[i+1]==0x00 && d[i+2]==0x32 && d[i+3]==0x33) {
             long pbase = i + 8, room = len - pbase;       /* pixels 0x33320002 */
+            /* Validate the file-controlled span before readers form hbeg+hsize. */
+            if (ph > len || (uint64_t)phs > (uint64_t)(len - ph)) {
+                ph = -1;
+                continue;
+            }
             if (room > 0x40000000) room = 0x40000000;
             if (t.nblk == cap) { cap = cap ? cap*2 : 64;
                 t.blk = (N2TpkBlk *)realloc(t.blk, (size_t)cap*sizeof(N2TpkBlk)); }
-            t.blk[t.nblk].hbeg = ph; t.blk[t.nblk].hsize = phs;
+            t.blk[t.nblk].hbeg = ph; t.blk[t.nblk].hsize = (long)phs;
             t.blk[t.nblk].dbase = pbase + n2_skip_filler(d + pbase, (int)room);
             t.nblk++; ph = -1;
         }
@@ -3788,6 +3801,8 @@ static int n2_tpk_decode(const unsigned char *d, long len, N2Tpk t, uint32_t has
         for (long i = hbeg; i + 0x40 < hend; i++) {
             if (!(d[i] >= 'A' && d[i] <= 'Z')) continue;
             if (n2_u32(d + i + 0x18) != hash) continue;
+            /* A rejected candidate's draw flags must not reach a short record. */
+            memset(tex, 0, sizeof *tex);
             uint32_t off = n2_u32(d + i + 0x24), paloff = n2_u32(d + i + 0x28);
             uint32_t palsz = n2_u32(d + i + 0x30);   /* Size (+0x2c) no longer read here --
                                                           format now comes from the +0x3e tag */
@@ -3859,6 +3874,8 @@ static int n2_tpk_decode(const unsigned char *d, long len, N2Tpk t, uint32_t has
             return 1;
         }
     }
+    /* Rejected candidates may have freed pixels while retaining their metadata. */
+    memset(tex, 0, sizeof *tex);
     return 0;
 }
 

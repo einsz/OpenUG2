@@ -3,6 +3,7 @@
 #include "world_collision.h"
 
 /* Reviewed user-authored boundary edits; model geometry stays in the asset reader.
+   Model keys and their authored LOD families apply across maps; coordinates stay local.
    shortcut: exact source edits target this archive set; revalidate for other editions. */
 static const float city_collision_points_0[][3] = {
     {-52.166626f, 119.454491f, 1.96345758f},

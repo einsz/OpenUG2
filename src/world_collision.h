@@ -2,7 +2,8 @@
 #define OPENUG2_WORLD_COLLISION_H
 #include "physics.h"
 
-/* Compiled collision corrections. Height zero removes body walls; exact sources win. */
+/* Compiled collision corrections. Buildings are non-solid on every map.
+   Height zero removes body walls; exact sources win for other scenery. */
 typedef struct {
     int kind; /* 0 model, 1 source, 2 standalone */
     uint64_t key;
@@ -45,25 +46,32 @@ static int wce_wall(N2Mesh *m,const WCollisionRule *r,int standalone) {
     }
     return 1;
 }
-static int wce_apply(const WCollisionEdits *e,N2Scene *s) {
-    int *owners=malloc((size_t)(e->count?e->count:1)*sizeof *owners);
+static int wce_apply(const WCollisionEdits *e,N2Scene *s,int local) {
+    int count=e?e->count:0;
+    int *owners=malloc((size_t)(count?count:1)*sizeof *owners);
     if (!owners) return 0;
-    for (int k=0;k<e->count;k++) owners[k]=-1;
+    for (int k=0;k<count;k++) owners[k]=-1;
     for (int n=0;n<s->count;n++) {
         N2Mesh *m=s->meshes+n;
-        const WCollisionRule *r=wce_source(e,m);
+        if (m->scen==N2_SC_BUILDING) {
+            m->wall_policy=1;m->wall_height=0;
+            continue;
+        }
+        const WCollisionRule *r=e&&local?wce_source(e,m):NULL;
         if (r && owners[r-e->rules]<0) owners[r-e->rules]=n;
-        if (!r) for (int k=0;k<e->count;k++) if (e->rules[k].kind==0 &&
+        if (!r) for (int k=0;k<count;k++) if (e->rules[k].kind==0 &&
             e->rules[k].key==m->world_model_key) {r=e->rules+k;break;}
+        if (!r) for (int k=0;k<count;k++) if (e->rules[k].kind==0 &&
+            e->rules[k].key==m->world_base_model_key) {r=e->rules+k;break;}
         if (r) {
             m->wall_policy=r->height>0?2:1;
             m->wall_height=r->kind==0?r->height:0;
         }
     }
     if (!phys_prepare_boundaries(s)) goto fail;
-    for (int k=0;k<e->count;k++) {
+    for (int k=0;k<count;k++) {
         const WCollisionRule *r=e->rules+k;
-        if (r->kind==0 || r->height==0) continue;
+        if (!local || r->kind==0 || r->height==0) continue;
         if (r->kind==1) {
             /* All slices were masked above; own one replacement without hashing
                the whole ground payload again for every exact source rule. */
@@ -80,5 +88,32 @@ static int wce_apply(const WCollisionEdits *e,N2Scene *s) {
     free(owners);return 1;
 fail:
     free(owners);return 0;
+}
+
+static int wce_roadside(const WCollisionEdits *e,N2Scene *s,int local) {
+    for (int n=0;n<s->count;n++) {
+        N2Mesh *m=s->meshes+n;
+        const unsigned char *name=(const unsigned char*)m->sname;size_t len=strlen(m->sname);
+        int water=n2_icontains(name,len,"WATER") || n2_icontains(name,len,"OCEAN");
+        /* Race guide panels and hanging foliage are not permanent roadside walls. */
+        int boundary=!water && !n2_world_effect_only(m) &&
+            !n2_icontains(name,len,"TRACKBARRIER") && !n2_icontains(name,len,"GTBARRIER") &&
+            !n2_icontains(name,len,"OVERHANG") &&
+            (m->scen==N2_SC_WALL || m->cat==N2_COLLISION ||
+             n2_icontains(name,len,"PLANTER") ||
+             (m->scen==N2_SC_TERRAIN && (strstr(m->sname,"WALL") ||
+              strstr(m->sname,"GUARD") || !strncmp(m->sname,"TRN_MEDIAN",10))));
+        /* Water and some barriers share ROAD/TERRAIN draw categories. */
+        m->ground_disabled=water || m->scen==N2_SC_BUILDING || m->scen==N2_SC_PROP ||
+                           m->scen==N2_SC_TREE || m->scen==N2_SC_WALL;
+        int ground=!m->ground_disabled && (m->cat==N2_ROAD || m->cat==N2_TERRAIN);
+        m->wall_policy=boundary || ground?0:1;
+        m->wall_height=0;
+        /* Keep authored wall heights; reviewed guardrail edits supply their 8 m walls. */
+        if (boundary && !ground && m->scen!=N2_SC_WALL) {
+            m->wall_policy=2;m->wall_height=2.5f;
+        }
+    }
+    return wce_apply(e,s,local);
 }
 #endif

@@ -75,6 +75,8 @@ typedef struct {
     float grid[WORLD_MAXGRID][3]; int ngrid;  /* start-grid slots (chunk 0x34146):
                                                  XY at +16/+20, the slot's own Z
                                                  at +24 (M118) */
+    int grid_named;                 /* numbered ForwardStartingPosition records */
+    float grid_heading;             /* source +32 u16 turn angle, radians */
     float px, py; int havep;         /* previous car XY: gates are crossed, not touched */
 } WRace;
 

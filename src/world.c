@@ -15,7 +15,7 @@
 static const WCollisionEdits *collision_edits;
 void world_collision_init(void) {
     collision_edits=&city_collision_edits;
-    printf("built-in collision corrections: %d rules for %s\n",collision_edits->count,collision_edits->map);
+    puts("world collisions: driving ground and roadside walls; decorative scenery non-solid");
 }
 
 static void grid_build(World *w);
@@ -463,8 +463,8 @@ static int world_neighborhood_load_facade(World *w, const char *troot,
         for (int v = 0; v < m->nverts; v++) m->verts[v*5+2] -= 0.05f;
     }
 
-    if (collision_edits && wce_map(collision_edits,trackname)) {
-        if (!wce_apply(collision_edits,&w->neighborhood.scene)) return 0;
+    if (collision_edits) {
+        if (!wce_roadside(collision_edits,&w->neighborhood.scene,wce_map(collision_edits,trackname))) return 0;
     } else if (!phys_prepare_boundaries(&w->neighborhood.scene)) return 0;
 
     /* per-mesh XY bounds — the draw cull and the ground grid both key off it */
@@ -1320,11 +1320,24 @@ int world_set_mode(World *w, int mode, int evidx) {
                              track ever needs a tighter box. */
 
 /* Start-grid slots for one event, from TrackPosMarkers (chunk 0x34146):
-   8-byte 0x11 filler, then 48-byte records — +16 f32 X, +20 f32 Y, +24 f32 Z,
-   +36 u32 track id. Returns the number written. */
+   8-byte 0x11 filler, then 48-byte records — +8 u32 marker-name hash,
+   +12 u32 slot, +16/+20/+24 f32 XYZ, +32 u16 heading, +36 u32 track id.
+   Events can ship a grid per direction of travel, named Forward/Backward
+   StartingPosition (8 slots) and StartLine (not a parking slot). The race runs its own
+   gate order, so only the forward grid belongs to it: on a divided road the
+   backward grid sits across the median. Unnamed grids keep every slot. */
+#define GRID_FORWARD_POSITION 0x8e55c895u  /* "ForwardStartingPosition" */
+static int race_load_grid_named(const World *w, const char *troot, int evid,
+                                float (*out)[3], int cap, int forward_only,float *heading);
 static int race_load_grid(const World *w, const char *troot, int evid,
-                          float (*out)[3], int cap) {
-    int n = 0;
+                          WRace *race) {
+    int n = race_load_grid_named(w,troot,evid,race->grid,WORLD_MAXGRID,1,&race->grid_heading);
+    race->grid_named=n>0;
+    return n ? n : race_load_grid_named(w,troot,evid,race->grid,WORLD_MAXGRID,0,&race->grid_heading);
+}
+static int race_load_grid_named(const World *w, const char *troot, int evid,
+                                float (*out)[3], int cap, int forward_only,float *heading) {
+    int n = 0;unsigned slots[WORLD_MAXGRID];
     for (int r = 0; r < w->neighborhood.nreg && n < cap; r++) {
         const char *rn = w->neighborhood.rgn[r].name;
         const char *stem = strncmp(rn, "STREAM", 6) ? rn : rn + 6;
@@ -1338,12 +1351,27 @@ static int race_load_grid(const World *w, const char *troot, int evid,
             /* the leaf opens with an 8-byte 0x11 filler run before the records */
             long off = leaf[L].off + 8, end = leaf[L].off + leaf[L].size;
             for (; off + 48 <= end && n < cap; off += 48) {
-                unsigned tid;
+                unsigned tid, name;
                 memcpy(&tid, d + off + 36, 4);
+                memcpy(&name, d + off + 8, 4);
                 if ((int)tid != evid) continue;
-                memcpy(&out[n][0], d + off + 16, 4);
-                memcpy(&out[n][1], d + off + 20, 4);
-                memcpy(&out[n][2], d + off + 24, 4);   /* the slot's own Z */
+                /* Forward/BackwardStartLine are never parking slots, including
+                   the legacy fallback when numbered positions are absent. */
+                if(name==0x6a56b90au || name==0xeec70374u)continue;
+                if (forward_only && name != GRID_FORWARD_POSITION) continue;
+                float pos[3];memcpy(pos,d+off+16,sizeof pos);
+                if(!isfinite(pos[0]) || !isfinite(pos[1]) || !isfinite(pos[2]))continue;
+                unsigned slot;memcpy(&slot,d+off+12,4);
+                int at=n;
+                if(forward_only) {
+                    if(slot>=(unsigned)cap)continue;
+                    for(at=0;at<n && slots[at]<slot;at++);
+                    if(at<n && slots[at]==slot)continue;
+                    memmove(out+at+1,out+at,(n-at)*sizeof *out);
+                    memmove(slots+at+1,slots+at,(n-at)*sizeof *slots);
+                }
+                memcpy(out[at],pos,sizeof pos);slots[at]=slot;
+                if(at==0){uint16_t angle;memcpy(&angle,d+off+32,2);*heading=angle*(6.28318530718f/65536.0f);}
                 n++;
             }
         }
@@ -1400,7 +1428,7 @@ int world_race_start(World *w, const char *troot, int evidx, int maxlaps) {
         g->dx = dx/d; g->dy = dy/d; g->half = GATE_HALF;
         R->ngate++;
     }
-    R->ngrid = race_load_grid(w, troot, e->id, R->grid, WORLD_MAXGRID);
+    R->ngrid = race_load_grid(w, troot, e->id, R);
     R->active = R->ngate > 0;
     R->next = 0; R->lap = 0; R->cleared = 0; R->havep = 0;
     printf("race armed: event %d (%s), %d gates from the 0x3414c outline, "
@@ -1750,6 +1778,7 @@ static int wg_pick(const N2Scene *s, const int *srcmap, float x, float y, float 
         int mc = s->meshes[m].cat;
         if (mc != N2_ROAD && mc != N2_TERRAIN) continue;
         const N2Mesh *me = &s->meshes[m];
+        if (me->ground_disabled) continue;
         for (int t = 0; t + 2 < me->nidx; t += 3) {
             const float *a = me->verts + me->idx[t]*5;
             const float *b = me->verts + me->idx[t+1]*5;
@@ -1890,6 +1919,7 @@ static int wws_pick(const N2Scene *s, const int *srcmap, float x, float y,
         int mc = s->meshes[m].cat;
         if (mc != N2_ROAD && mc != N2_TERRAIN) continue;
         const N2Mesh *me = &s->meshes[m];
+        if (me->ground_disabled) continue;
         for (int t = 0; t + 2 < me->nidx; t += 3) {
             const float *a = me->verts + me->idx[t]*5;
             const float *b = me->verts + me->idx[t+1]*5;
@@ -2020,7 +2050,7 @@ int world_wheel_support(const N2Scene *s, float x, float y, float wheel_z,
 
 static void wgs_mesh(const N2Mesh *m, int mi, const float p[3], const float q[3],
                      float *best, WGroundHit *hit) {
-    if (m->cat != N2_ROAD && m->cat != N2_TERRAIN) return;
+    if (m->ground_disabled || (m->cat != N2_ROAD && m->cat != N2_TERRAIN)) return;
     /* Exact early-out: a hit lies on p..q AND inside the triangle, so XY
      * bounds separated by more than float noise can never produce one. */
     float sx0=fminf(p[0],q[0])-1e-3f, sx1=fmaxf(p[0],q[0])+1e-3f;
@@ -2128,8 +2158,9 @@ float world_camera_clip(const N2Scene *s,const float (*bounds)[4],
           const float *verts=pass?m->wall_verts:m->verts;
           const uint16_t *idx=pass?m->wall_idx:m->idx;
           int count=pass?m->wall_nidx:m->nidx;
-          if (!verts || !idx || (pass && m->wall_policy!=2) ||
-              (!pass && m->wall_policy && m->cat!=N2_ROAD && m->cat!=N2_TERRAIN)) continue;
+          if (!verts || !idx || (pass && m->wall_policy==1) ||
+              (!pass && ((m->ground_disabled && m->wall_policy) ||
+               (m->wall_policy && m->cat!=N2_ROAD && m->cat!=N2_TERRAIN)))) continue;
           for(int ti=0;ti+2<count;ti+=3) {
             const float*a=verts+5*idx[ti],*b=verts+5*idx[ti+1],*c=verts+5*idx[ti+2];
             if (!pass && m->wall_policy) {

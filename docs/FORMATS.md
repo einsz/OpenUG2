@@ -1008,18 +1008,30 @@ with no AI route network.
 8-byte `0x11` filler, then **48-byte records**:
 
 ```
-+0  u32 11    +4  u32 11    +8  u32 name hash   +12 u32 0
++0  u32 11    +4  u32 11    +8  u32 name hash   +12 u32 slot index
 +16 f32 X     +20 f32 Y     +24 f32 Z           +28 f32 0
-+32 u32 hash  +36 u32 track id (4000 = freeroam) +40 char[4] tag  +44 u32 0
++32 u16 heading (turn / 65536), +34 u16 unknown
++36 u32 track id (4000 = freeroam) +40 char[4] tag  +44 u32 0
 ```
 
 The record count is **variable**, not universally 18. Event 4001 has 18; L4RB
 sprint 4201 has 20 arranged as two ten-slot clusters for opposite directions.
-These are **starting grids, not checkpoints**. Direction/orientation fields are
-zero in the measured 4201 records, so OpenUG2 chooses a supported slot near gate
-0 and derives heading from gate 0 → gate 1. A slot is preferred when
-`world_ground_at` finds ROAD within 1 m of its shipped Z; this rejects the
-opposite-direction cluster when its stored Z belongs to another layer.
+These are **starting grids, not checkpoints**. Numbered forward slots use the
+authored heading at `+32`; legacy unnamed grids derive heading from the course.
+
+`+8` is the marker-name hash (`h=0xffffffff; h=h*33+c`) and `+12` the slot index
+within that name. Measured names: `ForwardStartingPosition` (`0x8e55c895`, 8
+slots), `ForwardStartLine` (`0x6a56b90a`, 1), `BackwardStartingPosition`
+(`0x8f90f7bf`, 8) and `BackwardStartLine` (`0xeec70374`, 1). In all 35 events
+whose two grids are at different ends, the Forward grid is the one at gate 0.
+On divided freeway circuits (L4RA 4001–4006, 4083) the two grids sit on opposite
+carriageways; the Backward one starts the field across the median. The loader
+therefore keeps only Forward slots when an event ships them, sorted by slot
+index. The fallback accepts unnamed positions; StartLine markers are always
+excluded. Four-car fields prefer four abreast, then two rows of two; six-car
+URL fields use three rows of two. The player occupies the last selected slot.
+The entire formation must pass ground, wheel support, body clearance,
+non-overlap and course-entry checks before placement.
 
 ### Checkpoint gates & laps — derived, not stored (Phase 72)
 

@@ -1187,8 +1187,9 @@ static float race_lane_span(const AiRoadNet *lanes,const float *distance,int at,
    every hill from grid height can select the ceiling beneath its road instead.
    ponytail: up to 64 XY lane choices per sample, one height per prefix; stacked
    routes sharing identical XY/distance would need separate height states. */
-static int race_course_read(const char *root,const WEvent *event,N2Path *out,int full,
-        const AiTrafficWorld *world,const AiCar *body,float *widest) {
+static int race_course_read_mode(const char *root,const WEvent *event,N2Path *out,int full,
+        const AiTrafficWorld *world,const AiCar *body,float *widest,int lane_terrain,int *unsupported_out) {
+    if(unsupported_out)*unsupported_out=0;
     if(!root || !event || !out)return 0;
     N2Path raw={0};
     if(race_route_load(root,event,&raw)){*out=raw;return 1;}
@@ -1223,7 +1224,7 @@ static int race_course_read(const char *root,const WEvent *event,N2Path *out,int
     if(event->circuit){low=0;high=length;ok=ok && length>20;}
     int samples=ok && high>low ? (int)ceilf((high-low)/5)+1 : 0;
     enum { CHOICES=64 };
-    typedef struct { float x,y,z,along,penalty; double cost; int parent,root,edge; } Choice;
+    typedef struct { float x,y,z,along,penalty; double cost; int parent,root,edge,linked; } Choice;
     Choice *choices=samples>1 && samples<4096?calloc((size_t)samples*CHOICES,sizeof *choices):NULL;
     int *counts=choices?calloc((size_t)samples,sizeof *counts):NULL;
     ok=choices && counts;int layers=0;float previous=low;
@@ -1317,7 +1318,7 @@ static int race_course_read(const char *root,const WEvent *event,N2Path *out,int
             for(int j=1;j<layers;j++) {
                 Choice *row=choices+j*CHOICES,*prev=row-CHOICES;
                 for(int q=0;q<counts[j];q++) {
-                    row[q].cost=INFINITY;row[q].parent=row[q].root=-1;
+                    row[q].cost=INFINITY;row[q].parent=row[q].root=-1;row[q].linked=0;
                     double anchor=terrain && anchored && reference[j].penalty==0 &&
                         hypotf(row[q].x-reference[j].x,row[q].y-reference[j].y)>.1f ? 1e8/(layers+1) : 0;
                     for(int r=0;r<counts[j-1];r++) {
@@ -1335,7 +1336,22 @@ static int race_course_read(const char *root,const WEvent *event,N2Path *out,int
                             if(!connected)continue;
                         }
                         float penalty=0,z=prev[r].z;
-                        if(prev[r].cost+step*step>=row[q].cost)continue;
+                        /* A lane point keeps one height. A prefix along its own
+                           source chain must not lose it to a cheaper prefix that
+                           reached the same XY on another layer (an overpass lane
+                           sampled on the road beneath it). */
+                        int linked=prev[r].edge==row[q].edge || lanes.next[prev[r].edge]==row[q].edge;
+                        if(prev[r].cost+step*step>=row[q].cost && !(linked && !row[q].linked))continue;
+                        /* Optionally treat terrain-labelled pavement on an authored
+                           lane that advances with the race as road; the strict
+                           pass otherwise prefers a clean detour around it. */
+                        int along_lane=terrain;
+                        if(!along_lane && lane_terrain && linked && step<=3*(row[q].along-prev[r].along)+3) {
+                            int e=row[q].edge,en=lanes.next[e];
+                            float span=race_lane_span(&lanes,distance,e,event->circuit?length:0);
+                            float len=hypotf(lanes.xy[2*en]-lanes.xy[2*e],lanes.xy[2*en+1]-lanes.xy[2*e+1]);
+                            along_lane=fabsf(span)>=.5f*len;
+                        }
                         if(world && body) {
                             RoadCheck *check=checks?checks+check_offsets[j]+q*counts[j-1]+r:NULL;
                             /* Reuse an already validated ROAD connection only
@@ -1353,7 +1369,7 @@ static int race_course_read(const char *root,const WEvent *event,N2Path *out,int
                                 int surface=world_ground_at(world->scene,row[q].x,row[q].y,z,&z);
                                 /* Retry a lost road layer by carrying height uphill.
                                    Keep successful endpoint probes and body sweeps unchanged. */
-                                if(surface==WSURF_NONE || (!terrain && surface!=WSURF_ROAD)) {
+                                if(surface==WSURF_NONE || (!along_lane && surface!=WSURF_ROAD)) {
                                     float height=prev[r].z;
                                     if(world_ground_at(world->scene,prev[r].x,prev[r].y,height,&height)==WSURF_ROAD) {
                                         int steps=fmaxf(1,ceilf(step)),part=1;
@@ -1361,12 +1377,15 @@ static int race_course_read(const char *root,const WEvent *event,N2Path *out,int
                                             float t=(float)part/steps,x=prev[r].x+(row[q].x-prev[r].x)*t;
                                             float y=prev[r].y+(row[q].y-prev[r].y)*t;
                                             int cat=world_ground_at(world->scene,x,y,height,&height);
-                                            if(cat==WSURF_NONE || (!terrain && cat!=WSURF_ROAD))break;
+                                            if(cat==WSURF_NONE || (!along_lane && cat!=WSURF_ROAD))break;
                                         }
                                         if(part>steps){surface=WSURF_ROAD;z=height;}
                                     }
                                 }
-                                if(surface==WSURF_NONE || (!terrain && surface!=WSURF_ROAD) || !race_pose_clear(world,body,row[q].x,row[q].y,z,h)) {
+                                /* The .7 support-normal limit bounds driving grade; a lower deck is not a ramp. */
+                                float maxrise=step*sqrtf(1-.7f*.7f)/.7f+PHYS_RIDE_REACH_UP;
+                                if(surface==WSURF_NONE || (!along_lane && surface!=WSURF_ROAD) ||
+                                   fabsf(z-prev[r].z)>maxrise || !race_pose_clear(world,body,row[q].x,row[q].y,z,h)) {
                                     penalty=1e8f;
                                     /* Keep the measured surface height even when
                                        its category or body clearance is rejected.
@@ -1383,7 +1402,7 @@ static int race_course_read(const char *root,const WEvent *event,N2Path *out,int
                                         float t=(float)s/steps,x=prev[r].x+(row[q].x-prev[r].x)*t;
                                         float y=prev[r].y+(row[q].y-prev[r].y)*t;
                                         int cat=world_ground_at(world->scene,x,y,midz,&midz);
-                                        if(cat==WSURF_NONE || (!terrain && cat!=WSURF_ROAD) ||
+                                        if(cat==WSURF_NONE || (!along_lane && cat!=WSURF_ROAD) ||
                                            !traffic_body_clear(world,body,x,y,midz,h)) {
                                             penalty=1e8f;break;
                                         }
@@ -1408,9 +1427,10 @@ static int race_course_read(const char *root,const WEvent *event,N2Path *out,int
                         float ad=fabsf(px*ax+py*ay)/fmaxf(.01f,step*hypotf(ax,ay));
                         float bd=fabsf(px*bx+py*by)/fmaxf(.01f,step*hypotf(bx,by));
                         double c=prev[r].cost+step*step*(3-ad-bd)+penalty+anchor;
-                        if(c<row[q].cost) {
+                        int other_layer=isfinite(row[q].cost) && fabsf(z-row[q].z)>2.5f;
+                        if(other_layer?linked>row[q].linked || (linked==row[q].linked && c<row[q].cost):c<row[q].cost) {
                             row[q].cost=c;row[q].parent=r;row[q].root=prev[r].root;
-                            row[q].z=z;row[q].penalty=penalty;
+                            row[q].z=z;row[q].penalty=penalty;row[q].linked=linked;
                         }
                     }
                 }
@@ -1420,7 +1440,8 @@ static int race_course_read(const char *root,const WEvent *event,N2Path *out,int
                 if(!isfinite(c->cost) || c->root<0)continue;
                 Choice *first=choices+c->root;
                 float seam=hypotf(c->x-first->x,c->y-first->y);
-                if(event->circuit && seam>12)continue;
+                /* Snapping a different lane to the start invents an unchecked connection. */
+                if(event->circuit && seam>.01f)continue;
                 if(c->cost+seam*seam*(event->circuit!=0)<cost) {
                     N2Path candidate={.n=layers,.xy=malloc((size_t)layers*2*sizeof(float))};
                     if(!candidate.xy)continue;
@@ -1476,7 +1497,7 @@ static int race_course_read(const char *root,const WEvent *event,N2Path *out,int
     free(reference);
     if(best>=0) {
         if(path.xy) {
-            if(unsupported)printf("race course: %d/%d samples need support/collision validation\n",unsupported,layers);
+            if(unsupported_out)*unsupported_out=unsupported;
             if(event->circuit){path.xy[2*layers-2]=path.xy[0];path.xy[2*layers-1]=path.xy[1];}
             int n=1;
             for(int j=1;j<path.n;j++)if(hypotf(path.xy[2*j]-path.xy[2*n-2],path.xy[2*j+1]-path.xy[2*n-1])>=.01f) {
@@ -1492,6 +1513,41 @@ static int race_course_read(const char *root,const WEvent *event,N2Path *out,int
     free(checks);free(check_offsets);free(choices);free(counts);ai_roads_free(&lanes);free(distance);
     if(!ok){free(path.xy);return 0;}
     *out=path;return 1;
+}
+
+/* Direction reversals sharper than 120 degrees between consecutive samples.
+   A real bend turns ~18 degrees per 5 m even on a 16 m loop; a reversal is two
+   lane chains meeting end to end with the turn between them missing. */
+static int race_course_reversals(const N2Path *p) {
+    int n=0;
+    for(int j=1;p && j+1<p->n;j++) {
+        float ux=p->xy[2*j]-p->xy[2*j-2],uy=p->xy[2*j+1]-p->xy[2*j-1];
+        float vx=p->xy[2*j+2]-p->xy[2*j],vy=p->xy[2*j+3]-p->xy[2*j+1];
+        float ul=hypotf(ux,uy),vl=hypotf(vx,vy);
+        n+=ul>.5f && vl>.5f && (ux*vx+uy*vy)<-.5f*ul*vl;
+    }
+    return n;
+}
+
+/* With loaded geometry, decode strictly and with lane terrain admitted, and keep
+   the course with fewer unvalidated samples, then fewer reversals; a tie keeps
+   the lane decode, which follows authored lanes through labelled terrain. Neither mode
+   alone is safe: each DP keeps one prefix per lane point, so admitting more
+   samples can strand a different section.
+   ponytail: two full decodes per event start; a multi-state DP would replace this. */
+static int race_course_read(const char *root,const WEvent *event,N2Path *out,int full,
+        const AiTrafficWorld *world,const AiCar *body,float *widest) {
+    int bad=0,ok=race_course_read_mode(root,event,out,full,world,body,widest,0,&bad);
+    if(world && body) {
+        N2Path lane={0};int lane_bad=0;
+        if(race_course_read_mode(root,event,&lane,full,world,body,widest,1,&lane_bad) &&
+           (!ok || lane_bad*1000+race_course_reversals(&lane)<=bad*1000+race_course_reversals(out))) {
+            if(ok)free(out->xy);
+            *out=lane;bad=lane_bad;ok=1;
+        } else free(lane.xy);
+    }
+    if(ok && bad)printf("race course: %d/%d samples need support/collision validation\n",bad,out->n);
+    return ok;
 }
 
 /* Last-resort event spine from measured Paths segment ranges and node links.
@@ -1734,9 +1790,60 @@ static float race_lane_width(const char *root,const WEvent *event) {
     free(data);ai_roads_free(&lanes);return ok?widest:0;
 }
 
+/* Numbered source slots describe rows; select a whole formation before moving
+   anyone. This also excludes a clear front row whose rear player lacks support. */
+static int race_grid_try(const WEvent *event,const WRace *race,const AiTrafficWorld *world,
+        const N2Path *course,float corridor,AiCar *cars,AiCar *player,
+        const int *slots,int count,int columns) {
+    float forward[N_RACE_AI+1],side[N_RACE_AI+1];
+    float c=cosf(race->grid_heading),s=sinf(race->grid_heading);
+    const float *origin=race->grid[slots[0]];
+    for(int k=0;k<count;k++) {
+        const float *p=race->grid[slots[k]];
+        float x=p[0]-origin[0],y=p[1]-origin[1];
+        forward[k]=x*c+y*s;side[k]=-x*s+y*c;
+        int row=k/columns,col=k%columns;
+        /* Authored rows can be slightly skewed, but not a single-file queue. */
+        if(fabsf(forward[k]-forward[row*columns])>.75f ||
+           (row && (forward[row*columns]>=forward[(row-1)*columns]-.75f ||
+                    fabsf(side[k]-side[col])>.75f)))return 0;
+    }
+    AiCar field[N_RACE_AI+1];
+    for(int k=0;k<count;k++) {
+        field[k]=k==count-1?*player:cars[k];
+        memcpy(field[k].pos,race->grid[slots[k]],sizeof field[k].pos);
+        field[k].head=race->grid_heading;field[k].spd=0;field[k].ride_ready=0;
+        float z=field[k].pos[2];AiDrive join;
+        if(!world_race_grid_ground(world->scene,event,field[k].pos,&z))return 0;
+        field[k].pos[2]=z;
+        /* Use the live race driver's entry envelope: an authored outer slot
+           can lie beyond the lane centre's half-width on supported pavement. */
+        float entry=fmaxf(12,fminf(60,corridor+field[k].half_width));
+        if(!race_pose_clear(world,&field[k],field[k].pos[0],field[k].pos[1],z,field[k].head) ||
+           !ai_drive_join(&join,course,field[k].pos,field[k].head,entry))return 0;
+        for(int j=0;j<k;j++)if(phys_ai_overlap(&field[k],&field[j]))return 0;
+        ai_motion_init(&field[k],world);if(field[k].ride.contact_mask!=15)return 0;
+    }
+    memcpy(cars,field,(count-1)*sizeof *cars);*player=field[count-1];
+    printf("race grid: %d rows x %d, player source slot %d at (%.3f %.3f %.3f), heading %.4f\n",
+        count/columns,columns,slots[count-1],player->pos[0],player->pos[1],player->pos[2],player->head);
+    return 1;
+}
+
+static int race_grid_search(const WEvent *event,const WRace *race,const AiTrafficWorld *world,
+        const N2Path *course,float corridor,AiCar *cars,AiCar *player,
+        int *slots,int count,int columns,int depth,int first) {
+    if(depth==count)return race_grid_try(event,race,world,course,corridor,cars,player,slots,count,columns);
+    for(int k=first;k<=race->ngrid-(count-depth);k++) {
+        slots[depth]=k;
+        if(race_grid_search(event,race,world,course,corridor,cars,player,slots,count,columns,depth+1,k+1))return 1;
+    }
+    return 0;
+}
+
 int ai_race_prepare(const char *root,const WEvent *event,WRace *race,
         const AiTrafficWorld *world,N2Path *path,AiCar cars[N_RACE_AI],AiRace drivers[N_RACE_AI],
-        const AiCar *player) {
+        AiCar *player) {
     free(path->xy);*path=(N2Path){0};
     memset(drivers,0,N_RACE_AI*sizeof *drivers);
     N2Path course={0};
@@ -1776,7 +1883,20 @@ int ai_race_prepare(const char *root,const WEvent *event,WRace *race,
     }
     int used[WORLD_MAXGRID]={0},count=0;
     for(int attempt=0;attempt<2;attempt++) {
-        for(int k=0;k<wanted;k++) {
+        if(race->grid_named && race->ngrid>0 && race->ngrid<=WORLD_MAXGRID &&
+           isfinite(race->grid_heading)) {
+            int slots[N_RACE_AI+1],total=wanted+1;
+            if((total==4 && race_grid_search(event,race,world,&course,widest>0?widest:8,
+                    cars,player,slots,total,4,0,0)) ||
+               ((total==4 || total==6) && race_grid_search(event,race,world,&course,widest>0?widest:8,
+                    cars,player,slots,total,2,0,0)))count=wanted;
+            for(int k=0;k<count;k++) {
+                cars[k].t=cars[k].lap=cars[k].prevrel=0;cars[k].braking=0;
+                drivers[k]=(AiRace){.progress=*race};
+                cars[k].col[k%3]=.85f;cars[k].col[(k+1)%3]=.25f;
+            }
+        }
+        for(int k=0;!race->grid_named && k<wanted;k++) {
             AiCar candidate;int best=-1;float bestd=INFINITY;
             for(int slot=0;slot<race->ngrid;slot++) {
                 if(used[slot])continue;
@@ -1854,7 +1974,8 @@ int ai_race_prepare(const char *root,const WEvent *event,WRace *race,
     for(int k=0;k<count;k++) {
         drivers[k].progress=*race;
         drivers[k].offset=ai_course_lateral(path,cars[k].pos);
-        ai_drive_join(&drivers[k].drive,path,cars[k].pos,cars[k].head,widest>0?widest:8);
+        float entry=race->grid_named?fmaxf(12,fminf(60,widest+cars[k].half_width)):(widest>0?widest:8);
+        ai_drive_join(&drivers[k].drive,path,cars[k].pos,cars[k].head,entry);
         /* ponytail: widest authored side for this event; local widths can
            replace this bound when per-segment corridor planning is added.
            Physical road/body checks remain authoritative on the narrower side. */
@@ -1910,6 +2031,67 @@ float ai_drag_lane_target(const AiTrafficWorld *world,const AiCar *car,const AiD
     return answer;
 }
 
+/* Rival station on the racer's own course, searched only near our station:
+   route distance ahead of us and signed lateral (path-left, like offsets),
+   both on the rival's local tangent so bends cannot mix frames.
+   Returns the distance from the course; INFINITY when nothing was searched. */
+static float race_course_relative(const N2Path *p,int at,float t,int direction,float back,
+        float range,const float pos[3],float *ahead,float *lateral,float *heading) {
+    int loop=hypotf(p->xy[0]-p->xy[2*p->n-2],p->xy[1]-p->xy[2*p->n-1])<.01f,i=at;
+    float s=-(direction>0?t:1-t)*ai_segment(p,at),best=INFINITY;
+    while(s>-back) {
+        int prev=i-direction;
+        if(prev<0 || prev>p->n-2){if(!loop)break;prev=direction>0?p->n-2:0;}
+        i=prev;s-=ai_segment(p,i);
+    }
+    for(int steps=0;s<=range && steps<p->n;steps++) {
+        float len=ai_segment(p,i),error,u=ai_projection(p,i,pos,&error);
+        if(error<best) {
+            float dx=p->xy[2*i+2]-p->xy[2*i],dy=p->xy[2*i+3]-p->xy[2*i+1];
+            best=error;*ahead=s+(direction>0?u:1-u)*len;
+            *lateral=((pos[1]-p->xy[2*i+1])*dx-(pos[0]-p->xy[2*i])*dy)/len;
+            *heading=atan2f(dy*direction,dx*direction);
+        }
+        s+=len;i+=direction;
+        if(i<0 || i>p->n-2){if(!loop)break;i=direction>0?0:p->n-2;}
+    }
+    return best;
+}
+
+/* A negative race pace drives each car at its own flat-out speed; a positive
+   one is the old uniform test pace, staggered per racer. Zero stays the
+   conservative diagnostic pace. */
+static float race_pace_kmh(const AiTrafficWorld *world,int k,const AiCar *car) {
+    if(world && isfinite(world->race_pace) && world->race_pace<0 && car)
+        return PHYS_KMH(phys_vehicle_top_speed(car->vehicle.accel>0?&car->vehicle:NULL));
+    return world && isfinite(world->race_pace) && world->race_pace>0
+        ?fmaxf(40,fminf(180,world->race_pace+4*k)):50;
+}
+
+/* Fastest speed (m/s) from which this car can still brake to the speed its
+   own steering allows for the tightest bend within braking reach. The
+   target-bearing limit only looks <=20 m ahead, too late from full speed.
+   ponytail: chord heading change over 10 m as the radius, 60% of full lock
+   and half the brake for the proportional, lagged AI steering and pedal. */
+#define RACE_CORNER_LOCK  .60f
+#define RACE_BRAKE_SHARE  .50f
+static float race_corner_limit(const AiDrive *d,const AiCar *car) {
+    const PhysVehicle *vh=car->vehicle.accel>0?&car->vehicle:NULL;
+    const N2Path *p=d->path;float error,t=ai_projection(p,d->segment,car->pos,&error);
+    float brake2=2*RACE_BRAKE_SHARE*phys_vehicle_brake_decel(vh),speed=fabsf(car->spd);
+    float reach=fminf(300,speed*speed/brake2+20),limit=INFINITY,floor=14/3.6f/PHYS_TICKRATE;
+    for(float ahead=0;ahead<=reach;ahead+=2) {
+        float a[2],b[2],ha,hb;
+        ai_route_point(p,d->segment,t,d->direction,ahead,a,&ha);
+        ai_route_point(p,d->segment,t,d->direction,ahead+10,b,&hb);
+        float turn=fabsf(atan2f(sinf(hb-ha),cosf(hb-ha)));
+        if(turn<.05f)continue;
+        float corner=fmaxf(floor,phys_vehicle_corner_speed(vh,RACE_CORNER_LOCK*10/turn));
+        limit=fminf(limit,sqrtf(corner*corner+brake2*ahead));
+    }
+    return limit*PHYS_TICKRATE;
+}
+
 void ai_race_step(AiCar cars[N_RACE_AI],AiRace drivers[N_RACE_AI],int k,int count,
         int circuit,const AiTrafficWorld *world,const AiCar *player) {
     AiCar *car=&cars[k];AiRace *driver=&drivers[k];
@@ -1924,8 +2106,7 @@ void ai_race_step(AiCar cars[N_RACE_AI],AiRace drivers[N_RACE_AI],int k,int coun
         ai_vehicle_step(car,car->spd>.002f?-1:0,0,1,world);return;
     }
     AiDriveInput input=ai_drive_step(&driver->drive,car->pos,car->head,car->spd);
-    float pace=world && isfinite(world->race_pace) && world->race_pace>0
-        ?fmaxf(40,fminf(180,world->race_pace+4*k)):50;
+    float pace=race_pace_kmh(world,k,car);
     float target=driver->drive.target_kmh/3.6f;
     if(!driver->drive.failed && !driver->drive.finished && world && world->scene) {
         const N2Path *p=driver->drive.path;int at=driver->drive.segment;
@@ -1947,10 +2128,43 @@ void ai_race_step(AiCar cars[N_RACE_AI],AiRace drivers[N_RACE_AI],int k,int coun
                ponytail: local corridors only; dynamic obstacle routing is separate. */
             float spacing=car->half_width+1.2f;
             float current_offset=((car->pos[1]-p->xy[2*at+1])*dx-(car->pos[0]-p->xy[2*at])*dy)/len;
-            /* Keep a straight passing line through small lead-car movements;
-               bends retain the full clearance. */
-            int straight=cosf(driver->drive.target_heading-atan2f(dy,dx))>.9999f;
             int sides=(int)fmaxf(5,floorf(driver->drive.error_limit/spacing));
+            /* A rival occupies a line only when we would actually reach it:
+               course-relative gap against closing speed, or already touching.
+               A faster rival pulling away is not a reason to change sides.
+               Closing includes a bounded share of our unrealised pace so a
+               slower rival we are queued behind is still passed. */
+            int total=count+(player!=NULL)+(world->ambient && world->ambient_routes?world->ambient_count:0);
+            float rival_lateral[total>0?total:1],rival_width[total>0?total:1];
+            int rivals=0,engaged=0;
+            for(int j=0;j<total;j++)if(j!=k) {
+                int slot=j-count-(player!=NULL);
+                if(slot>=0 && !world->ambient_routes[slot].present)continue;
+                const AiCar *lead=j<count?&cars[j]:slot>=0?world->ambient+slot:player;
+                float lengths=car->half_length+lead->half_length,ahead,lateral,h;
+                if(fabsf(lead->pos[2]-car->pos[2])>=2 ||
+                   race_course_relative(p,at,t,driver->drive.direction,lengths,preview+lengths,
+                       lead->pos,&ahead,&lateral,&h)>driver->drive.error_limit ||
+                   ahead<=-lengths || ahead>=preview+lengths)continue;
+                /* Moving racers follow this shared course; stopped bodies retain their angle. */
+                float angle=j<count && fabsf(PHYS_KMH(lead->spd))>=5?0:lead->head-h;
+                float alignment=fabsf(cosf(angle)),cross=fabsf(sinf(angle));
+                lengths=car->half_length+lead->half_length*alignment+lead->half_width*cross;
+                float width=lead->half_width*alignment+lead->half_length*cross;
+                float own=car->spd*PHYS_TICKRATE*cosf(car->head-h);
+                float rival=lead->spd*PHYS_TICKRATE*cosf(lead->head-h);
+                /* A racer paced at least as fast as us is not waiting to be
+                   passed; only real closing speed creates a conflict. */
+                float intent=j<count && race_pace_kmh(world,j,&cars[j])>=pace?0:fminf(pace/3.6f-rival,3);
+                float closing=fmaxf(own-rival,intent);
+                float gap=ahead-lengths;
+                int conflict=gap<1.2f || (closing>0 && gap<1.2f+.6f*fabsf(own)+4*closing+closing*closing/6);
+                /* A committed pass ends once the rival is behind us or
+                   really pulling away, not when its gap estimate wobbles. */
+                engaged|=conflict || ahead<=lengths+2 || (driver->pass_side && own-rival>-1);
+                if(ahead>0 && conflict){rival_lateral[rivals]=lateral;rival_width[rivals++]=width;}
+            }
+            if(!engaged)driver->pass_side=0;
             /* Keep proven straight corridors. Only if all are blocked,
                test a curve, then a straight recovery with gradual yaw.
                An instant target heading can falsely clip a nearby wall.
@@ -1965,24 +2179,14 @@ void ai_race_step(AiCar cars[N_RACE_AI],AiRace drivers[N_RACE_AI],int k,int coun
                     if(option<11 && fabsf(offset)+car->half_width>=12)continue;
                     if(option>=11 && fabsf(offset)>=driver->drive.error_limit)continue;
                     float cost=.1f*fabsf(offset-old_offset)+.2f*fabsf(offset);
-                    for(int j=0;j<count+(player!=NULL)+(world->ambient && world->ambient_routes?world->ambient_count:0);j++)if(j!=k) {
-                        int slot=j-count-(player!=NULL);
-                        if(slot>=0 && !world->ambient_routes[slot].present)continue;
-                        const AiCar *lead=j<count?&cars[j]:slot>=0?world->ambient+slot:player;
-                        float lx=lead->pos[0]-car->pos[0],ly=lead->pos[1]-car->pos[1];
-                        float along=lx*cosf(car->head)+ly*sinf(car->head);
-                        float lateral=ai_course_lateral(p,lead->pos);
-                        /* At a grid seam, a close stopped body must use our tangent. */
-                        if(along<car->half_length+lead->half_length+2 && fabsf(PHYS_KMH(lead->spd))<5)
-                            lateral=((lead->pos[1]-p->xy[2*at+1])*dx-
-                                (lead->pos[0]-p->xy[2*at])*dy)/len;
-                        if(along>0 && along<preview+car->half_length+lead->half_length &&
-                           fabsf(lead->pos[2]-car->pos[2])<2 &&
-                           fabsf(offset-lateral)<car->half_width+lead->half_width+
-                             (straight && cosf(lead->head-driver->drive.target_heading)>.9999f &&
-                              fabsf(offset-old_offset)<.1f?.1f:.3f))
-                            cost+=100;
-                    }
+                    /* Hold the committed passing side; only an occupied or
+                       physically rejected side outweighs this and replans. */
+                    if(driver->pass_side && offset*driver->pass_side<spacing*.5f)cost+=50;
+                    /* The held line keeps a smaller margin, so small rival
+                       corrections inside its lane do not price it out. */
+                    float margin=fabsf(offset-old_offset)<.01f?.1f:.3f;
+                    for(int r=0;r<rivals;r++)
+                        if(fabsf(offset-rival_lateral[r])<car->half_width+rival_width[r]+margin)cost+=100;
                     if(cost>=best)continue;
                     float x=driver->drive.target[0]-ox*offset;
                     float y=driver->drive.target[1]+oy*offset,z=car->pos[2];int clear=1;
@@ -2030,7 +2234,10 @@ void ai_race_step(AiCar cars[N_RACE_AI],AiRace drivers[N_RACE_AI],int k,int coun
                 }
             }
             driver->blocked=!isfinite(best);
-            if(!driver->blocked)driver->offset=best_offset;
+            if(!driver->blocked) {
+                driver->offset=best_offset;
+                driver->pass_side=engaged && fabsf(best_offset)>=spacing*.5f?(best_offset>0?1:-1):0;
+            }
         }
         if(!driver->blocked) {
             tx=driver->drive.target[0]-ox*driver->offset;
@@ -2042,6 +2249,7 @@ void ai_race_step(AiCar cars[N_RACE_AI],AiRace drivers[N_RACE_AI],int k,int coun
             target=pace/3.6f;
             if(!driver->drive.loop)target=fminf(target,sqrtf(6*fmaxf(0,driver->drive.length-driver->drive.progress-1)));
             target=fminf(target,(14+(pace-14)*fmaxf(0,cosf(fminf(fabsf(angle)*2,1.5707963f))))/3.6f);
+            target=fminf(target,race_corner_limit(&driver->drive,car));
         } else target=0;
     }
     if(driver->progress.finished)target=fminf(target,25/3.6f);

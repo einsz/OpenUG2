@@ -1300,10 +1300,8 @@ static float seg_d2_m112(float px,float py,float ax,float ay,float bx,float by,
     float qx=px-*ox, qy=py-*oy; return qx*qx+qy*qy;
 }
 
-/* Put the player on the armed race's own start grid, facing through the start
- * line. Lifted unchanged from the --event boot path so the menu Enter and the
- * command-line arm place the car identically -- one grid rule, not two.
- * Returns 1 when a race is armed and a grid exists. */
+/* Seed neighborhood loading from a supported source slot. ai_race_prepare
+ * selects the final player/opponent formation together before the countdown. */
 static int race_place_on_grid(const World *w, const N2Scene *sc,
                               float carpos[3], float *heading0) {
     if (!w->city.race.active || w->city.race.ngrid <= 0 || w->city.race.ngate <= 0) return 0;
@@ -1340,13 +1338,12 @@ static int race_place_on_grid(const World *w, const N2Scene *sc,
     carpos[1] = w->city.race.grid[best][1];
     carpos[2] = bestz;                       /* the layer under the slot */
         g_ride_ready = 0;   /* M130: re-arm the ride at every placement */
-    /* the records carry no orientation (their direction fields are all zero),
-       so face along the event's own route: gate 0 towards the next gate. */
-    if (w->city.race.ngate > 1) {
+    if(w->city.race.grid_named)*heading0=w->city.race.grid_heading;
+    else if (w->city.race.ngate > 1) {
         const WGate *g1 = &w->city.race.gate[1];
         *heading0 = atan2f(g1->y - g0->y, g1->x - g0->x);
     } else *heading0 = atan2f(g0->dy, g0->dx);
-    printf("race start: grid slot %d of %d at (%.3f, %.3f, %.3f) on its own %s "
+    printf("race staging: grid slot %d of %d at (%.3f, %.3f, %.3f) on its own %s "
            "layer, %.1f m from gate 0, heading %+.4f\n",
            best, w->city.race.ngrid, carpos[0], carpos[1], carpos[2], "ROAD",
            sqrtf(bestd), *heading0);
@@ -6947,6 +6944,10 @@ int main(int argc, char **argv) {
                 AiCar player={.pos={carpos[0],carpos[1],carpos[2]},.head=heading,
                     .half_length=(carbb[3]-carbb[0])*.5f,.half_width=(carbb[4]-carbb[1])*.5f,
                     .height=carbb[5]-carbb[2]};
+                for(int k=0;k<4;k++) {
+                    player.support.ax[k]=k<2?g_dbg.wheel.front_axle:g_dbg.wheel.rear_axle;
+                    player.support.ay[k]=(k&1?-.5f:.5f)*(k<2?g_dbg.wheel.front_track:g_dbg.wheel.rear_track);
+                }
                 for(int k=0;k<N_RACE_AI;k++)ais[k]=ai_templates[ai_event_visual(k)];
                 nai=ai_race_prepare(troot,&world.city.ev[world.city.race.ev],&world.city.race,
                                     &traffic_world,&aipath,ais,race_drivers,&player);
@@ -6962,7 +6963,9 @@ int main(int argc, char **argv) {
                     memcpy(ais,ai_templates,sizeof ai_templates);
                     nai=ai_traffic_spawn(&roam_roads,&traffic_world,ais,traffic_routes,carpos,heading);
                 } else {
-                    heading=ai_course_heading(&aipath,carpos);
+                    memcpy(carpos,player.pos,sizeof player.pos);
+                    heading=world.city.race.grid_named && !event->info.downhill?
+                        player.head:ai_course_heading(&aipath,carpos);
                     drag_gear=(PhysManual){.gear=1,.rpm=g_vehicle_source_valid?g_vehicle_source.idle_rpm:800};drag_line=(AiDrive){0};
                     if(world.city.race.kind==N2_RACE_DRAG && aipath.n>1) {
                         ai_drive_join(&drag_line,&aipath,carpos,heading,race_drivers[0].drive.error_limit);

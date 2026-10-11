@@ -897,6 +897,10 @@ static int winst_build_visit(const WInstPlacement *placement,
                                                     type_name, build->stats);
     if (!proto) return 1;
     N2Scene *dst = proto->is_vista ? build->vista : build->scene;
+    uint32_t base_key=proto->model_key;
+    for(int lod=0;lod<3;lod++)if(placement->model_keys[lod]) {
+        base_key=placement->model_keys[lod];break;
+    }
     for (int i = 0; i < proto->scene.count; i++) {
         const N2Mesh *mesh = &proto->scene.meshes[i];
         int ground = mesh->cat == N2_ROAD || mesh->cat == N2_TERRAIN;
@@ -907,8 +911,9 @@ static int winst_build_visit(const WInstPlacement *placement,
         if (ground && !proto->instanced) continue;
         if (!winst_place_mesh(dst, mesh, placement->matrix, type_name,
                              build->stats)) return 0;
+        N2Mesh *placed=dst->meshes+dst->count-1;
+        placed->world_base_model_key=base_key;
         if(build->source) {
-            N2Mesh *placed=dst->meshes+dst->count-1;
             placed->placement_id=((uint64_t)build->source<<32)|placement->placement_id;
             if(placement->knockdown)placed->prop_id=placed->placement_id;
         }

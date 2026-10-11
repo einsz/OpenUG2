@@ -641,6 +641,9 @@ static void test_builder_authored_model_keys(void) {
             uint32_t key=cases[c].width==3.0f?0x30303030:
                          cases[c].width==2.0f?0x20202020:0x10101010;
             assert(scene.meshes[0].world_model_key==key);
+            uint32_t base=key;
+            for(int lod=0;lod<3;lod++)if(cases[c].keys[lod]) {base=cases[c].keys[lod];break;}
+            assert(scene.meshes[0].world_base_model_key==base);
             assert(near(scene.meshes[0].verts[5], cases[c].width));
             assert(scene.meshes[0].nidx == 3 && scene.meshes[0].idx[2] == 2);
             assert(near(scene.meshes[0].verts[8], 0.75f));
@@ -1445,6 +1448,8 @@ static void test_common_key_submesh_resolution(void) {
     assert(scene.meshes[1].mat_exact == 1 && scene.meshes[1].texkey == slot1);
     assert(scene.meshes[0].placement_id &&
            scene.meshes[0].placement_id==scene.meshes[1].placement_id);
+    assert(scene.meshes[0].world_base_model_key==scene.meshes[0].world_model_key &&
+           scene.meshes[0].world_base_model_key==scene.meshes[1].world_base_model_key);
     free_scene(&scene); free_scene(&vista);
 
     remove(common_path); remove(companion_path); remove(stream_path);

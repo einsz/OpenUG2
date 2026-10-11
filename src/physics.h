@@ -216,6 +216,13 @@ void phys_landing_camera(float *offset, float *velocity, float impact, float dt)
 float phys_car_step(float pos[3], float vel[2], float *heading, float *speed,
                     float throttle, float steer, int handbrake,
                     const PhysSurface *sf, const PhysVehicle *vh);
+/* Limits of phys_car_step on road for one car (vh == NULL is neutral), in
+   m/tick and m/tick^2: flat-out equilibrium speed under the tuned cap, the
+   fastest speed whose full-lock turning radius fits `radius` metres (zero when
+   even the low-speed minimum radius does not), and braking deceleration. */
+float phys_vehicle_top_speed(const PhysVehicle *vh);
+float phys_vehicle_corner_speed(const PhysVehicle *vh, float radius);
+float phys_vehicle_brake_decel(const PhysVehicle *vh);
 /* Shared tyre authority: airborne cars carry momentum; grounded wall contact
    retains tangential motion under throttle instead of scrubbing it away. */
 float phys_drive_step(float pos[3], float vel[2], float *heading, float *speed,
