@@ -700,8 +700,47 @@ static void dxt3_block(Buf *o, uint64_t alpha4, uint16_t c0, uint16_t c1, uint32
     bu32(o, (uint32_t)c0 | ((uint32_t)c1 << 16)); bu32(o, idxbits);
 }
 
+static void texture_record_rejection_tests(void) {
+    for (int large = 0; large < 2; large++) {
+        unsigned char data[0x70] = {0};
+        const uint32_t header = 0xb3310000u, pixels = 0x33320002u;
+        uint32_t declared = large ? UINT32_MAX : 0x10000u, pixel_size = 8;
+        memcpy(data, &header, 4); memcpy(data + 4, &declared, 4);
+        memcpy(data + 0x60, &pixels, 4); memcpy(data + 0x64, &pixel_size, 4);
+        N2Tpk t = n2_tpk_open(data, sizeof data);
+        chk("declared TPK header beyond the file is rejected", t.nblk == 0);
+        free(t.blk);
+    }
+
+    Buf px, tpk; px.n = 0; dxt1_block(&px, 0xFFFFu, 0, 0);
+    const uint32_t hash = 0x13572468u;
+    TexRec bad = { "REJECTED_RECORD", hash, 0, 8, 0, 4, 4,
+                   7,9,3,5, 0x22, px.b, px.n, 0 };
+    N2Tpk t = build_tpk(&tpk, &bad, 1);
+    patch_field(&tpk, t, hash, 0x24, UINT32_MAX);
+    free(t.blk);
+
+    /* The next matching record has pixels but no draw-metadata tail. */
+    bu32(&tpk, 0xb3310000u); bu32(&tpk, 0x44);
+    unsigned char *record = tpk.b + tpk.n;
+    memset(record, 0, 0x44); memcpy(record, "SHORT_RECORD", 12);
+    memcpy(record + 0x18, &hash, 4);
+    uint16_t side = 4;
+    memcpy(record + 0x38, &side, 2); memcpy(record + 0x3a, &side, 2);
+    record[0x3e] = 0x22; tpk.n += 0x44;
+    bu32(&tpk, 0x33320002u); bu32(&tpk, (uint32_t)px.n); bbytes(&tpk, px.b, px.n);
+    t = n2_tpk_open(tpk.b, tpk.n);
+    N2Tex tex; int ok = n2_tpk_decode(tpk.b, tpk.n, t, hash, &tex);
+    chk("rejected candidate cannot contaminate a short matching record",
+        ok && tex.rgb && tex.w == 4 && tex.h == 4 &&
+        !tex.order && !tex.usage && !tex.blend && !tex.wz);
+    if (ok) { free(tex.rgb); free(tex.alpha); free(tex.dxt); }
+    free(t.blk);
+}
+
 int texture_record_tests(void) {
     printf("\n  T texture-record decode: authored format/draw-mode bytes\n");
+    texture_record_rejection_tests();
 
     /* T1: complete opaque DXT1 record (order,usage,blend,wz)=(0,0,0,1),
        c0>c1 (opaque interpolation mode -- no index-3 transparency). */
@@ -811,6 +850,9 @@ int texture_record_tests(void) {
             }
         N2Tex tex; int ok = n2_tpk_decode(tpk.b, tpk.n, t, 0x1006u, &tex);
         chk("T6 huge/invalid data offset rejected, no crash", ok == 0);
+        const N2Tex empty = {0};
+        chk("T6 failed decode transfers no pointers or metadata",
+            memcmp(&tex, &empty, sizeof tex) == 0);
             }
 
     /* T7: DXT1 dimensions not divisible by 4 (13x13) -- ceil-to-4 block

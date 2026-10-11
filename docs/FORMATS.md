@@ -378,8 +378,9 @@ unterminated names, hash/refcount mismatches and out-of-range references. The
 normal instance-driven free-roam loader applies the conservative `free`
 selection: placements exclusively owned by numeric event groups are absent
 from both rendering and collision. Explicit capture-only previews may select
-one numeric event. Live `--event` races retain the prior unfiltered scene until
-retail direction/career activation timing is decoded.
+one numeric event. Live `--event` races request that event's own authored group;
+missing authored groups degrade to the unfiltered scene. Retail direction/career
+activation timing remains undecoded.
 
 **M140/M147 conservative selection policy, not retail activation semantics.**
 `--world2 --scenery-preview free|EVENT` accepts only an instance audit or a
@@ -388,20 +389,28 @@ fixed `--shot` capture. `src/world_scenery.h` recognizes complete numeric
 `(section id, placement row)`, and suppresses a placement only when all its
 memberships are numeric event groups and none matches the selection. `free`
 selects no event. Non-event, unknown, ungrouped and shared-with-non-event
-placements stay visible. Model names, whole sections and undecoded flag bits
+placements stay visible. Positive isolated-race selections also omit exclusive
+`BARRIERS_CAREER<stage>` and `BARRIERS_DEMO` closures. This is a gameplay policy,
+not recovered activation semantics; free roam retains those closures, and active
+or shared-with-ordinary memberships still win. L4RA demo-only panels at section
+619, rows 26/27 blocked the supported Circuit 4001 road; the shared selection fix
+lets its three test opponents finish without removing ordinary walls.
+Model names, whole sections and undecoded flag bits
 are not visibility rules. In particular, forward/backward graphics in a selected
 event remain together, and RB's six ungrouped graphics remain present.
 
 The builder checks every override target in the chosen home bundle, including
 targets outside the viewing radius: section/row/type bounds, matching copied
-flags and unique targets. Missing/inconsistent data or an unknown requested
-event fails assembly before replacing the caller's scenes. The compact
+flags and unique targets. Missing/inconsistent data fails assembly before
+replacing the caller's scenes; an absent requested group uses the reported
+unfiltered fallback. The compact
 selection owns its data after the companion file is released. Filtering occurs
 before instance emission, so render meshes and collision extraction consume
 the same scene; ground prototypes and all placement transforms are unchanged.
 `world_instance_build` remains an unchanged-policy wrapper; the explicit
 `world_instance_build_for_event` argument is `0` (off), `-1` (free) or a
-positive event id. This is a load-time comparison, not live race/career switching.
+positive event id. Selection applies when loading the scene, including in-process
+race transitions; it is not a decoded career activation system.
 
 The runtime's current first instance chunk is a 1000 m placement neighborhood.
 This radius is policy, not a file-format field. At the L4RA airport reference it
@@ -892,8 +901,8 @@ the racing line/navigation record: **24-byte records**:
 |---:|---|---|
 | `+0x00` | `f32 x` | **PROVEN**, STREAM world X |
 | `+0x04` | `f32 y` | **PROVEN**, STREAM world Y |
-| `+0x08` | two `u16` values | segment flags/class, detailed semantics **UNKNOWN** |
-| `+0x0c`, `+0x0e`, `+0x10` | `u16` links, `0xffff` absent | structurally observed; not consumed by the current route loader |
+| `+0x08` | `u16` segment index, `u16` flags | segment index **PROVEN** against `0x34149`; flags **UNKNOWN** |
+| `+0x0c`, `+0x0e`, `+0x10` | `u16` links, `0xffff` absent | bounded node-index links; used by the topology fallback, direction/priority **UNKNOWN** |
 | `+0x14` | `f32` | cumulative segment distance, **PROVEN** by monotonic runs |
 
 `n2_load_path` consumes only XY for a circuit polyline. `world_load_nav`
@@ -901,6 +910,23 @@ connects consecutive sane records when their spacing is under
 `NAV_LINK_MAX`, then welds coincident route runs within 5 m and builds a CSR
 graph. Do not silently treat the `+8` low value as a district id: its measured
 values span the whole city and change with route segments.
+
+Chunk `0x34149` contains 220-byte segment records. Across the 105 event
+files, all 2,923 records have a node start/end range (`u16` at `+28/+30`,
+end exclusive) whose size equals the `u16` count at `+32`. Every node in
+that range identifies the same segment index at its `0x34148 +8` field.
+The first 16 bytes hold the segment name. The last-resort event reader consumes
+these ranges and node links through the shared checked recursive chunk walker.
+It validates range/count/ownership, finite coordinates, complete node coverage
+and link bounds before building a graph. Consecutive edges stay within each
+segment; explicit links join segments. Existing city routing connects ordered
+outline targets. Edges longer than the existing 120 m route limit are omitted.
+
+This fallback runs only after the existing Paths/Routes course readers fail.
+It treats explicit links as undirected and chooses shortest graph legs; retail
+branch priorities and direction flags remain undecoded. The runtime subsequently
+applies its normal grid, gate, road-support and body-collision checks. A decoded
+route alone does not establish that the event can finish.
 
 Routes come in two kinds: **open sprints** (first waypoint far from the last)
 and **closed circuits** (first ≈ last). Runtime circuit discovery is restricted
@@ -944,6 +970,18 @@ No speed, headway, spawn timing or camera-visibility rule has been decoded from
 these records. Current traffic pacing and off-screen spawn selection are
 OpenUG2 behavior built on the authored road geometry, not recovered retail rules.
 
+Event `Routes<id>F.bin` uses the same record reader. If a car lies beyond the
+conservative local search and that search finds no clear line, race avoidance
+searches the source-derived corridor accepted at the grid, including the car's
+current lateral position. Every candidate still needs road footprint support
+and solid body clearance; the width alone does not establish a drivable lane.
+
+When an endpoint ground probe loses ROAD on a hill, course selection retries
+with approximately one-metre steps from the predecessor, carrying the last
+road height forward. Successful endpoint probes keep their existing behavior.
+The retry still requires ROAD throughout, endpoint footprint support and the
+existing body sweep; it does not grant clearance through barriers.
+
 ### `0x3414c` — race event catalog (**SOLVED**)
 
 A flat table of that region's events, **272-byte records**:
@@ -970,18 +1008,30 @@ with no AI route network.
 8-byte `0x11` filler, then **48-byte records**:
 
 ```
-+0  u32 11    +4  u32 11    +8  u32 name hash   +12 u32 0
++0  u32 11    +4  u32 11    +8  u32 name hash   +12 u32 slot index
 +16 f32 X     +20 f32 Y     +24 f32 Z           +28 f32 0
-+32 u32 hash  +36 u32 track id (4000 = freeroam) +40 char[4] tag  +44 u32 0
++32 u16 heading (turn / 65536), +34 u16 unknown
++36 u32 track id (4000 = freeroam) +40 char[4] tag  +44 u32 0
 ```
 
 The record count is **variable**, not universally 18. Event 4001 has 18; L4RB
 sprint 4201 has 20 arranged as two ten-slot clusters for opposite directions.
-These are **starting grids, not checkpoints**. Direction/orientation fields are
-zero in the measured 4201 records, so OpenUG2 chooses a supported slot near gate
-0 and derives heading from gate 0 → gate 1. A slot is preferred when
-`world_ground_at` finds ROAD within 1 m of its shipped Z; this rejects the
-opposite-direction cluster when its stored Z belongs to another layer.
+These are **starting grids, not checkpoints**. Numbered forward slots use the
+authored heading at `+32`; legacy unnamed grids derive heading from the course.
+
+`+8` is the marker-name hash (`h=0xffffffff; h=h*33+c`) and `+12` the slot index
+within that name. Measured names: `ForwardStartingPosition` (`0x8e55c895`, 8
+slots), `ForwardStartLine` (`0x6a56b90a`, 1), `BackwardStartingPosition`
+(`0x8f90f7bf`, 8) and `BackwardStartLine` (`0xeec70374`, 1). In all 35 events
+whose two grids are at different ends, the Forward grid is the one at gate 0.
+On divided freeway circuits (L4RA 4001–4006, 4083) the two grids sit on opposite
+carriageways; the Backward one starts the field across the median. The loader
+therefore keeps only Forward slots when an event ships them, sorted by slot
+index. The fallback accepts unnamed positions; StartLine markers are always
+excluded. Four-car fields prefer four abreast, then two rows of two; six-car
+URL fields use three rows of two. The player occupies the last selected slot.
+The entire formation must pass ground, wheel support, body clearance,
+non-overlap and course-entry checks before placement.
 
 ### Checkpoint gates & laps — derived, not stored (Phase 72)
 
@@ -1096,6 +1146,25 @@ instance name, read the class hash preceding that name and expose a conservative
 trailing-float view for diagnostics. The per-car path anchors above are **not
 inside those records**. Never use the generic AttribSys walker to justify fixed
 offsets around a car path, or vice versa.
+
+### Named AI vehicle presets (`0x00030220`)
+
+A read-only local data check finds one 26,368-byte leaf, consistent with 32
+824-byte records. Each record contains a NUL-terminated car model at `+0x08`
+and a preset name at `+0x28`; all 32 model names match installed car folders.
+Ten preset names contain AI labels, including demo vehicles and named AI
+presets. The same table also contains player, character and promotional cars.
+This establishes vehicle-preset identity, not a driving-behavior schema.
+Remaining fields, tuning levels and runtime selection rules are **UNKNOWN**;
+OpenUG2 does not currently consume this table.
+
+The race `Paths` and `Routes` files above provide authored geometry and event
+metadata. No verified aggression, overtaking, catch-up, braking or spawn-policy
+field has been decoded from the inspected GLOBAL/route data. `InGameRace.bun`
+contains frontend/HUD package records, including `race.fng`; its filename alone
+is not evidence of an AI controller. Hash-keyed/unknown tables remain unresolved,
+so this is not a claim that behavior parameters are absent. Current race pace,
+passing and steering decisions are OpenUG2 policies in `src/ai.c`.
 
 ## Engine sound banks (`SOUND/ENGINE/CAR_*_ENG_MB_SPU.abk`)
 
