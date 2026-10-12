@@ -15,6 +15,8 @@ CFLAGS  ?= -O2 -std=c99 -Wall -Wextra
 # nfsu2.h is a static-function single-header parser shared by several modules;
 # each module uses only part of it, so silence the per-TU unused copies.
 CFLAGS  += -Wno-unused-function
+# M_PI and scandir/alphasort are not declared by glibc under strict -std=c99.
+override CFLAGS += -D_DEFAULT_SOURCE
 SDL_CFLAGS := $(shell sdl2-config --cflags)
 SDL_LIBS   := $(shell sdl2-config --libs)
 DATA    ?= .
