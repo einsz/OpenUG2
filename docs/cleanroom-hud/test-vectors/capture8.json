@@ -1,0 +1,288 @@
+{
+  "provenance": "Independently authored synthetic cases for SPEC.md 'Runtime verification amendments, set 8 (glyph sampling)'. Values are computed by the reviewer from the stated model (G6: quad edges on the cell's outer texel edges, texel centre i+0.5, bilinear sampling with alpha 0 outside the cell; G7: coverage = stored alpha/255 times tint alpha/255, source-over in 8-bit output values). Cell contents, sizes and scales are invented; no font, atlas, capture or render pixel is included. Screen pixel (c, r) is sampled at its centre; texel coordinate = (c+0.5)/pixels_per_texel. Not retail captures.",
+  "cases": [
+    {
+      "name": "glyph-map-edge-fade",
+      "confidence": "G6 mapping observed-consistent (medium); bilinear filter inferred (low-to-medium)",
+      "input": {
+        "cell_alpha": "4 wide x 3 tall, every texel 255; every texel outside the cell 0",
+        "texel_rgb": [
+          255,
+          255,
+          255
+        ],
+        "tint_rgba": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "background_rgb": [
+          0,
+          0,
+          0
+        ],
+        "pixels_per_texel": 4,
+        "quad_screen_px": [
+          0,
+          0,
+          16,
+          12
+        ],
+        "sample_at": "pixel centres (c+0.5, r+0.5)",
+        "half_texel_inset": false
+      },
+      "expected": {
+        "coverage_row_5_columns_0_to_15": [
+          0.625,
+          0.875,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          0.875,
+          0.625
+        ],
+        "coverage_column_5_rows_0_to_11": [
+          0.625,
+          0.875,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          0.875,
+          0.625
+        ],
+        "coverage_pixel_0_0": 0.390625,
+        "tolerance": 0.01
+      },
+      "must_not": {
+        "edge_pixel_full_coverage": "columns 0 and 15 of row 5 are not 1.0 (no inset, no point sampling)"
+      }
+    },
+    {
+      "name": "glyph-map-inset-contrast",
+      "confidence": "G6 item 4 (compatibility setting on)",
+      "input": {
+        "same_as": "glyph-map-edge-fade",
+        "half_texel_inset": true
+      },
+      "expected": {
+        "coverage_all_pixels": 1.0,
+        "tolerance": 0.01,
+        "note": "outermost texel centres stretched to the quad edges; the ring never contributes"
+      }
+    },
+    {
+      "name": "glyph-map-single-row",
+      "confidence": "G6 (as glyph-map-edge-fade); corrects the proposed 4x1 profile",
+      "input": {
+        "cell_alpha": "4 wide x 1 tall, every texel 255; outside 0",
+        "texel_rgb": [
+          255,
+          255,
+          255
+        ],
+        "tint_rgba": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "background_rgb": [
+          0,
+          0,
+          0
+        ],
+        "pixels_per_texel": 4,
+        "quad_screen_px": [
+          0,
+          0,
+          16,
+          4
+        ],
+        "half_texel_inset": false
+      },
+      "expected": {
+        "coverage_rows_0_to_3": [
+          [
+            0.390625,
+            0.546875,
+            0.625,
+            0.625,
+            0.625,
+            0.625,
+            0.625,
+            0.625,
+            0.625,
+            0.625,
+            0.625,
+            0.625,
+            0.625,
+            0.625,
+            0.546875,
+            0.390625
+          ],
+          [
+            0.546875,
+            0.765625,
+            0.875,
+            0.875,
+            0.875,
+            0.875,
+            0.875,
+            0.875,
+            0.875,
+            0.875,
+            0.875,
+            0.875,
+            0.875,
+            0.875,
+            0.765625,
+            0.546875
+          ],
+          [
+            0.546875,
+            0.765625,
+            0.875,
+            0.875,
+            0.875,
+            0.875,
+            0.875,
+            0.875,
+            0.875,
+            0.875,
+            0.875,
+            0.875,
+            0.875,
+            0.875,
+            0.765625,
+            0.546875
+          ],
+          [
+            0.390625,
+            0.546875,
+            0.625,
+            0.625,
+            0.625,
+            0.625,
+            0.625,
+            0.625,
+            0.625,
+            0.625,
+            0.625,
+            0.625,
+            0.625,
+            0.625,
+            0.546875,
+            0.390625
+          ]
+        ],
+        "max_coverage": 0.875,
+        "tolerance": 0.01,
+        "note": "coverage is separable: column profile [0.625,0.875,1 x12,0.875,0.625] times row profile [0.625,0.875,0.875,0.625]; no pixel reaches 1.0 because the 1-texel-tall cell also fades vertically"
+      }
+    },
+    {
+      "name": "glyph-alpha-linear-136",
+      "confidence": "G7 observed-consistent (medium)",
+      "input": {
+        "cell_alpha": "4 x 4, every texel 136; outside 0",
+        "texel_rgb": [
+          255,
+          255,
+          255
+        ],
+        "tint_rgba": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "background_rgb": [
+          0,
+          0,
+          0
+        ],
+        "pixels_per_texel": 4,
+        "quad_screen_px": [
+          0,
+          0,
+          16,
+          16
+        ],
+        "probe_pixels": "interior, columns and rows 4..11"
+      },
+      "expected": {
+        "output_value": 136,
+        "coverage": 0.533333,
+        "tolerance_8bit": 3
+      },
+      "must_not": {
+        "doubled_clamped": 255,
+        "squared": 72.53
+      }
+    },
+    {
+      "name": "glyph-alpha-linear-68",
+      "confidence": "G7",
+      "input": {
+        "same_as": "glyph-alpha-linear-136",
+        "cell_alpha": "4 x 4, every texel 68; outside 0"
+      },
+      "expected": {
+        "output_value": 68,
+        "tolerance_8bit": 3
+      },
+      "must_not": {
+        "doubled": 136,
+        "squared": 18.13
+      }
+    },
+    {
+      "name": "glyph-alpha-over-grey",
+      "confidence": "G7 (source-over in output values, no gamma)",
+      "input": {
+        "same_as": "glyph-alpha-linear-136",
+        "background_rgb": [
+          100,
+          100,
+          100
+        ]
+      },
+      "expected": {
+        "output_value": 182.67,
+        "tolerance_8bit": 3
+      }
+    },
+    {
+      "name": "glyph-alpha-tint-half",
+      "confidence": "G7; tint alpha below 255 unobserved for text (existing provisional reading)",
+      "input": {
+        "same_as": "glyph-alpha-linear-136",
+        "tint_rgba": [
+          255,
+          255,
+          255,
+          128
+        ]
+      },
+      "expected": {
+        "output_value": 68.27,
+        "tolerance_8bit": 3
+      }
+    }
+  ]
+}

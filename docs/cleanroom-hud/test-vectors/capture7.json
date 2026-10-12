@@ -1,0 +1,754 @@
+{
+  "provenance": "Independently authored synthetic cases for SPEC.md 'Runtime capture amendments, capture set 7'. Values are computed from the spec's stated rules (glyph quad geometry in G3; flash envelope alpha 1 below 580 units, linear to 0 at 600, 0 until 1200, repeating, in H3), not copied from any recording, font or asset. Glyph metrics, atlas sizes and RPMs are invented. Tolerances: geometry 1e-5 V, alpha 0.05. Shift cases assume shift_rpm 7000, six forward gears available to the host, time scale 0.82 ms per unit unless stated, and setting_enabled default true. Invalid or nonfinite clocks must be supplied at runtime. Not retail captures; no original data samples included.",
+  "cases": [
+    {
+      "name": "glyph-cell-wider-than-advance",
+      "confidence": "observed rule (G1, G2)",
+      "input": {
+        "anchor": [
+          100,
+          50
+        ],
+        "justification": 2,
+        "size": 1,
+        "glyphs": [
+          {
+            "advance": 10,
+            "bearing_x": 2,
+            "top_offset": 3,
+            "width": 14,
+            "height": 20,
+            "atlas_xy": [
+              8,
+              4
+            ],
+            "atlas_size": [
+              64,
+              32
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "pen_start": 90,
+        "quads": [
+          {
+            "x0": 92,
+            "x1": 106,
+            "y0": 53,
+            "y1": 73,
+            "uv": [
+              0.125,
+              0.125,
+              0.34375,
+              0.75
+            ]
+          }
+        ],
+        "next_pen": 100,
+        "clipped_at_advance": false
+      }
+    },
+    {
+      "name": "glyph-cell-wider-size-0.8",
+      "confidence": "observed rule",
+      "input": {
+        "anchor": [
+          100,
+          50
+        ],
+        "justification": 2,
+        "size": 0.8,
+        "glyphs": [
+          {
+            "advance": 10,
+            "bearing_x": 2,
+            "top_offset": 3,
+            "width": 14,
+            "height": 20,
+            "atlas_xy": [
+              8,
+              4
+            ],
+            "atlas_size": [
+              64,
+              32
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "pen_start": 92,
+        "quads": [
+          {
+            "x0": 93.6,
+            "x1": 104.8,
+            "y0": 52.4,
+            "y1": 68.4,
+            "uv": [
+              0.125,
+              0.125,
+              0.34375,
+              0.75
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "glyph-pair-overlap-left",
+      "confidence": "observed rule; draw order provisional",
+      "input": {
+        "anchor": [
+          0,
+          0
+        ],
+        "justification": 0,
+        "size": 0.5,
+        "glyphs": [
+          {
+            "advance": 20,
+            "bearing_x": 3,
+            "top_offset": 4,
+            "width": 26,
+            "height": 30
+          },
+          {
+            "advance": 20,
+            "bearing_x": 1,
+            "top_offset": 4,
+            "width": 24,
+            "height": 30
+          }
+        ]
+      },
+      "expected": {
+        "quads": [
+          {
+            "x0": 1.5,
+            "x1": 14.5,
+            "y0": 2,
+            "y1": 17
+          },
+          {
+            "x0": 10.5,
+            "x1": 22.5,
+            "y0": 2,
+            "y1": 17
+          }
+        ],
+        "justification_width": 20,
+        "draw_order": "string"
+      }
+    },
+    {
+      "name": "glyph-pair-overlap-right",
+      "confidence": "observed rule",
+      "input": {
+        "anchor": [
+          50,
+          0
+        ],
+        "justification": 2,
+        "size": 0.5,
+        "glyphs": [
+          {
+            "advance": 20,
+            "bearing_x": 3,
+            "top_offset": 4,
+            "width": 26,
+            "height": 30
+          },
+          {
+            "advance": 20,
+            "bearing_x": 1,
+            "top_offset": 4,
+            "width": 24,
+            "height": 30
+          }
+        ]
+      },
+      "expected": {
+        "pen_start": 30,
+        "quads": [
+          {
+            "x0": 31.5,
+            "x1": 44.5,
+            "y0": 2,
+            "y1": 17
+          },
+          {
+            "x0": 40.5,
+            "x1": 52.5,
+            "y0": 2,
+            "y1": 17
+          }
+        ],
+        "ink_past_anchor": 2.5
+      }
+    },
+    {
+      "name": "glyph-negative-bearing",
+      "confidence": "inferred bearing (existing) plus observed rule",
+      "input": {
+        "anchor": [
+          10,
+          0
+        ],
+        "justification": 0,
+        "size": 1,
+        "glyphs": [
+          {
+            "advance": 6,
+            "bearing_x": -2,
+            "top_offset": 4,
+            "width": 9,
+            "height": 12
+          }
+        ]
+      },
+      "expected": {
+        "quads": [
+          {
+            "x0": 8,
+            "x1": 17,
+            "y0": 4,
+            "y1": 16
+          }
+        ],
+        "next_pen": 16
+      }
+    },
+    {
+      "name": "glyph-cell-narrower-than-advance",
+      "confidence": "observed rule",
+      "input": {
+        "anchor": [
+          0,
+          0
+        ],
+        "justification": 0,
+        "size": 1,
+        "glyphs": [
+          {
+            "advance": 17,
+            "bearing_x": 5,
+            "top_offset": 9,
+            "width": 12,
+            "height": 23
+          }
+        ]
+      },
+      "expected": {
+        "quads": [
+          {
+            "x0": 5,
+            "x1": 17,
+            "y0": 9,
+            "y1": 32
+          }
+        ],
+        "next_pen": 17
+      }
+    },
+    {
+      "name": "glyph-tall-cell-no-vertical-clip",
+      "confidence": "requirement G3 item 4",
+      "input": {
+        "anchor": [
+          0,
+          0
+        ],
+        "justification": 0,
+        "size": 1,
+        "line_metric": 39,
+        "glyphs": [
+          {
+            "advance": 10,
+            "bearing_x": 0,
+            "top_offset": 30,
+            "width": 10,
+            "height": 40
+          }
+        ]
+      },
+      "expected": {
+        "quads": [
+          {
+            "x0": 0,
+            "x1": 10,
+            "y0": 30,
+            "y1": 70
+          }
+        ],
+        "clipped": false
+      }
+    },
+    {
+      "name": "glyph-element-box-no-clip",
+      "confidence": "requirement G3 item 4",
+      "input": {
+        "anchor": [
+          100,
+          50
+        ],
+        "justification": 2,
+        "size": 1,
+        "element_box_x": [
+          90,
+          100
+        ],
+        "wrap_width": 10,
+        "parent_group_x": [
+          80,
+          100
+        ],
+        "glyphs": [
+          {
+            "advance": 10,
+            "bearing_x": 2,
+            "top_offset": 3,
+            "width": 14,
+            "height": 20,
+            "atlas_xy": [
+              8,
+              4
+            ],
+            "atlas_size": [
+              64,
+              32
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "quads": [
+          {
+            "x0": 92,
+            "x1": 106,
+            "y0": 53,
+            "y1": 73
+          }
+        ],
+        "scissor": false
+      }
+    },
+    {
+      "name": "glyph-zero-width",
+      "confidence": "existing empty-glyph policy plus G3",
+      "input": {
+        "anchor": [
+          0,
+          0
+        ],
+        "justification": 0,
+        "size": 1,
+        "glyphs": [
+          {
+            "advance": 8,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "advance": 10,
+            "bearing_x": 1,
+            "top_offset": 0,
+            "width": 12,
+            "height": 10
+          }
+        ]
+      },
+      "expected": {
+        "quads": [
+          {
+            "x0": 9,
+            "x1": 21,
+            "y0": 0,
+            "y1": 10
+          }
+        ],
+        "quad_count": 1
+      }
+    },
+    {
+      "name": "glyph-uv-inset-bounds",
+      "confidence": "requirement G3 item 2",
+      "input": {
+        "anchor": [
+          100,
+          50
+        ],
+        "justification": 2,
+        "size": 1,
+        "half_texel_inset": true,
+        "glyphs": [
+          {
+            "advance": 10,
+            "bearing_x": 2,
+            "top_offset": 3,
+            "width": 14,
+            "height": 20,
+            "atlas_xy": [
+              8,
+              4
+            ],
+            "atlas_size": [
+              64,
+              32
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "uv_within": [
+          0.1328125,
+          0.140625,
+          0.3359375,
+          0.734375
+        ],
+        "quads": [
+          {
+            "x0": 92,
+            "x1": 106,
+            "y0": 53,
+            "y1": 73
+          }
+        ]
+      }
+    },
+    {
+      "name": "shift-default-on-with-rpm",
+      "confidence": "provisional default (H3); icon shown observed",
+      "input": {
+        "shift_rpm": 7000,
+        "time_scale_ms_per_unit": 0.82,
+        "gear": 2,
+        "rpm": 7400,
+        "elapsed_units": 0
+      },
+      "expected": {
+        "visible": true,
+        "rgb": [
+          202,
+          244,
+          138
+        ],
+        "alpha": 1
+      }
+    },
+    {
+      "name": "shift-below-threshold",
+      "confidence": "provisional (H3)",
+      "input": {
+        "shift_rpm": 7000,
+        "time_scale_ms_per_unit": 0.82,
+        "gear": 2,
+        "rpm": 6999,
+        "elapsed_units": 0
+      },
+      "expected": {
+        "visible": false
+      }
+    },
+    {
+      "name": "shift-at-threshold",
+      "confidence": "inferred",
+      "input": {
+        "shift_rpm": 7000,
+        "time_scale_ms_per_unit": 0.82,
+        "gear": 2,
+        "rpm": 7000,
+        "elapsed_units": 0
+      },
+      "expected": {
+        "visible": true,
+        "rgb": [
+          202,
+          244,
+          138
+        ],
+        "alpha": 1
+      }
+    },
+    {
+      "name": "shift-setting-off",
+      "confidence": "provisional (H3 item 1)",
+      "input": {
+        "shift_rpm": 7000,
+        "time_scale_ms_per_unit": 0.82,
+        "setting_enabled": false,
+        "gear": 2,
+        "rpm": 7400
+      },
+      "expected": {
+        "visible": false
+      }
+    },
+    {
+      "name": "shift-flash-lit",
+      "confidence": "inferred (H1)",
+      "input": {
+        "shift_rpm": 7000,
+        "time_scale_ms_per_unit": 0.82,
+        "gear": 3,
+        "rpm": 7400,
+        "elapsed_units": 400
+      },
+      "expected": {
+        "visible": true,
+        "rgb": [
+          202,
+          244,
+          138
+        ],
+        "alpha": 1
+      }
+    },
+    {
+      "name": "shift-flash-mid-fade",
+      "confidence": "inferred (linear fade)",
+      "input": {
+        "shift_rpm": 7000,
+        "time_scale_ms_per_unit": 0.82,
+        "gear": 3,
+        "rpm": 7400,
+        "elapsed_units": 590
+      },
+      "expected": {
+        "visible": true,
+        "rgb": [
+          202,
+          244,
+          138
+        ],
+        "alpha": 0.5
+      }
+    },
+    {
+      "name": "shift-flash-dark",
+      "confidence": "inferred",
+      "input": {
+        "shift_rpm": 7000,
+        "time_scale_ms_per_unit": 0.82,
+        "gear": 3,
+        "rpm": 7400,
+        "elapsed_units": 900
+      },
+      "expected": {
+        "visible": true,
+        "alpha": 0
+      }
+    },
+    {
+      "name": "shift-flash-wrap",
+      "confidence": "inferred (repeat)",
+      "input": {
+        "shift_rpm": 7000,
+        "time_scale_ms_per_unit": 0.82,
+        "gear": 3,
+        "rpm": 7400,
+        "elapsed_units": 1250
+      },
+      "expected": {
+        "visible": true,
+        "rgb": [
+          202,
+          244,
+          138
+        ],
+        "alpha": 1
+      }
+    },
+    {
+      "name": "shift-flash-seconds",
+      "confidence": "inferred timing; 0.5 s / 0.82 ms = 609.76 units",
+      "input": {
+        "shift_rpm": 7000,
+        "time_scale_ms_per_unit": 0.82,
+        "gear": 3,
+        "rpm": 7400,
+        "elapsed_ms": 500
+      },
+      "expected": {
+        "visible": true,
+        "alpha": 0
+      }
+    },
+    {
+      "name": "shift-flash-off-setting",
+      "confidence": "provisional",
+      "input": {
+        "shift_rpm": 7000,
+        "time_scale_ms_per_unit": 0.82,
+        "gear": 3,
+        "rpm": 7400,
+        "flash_setting": false,
+        "elapsed_units": 900
+      },
+      "expected": {
+        "visible": true,
+        "rgb": [
+          202,
+          244,
+          138
+        ],
+        "alpha": 1
+      }
+    },
+    {
+      "name": "shift-invalid-time-scale",
+      "confidence": "provisional fallback (H3 item 5)",
+      "input": {
+        "shift_rpm": 7000,
+        "time_scale_ms_per_unit": 0,
+        "gear": 3,
+        "rpm": 7400,
+        "elapsed_ms": 500
+      },
+      "expected": {
+        "visible": true,
+        "rgb": [
+          202,
+          244,
+          138
+        ],
+        "alpha": 1,
+        "diagnostic": true
+      }
+    },
+    {
+      "name": "shift-forward-gear-6",
+      "confidence": "no top-gear rule; unobserved (H3 item 4)",
+      "input": {
+        "shift_rpm": 7000,
+        "time_scale_ms_per_unit": 0.82,
+        "gear": 6,
+        "rpm": 7400,
+        "elapsed_units": 0
+      },
+      "expected": {
+        "visible": true,
+        "rgb": [
+          202,
+          244,
+          138
+        ],
+        "alpha": 1
+      }
+    },
+    {
+      "name": "shift-neutral-hidden",
+      "confidence": "provisional",
+      "input": {
+        "shift_rpm": 7000,
+        "time_scale_ms_per_unit": 0.82,
+        "gear": "neutral",
+        "rpm": 7400
+      },
+      "expected": {
+        "visible": false
+      }
+    },
+    {
+      "name": "shift-automatic-default",
+      "confidence": "guessed (H4)",
+      "input": {
+        "shift_rpm": 7000,
+        "time_scale_ms_per_unit": 0.82,
+        "gear": 2,
+        "rpm": 7400,
+        "transmission": "automatic",
+        "elapsed_units": 0
+      },
+      "expected": {
+        "visible": true,
+        "rgb": [
+          202,
+          244,
+          138
+        ],
+        "alpha": 1
+      }
+    },
+    {
+      "name": "shift-automatic-setting-off",
+      "confidence": "provisional (H4)",
+      "input": {
+        "shift_rpm": 7000,
+        "time_scale_ms_per_unit": 0.82,
+        "gear": 2,
+        "rpm": 7400,
+        "transmission": "automatic",
+        "shift_icon_automatic": false
+      },
+      "expected": {
+        "visible": false
+      }
+    },
+    {
+      "name": "shift-colour-override",
+      "confidence": "provisional (H3 item 6)",
+      "input": {
+        "shift_rpm": 7000,
+        "time_scale_ms_per_unit": 0.82,
+        "gear": 2,
+        "rpm": 7400,
+        "elapsed_units": 0,
+        "shift_colour_setting_rgb": [
+          215,
+          248,
+          155
+        ]
+      },
+      "expected": {
+        "visible": true,
+        "rgb": [
+          215,
+          248,
+          155
+        ],
+        "alpha": 1
+      }
+    },
+    {
+      "name": "shift-colour-override-dark",
+      "confidence": "provisional",
+      "input": {
+        "shift_rpm": 7000,
+        "time_scale_ms_per_unit": 0.82,
+        "gear": 2,
+        "rpm": 7400,
+        "elapsed_units": 900,
+        "shift_colour_setting_rgb": [
+          215,
+          248,
+          155
+        ]
+      },
+      "expected": {
+        "visible": true,
+        "alpha": 0
+      }
+    },
+    {
+      "name": "shift-reappear-phase",
+      "confidence": "provisional (H3 item 5)",
+      "input": {
+        "shift_rpm": 7000,
+        "time_scale_ms_per_unit": 0.82,
+        "gear": 2,
+        "history": "shown, hidden at 300 units, shown again",
+        "elapsed_since_reappear_units": 0
+      },
+      "expected": {
+        "visible": true,
+        "rgb": [
+          202,
+          244,
+          138
+        ],
+        "alpha": 1
+      }
+    }
+  ]
+}

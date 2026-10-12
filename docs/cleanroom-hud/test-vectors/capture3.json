@@ -1,0 +1,345 @@
+{
+  "provenance": "Independently authored synthetic cases for SPEC.md 'Runtime capture amendments, capture set 3'. Name identifiers and aliases in lookup cases are synthetic, not retail keys. No original images, measurement tables or data samples are included. Inferred/provisional cases test labeled policies, not retail equivalence.",
+  "cases": [
+    {
+      "name": "shift-optin-on",
+      "confidence": "provisional opt-in (C3-2)",
+      "input": {
+        "setting_enabled": true,
+        "gear": 2,
+        "rpm": 7600,
+        "shift_rpm": 7500,
+        "shift_colour_setting_rgb": [
+          192,
+          255,
+          128
+        ]
+      },
+      "expected": {
+        "visible": true,
+        "rgb": [
+          192,
+          255,
+          128
+        ]
+      }
+    },
+    {
+      "name": "shift-no-rpm",
+      "confidence": "provisional opt-in (C3-2)",
+      "input": {
+        "setting_enabled": true,
+        "gear": 2,
+        "rpm": 7600
+      },
+      "expected": {
+        "visible": false
+      }
+    },
+    {
+      "name": "shift-default-off",
+      "confidence": "setting explicitly off, so hidden (C3-2; amended by capture set 7: the default is now on, so this no longer tests a default)",
+      "input": {
+        "setting_enabled": false,
+        "gear": 2,
+        "rpm": 7600,
+        "shift_rpm": 7500
+      },
+      "expected": {
+        "visible": false
+      }
+    },
+    {
+      "name": "shift-neutral",
+      "confidence": "provisional opt-in (C3-2)",
+      "input": {
+        "setting_enabled": true,
+        "gear": "neutral",
+        "rpm": 7600,
+        "shift_rpm": 7500
+      },
+      "expected": {
+        "visible": false
+      }
+    },
+    {
+      "name": "gear1-colour",
+      "confidence": "observed gear 1; setting provisional (C3-3)",
+      "input": {
+        "gear": 1,
+        "authored_gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_colour_setting_rgb": [
+          255,
+          128,
+          64
+        ]
+      },
+      "expected": {
+        "gear_rgb": [
+          255,
+          128,
+          64
+        ]
+      }
+    },
+    {
+      "name": "gear2-authored",
+      "confidence": "observed gear 2 (C3-3)",
+      "input": {
+        "gear": 2,
+        "authored_gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_colour_setting_rgb": [
+          255,
+          128,
+          64
+        ]
+      },
+      "expected": {
+        "gear_rgb": [
+          192,
+          192,
+          192
+        ]
+      }
+    },
+    {
+      "name": "gear-reverse-authored",
+      "confidence": "provisional (C3-3; R unobserved)",
+      "input": {
+        "gear": "reverse",
+        "authored_gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_colour_setting_rgb": [
+          255,
+          128,
+          64
+        ]
+      },
+      "expected": {
+        "text": "R",
+        "gear_rgb": [
+          192,
+          192,
+          192
+        ]
+      }
+    },
+    {
+      "name": "nos-level",
+      "confidence": "inferred opt-in (C3-4)",
+      "cases": [
+        {
+          "input": {
+            "setting_enabled": true,
+            "nos_installed": true,
+            "level": 0.05,
+            "a0": 91,
+            "a1": 239
+          },
+          "expected": {
+            "backing_visible": true,
+            "coloured_layer_max_dial_angle": 98.4
+          }
+        },
+        {
+          "input": {
+            "setting_enabled": true,
+            "nos_installed": true,
+            "level": 0,
+            "a0": 91,
+            "a1": 239
+          },
+          "expected": {
+            "backing_visible": true,
+            "coloured_layer_visible": false
+          }
+        },
+        {
+          "input": {
+            "setting_enabled": true,
+            "nos_installed": true,
+            "level": 1,
+            "a0": 91,
+            "a1": 239
+          },
+          "expected": {
+            "backing_visible": true,
+            "coloured_layer_max_dial_angle": 239
+          }
+        },
+        {
+          "input": {
+            "setting_enabled": true,
+            "nos_installed": true,
+            "level": 1.5,
+            "a0": 91,
+            "a1": 239
+          },
+          "expected": {
+            "backing_visible": true,
+            "coloured_layer_max_dial_angle": 239
+          }
+        },
+        {
+          "input": {
+            "setting_enabled": true,
+            "nos_installed": false,
+            "level": 1,
+            "a0": 91,
+            "a1": 239
+          },
+          "expected": {
+            "backing_visible": false,
+            "coloured_layer_visible": false
+          }
+        },
+        {
+          "input": {
+            "setting_enabled": false,
+            "nos_installed": true,
+            "level": 1
+          },
+          "expected": {
+            "backing_visible": false,
+            "coloured_layer_visible": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "bank-25",
+      "confidence": "observed (C3-6); synthetic metrics",
+      "input": {
+        "career": true,
+        "balance": 25,
+        "suppressed": false,
+        "anchor_x": 100,
+        "size": 0.5,
+        "justification": 2,
+        "advances": [
+          10,
+          12
+        ]
+      },
+      "expected": {
+        "value_text": "25",
+        "pen_positions": [
+          89,
+          94
+        ],
+        "pen_end": 100
+      }
+    },
+    {
+      "name": "lookup-ambiguous-name-id",
+      "confidence": "resolution rule (C3-8)",
+      "input": {
+        "descriptors": [
+          {
+            "name_id": "0x00001234",
+            "kind": "image",
+            "parent_name_id": "0x00000010",
+            "alias": "Synthetic_A.tga"
+          },
+          {
+            "name_id": "0x00001234",
+            "kind": "image",
+            "parent_name_id": "0x00000010",
+            "alias": "Synthetic_A.tga"
+          }
+        ],
+        "key": {
+          "name_id": "0x00001234",
+          "kind": "image",
+          "parent_name_id": "0x00000010",
+          "alias": "synthetic_a.tga"
+        }
+      },
+      "expected": {
+        "resolved": false,
+        "diagnostic": true
+      }
+    },
+    {
+      "name": "lookup-alias-mismatch",
+      "confidence": "resolution rule (C3-8)",
+      "input": {
+        "descriptors": [
+          {
+            "name_id": "0x00001234",
+            "kind": "image",
+            "parent_name_id": "0x00000010",
+            "alias": "Synthetic_B.tga"
+          }
+        ],
+        "key": {
+          "name_id": "0x00001234",
+          "kind": "image",
+          "parent_name_id": "0x00000010",
+          "alias": "Synthetic_A.tga"
+        }
+      },
+      "expected": {
+        "resolved": false,
+        "diagnostic": true
+      }
+    },
+    {
+      "name": "lookup-match",
+      "confidence": "resolution rule (C3-8)",
+      "input": {
+        "descriptors": [
+          {
+            "name_id": "0x00001234",
+            "kind": "image",
+            "parent_name_id": "0x00000010",
+            "alias": "Synthetic_A.tga"
+          },
+          {
+            "name_id": "0x00005678",
+            "kind": "image",
+            "parent_name_id": "0x00000010",
+            "alias": "Synthetic_A.tga"
+          }
+        ],
+        "key": {
+          "name_id": "0x00001234",
+          "kind": "image",
+          "parent_name_id": "0x00000010",
+          "alias": "SYNTHETIC_A.TGA"
+        }
+      },
+      "expected": {
+        "resolved": true,
+        "index": 0
+      }
+    },
+    {
+      "name": "widget-centre-texture-missing",
+      "confidence": "provisional policy (C3-8)",
+      "input": {
+        "career": true,
+        "message_pending": false,
+        "centre_texture_present": false
+      },
+      "expected": {
+        "backing_visible": true,
+        "dpad_visible": true,
+        "centre_figure_visible": false,
+        "referenced_image_drawn": false,
+        "diagnostic": true
+      }
+    }
+  ]
+}

@@ -1,17 +1,7 @@
-/* hud.h — OpenUG2 in-game player HUD (roadmap stage 8).
- *
- * Opt-in via --hud. Draws the retail-style speed/RPM dial, nitrous bar, gear,
- * minimap, navigation arrow, race position/lap and the Cingular message
- * indicator, using the shipped HUD art decoded through the project's existing
- * TPK reader (n2_tpk_open / n2_tpk_decode). No asset is copied into the repo.
- *
- * HONESTY CONTRACT. This module renders what the engine actually knows and
- * nothing else. Several retail readouts have no live system behind them yet
- * (see HudState's availability flags); those draw an explicit inactive/empty
- * state rather than a plausible-looking number. Sample values exist only under
- * hud_set_preview(), which also paints a visible PREVIEW tag, so a screenshot
- * can never be mistaken for working telemetry.
- */
+/* Native asset-driven HUD, independently implemented from the approved
+ * bounded interoperability specification. Numeric telemetry comes from the
+ * host; sample authoring text, event widgets and unknown cash targets are hidden.
+ * Font baseline, needle direction and minimap projection remain provisional. */
 #ifndef OPENUG2_HUD_H
 #define OPENUG2_HUD_H
 
@@ -21,6 +11,11 @@
  * never reaches into engine globals: this struct is the whole contract, which
  * is what makes the layout and transform maths testable without a GL context. */
 typedef struct {
+    /* Approved bounded HUD inputs; map axes are translated at this boundary. */
+    int skin_index, hide_map, hide_gauge;
+    int career_context, suppress_cash;
+    int map_heading_explicit;
+    double map_heading_clockwise, map_window_world;
     /* --- drivetrain readouts --- */
     float speed_kmh;          /* REAL: PHYS_KMH(speed) */
     int imperial_units;      /* display only: 0 = KMH, nonzero = MPH */
@@ -75,7 +70,48 @@ typedef struct {
 
     /* --- message indicator (free roam only) --- */
     int   message_waiting;    /* engine never sets this yet; see HUD_MSG_* */
+
+    /* --- capture-amendment inputs (approved SPEC capture sets 1-3) ---
+       Explicit "supplied" flags: an absent value hides the opt-in element
+       rather than being read as zero. */
+    unsigned char have_redline_rpm; /* rpm_redline is a real host value */
+    unsigned char have_shift_rpm;   /* shift_rpm is a real host value */
+    float shift_rpm;                /* host shift-up RPM for the indicator */
+    /* Capture set 6 (F1). Optional host input "gear change in progress",
+       true for the host's own gear-change interval; zero (the default, i.e.
+       absent) means not in progress. With it set, forward gears use the
+       gear-colour setting; gear 1 at standstill uses it regardless.
+       Capture set 5: clock_ms is the monotonic host clock (ms) shared with
+       hud_nos_glow_event(); read while the opt-in glow sequence runs and
+       while the shift icon is shown (set 7, H3 item 5). */
+    unsigned char gear_change_in_progress;
+    double clock_ms;
+    /* Capture set 7 (H3/H4): clock_ms also times the shift-icon flash.
+       Optional transmission mode, HA_TRANSMISSION_* (0 = absent). */
+    unsigned char transmission;
 } HudState;
+
+/* Named HUD settings from the capture amendments. Gear and shift colours
+ * replace RGB only (authored alpha kept; the shift icon's alpha also follows
+ * its flash); the highlight replaces RGBA. The inferred redline, NOS level and
+ * N2O glow are opt-in and default off; the shift icon is default on (set 7,
+ * H3 item 1) and still needs a host shift RPM (hud_default_settings). */
+typedef struct {
+    unsigned char gear_colour[3];      /* C1-3/E1, F1: gear change in progress, or gear 1 at standstill: 255,128,64 */
+    unsigned char highlight_colour[4]; /* D2 right-arrow highlight RGBA: 255,190,50,255 */
+    unsigned char shift_colour[3];     /* H3 item 6 shift-up icon RGB: 202,244,138 */
+    int inferred_redline;              /* C1-5 trimmed redline, default 0 */
+    int inferred_nos_level;            /* C3-4 NOS level arc, default 0 */
+    int shift_indicator;               /* H3 item 1 shift-up icon, default 1 */
+    int shift_flash;                   /* H3 item 5 flash, default 1 (0 = steady lit) */
+    int shift_icon_automatic;          /* H4 icon with an automatic transmission, default 1 (guessed) */
+    double nos_a0_degrees, nos_a1_degrees; /* C3-4 dial span: 91, 239 */
+    double gear_standstill_mps;        /* F1 gear-1 standstill threshold: 0.5 (guessed) */
+    int nos_glow;                      /* E3 N2O glow label, default 0 (hidden) */
+    double glow_ms_per_unit;           /* E3 fitted time unit: 0.82 ms per unit; also the H1 shift flash unit */
+    int glyph_half_texel_inset;        /* set 8 G6 item 4 compatibility setting, default 0:
+                                          glyphs are sampled edge to edge (no inset) */
+} HudSettings;
 
 /* Opaque GL-side resources. */
 typedef struct Hud Hud;
@@ -90,80 +126,40 @@ void hud_free(Hud **h);
 void hud_draw(Hud *h, const RProg *rp, GpuMesh *quad,
               const HudState *s, int width, int height);
 
-/* Clearly-labelled sample values for layout review. Off by default. */
+void hud_default_settings(HudSettings *out);
+void hud_configure(Hud *h, const HudSettings *settings);
+
+/* E3: host "NOS glow" event. Starts the opt-in glow sequence at `now_ms` (the
+ * same clock as HudState.clock_ms). Returns 1 when a sequence started; 0 when
+ * the setting is off, the clock or time unit is invalid, or one is already
+ * running (a new event while running is ignored; guessed). */
+int hud_nos_glow_event(Hud *h, double now_ms);
+
+/* Retained preview request flag; telemetry is never fabricated by this HUD. */
 void hud_set_preview(Hud *h, int on);
 int  hud_preview(const Hud *h);
 
 /* Space-separated names of art that failed to load, "" when all present. */
 const char *hud_missing(const Hud *h);
 
-/* ---- pure helpers, unit-tested without GL (see tools/hud_test.c) ---- */
+/* Independent verification report contains counts and resource status only. */
+typedef struct { unsigned nodes,images,texts,groups,resources,fonts,original_atlases; int gauge_targets,map_targets,track_metadata; unsigned resource_resolved,resource_drawn; } HudAudit;
+int hud_pick(Hud *h,float ndc_x,float ndc_y,float *world_x,float *world_y);
+void hud_audit(const Hud *h,HudAudit *out);
 
-/* Signed angle from `from` to `to`, wrapped to (-pi, +pi]. The navigation
- * arrow rotates by this, so the wrap must be exact or the arrow spins the long
- * way round every time the car crosses the +/-pi seam. */
-float hud_angle_delta(float from, float to);
-
-/* Current speed magnitude, converted for display and truncated to an integer.
- * The input contract remains km/h in either display mode. Invalid telemetry
- * returns zero; oversized telemetry saturates to avoid an undefined C cast. */
-int hud_speed_value(float speed_kmh, int imperial);
-
-/* Current sampled RPM, bounded by the engine maximum, as a fraction of the
- * selected visual dial scale. Stateless: render cadence adds no extra lag.
- * A missing maximum uses redline for existing/provisional callers. */
-float hud_tach_fraction(const HudState *s, float dial_scale);
-
-/* World -> minimap transform. The map is a north-up-or-heading-up window of
- * radius `radius_m` around (cx,cy); `rot` is the rotation applied (0 for
- * north-up, -heading-pi/2 for heading-up). Writes normalised map coordinates
- * in [-1,1] where 1 = the window edge; the caller scales into its panel.
- * Points outside the window are returned unclamped so the caller can cull. */
-void hud_map_project(float wx, float wy, float cx, float cy,
-                     float radius_m, float rot, float *mx, float *my);
-
-/* The secondary status line, as a pure function of the state, because the
- * rule it encodes is a correctness requirement rather than a style choice:
- * a SPRINT has no laps, so printing "LAP 1/2" there would be a fabricated
- * circuit readout. Circuits get laps, sprints get real gate progress, and
- * free roam gets nothing. Always NUL-terminates. */
-void hud_status_text(const HudState *s, char *out, int cap);
-
-/* Is the N2O section present at all? Fitted parts are removed, not greyed
- * out: an unfitted car shows no nitrous bar and the cluster closes up around
- * the gap. `have_turbo` is the matching switch for a boost dial; the standard
- * HUD has no turbo art to draw (the only turbo gauge in the game is
- * DRAG_TURBO_* inside InGameDrag.bun, which belongs to the drag HUD), so
- * nothing consumes it yet and an unfitted turbo is simply the whole story. */
+/* Legacy helper API retained for engine compatibility. The standard driving
+ * renderer uses the approved contracts in hud_asset.h. Map clicking/routes,
+ * event text and nitrous are outside this bounded HUD and remain inactive. */
+float hud_angle_delta(float from,float to);
+int hud_speed_value(float speed_kmh,int imperial);
+float hud_tach_fraction(const HudState *s,float dial_scale);
+void hud_map_project(float wx,float wy,float cx,float cy,float radius_m,float rot,float *mx,float *my);
+void hud_status_text(const HudState *s,char *out,int cap);
 int hud_shows_nos(const HudState *s);
-
-/* Money is hidden during a race, and shown in free roam only when a career
- * economy actually exists. Both halves are requirements, so both are tested. */
 int hud_shows_money(const HudState *s);
-
-/* Fraction of texels whose quantised colour equals their left neighbour's.
- * HUD art is flat-shaded, so this is high; a mis-decoded record is noise, so
- * it is low. Measured on the shipped packs: every usable sprite scores
- * 0.719..0.996 (HUD_CINGULAR_LOGO 0.992, MINIMAP_BORDER 0.978, the 16x16
- * MINIMAP_ICON_CAR 0.719), while ARROW_MARKERA -- which decodes to coloured
- * noise -- scores 0.192. hud_init refuses anything below HUD_ART_RUN_MIN.
- * rgb is w*h*3, top-down. */
 #define HUD_ART_RUN_MIN 0.50f
-float hud_art_run_fraction(const unsigned char *rgb, int w, int h);
-
-/* Hit-test a click in NDC against the minimap panel and convert it to world
- * coordinates, so a destination can be chosen from the map with no developer
- * UI present. Returns 0, leaving the outputs alone, when the point is outside
- * the panel. The inverse of the transform hud_draw uses, same frame. */
-int hud_map_pick(float ndc_x, float ndc_y,
-                 int width, int height, const HudState *s,
-                 float *wx, float *wy);
-
-/* Uniform-scale layout: converts a position in HUD units (a 2 x 2/aspect box
- * whose HEIGHT is always 2.0, so a unit is the same on screen at 16:9 and 4:3)
- * into NDC. anchor_x/anchor_y in [-1,1] select the screen corner to hang off.
- * This is what keeps proportions and safe margins identical across aspects. */
-void hud_place(float aspect, float anchor_x, float anchor_y,
-               float off_x, float off_y, float *ndc_x, float *ndc_y);
-
+int hud_catalog_has(const unsigned char *data,size_t len,uint32_t key);
+float hud_art_run_fraction(const unsigned char *rgb,int w,int h);
+int hud_map_pick(float x,float y,int width,int height,const HudState *s,float *wx,float *wy);
+void hud_place(float aspect,float anchor_x,float anchor_y,float off_x,float off_y,float *x,float *y);
 #endif

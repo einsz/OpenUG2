@@ -1,24 +1,243 @@
-/* hud.c — in-game player HUD. See hud.h for the honesty contract.
- *
- * Everything is drawn as transformed unit quads through the existing shader,
- * exactly like the menu overlay already does; the HUD adds no GL objects
- * beyond its textures and no shader of its own. All state it touches is saved
- * and restored, so it cannot leak blending/depth/uniforms into the world pass
- * or the developer UI.
- */
+/* Independent native asset-driven HUD. All placement comes from package data. */
 #include "hud.h"
-#include <math.h>
-#include <stdio.h>
+#include "hud_asset.h"
+#include "hud_texture.h"
+#include "hud_baseline.h"
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
+#include <math.h>
 #include <limits.h>
-
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
-
-/* ---------------------------------------------------------------- helpers */
-
+#define PACK_COUNT 19
+#define FONT_COUNT 64
+typedef struct { const unsigned char *slots; uint32_t size; } Slots;
+typedef struct { unsigned char *data; size_t len; N2Tpk tpk; Slots *slots; size_t slot_count; } Pack;
+typedef struct { GLuint id; int w,h; } Texture;
+/* atlas is the set 8 repacked glyph atlas (transparent one-texel gutter per
+ * cell); cells[i] is glyph i's cell in it, inv_w/inv_h its texel size. With
+ * cells NULL (repack failed) the original atlas and header sizes are used. */
+typedef struct { HaFont metrics; Texture atlas; HaGlyphCell *cells; float inv_w,inv_h; } Font;
+struct Hud {
+ HudBaseline *auxiliary;
+ HaPackage package; Pack packs[PACK_COUNT]; Font fonts[FONT_COUNT]; size_t font_count;
+ Texture *textures; GLuint shader,vbo; GLint pos,uv,maskuv,tint,road,tex,mask;
+ int speed,gear,needle,unit,mapnode,masknode,north,player,border,gauge_root;
+ struct { int node,skin,scale; Texture texture; } skin_cache[256]; size_t skin_cache_count;
+ HaMapFrame pick_frame; HudState pick_state; int pick_race; unsigned char *mask_alpha; int mask_width,mask_height;
+ double origin[3]; int track_ok,preview,skin; char missing[1024]; unsigned reported,resolved,drawn;
+ /* Capture-amendment targets resolved by the C3-8 key rule, and settings. */
+ HudSettings settings; GLint clipu,halfu;
+ int bank_value,bank_label,bank_backing,bank_ok;
+ int widget_backing,widget_dpad,widget_highlight,widget_centre,widget_mail,widget_ok;
+ int nos_backing,nos_alpha,shift_icon,glow_node,glow_active; double glow_start; HaShiftPhase shift_phase;
+ Texture centre_texture;
+ int tint_on; unsigned char tint_rgba[4]; float clip[4];
+};
+static void diagnostic(Hud*h,const char*s){if(!h)return;if(!strstr(h->missing,s)){size_t n=strlen(h->missing);if(n+strlen(s)+2<sizeof h->missing)snprintf(h->missing+n,sizeof h->missing-n,"%s%s",n?"; ":"",s);fprintf(stderr,"HUD: %s\n",s);}}
+static unsigned char *readfile(const char*root,const char*relative,size_t*n){char path[4096];if(snprintf(path,sizeof path,"%s/%s",root,relative)>=(int)sizeof path)return NULL;FILE*f=fopen(path,"rb");if(!f)return NULL;if(fseek(f,0,SEEK_END)){fclose(f);return NULL;}long z=ftell(f);if(z<0||z>256*1024*1024||fseek(f,0,SEEK_SET)){fclose(f);return NULL;}unsigned char*d=malloc(z?(size_t)z:1);if(!d){fclose(f);return NULL;}if(fread(d,1,(size_t)z,f)!=(size_t)z){free(d);fclose(f);return NULL;}fclose(f);*n=(size_t)z;return d;}
+static GLuint upload(N2Tex*t){GLuint id=upload_tex(t);if(id){glBindTexture(GL_TEXTURE_2D,id);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);}return id;}
+static void catalog(Pack*p,const unsigned char*d,size_t n,unsigned depth){
+ if(depth>HA_DEPTH)return;
+ for(size_t at=0;at<n;){if(n-at<8)return;uint32_t type=n2_u32(d+at);size_t z=n2_u32(d+at+4);if(z>n-at-8)return;
+ if(type==0x33310003u){if(z%24==0&&p->slot_count<HA_LIMIT){Slots*next=realloc(p->slots,(p->slot_count+1)*sizeof *next);if(next){p->slots=next;p->slots[p->slot_count++]=(Slots){d+at+8,(uint32_t)z};}}}
+ else if((type&0x80000000u)&&type!=0xb3320000u)catalog(p,d+at+8,z,depth+1);
+ at+=8+z;}
+}
+static int slot_present(const Slots*s,uint32_t key){for(size_t i=0;i<s->size;i+=24)if(n2_u32(s->slots+i)==key)return 1;return 0;}
+static void retain_mask(Hud*h,uint32_t key,const N2Tex*t){if(key!=ha_texture_hash("Minimap_Mask.tga"))return;size_t n=(size_t)t->w*t->h;unsigned char*a=malloc(n);if(!a)return;if(t->alpha)memcpy(a,t->alpha,n);else memset(a,255,n);free(h->mask_alpha);h->mask_alpha=a;h->mask_width=t->w;h->mask_height=t->h;}
+/* Decoded pixels for `key` from packs [first,last): 1 with t->rgb (and
+ * t->alpha, NULL meaning opaque) owned by the caller. */
+static int decode_key(Hud*h,uint32_t key,int first,int last,N2Tex*t){
+ int present=0;
+ for(int i=first;i<last;i++){Pack*p=h->packs+i;if(!p->data)continue;HaPixels pixels;
+  int decoded=ha_texture_find(p->data,p->len,key,&pixels);
+  if(decoded==1){memset(t,0,sizeof *t);t->w=(int)pixels.width;t->h=(int)pixels.height;size_t count=(size_t)t->w*t->h;t->rgb=malloc(count*3);t->alpha=malloc(count);if(t->rgb&&t->alpha){for(size_t j=0;j<count;j++){memcpy(t->rgb+j*3,pixels.rgba+j*4,3);t->alpha[j]=pixels.rgba[j*4+3];}free(pixels.rgba);return 1;}free(t->rgb);free(t->alpha);free(pixels.rgba);}
+  else if(decoded<0){present=1;if(decoded==-2)continue;}
+  for(size_t j=0;j<p->slot_count;j++)if(slot_present(p->slots+j,key)){
+   present=1;
+   if(n2_load_car_tex_from_slots(p->data,(long)p->len,p->slots[j].slots,p->slots[j].size,key,t)){free(t->dxt);t->dxt=NULL;return 1;}
+  }
+  if(n2_tpk_decode(p->data,(long)p->len,p->tpk,key,t)){free(t->dxt);t->dxt=NULL;return 1;}
+ }
+ if(present)diagnostic(h,"texture catalog entry present but decode unsupported or failed");
+ return 0;
+}
+static Texture lookup(Hud*h,uint32_t key,int first,int last){
+ Texture out={0};N2Tex t;if(!decode_key(h,key,first,last,&t))return out;
+ out.id=upload(&t);out.w=t.w;out.h=t.h;if(out.id)retain_mask(h,key,&t);else out.w=out.h=0;free(t.rgb);free(t.alpha);return out;
+}
+/* Set 8 G6 item 2: the font atlas is repacked so every glyph cell has a
+ * transparent one-texel gutter; sampled GL_LINEAR with GL_CLAMP_TO_EDGE, the
+ * texels just outside a cell then read alpha 0 whatever the original atlas
+ * neighbours or edge hold. On failure the original atlas is used as is. */
+static void font_atlas(Hud*h,Font*f){
+ N2Tex t;f->inv_w=f->metrics.inv_w;f->inv_h=f->metrics.inv_h;
+ if(!decode_key(h,ha_hash(f->metrics.texture),0,7,&t)){diagnostic(h,"original font atlas missing");return;}
+ size_t count=(size_t)t.w*t.h;unsigned char*rgba=malloc(count*4);HaGlyphAtlas a={0};
+ if(rgba){for(size_t j=0;j<count;j++){memcpy(rgba+j*4,t.rgb+j*3,3);rgba[j*4+3]=t.alpha?t.alpha[j]:255;}}
+ if(rgba&&ha_glyph_atlas(rgba,(unsigned)t.w,(unsigned)t.h,f->metrics.glyphs,f->metrics.count,&a)){
+  N2Tex p;memset(&p,0,sizeof p);p.w=(int)a.width;p.h=(int)a.height;size_t n=(size_t)p.w*p.h;p.rgb=malloc(n*3);p.alpha=malloc(n);
+  if(p.rgb&&p.alpha){for(size_t j=0;j<n;j++){memcpy(p.rgb+j*3,a.rgba+j*4,3);p.alpha[j]=a.rgba[j*4+3];}f->atlas.id=upload(&p);}
+  if(f->atlas.id){f->atlas.w=p.w;f->atlas.h=p.h;f->cells=a.cells;a.cells=NULL;f->inv_w=1.0f/p.w;f->inv_h=1.0f/p.h;}
+  free(p.rgb);free(p.alpha);ha_glyph_atlas_free(&a);
+ }
+ if(!f->atlas.id){diagnostic(h,"glyph atlas repack failed; sampling the original atlas");f->atlas.id=upload(&t);if(f->atlas.id){f->atlas.w=t.w;f->atlas.h=t.h;}else diagnostic(h,"original font atlas missing");}
+ free(rgba);free(t.rgb);free(t.alpha);
+}
+static Texture named(Hud*h,const char*s,int first,int last){return lookup(h,ha_hash(s),first,last);}
+static int equalfont(const char*a,const char*b){size_t n=strlen(a),m=strlen(b);if(n>4&&!strcmp(a+n-4,".ffn"))n-=4;if(m>4&&!strcmp(b+m-4,".ffn"))m-=4;if(n!=m)return 0;for(size_t i=0;i<n;i++){unsigned char x=a[i],y=b[i];if(x>='A'&&x<='Z')x+=32;if(y>='A'&&y<='Z')y+=32;if(x!=y)return 0;}return 1;}
+static void metadata(Hud*h,const unsigned char*d,size_t n,unsigned depth){if(depth>HA_DEPTH){diagnostic(h,"archive depth limit");return;}for(size_t at=0;at<n;){if(n-at<8){diagnostic(h,"truncated archive");return;}uint32_t type=n2_u32(d+at);size_t z=n2_u32(d+at+4);if(z>n-at-8){diagnostic(h,"archive extent exceeds container");return;}const unsigned char*b=d+at+8;if(type==0x30201&&h->font_count<FONT_COUNT){Font*f=h->fonts+h->font_count;if(ha_font(b,z,&f->metrics)){font_atlas(h,f);h->font_count++;}else diagnostic(h,"unsupported font header; fallback required");}else if(type==0x34201){if(z%296)diagnostic(h,"unsupported track metadata extent");else for(size_t j=0;j<z;j+=296)if((int32_t)n2_u32(b+j+140)==4000){for(int k=0;k<3;k++){uint32_t q=n2_u32(b+j+172+4*k);float f;memcpy(&f,&q,4);h->origin[k]=f;}h->track_ok=isfinite(h->origin[0])&&isfinite(h->origin[1])&&isfinite(h->origin[2])&&h->origin[2]>0;}}else if(type&0x80000000u)metadata(h,b,z,depth+1);at+=8+z;}}
+static int node_named(Hud*h,const char*s){uint32_t key=ha_hash(s);for(size_t i=0;i<h->package.count;i++)if(h->package.nodes[i].valid&&h->package.nodes[i].name==key)return (int)i;return -1;}
+static int descendant(Hud*h,int i,int root){for(unsigned d=0;i>=0&&d<HA_DEPTH;d++,i=h->package.nodes[i].parent)if(i==root)return 1;return 0;}
+static const char *resource_name(Hud*h,HaNode*n){return n->resource<h->package.resource_count?h->package.resources[n->resource].name:NULL;}
+static int node_resource(Hud*h,const char*s){for(size_t i=0;i<h->package.count;i++){const char*r=resource_name(h,h->package.nodes+i);if(r&&!strcmp(r,s))return (int)i;}return -1;}
+static GLuint shader(GLenum type,const char*s){GLuint id=glCreateShader(type);glShaderSource(id,1,&s,NULL);glCompileShader(id);GLint ok=0;glGetShaderiv(id,GL_COMPILE_STATUS,&ok);if(!ok){glDeleteShader(id);return 0;}return id;}
+static void init_shader(Hud*h){
+#ifdef N2_GLES
+ const char*prefix="precision mediump float;\n";
+#else
+ const char*prefix="#version 120\n";
+#endif
+ const char*vertex="attribute vec2 position;attribute vec2 sampleUV;attribute vec2 clipUV;varying vec2 uv;varying vec2 muv;varying vec2 ndc;void main(){uv=sampleUV;muv=clipUV;ndc=position;gl_Position=vec4(position,0.0,1.0);}";
+ /* dialClip: centre (NDC), limit (radians), mode 0 off / 1 keep <= / 2 keep >=,
+    with dial angle 0 straight down increasing screen-clockwise (C1-4). */
+ const char*fragment="varying vec2 uv;varying vec2 muv;varying vec2 ndc;uniform sampler2D art;uniform sampler2D silhouette;uniform vec4 tint;uniform float roads;uniform vec4 dialClip;uniform vec2 halfSize;void main(){if(dialClip.w>0.5){vec2 d=(ndc-dialClip.xy)*halfSize;float a=atan(-d.x,-d.y);if(a<0.0)a+=6.28318531;if(dialClip.w<1.5){if(a>dialClip.z)discard;}else if(a<dialClip.z)discard;}vec4 c=texture2D(art,uv);if(roads>0.5)c.a=texture2D(silhouette,muv).a;gl_FragColor=c*tint;}";
+ char vs[1024],fs[2048];snprintf(vs,sizeof vs,"%s%s",prefix,vertex);snprintf(fs,sizeof fs,"%s%s",prefix,fragment);GLuint v=shader(GL_VERTEX_SHADER,vs),f=shader(GL_FRAGMENT_SHADER,fs);if(!v||!f){if(v)glDeleteShader(v);if(f)glDeleteShader(f);diagnostic(h,"HUD shader unavailable");return;}h->shader=glCreateProgram();glAttachShader(h->shader,v);glAttachShader(h->shader,f);glLinkProgram(h->shader);glDeleteShader(v);glDeleteShader(f);GLint ok;glGetProgramiv(h->shader,GL_LINK_STATUS,&ok);if(!ok){glDeleteProgram(h->shader);h->shader=0;diagnostic(h,"HUD shader link failed");return;}h->pos=glGetAttribLocation(h->shader,"position");h->uv=glGetAttribLocation(h->shader,"sampleUV");h->maskuv=glGetAttribLocation(h->shader,"clipUV");h->tint=glGetUniformLocation(h->shader,"tint");h->road=glGetUniformLocation(h->shader,"roads");h->tex=glGetUniformLocation(h->shader,"art");h->mask=glGetUniformLocation(h->shader,"silhouette");h->clipu=glGetUniformLocation(h->shader,"dialClip");h->halfu=glGetUniformLocation(h->shader,"halfSize");glGenBuffers(1,&h->vbo);}
+/* C3-8 lookup keys (whitelisted capture set 3 data keys). Stored name ids are
+ * opaque data values; lookup names use the case-folded name hash. */
+static int amend_key(Hud*h,uint32_t name,uint32_t kind,int root,uint32_t parent,const char*alias){HaKey k={name,kind,root,parent,alias};return ha_lookup(&h->package,&k);}
+static void resolve_amendment_targets(Hud*h){
+ const uint32_t bank=0x3F8644CAu,backing=0x30D59B88u,widget=0x3345911Du,tach=0x5164D4EAu;
+ int bank_group=amend_key(h,bank,HA_KIND_GROUP,1,0,NULL),backing_group=amend_key(h,backing,HA_KIND_GROUP,1,0,NULL);
+ h->bank_value=amend_key(h,0x1930B057u,HA_KIND_TEXT,0,bank,NULL);
+ h->bank_label=amend_key(h,0x31B0D166u,HA_KIND_TEXT,0,bank,NULL);
+ h->bank_backing=amend_key(h,ha_hash("Show_case_backing"),HA_KIND_IMAGE,0,backing,"Show_case_backing.tga");
+ h->bank_ok=bank_group>=0&&backing_group>=0&&h->bank_value>=0&&h->bank_label>=0&&h->bank_backing>=0;
+ int widget_group=amend_key(h,widget,HA_KIND_GROUP,1,0,NULL);
+ h->widget_backing=amend_key(h,ha_hash("Engage_Backing"),HA_KIND_IMAGE,0,widget,"Engage_Backing.tga");
+ h->widget_dpad=amend_key(h,ha_hash("Engage_DPAD_Backing"),HA_KIND_IMAGE,0,widget,"Engage_DPAD_Backing.tga");
+ h->widget_highlight=amend_key(h,0xA206A0B4u,HA_KIND_IMAGE,0,widget,"Engage_DPAD_Highlight.tga");
+ h->widget_centre=amend_key(h,0x50910822u,HA_KIND_IMAGE,0,widget,NULL);
+ h->widget_mail=amend_key(h,ha_hash("Engage_SMS_mail"),HA_KIND_IMAGE,1,0,"Engage_SMS_mail.tga");
+ h->widget_ok=widget_group>=0&&h->widget_backing>=0&&h->widget_dpad>=0&&h->widget_highlight>=0&&h->widget_centre>=0&&h->widget_mail>=0;
+ int tach_group=amend_key(h,tach,HA_KIND_GROUP,1,0,NULL);
+ h->nos_backing=tach_group<0?-1:amend_key(h,0x11461255u,HA_KIND_IMAGE,0,tach,"Tach_NOS_Backing.tga");
+ h->nos_alpha=tach_group<0?-1:amend_key(h,0x11495CD6u,HA_KIND_IMAGE,0,tach,"Tach_NOS_Alpha.tga");
+ h->shift_icon=tach_group<0?-1:amend_key(h,0x25CF2F74u,HA_KIND_IMAGE,0,tach,"Shift_Up_Icon.tga");
+ /* E2: N2O glow label, a root-level image keyed by its stem hash. */
+ h->glow_node=amend_key(h,0xFE2467E3u,HA_KIND_IMAGE,1,0,"Tach_NOS_Gamebreaker.tga");
+ /* Centre figure: catalog texture id from the free-roam texture pack only;
+    never the slot's referenced image or a generated imitation. */
+ h->centre_texture=lookup(h,0xEA570722u,0,1);
+}
+void hud_default_settings(HudSettings*o){if(!o)return;memset(o,0,sizeof *o);o->gear_colour[0]=255;o->gear_colour[1]=128;o->gear_colour[2]=64;o->highlight_colour[0]=255;o->highlight_colour[1]=190;o->highlight_colour[2]=50;o->highlight_colour[3]=255;ha_shift_default_colour(o->shift_colour);o->shift_indicator=1;o->shift_flash=1;o->shift_icon_automatic=1;o->nos_a0_degrees=91;o->nos_a1_degrees=239;o->gear_standstill_mps=HA_STANDSTILL_MPS;o->glow_ms_per_unit=HA_GLOW_MS_PER_UNIT;}
+void hud_configure(Hud*h,const HudSettings*s){if(h&&s)h->settings=*s;}
+int hud_nos_glow_event(Hud*h,double now_ms){
+ if(!h||!ha_glow_trigger(h->settings.nos_glow,now_ms,h->glow_active,h->glow_start,h->settings.glow_ms_per_unit))return 0;
+ h->glow_active=1;h->glow_start=now_ms;return 1;
+}
+Hud *hud_init(const char*root){Hud*h=calloc(1,sizeof *h);if(!h)return NULL;hud_default_settings(&h->settings);h->bank_value=h->bank_label=h->bank_backing=h->widget_backing=h->widget_dpad=h->widget_highlight=h->widget_centre=h->widget_mail=h->nos_backing=h->nos_alpha=h->shift_icon=h->glow_node=-1;h->speed=h->gear=h->needle=h->unit=h->mapnode=h->masknode=h->north=h->player=h->border=h->gauge_root=-1;if(!root)root=".";h->auxiliary=hud_baseline_init(root);
+ const char*paths[]={"GLOBAL/InGameFreeRoam.bun","LANGUAGES/English.bin","LANGUAGES/LanguageTextures.bin","GLOBAL/GLOBALA.BUN","GLOBAL/HUD_CustomTextures_ALL.bin","GLOBAL/GLOBALB.BUN","TRACKS/TRACKMAP4000.BIN"};
+ for(int i=0;i<PACK_COUNT;i++){char skin[128];const char*path;if(i<7)path=paths[i];else if(i==18)path="GLOBAL/InGameCommon.bun";else{snprintf(skin,sizeof skin,"GLOBAL/HUD_CustomTextures_%02d.bin",i-7);path=skin;}h->packs[i].data=readfile(root,path,&h->packs[i].len);if(h->packs[i].data){h->packs[i].tpk=n2_tpk_open(h->packs[i].data,(long)h->packs[i].len);catalog(h->packs+i,h->packs[i].data,h->packs[i].len,0);}else diagnostic(h,path);}
+ if(!h->packs[0].data||!ha_package(h->packs[0].data,h->packs[0].len,&h->package))diagnostic(h,"driving package unavailable or ambiguous");
+ if(h->package.diagnostics)diagnostic(h,"rejected package objects or references");
+ h->textures=calloc(h->package.resource_count,sizeof *h->textures);
+ for(size_t i=0;i<h->package.resource_count;i++){HaResource*r=h->package.resources+i;if(r->kind==1){if(r->name){h->textures[i]=lookup(h,ha_texture_hash(r->name),0,7);if(!h->textures[i].id)h->textures[i]=lookup(h,ha_texture_hash(r->name),18,19);}if(!h->textures[i].id)diagnostic(h,"unresolved package image");}}
+ for(int i=0;i<7;i++)if(h->packs[i].data)metadata(h,h->packs[i].data,h->packs[i].len,0);
+ if(!h->track_ok)diagnostic(h,"city track metadata missing or invalid");
+ h->speed=node_named(h,"3rdPersonSpeed");h->gear=node_named(h,"3rdPersonGear");h->needle=node_named(h,"3rdPersonNeedle");h->border=node_named(h,"TrackMapTargetRing");h->player=node_named(h,"PLAYERCARINDICATOR_1");h->mapnode=node_resource(h,"Track4000_map.tga");h->masknode=node_resource(h,"Minimap_Mask.tga");h->north=node_resource(h,"Minimap_North_indicator.tga");
+ if(h->needle>=0&&!ha_needle_calibrate(h->package.nodes+h->needle)){h->package.nodes[h->needle].appearance=0;diagnostic(h,"unsupported needle quaternion decomposition; needle omitted");}
+ int rootnode=h->speed;while(rootnode>=0){if(descendant(h,h->gear,rootnode)&&descendant(h,h->needle,rootnode)){h->gauge_root=rootnode;break;}rootnode=h->package.nodes[rootnode].parent;}
+ for(size_t i=0;i<h->package.count;i++){HaNode*n=h->package.nodes+i;if(n->kind==2&&n->sample&&(!strcmp(n->sample,"MPH")||!strcmp(n->sample,"KM/H"))&&descendant(h,(int)i,h->gauge_root))h->unit=(int)i;}
+ resolve_amendment_targets(h);
+ init_shader(h);return h;}
+void hud_free(Hud**hp){if(!hp||!*hp)return;Hud*h=*hp;if(h->centre_texture.id)glDeleteTextures(1,&h->centre_texture.id);hud_baseline_free(&h->auxiliary);for(size_t c=0;c<h->skin_cache_count;c++)glDeleteTextures(1,&h->skin_cache[c].texture.id);for(size_t i=0;i<h->package.resource_count;i++)if(h->textures&&h->textures[i].id)glDeleteTextures(1,&h->textures[i].id);for(size_t i=0;i<h->font_count;i++){free(h->fonts[i].metrics.glyphs);free(h->fonts[i].cells);if(h->fonts[i].atlas.id)glDeleteTextures(1,&h->fonts[i].atlas.id);}for(int i=0;i<PACK_COUNT;i++){free(h->packs[i].slots);free(h->packs[i].tpk.blk);free(h->packs[i].data);}ha_free(&h->package);free(h->textures);free(h->mask_alpha);if(h->shader)glDeleteProgram(h->shader);if(h->vbo)glDeleteBuffers(1,&h->vbo);free(h);*hp=NULL;}
+void hud_set_preview(Hud*h,int on){if(h){h->preview=!!on;hud_baseline_set_preview(h->auxiliary,on);}}
+int hud_preview(const Hud*h){return h&&h->preview;}
+const char *hud_missing(const Hud*h){return h?h->missing:"HUD allocation failed";}
+static Texture node_texture(Hud*h,int i){Texture t={0};if(i<0)return t;HaNode*n=h->package.nodes+i;if(n->resource<h->package.resource_count)t=h->textures[n->resource];return t;}
+static int skin_resource(const char*r){return r&&(!strcmp(r,"Tach_Fill.tga")||!strcmp(r,"3rdperson_10500lines.tga"));}
+static Texture image_texture(Hud*h,int i,int skin,int scale,int*owned){HaNode*n=h->package.nodes+i;const char*r=resource_name(h,n);*owned=0;Texture t={0};for(size_t c=0;c<h->skin_cache_count;c++)if(h->skin_cache[c].node==i&&h->skin_cache[c].skin==skin&&h->skin_cache[c].scale==scale)return h->skin_cache[c].texture;
+ if((i==h->needle||skin_resource(r))&&descendant(h,i,h->gauge_root)){char key[128];if(i==h->needle)snprintf(key,sizeof key,"3RDPERSON_RPMDIAL_CUSTOM_%02d",skin);else if(!strcmp(r,"Tach_Fill.tga"))snprintf(key,sizeof key,"TACH_FILL_CUSTOM_%02d",skin);else if(!strcmp(r,"3rdperson_rpmdial.tga"))snprintf(key,sizeof key,"3RDPERSON_RPMDIAL_CUSTOM_%02d",skin);else snprintf(key,sizeof key,"3RDPERSON_%dLINES_CUSTOM_%02d",scale,skin);t=named(h,key,4,5);if(!t.id)t=named(h,key,7+skin,8+skin);if(!t.id&&skin){diagnostic(h,"skin resource fallback to 00");if(i==h->needle)snprintf(key,sizeof key,"3RDPERSON_RPMDIAL_CUSTOM_00");else if(!strcmp(r,"Tach_Fill.tga"))snprintf(key,sizeof key,"TACH_FILL_CUSTOM_00");else if(!strcmp(r,"3rdperson_rpmdial.tga"))snprintf(key,sizeof key,"3RDPERSON_RPMDIAL_CUSTOM_00");else snprintf(key,sizeof key,"3RDPERSON_%dLINES_CUSTOM_00",scale);t=named(h,key,4,5);if(!t.id)t=named(h,key,7,8);}if(t.id){if(h->skin_cache_count<256){size_t c=h->skin_cache_count++;h->skin_cache[c].node=i;h->skin_cache[c].skin=skin;h->skin_cache[c].scale=scale;h->skin_cache[c].texture=t;}else *owned=1;}else diagnostic(h,"skin resource fallback to authored image");}if(!t.id)t=node_texture(h,i);return t;}
+/* Per-feature acceptance bits: needle/dial/scale/fill/font/road/mask/north/player/border. */
+static unsigned feature(Hud*h,int i){const char*r=resource_name(h,h->package.nodes+i);if(i==h->needle)return 1u<<0;if(i==h->bank_backing)return 1u<<10;if(i==h->widget_backing||i==h->widget_dpad)return 1u<<11;if(i==h->widget_centre)return 1u<<12;if(i==h->widget_mail)return 1u<<13;if(i==h->widget_highlight)return 1u<<14;if(i==h->nos_backing)return 1u<<15;if(i==h->nos_alpha)return 1u<<16;if(i==h->shift_icon)return 1u<<17;if(i==h->glow_node)return 1u<<18;if(i==h->mapnode)return 1u<<5;if(i==h->masknode)return 1u<<6;if(i==h->north)return 1u<<7;if(i==h->player)return 1u<<8;if(descendant(h,i,h->border))return 1u<<9;if(r&&!strcmp(r,"3rdperson_redline.tga"))return 1u<<1;if(r&&!strcmp(r,"3rdperson_10500lines.tga"))return 1u<<2;if(r&&!strcmp(r,"Tach_Fill.tga"))return 1u<<3;if(h->package.nodes[i].kind==2)return 1u<<4;return 0;}
+static void quad(Hud*h,int i,const float rect[4],const float uv[4],Texture t,float angle,int width,int height,int recenter,int roads,const double mapuv[3],double heading){if(!t.id)return;h->resolved|=feature(h,i);HaNode*n=h->package.nodes+i;float v[24],scale=fminf(width/640.0f,height/480.0f);float center[3]={0},old[3]={0};if(recenter&&h->mapnode>=0){ha_point(&h->package,(size_t)h->mapnode,old,center,0);ha_point(&h->package,(size_t)i,old,old,0);}for(int j=0;j<4;j++){float local[3]={rect[(j==1||j==2)?2:0],rect[j>=2?3:1],0},p[3];ha_point(&h->package,(size_t)i,local,p,angle);if(recenter){p[0]+=center[0]-old[0];p[1]+=center[1]-old[1];}v[j*6]=p[0]*scale*2/width;v[j*6+1]=-p[1]*scale*2/height;float a=(j==1||j==2)?1:0,b=j>=2?1:0;v[j*6+2]=uv[0]+a*(uv[2]-uv[0]);v[j*6+3]=uv[1]+b*(uv[3]-uv[1]);v[j*6+4]=a;v[j*6+5]=b;if(roads){HaNode*mn=h->package.nodes+h->masknode;float origin[3],bx[3],by[3],z[3]={0},xx[3]={1,0,0},yy[3]={0,1,0};ha_point(&h->package,(size_t)h->masknode,z,origin,0);ha_point(&h->package,(size_t)h->masknode,xx,bx,0);ha_point(&h->package,(size_t)h->masknode,yy,by,0);float ax=bx[0]-origin[0],ay=bx[1]-origin[1],cx=by[0]-origin[0],cy=by[1]-origin[1],det=ax*cy-ay*cx;float dx=p[0]-origin[0],dy=p[1]-origin[1];if(fabsf(det)>1e-8f&&mn->size[0]!=0&&mn->size[1]!=0){float mx=(cy*dx-cx*dy)/det/mn->size[0]+.5f,my=(-ay*dx+ax*dy)/det/mn->size[1]+.5f;v[j*6+4]=mn->uv[0]+mx*(mn->uv[2]-mn->uv[0]);v[j*6+5]=mn->uv[1]+my*(mn->uv[3]-mn->uv[1]);}double x=(a-.5)*mapuv[2],y=(b-.5)*mapuv[2],c=cos(heading),s=sin(heading);v[j*6+2]=(float)(mapuv[0]+c*x-s*y);v[j*6+3]=(float)(mapuv[1]+s*x+c*y);}}
+ glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,t.id);glUniform1i(h->tex,0);glUniform1i(h->mask,1);glUniform1f(h->road,(float)roads);const unsigned char*c=h->tint_on?h->tint_rgba:n->color;glUniform4f(h->tint,c[0]/255.0f,c[1]/255.0f,c[2]/255.0f,c[3]/255.0f);glUniform4f(h->clipu,h->clip[0],h->clip[1],h->clip[2],h->clip[3]);glBindBuffer(GL_ARRAY_BUFFER,h->vbo);glBufferData(GL_ARRAY_BUFFER,sizeof v,v,GL_STREAM_DRAW);glVertexAttribPointer((GLuint)h->pos,2,GL_FLOAT,GL_FALSE,6*sizeof(float),(void*)0);glVertexAttribPointer((GLuint)h->uv,2,GL_FLOAT,GL_FALSE,6*sizeof(float),(void*)(2*sizeof(float)));glVertexAttribPointer((GLuint)h->maskuv,2,GL_FLOAT,GL_FALSE,6*sizeof(float),(void*)(4*sizeof(float)));glDrawArrays(GL_TRIANGLE_FAN,0,4);h->drawn|=feature(h,i);if(roads){h->resolved|=1u<<6;h->drawn|=1u<<6;}}
+static Font *font_for(Hud*h,HaNode*n){const char*name=resource_name(h,n);if(name)for(size_t i=0;i<h->font_count;i++)if(equalfont(name,h->fonts[i].metrics.name)&&h->fonts[i].atlas.id)return h->fonts+i;diagnostic(h,"requested original font missing; trying original 21i");for(size_t i=0;i<h->font_count;i++)if(equalfont("conduitmditc_tt21i",h->fonts[i].metrics.name)&&h->fonts[i].atlas.id)return h->fonts+i;diagnostic(h,"no original font available; text omitted");return NULL;}
+static HaGlyph *glyph(Font*f,unsigned char c){HaGlyph*question=NULL;for(size_t i=0;i<f->metrics.count;i++){HaGlyph*g=f->metrics.glyphs+i;if(g->code==c)return g;if(g->code=='?')question=g;}return question;}
+static void text(Hud*h,int i,const char*s,int w,int height){if(i<0||!*s)return;HaNode*n=h->package.nodes+i;if(!n->valid||!n->appearance)return;if(n->resource>=h->package.resource_count||h->package.resources[n->resource].kind!=2||!resource_name(h,n)){diagnostic(h,"unresolved text resource; text omitted");return;}Font*f=font_for(h,n);if(!f)return;float advance=0;for(const char*q=s;*q;q++){HaGlyph*g=glyph(f,(unsigned char)*q);advance+=g?g->advance:f->metrics.line;}float x=ha_text_start(0,n->size[0],n->justification,advance);for(const char*q=s;*q;q++){HaGlyph*g=glyph(f,(unsigned char)*q);if(g){HaGlyph cell=*g;int inside;if(f->cells){const HaGlyphCell*c=f->cells+(g-f->metrics.glyphs);inside=c->ok;cell.x=c->x;cell.y=c->y;}else inside=(unsigned)g->x+g->width<=(unsigned)f->atlas.w&&(unsigned)g->y+g->height<=(unsigned)f->atlas.h;if(!inside){diagnostic(h,"glyph outside resolved atlas");}else{/* G3: whole cell, unclipped, independent of the advance; drawn in string order (provisional overlap order). G6: edge to edge, no inset unless the compatibility setting is on. */HaGlyphQuad gq;if(ha_glyph_quad(&cell,f->inv_w,f->inv_h,x,0,n->size[0],n->size[1],h->settings.glyph_half_texel_inset,&gq)){float rect[]={(float)gq.x0,(float)gq.y0,(float)gq.x1,(float)gq.y1},uv[]={(float)gq.u0,(float)gq.v0,(float)gq.u1,(float)gq.v1};quad(h,i,rect,uv,f->atlas,0,w,height,0,0,NULL,0);}}x+=g->advance*n->size[0];}else{x+=f->metrics.line*n->size[0];diagnostic(h,"missing font character; advance only");}}}
+/* Text with its role's tint (C1-3/E1 gear colour; others authored). */
+static void role_text(Hud*h,int i,int role,int gear,int change,double speed_mps,const char*s,int w,int height){if(i<0)return;HaNode*n=h->package.nodes+i;ha_text_tint(role,gear,change,speed_mps,h->settings.gear_standstill_mps,n->color,h->settings.gear_colour,h->tint_rgba);h->tint_on=1;text(h,i,s,w,height);h->tint_on=0;}
+/* Snapshot includes complete vertex attribute descriptions because this HUD
+ * streams its own vertices instead of altering the engine quad. */
+typedef struct { GLint enabled,size,stride,type,normalized,buffer; void*pointer; } Attribute;
+void hud_draw(Hud*h,const RProg*rp,GpuMesh*unused,const HudState*s,int w,int height){if(!h)return;
+ h->pick_frame.enabled=0;h->pick_race=0;if(!s||w<=0||height<=0)return;h->pick_state=*s;h->pick_frame.width=w;h->pick_frame.height=height;
+ if(s->racing&&rp&&unused){h->pick_race=1;h->shift_phase.shown=0;hud_baseline_draw(h->auxiliary,rp,unused,s,w,height);return;}
+ {HaWidget shown;ha_widget(s->career_context,s->message_waiting!=0,h->widget_ok,1,&shown);
+  /* Set 4 D4: while the authored widget is drawn, inherited message visuals are suppressed. */
+  if(rp&&unused){HudState base=*s;if(!ha_inherited_message_visuals(0,shown.visible,s->message_waiting!=0))base.message_waiting=0;hud_baseline_draw(h->auxiliary,rp,unused,&base,w,height);}}
+ if(!h->shader)return;
+ h->resolved=h->drawn=0;
+ GLint program,array,active,tex0,tex1,srcRGB,dstRGB,srcA,dstA,eqRGB,eqA;GLboolean depth=glIsEnabled(GL_DEPTH_TEST),blend=glIsEnabled(GL_BLEND),cull=glIsEnabled(GL_CULL_FACE),depthmask;glGetBooleanv(GL_DEPTH_WRITEMASK,&depthmask);glGetIntegerv(GL_CURRENT_PROGRAM,&program);glGetIntegerv(GL_ARRAY_BUFFER_BINDING,&array);glGetIntegerv(GL_ACTIVE_TEXTURE,&active);glActiveTexture(GL_TEXTURE0);glGetIntegerv(GL_TEXTURE_BINDING_2D,&tex0);glActiveTexture(GL_TEXTURE1);glGetIntegerv(GL_TEXTURE_BINDING_2D,&tex1);glGetIntegerv(GL_BLEND_SRC_RGB,&srcRGB);glGetIntegerv(GL_BLEND_DST_RGB,&dstRGB);glGetIntegerv(GL_BLEND_SRC_ALPHA,&srcA);glGetIntegerv(GL_BLEND_DST_ALPHA,&dstA);glGetIntegerv(GL_BLEND_EQUATION_RGB,&eqRGB);glGetIntegerv(GL_BLEND_EQUATION_ALPHA,&eqA);
+ GLuint attrs[3]={(GLuint)h->pos,(GLuint)h->uv,(GLuint)h->maskuv};Attribute old[3];for(int j=0;j<3;j++){glGetVertexAttribiv(attrs[j],GL_VERTEX_ATTRIB_ARRAY_ENABLED,&old[j].enabled);glGetVertexAttribiv(attrs[j],GL_VERTEX_ATTRIB_ARRAY_SIZE,&old[j].size);glGetVertexAttribiv(attrs[j],GL_VERTEX_ATTRIB_ARRAY_STRIDE,&old[j].stride);glGetVertexAttribiv(attrs[j],GL_VERTEX_ATTRIB_ARRAY_TYPE,&old[j].type);glGetVertexAttribiv(attrs[j],GL_VERTEX_ATTRIB_ARRAY_NORMALIZED,&old[j].normalized);glGetVertexAttribiv(attrs[j],GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING,&old[j].buffer);glGetVertexAttribPointerv(attrs[j],GL_VERTEX_ATTRIB_ARRAY_POINTER,&old[j].pointer);glEnableVertexAttribArray(attrs[j]);}
+ glUseProgram(h->shader);glDisable(GL_CULL_FACE);glDisable(GL_DEPTH_TEST);glDepthMask(GL_FALSE);glEnable(GL_BLEND);glBlendEquation(GL_FUNC_ADD);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+ double mapuv[3];int mapon=!s->hide_map&&h->track_ok&&ha_map(h->origin[0],h->origin[1],h->origin[2],s->car_x,s->car_y,s->map_heading_explicit?s->map_heading_clockwise:(M_PI*.5-s->car_heading),s->map_window_world>0?s->map_window_world:500,mapuv);double heading=s->map_heading_explicit?s->map_heading_clockwise:M_PI*.5-s->car_heading;
+ if(!s->hide_map&&!mapon)diagnostic(h,"map suppressed: invalid input or metadata");
+ int scale=ha_scale(s->rpm_maximum),skin=ha_skin(s->skin_index);
+ /* Capture amendments: per-frame element decisions from pure contracts. */
+ const HudSettings*cfg=&h->settings;float dial[2]={0,0};int dial_ok=0;
+ if(h->needle>=0&&h->package.nodes[h->needle].valid){float p[3];ha_point(&h->package,(size_t)h->needle,h->package.nodes[h->needle].pivot,p,0);float fit=fminf(w/640.0f,height/480.0f);dial[0]=p[0]*fit*2/w;dial[1]=-p[1]*fit*2/height;dial_ok=1;}
+ double redline_start=0;int redline=s->hide_gauge?0:ha_redline(cfg->inferred_redline,s->have_redline_rpm,s->rpm_redline,scale,&redline_start);
+ if(redline<0)diagnostic(h,"inferred redline hidden: nonfinite redline RPM");
+ if(redline>0&&!dial_ok){diagnostic(h,"inferred redline hidden: needle rotation centre unavailable");redline=0;}
+ double nos_limit=0;int nos=s->hide_gauge?0:ha_nos_level(cfg->inferred_nos_level,s->have_nos,s->have_nitro_tank,s->nitro_tank,cfg->nos_a0_degrees,cfg->nos_a1_degrees,&nos_limit);
+ if(nos<0)diagnostic(h,"inferred NOS level hidden: nonfinite level or span");
+ if(nos>0&&(h->nos_backing<0||h->nos_alpha<0)){diagnostic(h,"NOS level targets unresolved; NOS level hidden");nos=0;}
+ if(nos==2&&!dial_ok){diagnostic(h,"NOS level arc hidden: needle rotation centre unavailable");nos=1;}
+ int shift=s->hide_gauge?0:ha_shift_mode(cfg->shift_indicator,s->have_shift_rpm,s->shift_rpm,s->gear,s->rpm,s->rpm_maximum,s->transmission,cfg->shift_icon_automatic);
+ if(shift<0){diagnostic(h,"shift indicator hidden: nonfinite or nonpositive shift RPM");shift=0;}
+ if(shift&&h->shift_icon<0){diagnostic(h,"shift icon target unresolved; shift indicator hidden");shift=0;}
+ /* H3 item 5: flash phase restarts whenever the icon becomes visible. */
+ int shift_bad_clock=0;double shift_env=ha_shift_flash(cfg->shift_flash,ha_shift_elapsed(&h->shift_phase,shift>0,s->clock_ms),cfg->glow_ms_per_unit,&shift_bad_clock);
+ if(shift&&shift_bad_clock)diagnostic(h,"shift icon drawn steadily lit: invalid clock or time unit");
+ HaGlow glow;memset(&glow,0,sizeof glow);int glow_on=0;
+ if(cfg->nos_glow&&h->glow_active){
+  double gt=ha_glow_units(s->clock_ms-h->glow_start,cfg->glow_ms_per_unit);
+  if(isnan(gt)){diagnostic(h,"N2O glow hidden: invalid clock or time unit");}
+  else if(gt<0||gt>=HA_GLOW_END)h->glow_active=0; /* finished (or the clock restarted) */
+  else if(!s->hide_gauge){glow_on=ha_glow(gt,&glow);if(glow_on&&h->glow_node<0){diagnostic(h,"N2O glow target unresolved; glow hidden");glow_on=0;}}
+ }
+ char bankbuf[64];int bank=ha_bank(s->career_context,s->have_money,s->suppress_cash,(int64_t)s->money,',',h->bank_ok,bankbuf);
+ if(bank<0)diagnostic(h,h->bank_ok?"negative balance: bank suppressed":"bank targets unresolved; bank hidden");
+ HaWidget wid;ha_widget(s->career_context,s->message_waiting!=0,h->widget_ok,h->centre_texture.id!=0,&wid);
+ if(wid.diagnostic)diagnostic(h,h->widget_ok?"widget centre figure texture missing; figure omitted":"widget targets unresolved; widget hidden");
+ glUniform2f(h->halfu,w*.5f,height*.5f);h->tint_on=0;h->clip[3]=0;
+ /* Stable insertion sort by transformed depth. Higher z first. */
+ size_t count=h->package.count;size_t order[HA_LIMIT];float depthvalues[HA_LIMIT];for(size_t i=0;i<count;i++){float zero[3]={0},p[3];ha_point(&h->package,i,zero,p,0);order[i]=i;depthvalues[i]=p[2];size_t j=i;while(j&&depthvalues[order[j-1]]<depthvalues[i]){order[j]=order[j-1];j--;}order[j]=i;}
+ for(size_t k=0;k<count;k++){int i=(int)order[k];HaNode*n=h->package.nodes+i;if(!n->valid||!n->appearance||n->kind!=1)continue;const char*r=resource_name(h,n);int gauge=!s->hide_gauge&&(i==h->needle||(descendant(h,i,h->gauge_root)&&r&&(skin_resource(r)||!strcmp(r,"3rdperson_rpmdial.tga")||(redline>0&&!strcmp(r,"3rdperson_redline.tga")))));int map=mapon&&(i==h->mapnode||i==h->north||i==h->player||descendant(h,i,h->border));
+ int extra=(bank>0&&i==h->bank_backing)||(wid.backing&&i==h->widget_backing)||(wid.dpad&&i==h->widget_dpad)||(wid.centre&&i==h->widget_centre)||(wid.mail&&i==h->widget_mail)||(wid.highlight_right&&i==h->widget_highlight)||(nos>=1&&i==h->nos_backing)||(nos==2&&i==h->nos_alpha)||(shift&&i==h->shift_icon)||(glow_on&&i==h->glow_node);
+ if(!gauge&&!map&&!extra)continue;
+ h->tint_on=0;h->clip[3]=0;
+ if(i==h->widget_highlight){ha_setting_rgba(cfg->highlight_colour,h->tint_rgba);h->tint_on=1;}
+ if(i==h->shift_icon){ha_setting_tint(n->color,cfg->shift_colour,h->tint_rgba);h->tint_rgba[3]=(unsigned char)lround(n->color[3]*shift_env);h->tint_on=1;} /* H3 item 6: alpha = authored x envelope */
+ if(i==h->nos_alpha){h->clip[0]=dial[0];h->clip[1]=dial[1];h->clip[2]=(float)(nos_limit*M_PI/180);h->clip[3]=1;}
+ if(gauge&&r&&!strcmp(r,"3rdperson_redline.tga")){h->clip[0]=dial[0];h->clip[1]=dial[1];h->clip[2]=(float)(redline_start*M_PI/180);h->clip[3]=2;}
+ if(i==h->glow_node){/* E3: authored centre and RGB; size, rotation (counter-clockwise) and alpha follow the curve; source-over. */
+  int owned_g=0;Texture gt=image_texture(h,i,skin,scale,&owned_g);float pv[3];memcpy(pv,n->pivot,sizeof pv);memset(n->pivot,0,sizeof n->pivot);
+  h->tint_rgba[0]=n->color[0];h->tint_rgba[1]=n->color[1];h->tint_rgba[2]=n->color[2];h->tint_rgba[3]=glow.alpha_byte;h->tint_on=1;
+  float grect[]={(float)(-glow.width/2),(float)(-glow.height/2),(float)(glow.width/2),(float)(glow.height/2)};quad(h,i,grect,n->uv,gt,(float)(-glow.rotation_ccw_deg*M_PI/180),w,height,0,0,NULL,0);
+  memcpy(n->pivot,pv,sizeof pv);if(owned_g)glDeleteTextures(1,&gt.id);continue;}
+ if(i==h->widget_centre){float full[4]={0,0,1,1},rect[]={-n->size[0]/2,-n->size[1]/2,n->size[0]/2,n->size[1]/2};quad(h,i,rect,full,h->centre_texture,0,w,height,0,0,NULL,0);continue;}
+ int roads=i==h->mapnode,owned=0;Texture t=image_texture(h,i,skin,scale,&owned);float angle=0;if(i==h->needle)angle=(float)(ha_rpm_angle(s->rpm,s->rpm_maximum,0)*M_PI/180);if(i==h->north)angle=(float)-heading;if(roads){Texture mask=node_texture(h,h->masknode);if(!mask.id){diagnostic(h,"map mask missing; roads omitted");if(owned)glDeleteTextures(1,&t.id);continue;}glActiveTexture(GL_TEXTURE1);glBindTexture(GL_TEXTURE_2D,mask.id);if(t.id&&h->mask_alpha){HaMapFrame*f=&h->pick_frame;float zero[3]={0},bx[3]={1,0,0},by[3]={0,1,0},o[3],x[3],y[3];ha_point(&h->package,(size_t)i,zero,o,0);ha_point(&h->package,(size_t)i,bx,x,0);ha_point(&h->package,(size_t)i,by,y,0);f->center[0]=o[0];f->center[1]=o[1];f->basis[0]=x[0]-o[0];f->basis[1]=x[1]-o[1];f->basis[2]=y[0]-o[0];f->basis[3]=y[1]-o[1];f->size[0]=n->size[0];f->size[1]=n->size[1];f->world[0]=s->car_x;f->world[1]=s->car_y;f->heading=heading;f->window=s->map_window_world>0?s->map_window_world:500;f->enabled=1;}}float rect[]={-n->size[0]/2,-n->size[1]/2,n->size[0]/2,n->size[1]/2};quad(h,i,rect,n->uv,t,angle,w,height,i==h->player,roads,mapuv,heading);if(owned)glDeleteTextures(1,&t.id);}
+ h->tint_on=0;h->clip[3]=0;
+ if(!s->hide_gauge){char buf[32];if(ha_speed(s->speed_kmh/3.6,!s->imperial_units,buf))text(h,h->speed,buf,w,height);else diagnostic(h,"speed suppressed: invalid or outside 0..INT_MAX");if(!ha_gear(s->gear,buf))diagnostic(h,"unsupported gear state");role_text(h,h->gear,HA_TEXT_GEAR,s->gear,s->gear_change_in_progress!=0,s->speed_kmh/3.6,buf,w,height);text(h,h->unit,s->imperial_units?"MPH":"KM/H",w,height);}
+ if(bank>0){role_text(h,h->bank_label,HA_TEXT_BANK_LABEL,0,0,0,ha_bank_label,w,height);role_text(h,h->bank_value,HA_TEXT_BANK_VALUE,0,0,0,bankbuf,w,height);}
+ for(int j=0;j<3;j++){glBindBuffer(GL_ARRAY_BUFFER,(GLuint)old[j].buffer);glVertexAttribPointer(attrs[j],old[j].size,(GLenum)old[j].type,(GLboolean)old[j].normalized,old[j].stride,old[j].pointer);if(!old[j].enabled)glDisableVertexAttribArray(attrs[j]);}glBindBuffer(GL_ARRAY_BUFFER,(GLuint)array);glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,(GLuint)tex0);glActiveTexture(GL_TEXTURE1);glBindTexture(GL_TEXTURE_2D,(GLuint)tex1);glActiveTexture((GLenum)active);glUseProgram((GLuint)program);glDepthMask(depthmask);if(cull)glEnable(GL_CULL_FACE);else glDisable(GL_CULL_FACE);if(depth)glEnable(GL_DEPTH_TEST);else glDisable(GL_DEPTH_TEST);if(blend)glEnable(GL_BLEND);else glDisable(GL_BLEND);glBlendFuncSeparate((GLenum)srcRGB,(GLenum)dstRGB,(GLenum)srcA,(GLenum)dstA);glBlendEquationSeparate((GLenum)eqRGB,(GLenum)eqA);
+}
 float hud_angle_delta(float from, float to) {
     float d = to - from;
     /* fmod alone leaves (-2pi, 2pi); fold once more to land in (-pi, pi]. */
@@ -103,800 +322,17 @@ void hud_place(float aspect, float anchor_x, float anchor_y,
     *ndc_y = anchor_y + off_y;
 }
 
-/* --------------------------------------------------------------- resources */
 
-/* One art slot. `key` is the TPK record hash; `tex` is 0 when it did not load,
- * which every draw site must tolerate. */
-typedef struct HudArc HudArc;
-typedef struct { const char *name; uint32_t key; GLuint tex; int w, h;
-                 unsigned char rejected; struct {
-                     int ok; float cx, cy, r, a0, a1;
-                 } arc; } HudArt;
+void hud_audit(const Hud*h,HudAudit*out){memset(out,0,sizeof *out);if(!h)return;out->nodes=(unsigned)h->package.count;out->resources=(unsigned)h->package.resource_count;for(size_t i=0;i<h->package.count;i++){switch(h->package.nodes[i].kind){case 1:out->images++;break;case 2:out->texts++;break;case 5:out->groups++;break;}}out->fonts=(unsigned)h->font_count;for(size_t i=0;i<h->font_count;i++)if(h->fonts[i].atlas.id)out->original_atlases++;out->gauge_targets=h->speed>=0&&h->gear>=0&&h->needle>=0&&h->unit>=0;out->map_targets=h->mapnode>=0&&h->masknode>=0&&h->north>=0&&h->player>=0&&h->border>=0;out->track_metadata=h->track_ok;out->resource_resolved=h->resolved;out->resource_drawn=h->drawn;}
 
-enum {
-    ART_BACKING, ART_TACH_BACK, ART_TACH_ARC, ART_TACH_FILL,
-    ART_NOS_BAR, ART_NOS_OVERLAY,
-    ART_MAP_MASK, ART_MAP_BORDER, ART_MAP_BACK, ART_MAP_CAR, ART_MAP_NORTH,
-    ART_MAP_GPS, ART_MAP_START, ART_MAP_SAFEHOUSE, ART_MAP_CIRCUIT,
-    ART_ARROW, ART_CINGULAR_LOGO, ART_CINGULAR_SLOGAN,
-    ART_ENGAGE_BACKING, ART_ENGAGE_PHONE, ART_ENGAGE_CINGULAR,
-    ART_DRAG_BACK,ART_DRAG_ARC7,ART_DRAG_ARC8,ART_DRAG_ARC9,ART_DRAG_ARC10,
-    ART_DRAG_NEEDLE,ART_DRAG_HEAT,ART_DRAG_SHIFT,ART_DRIFT_SCORE,
-    ART_COUNT
-};
+int hud_map_pick(float x,float y,int w,int h,const HudState*s,float*wx,float*wy){return hud_baseline_map_pick(x,y,w,h,s,wx,wy);}
 
-/* Arc geometry MEASURED from the shipped TACH_NOS_ALPHA art at load time,
- * in art-normalised coordinates (0..1 across the record, y up from its
- * bottom edge). Guessing that the arc is a semicircle centred on the art's
- * bottom-centre puts the needle pivot visibly outside the dial: the shipped
- * arc is neither centred nor a half-turn. */
-struct HudArc {
-    int   ok;
-    float cx, cy, r;      /* fitted circle, fractions of the art's WIDTH */
-    float a0, a1;         /* sweep start/end in radians, a0 = the low end */
-};
+int hud_catalog_has(const unsigned char*data,size_t len,uint32_t key){Pack p={0};catalog(&p,data,len,0);int found=0;for(size_t i=0;i<p.slot_count;i++)if(slot_present(p.slots+i,key)){found=1;break;}free(p.slots);return found;}
 
-struct Hud {
-    HudArt art[ART_COUNT];
-    int    preview;
-    char   missing[512];
-    /* Current needle sample; animation state for the other HUD elements. */
-    float  needle_rpm, nos_glow, arrow_angle;
-    int    arrow_primed;
-};
-
-/* Source containers, tried in order. Every key is looked up in each until one
-   answers, so a record moving between the shipped packs is not fatal. */
-static const char *HUD_PACKS[] = {
-    "GLOBAL/InGameCommon.bun",
-    "GLOBAL/InGameRace.bun",
-    "GLOBAL/InGameDrag.bun",
-    "GLOBAL/InGameDrift.bun",
-    "GLOBAL/HUD_CustomTextures_ALL.bin",
-};
-enum { HUD_NPACK = (int)(sizeof HUD_PACKS / sizeof HUD_PACKS[0]) };
-
-static void hud_art_define(Hud *h, int slot, const char *name, uint32_t key) {
-    h->art[slot].name = name; h->art[slot].key = key; h->art[slot].tex = 0;
-}
-
-/* Least-squares circle through the arc's opaque texels (Kasa fit), plus the
- * angular sweep taken from the largest empty gap around that circle. Both come
- * from the art, so the needle pivots where the dial actually pivots. */
-static void hud_measure_arc(const N2Tex *t, struct HudArc *out) {
-    out->ok = 0;
-    if (!t->alpha || t->w < 8 || t->h < 8) return;
-    double Sxx=0,Sxy=0,Syy=0,Sx=0,Sy=0,Sxz=0,Syz=0,Sz=0; long n=0;
-    for (int y = 0; y < t->h; y++)
-        for (int x = 0; x < t->w; x++) {
-            if (t->alpha[(long)y * t->w + x] < 160) continue;
-            /* normalise by WIDTH on both axes so the fit stays circular, and
-               flip y so it runs up from the art's bottom edge */
-            double px = (x + 0.5) / (double)t->w;
-            double py = (t->h - 0.5 - y) / (double)t->w;
-            double z = px*px + py*py;
-            Sxx += px*px; Sxy += px*py; Syy += py*py;
-            Sx += px; Sy += py; Sxz += px*z; Syz += py*z; Sz += z; n++;
-        }
-    if (n < 64) return;
-    double N = (double)n;
-    /* normal equations for z + D*px + E*py + F = 0 */
-    double A[3][4] = {
-        { Sxx, Sxy, Sx, -Sxz },
-        { Sxy, Syy, Sy, -Syz },
-        { Sx,  Sy,  N,  -Sz  },
-    };
-    for (int c = 0; c < 3; c++) {                 /* Gaussian elimination */
-        int piv = c;
-        for (int r2 = c + 1; r2 < 3; r2++)
-            if (fabs(A[r2][c]) > fabs(A[piv][c])) piv = r2;
-        if (fabs(A[piv][c]) < 1e-12) return;
-        if (piv != c) for (int k = 0; k < 4; k++) {
-            double tmp = A[c][k]; A[c][k] = A[piv][k]; A[piv][k] = tmp; }
-        for (int r2 = 0; r2 < 3; r2++) {
-            if (r2 == c) continue;
-            double f = A[r2][c] / A[c][c];
-            for (int k = c; k < 4; k++) A[r2][k] -= f * A[c][k];
-        }
-    }
-    double D = A[0][3] / A[0][0], E = A[1][3] / A[1][1], F = A[2][3] / A[2][2];
-    double cx = -D * 0.5, cy = -E * 0.5;
-    double rr = cx*cx + cy*cy - F;
-    if (rr <= 1e-9) return;
-    double r = sqrt(rr);
-    if (r < 0.05 || r > 4.0) return;
-
-    /* angular occupancy, 1-degree bins, to find where the arc is NOT */
-    unsigned char bin[360]; memset(bin, 0, sizeof bin);
-    for (int y = 0; y < t->h; y++)
-        for (int x = 0; x < t->w; x++) {
-            if (t->alpha[(long)y * t->w + x] < 160) continue;
-            double px = (x + 0.5) / (double)t->w;
-            double py = (t->h - 0.5 - y) / (double)t->w;
-            double a = atan2(py - cy, px - cx) * 180.0 / M_PI;
-            if (a < 0) a += 360.0;
-            int b = (int)a; if (b >= 0 && b < 360) bin[b] = 1;
-        }
-    int best_len = 0, best_start = -1, run = 0, run_start = 0;
-    for (int i = 0; i < 720; i++) {          /* two turns: handles the wrap */
-        int b = i % 360;
-        if (!bin[b]) { if (!run) run_start = b; run++;
-                       if (run > best_len && run <= 360) { best_len = run; best_start = run_start; } }
-        else run = 0;
-    }
-    if (best_len < 20 || best_len > 340) return;   /* not an arc */
-    /* the sweep is the complement of the gap, travelled clockwise */
-    double gap_end = (best_start + best_len) % 360;      /* arc CCW start */
-    double gap_start = best_start;                       /* arc CCW end   */
-    double a1 = gap_end, a0 = gap_start;
-    while (a0 < a1) a0 += 360.0;                 /* a0 (zero RPM) is CW-first */
-    out->cx = (float)cx; out->cy = (float)cy; out->r = (float)r;
-    out->a0 = (float)(a0 * M_PI / 180.0);
-    out->a1 = (float)(a1 * M_PI / 180.0);
-    out->ok = 1;
-}
-
-/* Upload one decoded record with HUD-appropriate sampling. Clamping matters:
-   these are sprites on a transparent field, and REPEAT bleeds the opposite
-   edge into the border of every rotated element. */
-static GLuint hud_upload(const N2Tex *t) {
-    GLuint id = upload_tpk_texture_to_gpu(t);
-    if (!id) return 0;
-    glBindTexture(GL_TEXTURE_2D, id);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    return id;
-}
-
-Hud *hud_init(const char *dataroot) {
-    Hud *h = (Hud *)calloc(1, sizeof *h);
-    if (!h) return NULL;
-    if (!dataroot) dataroot = ".";
-
-    hud_art_define(h, ART_BACKING,        "SS_HUDBACKING",           0xe3af0cd4u);
-    hud_art_define(h, ART_TACH_BACK,      "TACH_NOS_BACKING",        0xa9e53dbcu);
-    hud_art_define(h, ART_TACH_ARC,       "TACH_NOS_ALPHA",          0x04575433u);
-    hud_art_define(h, ART_TACH_FILL,      "TACH_FILL_CUSTOM_00",     0x4738197eu);
-    hud_art_define(h, ART_NOS_BAR,        "SS_NOS",                  0x7ab54f94u);
-    hud_art_define(h, ART_NOS_OVERLAY,    "SS_NOS_OVERLAY",          0x59d6e695u);
-    hud_art_define(h, ART_MAP_MASK,       "MINIMAP_MASK",            0x40cdc515u);
-    hud_art_define(h, ART_MAP_BORDER,     "MINIMAP_BORDER",          0x92a75587u);
-    hud_art_define(h, ART_MAP_BACK,       "MAPBACK",                 0xd86eb8ceu);
-    hud_art_define(h, ART_MAP_CAR,        "MINIMAP_ICON_CAR",        0xada85247u);
-    hud_art_define(h, ART_MAP_NORTH,      "MINIMAP_NORTH_INDICATOR", 0xf2a54430u);
-    hud_art_define(h, ART_MAP_GPS,        "MINIMAP_GPS_SELECTOR",    0xe2848973u);
-    hud_art_define(h, ART_MAP_START,      "MINIMAP_ICON_START_LINE", 0x059b3ec6u);
-    hud_art_define(h, ART_MAP_SAFEHOUSE,  "MINIMAP_ICON_SAFE_HOUSE", 0x2cfd5273u);
-    hud_art_define(h, ART_MAP_CIRCUIT,    "MINIMAP_ICON_CIRCUIT",    0x25559384u);
-    hud_art_define(h, ART_ARROW,          "ARROW_MARKERA",           0x985c190cu);
-    hud_art_define(h, ART_CINGULAR_LOGO,  "HUD_CINGULAR_LOGO",       0x67a76a24u);
-    hud_art_define(h, ART_CINGULAR_SLOGAN,"HUD_CINGULAR_SLOGAN",     0xff4c9fb7u);
-    hud_art_define(h, ART_ENGAGE_BACKING, "ENGAGE_BACKING",          0x99f665f4u);
-    hud_art_define(h, ART_ENGAGE_PHONE,   "ENGAGE_PHONE_ICON",       0x6fff0767u);
-    hud_art_define(h, ART_ENGAGE_CINGULAR,"ENGAGE_CINGULAR_ICON",    0xea570722u);
-
-    hud_art_define(h,ART_DRAG_BACK,"DRAG_RPM_BACKING",0x57046cd9u);
-    hud_art_define(h,ART_DRAG_ARC7,"DRAG_RPM_7000_LINES",0x0764b24bu);
-    hud_art_define(h,ART_DRAG_ARC8,"DRAG_RPM_8000_LINES",0x0b6f436cu);
-    hud_art_define(h,ART_DRAG_ARC9,"DRAG_RPM_9000_LINES",0x0f79d48du);
-    hud_art_define(h,ART_DRAG_ARC10,"DRAG_RPM_10000_LINES",0xde634915u);
-    hud_art_define(h,ART_DRAG_NEEDLE,"DRAG_RPM_NEEDLE",0x93476737u);
-    hud_art_define(h,ART_DRAG_HEAT,"DRAG_HEAT_FILL",0x37bd6804u);
-    hud_art_define(h,ART_DRAG_SHIFT,"DRAG_SHIFT_LIGHT",0x87e1ce11u);
-    hud_art_define(h,ART_DRIFT_SCORE,"DRIFT_STYLE_POINTS_BACK",0x51052532u);
-    for (int p = 0; p < HUD_NPACK; p++) {
-        char path[1024];
-        snprintf(path, sizeof path, "%s/%s", dataroot, HUD_PACKS[p]);
-        long len = 0;
-        unsigned char *d = n2_read_file(path, &len);
-        if (!d) continue;
-        N2Tpk tpk = n2_tpk_open(d, len);
-        for (int a = 0; a < ART_COUNT; a++) {
-            if (h->art[a].tex) continue;             /* an earlier pack had it */
-            N2Tex t;
-            if (!n2_tpk_decode(d, len, tpk, h->art[a].key, &t)) continue;
-            /* A record can decode to garbage -- ARROW_MARKERA in InGameCommon
-               does exactly that. Shipping it would put a block of coloured
-               noise at the top of the screen and call it a navigation arrow.
-               n2_tex_noise is tuned for world textures and is deliberately
-               conservative (it must not throw away sign faces again), and this
-               noise is too dark to trip it; UI art needs its own, measured
-               test. The element then falls back to a plainly non-retail
-               drawing and is named in hud_missing(). */
-            if (hud_art_run_fraction(t.rgb, t.w, t.h) < HUD_ART_RUN_MIN) {
-                free(t.rgb); free(t.alpha); free(t.dxt);
-                h->art[a].rejected = 1;
-                continue;
-            }
-            h->art[a].tex = hud_upload(&t);
-            h->art[a].w = t.w; h->art[a].h = t.h;
-            /* Every dial's geometry comes from its own art: the shipped
-               records put the circle CENTRE OUTSIDE the texture (the drag
-               tach's is 1.34 widths to the right), so nothing can be placed
-               by eye. */
-            { struct HudArc fit = {0}; hud_measure_arc(&t, &fit);
-              h->art[a].arc.ok = fit.ok; h->art[a].arc.cx = fit.cx;
-              h->art[a].arc.cy = fit.cy; h->art[a].arc.r  = fit.r;
-              h->art[a].arc.a0 = fit.a0; h->art[a].arc.a1 = fit.a1; }
-            free(t.rgb); free(t.alpha); free(t.dxt);
-        }
-        free(d);
-    }
-    for (int a = 0; a < ART_COUNT; a++)
-        if (!h->art[a].tex) {
-            size_t used = strlen(h->missing);
-            snprintf(h->missing + used, sizeof h->missing - used,
-                     "%s%s%s", used ? " " : "", h->art[a].name,
-                     h->art[a].rejected ? "(decodes to noise)" : "(absent)");
-        }
-    {   static const int dials[1] = { ART_TACH_ARC };
-        for (int i = 0; i < 1; i++) {
-            const HudArt *a = &h->art[dials[i]];
-            if (a->arc.ok)
-                printf("player HUD: %-22s centre (%.3f, %.3f)w r %.3fw "
-                       "sweep %.0f..%.0f deg\n", a->name, a->arc.cx, a->arc.cy,
-                       a->arc.r, a->arc.a0 * 180.0f / (float)M_PI,
-                       a->arc.a1 * 180.0f / (float)M_PI);
-            else printf("player HUD: %-22s no usable arc fit\n", a->name);
-        }
-    }
-    h->needle_rpm = 0.0f;
-    return h;
-}
-
-void hud_free(Hud **hp) {
-    if (!hp || !*hp) return;
-    Hud *h = *hp;
-    for (int a = 0; a < ART_COUNT; a++)
-        if (h->art[a].tex) glDeleteTextures(1, &h->art[a].tex);
-    free(h);
-    *hp = NULL;
-}
-
-void hud_set_preview(Hud *h, int on) { if (h) h->preview = on ? 1 : 0; }
-int  hud_preview(const Hud *h) { return h ? h->preview : 0; }
-const char *hud_missing(const Hud *h) { return h ? h->missing : ""; }
-
-/* ----------------------------------------------------------------- drawing */
-
-typedef struct { const RProg *rp; GpuMesh *quad; float asp; } HudDC;
-
-/* Place the unit quad (local 0..1) as a rotated rectangle centred at (cx,cy)
- * NDC, sized (w,h) in HUD units. Width is divided by the aspect so a square
- * stays square at 16:9 and at 4:3 alike — the whole reason the layout is
- * authored in units rather than NDC. */
-static void hud_xform(float asp, float w, float h, float cx, float cy,
-                      float rot, float *M) {
-    /* Texture rows run top-down but the quad's v=0 corner is at the BOTTOM, so
-       every sprite would render upside down. Negating the height maps v=0 to
-       the top instead, which is also the right handedness for rotation: local
-       +v then points "down the image", as the art is authored. */
-    h = -h;
-    float wx = w / asp, c = cosf(rot), s = sinf(rot);
-    /* rotation happens in SCREEN space, so the x component is un-squashed,
-       rotated, then re-squashed; otherwise a rotated icon shears at 4:3. */
-    M[0] = wx * c;        M[1] = w * s;    M[2] = 0; M[3] = 0;
-    M[4] = -h * s / asp;  M[5] = h * c;    M[6] = 0; M[7] = 0;
-    M[8] = 0; M[9] = 0;   M[10] = 1;       M[11] = 0;
-    M[12] = cx - 0.5f * (M[0] + M[4]);
-    M[13] = cy - 0.5f * (M[1] + M[5]);
-    M[14] = 0; M[15] = 1;
-}
-
-/* Two different shader branches, and picking the wrong one is silent:
- * uUnlit outputs uColor and NEVER samples the texture, so a sprite drawn
- * through it is a flat filled rectangle. uEmissiveTex is the textured unlit
- * path -- t.rgb * uColor with alpha t.a * uAlpha -- which is exactly an
- * alpha-blended HUD sprite tinted by uColor. */
-static void hud_blit(const HudDC *dc, GLuint tex, float w, float h,
-                     float cx, float cy, float rot,
-                     float r, float g, float b, float a) {
-    if (a <= 0.0f) return;
-    float M[16];
-    hud_xform(dc->asp, w, h, cx, cy, rot, M);
-    glUniformMatrix4fv(dc->rp->uMVP, 1, GL_FALSE, M);
-    if (tex) {
-        glBindTexture(GL_TEXTURE_2D, tex);
-        glUniform1f(dc->rp->uUseTex, 1.0f);
-        glUniform1f(dc->rp->uEmissiveTex, 1.0f);
-        glUniform1f(dc->rp->uUnlit, 0.0f);
-    } else {
-        glUniform1f(dc->rp->uUseTex, 0.0f);
-        glUniform1f(dc->rp->uEmissiveTex, 0.0f);
-        glUniform1f(dc->rp->uUnlit, 1.0f);
-    }
-    glUniform3f(dc->rp->uColor, r, g, b);
-    glUniform1f(dc->rp->uAlpha, a);
-    draw_gpumesh(dc->quad);
-}
-
-/* `size` is the CAP HEIGHT of the text in HUD units. draw_text's px/py are the
- * size of one font cell and the glyph is 5 cells tall, hence the /5 -- passing
- * the cap height straight through makes every label five times too big. */
-static void hud_label(const HudDC *dc, const char *s, float cx, float cy,
-                      float size, float r, float g, float b, float a) {
-    float py = size / 5.0f, px = py / dc->asp;
-    glUniform1f(dc->rp->uUseTex, 0.0f);
-    glUniform1f(dc->rp->uEmissiveTex, 0.0f);
-    glUniform1f(dc->rp->uUnlit, 1.0f);
-    glUniform3f(dc->rp->uColor, r, g, b);
-    glUniform1f(dc->rp->uAlpha, a);
-    /* draw_text takes a TOP-LEFT origin; centre the run on (cx,cy). */
-    draw_text(dc->quad, dc->rp->uMVP, s,
-              cx - (float)strlen(s) * 2.0f * px, cy + 2.5f * py, px, py);
-}
-
-/* --------------------------------------------------------- gauge cluster */
-
-/* Cluster size, in HUD units (1 unit = half the screen height). The arc art
- * is 2:1, and everything else is derived from its MEASURED circle. */
-#define TACH_W   0.84f
-#define TACH_H   0.42f
-
-
-/* Sweep an angle across a measured arc. frac 0 = a0 end, 1 = a1 end. */
-static float hud_arc_angle(const HudArt *a, float frac, float fb0, float fb1) {
-    if (frac < 0.0f) frac = 0.0f;
-    if (frac > 1.0f) frac = 1.0f;
-    float a0 = a->arc.ok ? a->arc.a0 : fb0 * (float)M_PI / 180.0f;
-    float a1 = a->arc.ok ? a->arc.a1 : fb1 * (float)M_PI / 180.0f;
-    return a0 + frac * (a1 - a0);
-}
-
-
-static void hud_draw_cluster(Hud *h, const HudDC *dc, const HudState *s) {
-    /* Standard third-person cluster. The rev arc is the anchor; the N2O bar
-       hangs below it and disappears entirely when no nitrous is fitted, so
-       removing it leaves everything else exactly where it was.
-
-       There is deliberately NO boost dial here. The only turbo art in the game
-       is DRAG_TURBO_* inside GLOBAL/InGameDrag.bun, which belongs to the drag
-       HUD and is out of scope for this one; and no turbo system exists to
-       drive it either. Both reasons point the same way, so the gauge is
-       absent rather than dead. */
-    float cx, cy;
-    hud_place(dc->asp, 1.0f, -1.0f, -0.52f, 0.56f, &cx, &cy);
-    const HudArt *arc = &h->art[ART_TACH_ARC];
-    float pivx = cx, pivy = cy - TACH_H * 0.5f, arc_r = TACH_W * 0.42f;
-    if (arc->arc.ok) {
-        pivx = cx + (arc->arc.cx - 0.5f) * TACH_W / dc->asp;
-        pivy = cy - TACH_H * 0.5f + arc->arc.cy * TACH_W;
-        arc_r = arc->arc.r * TACH_W;
-    }
-
-    hud_blit(dc, h->art[ART_TACH_FILL].tex, arc_r * 1.70f, arc_r * 1.70f,
-             pivx, pivy, 0.0f, 1.0f, 1.0f, 1.0f, 0.28f);
-    hud_blit(dc, h->art[ART_TACH_BACK].tex, TACH_W, TACH_H, cx, cy,
-             0.0f, 1.0f, 1.0f, 1.0f, 0.85f);
-
-    float scale = s->rpm_maximum > 0 ? s->rpm_maximum : s->rpm_redline;
-    h->needle_rpm = hud_tach_fraction(s, scale);
-    const int SEG = 48;
-    for (int i = 0; i < SEG; i++) {
-        float f0 = (float)i / SEG;
-        if (f0 > h->needle_rpm) break;
-        float a = hud_arc_angle(arc, f0, 181.0f, 29.0f), rr = arc_r * 0.80f;
-        int hot = f0 > 0.82f;
-        hud_blit(dc, 0, arc_r * 0.10f, arc_r * 0.10f,
-                 pivx + cosf(a) * rr / dc->asp, pivy + sinf(a) * rr, a,
-                 hot ? 1.0f : 0.35f, hot ? 0.18f : 0.82f, hot ? 0.12f : 1.0f, 0.90f);
-    }
-    hud_blit(dc, arc->tex, TACH_W, TACH_H, cx, cy, 0.0f, 1.0f, 1.0f, 1.0f, 0.95f);
-
-    /* needle: no needle sprite ships in the non-drag packs, so this one is
-       drawn. It is the only part of the dial that is not retail art. */
-    {   float a = hud_arc_angle(arc, h->needle_rpm, 181.0f, 29.0f);
-        float len = arc_r * 0.86f;
-        hud_blit(dc, 0, len, arc_r * 0.048f,
-                 pivx + cosf(a) * len * 0.5f / dc->asp,
-                 pivy + sinf(a) * len * 0.5f, a, 0.95f, 0.16f, 0.12f, 0.95f);
-        hud_blit(dc, 0, arc_r * 0.15f, arc_r * 0.15f, pivx, pivy, 0.0f,
-                 0.10f, 0.10f, 0.12f, 0.95f);
-    }
-
-    char buf[64];
-    snprintf(buf, sizeof buf, "%d", hud_speed_value(s->speed_kmh, s->imperial_units));
-    hud_label(dc, buf, pivx, pivy + arc_r * 0.52f, 0.072f, 0.85f, 0.95f, 1.0f, 1.0f);
-    hud_label(dc, s->imperial_units ? "MPH" : "KMH", pivx, pivy + arc_r * 0.22f,
-              0.026f, 0.55f, 0.70f, 0.80f, 1.0f);
-    if (s->have_rpm) {
-        if (s->gear < 0)       snprintf(buf, sizeof buf, "R");
-        else if (s->gear == 0) snprintf(buf, sizeof buf, "N");
-        else                   snprintf(buf, sizeof buf, "%d", s->gear);
-        hud_label(dc, buf, pivx + arc_r * 0.62f, pivy + arc_r * 0.20f, 0.070f,
-                  1.0f, 0.55f, 0.12f, 1.0f);
-    }
-
-    /* ---- N2O bar: present only when nitrous is FITTED ---- */
-    if (hud_shows_nos(s)) {
-        float bx, by;
-        hud_place(dc->asp, 1.0f, -1.0f, -0.52f, 0.235f, &bx, &by);
-        hud_blit(dc, h->art[ART_NOS_BAR].tex, 0.62f, 0.078f, bx, by,
-                 0.0f, 0.35f, 0.38f, 0.45f, 0.85f);
-        float fill = s->have_nitro_tank ? s->nitro_tank
-                                        : (s->nitro_active ? 1.0f : 0.0f);
-        if (fill < 0.0f) fill = 0.0f;
-        if (fill > 1.0f) fill = 1.0f;
-        h->nos_glow += ((s->nitro_active ? 1.0f : 0.0f) - h->nos_glow) * 0.25f;
-        if (fill > 0.001f) {
-            float w = 0.60f * fill;
-            hud_blit(dc, h->art[ART_NOS_OVERLAY].tex, w, 0.064f,
-                     bx - (0.60f - w) * 0.5f, by, 0.0f,
-                     0.35f + 0.6f * h->nos_glow, 0.75f + 0.25f * h->nos_glow,
-                     1.0f, 0.55f + 0.45f * h->nos_glow);
-        }
-        if (!s->have_nitro_tank)
-            hud_label(dc, s->nitro_active ? "NOS ON" : "NOS", bx, by,
-                      0.030f, 0.60f, 0.78f, 0.90f, 0.90f);
-    }
-}
-
-/* ---------------------------------------------------------------- minimap */
-
-#define MAP_R     0.30f    /* panel radius, HUD units */
-#define MAP_VIEW  260.0f   /* world metres from centre to panel edge */
-
-/* One definition of where the panel sits, shared by the draw and the pick so
-   they can never drift apart. */
-static void hud_map_center(float asp, float *cx, float *cy) {
-    hud_place(asp, -1.0f, -1.0f, 0.38f, 0.38f, cx, cy);
-}
-
-/* Drag's tall tach uses its own source art and fitted needle pivot. */
-static void hud_draw_drag(Hud *h,const HudDC *dc,const HudState *s) {
-    float cx,cy;hud_place(dc->asp,1,-1,-.65f,.62f,&cx,&cy);
-    int index=s->rpm_redline<=7000 ? 0 : s->rpm_redline<=8000 ? 1 : s->rpm_redline<=9000 ? 2 : 3;
-    const HudArt *arc=&h->art[ART_DRAG_ARC7+index];float width=.45f,height=.9f;
-    hud_blit(dc,h->art[ART_DRAG_BACK].tex,width,height,cx,cy,0,1,1,1,.9f);
-    hud_blit(dc,arc->tex,width,height,cx,cy,0,1,1,1,1);
-    float px=cx+(arc->arc.ok?arc->arc.cx-.5f:.5f)*width/dc->asp;
-    float py=cy-height*.5f+(arc->arc.ok?arc->arc.cy:1)*width;
-    float radius=arc->arc.ok?arc->arc.r*width:width*.75f;
-    h->needle_rpm=hud_tach_fraction(s,(float)(7000+index*1000));
-    float angle=hud_arc_angle(arc,h->needle_rpm,150,30),length=radius*.85f;
-    hud_blit(dc,h->art[ART_DRAG_NEEDLE].tex,length,.035f,
-        px+cosf(angle)*length*.5f/dc->asp,py+sinf(angle)*length*.5f,angle,1,1,1,1);
-    hud_blit(dc,h->art[ART_DRAG_SHIFT].tex,.08f,.08f,cx,cy+.45f,0,
-        1,s->shift_ready?.9f:.25f,.1f,s->shift_ready?1:.25f);
-    float heat=fmaxf(0,fminf(1,s->engine_heat));
-    if(heat>0)hud_blit(dc,h->art[ART_DRAG_HEAT].tex,.08f,.5f*heat,
-        cx-.35f/dc->asp,cy-.25f+.25f*heat,0,1,.3f,.1f,1);
-    char buf[64];snprintf(buf,sizeof buf,"%d",s->gear);
-    hud_label(dc,buf,px,py,.12f,1,1,1,1);
-    snprintf(buf,sizeof buf,"%d %s",hud_speed_value(s->speed_kmh,s->imperial_units),
-             s->imperial_units?"MPH":"KMH");
-    hud_label(dc,buf,cx,cy+.52f,.055f,.7f,.9f,1,1);
-    if(s->have_nos)hud_label(dc,s->nitro_active?"NOS ACTIVE":"NOS N/A",cx,cy-.53f,.04f,.3f,.8f,1,1);
-}
-
-static float hud_map_rot(const HudState *s) {
-    return (float)M_PI * 0.5f - s->car_heading;
-}
-
-int hud_map_pick(float ndc_x, float ndc_y,
-                 int width, int height, const HudState *s,
-                 float *wx, float *wy) {
-    if (!s || !wx || !wy || width <= 0 || height <= 0) return 0;
-    float asp = (float)width / (float)height, cx, cy;
-    hud_map_center(asp, &cx, &cy);
-    /* NDC -> normalised panel coordinates (the exact inverse of the draw) */
-    float mx = (ndc_x - cx) * asp / MAP_R, my = (ndc_y - cy) / MAP_R;
-    if (mx * mx + my * my > 1.0f) return 0;          /* outside the round panel */
-    float rot = hud_map_rot(s), c = cosf(-rot), sn = sinf(-rot);
-    float dx = mx * c - my * sn, dy = mx * sn + my * c;
-    *wx = s->car_x + dx * MAP_VIEW;
-    *wy = s->car_y + dy * MAP_VIEW;
-    return 1;
-}
-
-static void hud_draw_minimap(Hud *h, const HudDC *dc, const HudState *s) {
-    float cx, cy;
-    hud_map_center(dc->asp, &cx, &cy);
-
-    /* Heading-up, like the original: the world rotates so the car's forward
-       axis points at the top of the panel. World heading 0 = +X, and "up" on
-       the panel is +Y, hence the quarter-turn offset. */
-    float rot = hud_map_rot(s);
-    const float view = s->map_radius_m > 1.0f ? s->map_radius_m : MAP_VIEW;
-
-    /* MINIMAP_MASK is a filled disc, not a vignette: it IS the panel body, so
-       it goes underneath and no square backing is needed (one would show its
-       corners outside the ring). MAPBACK is a flat tint tile, laid inside. */
-    hud_blit(dc, h->art[ART_MAP_BACK].tex, MAP_R * 1.40f, MAP_R * 1.40f,
-             cx, cy, 0.0f, 1.0f, 1.0f, 1.0f, 0.55f);
-    hud_blit(dc, h->art[ART_MAP_MASK].tex, MAP_R * 2.0f, MAP_R * 2.0f,
-             cx, cy, 0.0f, 0.06f, 0.08f, 0.11f, 0.82f);
-
-    /* Everything inside the panel is projected through the same measured
-       transform: world metres -> normalised panel -> NDC. No per-district
-       constants; MAP_VIEW is a zoom level, not a fitted offset. */
-    #define MAP_PT(wx, wy, outx, outy, inside) do {                         \
-        float _mx, _my;                                                     \
-        hud_map_project((wx), (wy), s->car_x, s->car_y, view, rot,          \
-                        &_mx, &_my);                                        \
-        (inside) = (_mx*_mx + _my*_my) < 0.92f * 0.92f;                     \
-        (outx) = cx + _mx * MAP_R / dc->asp;                                \
-        (outy) = cy + _my * MAP_R;                                          \
-    } while (0)
-
-    /* free-roam road network: dots, cheap and cullable */
-    if (!s->racing && s->nav_xy && s->nav_n > 0) {
-        int drawn = 0;
-        for (int i = 0; i < s->nav_n && drawn < 900; i++) {
-            float px, py; int in;
-            MAP_PT(s->nav_xy[i*2], s->nav_xy[i*2+1], px, py, in);
-            if (!in) continue;
-            hud_blit(dc, 0, 0.012f, 0.012f, px, py, 0.0f,
-                     0.40f, 0.46f, 0.55f, 0.85f);
-            drawn++;
-        }
-    }
-    /* race route: an ordered polyline, so draw real segments. A circuit's
-       last gate joins back to its first, which is why route_loop exists --
-       otherwise the lap has a visible gap across the start line. */
-    if (s->route_xy && s->route_n > 1) {
-        const float RIM = 0.92f;
-        int segs = s->route_loop ? s->route_n : s->route_n - 1;
-        for (int i = 0; i < segs; i++) {
-            int j = (i + 1) % s->route_n;
-            float p0x, p0y, p1x, p1y;
-            hud_map_project(s->route_xy[i*2], s->route_xy[i*2+1],
-                            s->car_x, s->car_y, view, rot, &p0x, &p0y);
-            hud_map_project(s->route_xy[j*2], s->route_xy[j*2+1],
-                            s->car_x, s->car_y, view, rot, &p1x, &p1y);
-            /* CLIP, do not cull: a leg longer than the window has BOTH ends
-               outside while still crossing it, and dropping those is what
-               leaves the race minimap blank on a long circuit. */
-            float ex = p1x - p0x, ey = p1y - p0y;
-            float aq = ex*ex + ey*ey;
-            if (aq < 1e-12f) continue;
-            float bq = 2.0f * (p0x*ex + p0y*ey);
-            float cq = p0x*p0x + p0y*p0y - RIM*RIM;
-            float disc = bq*bq - 4.0f*aq*cq;
-            if (disc < 0.0f) continue;                  /* misses the panel */
-            float sq = sqrtf(disc);
-            float t0 = (-bq - sq) / (2.0f*aq), t1 = (-bq + sq) / (2.0f*aq);
-            if (t0 < 0.0f) t0 = 0.0f;
-            if (t1 > 1.0f) t1 = 1.0f;
-            if (t1 <= t0) continue;                     /* outside [0,1] */
-            float c0x = p0x + ex*t0, c0y = p0y + ey*t0;
-            float c1x = p0x + ex*t1, c1y = p0y + ey*t1;
-            float ax = cx + c0x * MAP_R / dc->asp, ay = cy + c0y * MAP_R;
-            float bx = cx + c1x * MAP_R / dc->asp, by = cy + c1y * MAP_R;
-            float dx = (bx - ax) * dc->asp, dy = by - ay;
-            float len = sqrtf(dx*dx + dy*dy);
-            if (len < 1e-5f) continue;
-            hud_blit(dc, 0, len, 0.020f, (ax+bx)*0.5f, (ay+by)*0.5f,
-                     atan2f(dy, dx), 0.30f, 0.80f, 1.0f, 0.95f);
-        }
-    }
-    /* the armed gate: the one checkpoint that actually counts next */
-    if (s->route_xy && s->route_next >= 0 && s->route_next < s->route_n) {
-        float px, py; int in;
-        MAP_PT(s->route_xy[s->route_next*2], s->route_xy[s->route_next*2+1],
-               px, py, in);
-        if (in) hud_blit(dc, h->art[ART_MAP_START].tex, 0.060f, 0.060f,
-                         px, py, 0.0f, 1.0f, 0.92f, 0.35f, 1.0f);
-    }
-    /* destination marker, only while guidance is live */
-    if (s->nav_active) {
-        float px, py; int in;
-        MAP_PT(s->nav_target_x, s->nav_target_y, px, py, in);
-        if (!in) {   /* clamp to the rim so the player still gets a bearing */
-            float dx = px - cx, dy = py - cy;
-            float l = sqrtf(dx*dx*dc->asp*dc->asp + dy*dy);
-            if (l > 1e-5f) { px = cx + dx / l * MAP_R * 0.88f;
-                             py = cy + dy / l * MAP_R * 0.88f; }
-        }
-        hud_blit(dc, h->art[ART_MAP_GPS].tex, 0.075f, 0.075f, px, py, 0.0f,
-                 1.0f, 1.0f, 1.0f, 0.95f);
-    }
-    #undef MAP_PT
-
-    /* MINIMAP_BORDER holds ONE QUADRANT of the ring, with the ring's centre at
-       the art's bottom-right corner. The retail ring is that quadrant drawn
-       four times, each rotated a further 90 degrees about the panel centre. */
-    for (int k = 0; k < 4; k++) {
-        float th = -(float)k * (float)M_PI * 0.5f;
-        float bx = -MAP_R * 0.5f, by = MAP_R * 0.5f;
-        float c = cosf(th), sn = sinf(th);
-        float ox = bx * c - by * sn, oy = bx * sn + by * c;
-        hud_blit(dc, h->art[ART_MAP_BORDER].tex, MAP_R, MAP_R,
-                 cx + ox / dc->asp, cy + oy, th, 1.0f, 1.0f, 1.0f, 0.90f);
-    }
-    /* the car icon never rotates: the map turns under it */
-    hud_blit(dc, h->art[ART_MAP_CAR].tex, 0.070f, 0.070f, cx, cy, 0.0f,
-             1.0f, 1.0f, 1.0f, 1.0f);
-    /* north sits on the rim in the direction world north currently points */
-    hud_blit(dc, h->art[ART_MAP_NORTH].tex, 0.072f, 0.036f,
-             cx + cosf(rot + (float)M_PI * 0.5f) * MAP_R * 0.84f / dc->asp,
-             cy + sinf(rot + (float)M_PI * 0.5f) * MAP_R * 0.84f,
-             0.0f, 1.0f, 1.0f, 1.0f, 0.85f);
-}
-
-/* ------------------------------------------------------- navigation arrow */
-
-static void hud_draw_nav_arrow(Hud *h, const HudDC *dc, const HudState *s) {
-    if (!s->nav_active) { h->arrow_primed = 0; return; }
-    /* Relative bearing: where the next reachable route node lies compared to
-       where the car points. Guidance never points at the destination through
-       a building — nav_bearing comes from the solved route, not from the
-       straight line to the target. */
-    float want = hud_angle_delta(s->car_heading, s->nav_bearing);
-    if (!h->arrow_primed) { h->arrow_angle = want; h->arrow_primed = 1; }
-    else {
-        /* ease along the SHORT way round, so a turn through +/-pi does not
-           whip the arrow the wrong direction */
-        h->arrow_angle += hud_angle_delta(h->arrow_angle, want) * 0.20f;
-        h->arrow_angle = hud_angle_delta(0.0f, h->arrow_angle);
-    }
-    float ax, ay;
-    hud_place(dc->asp, 0.0f, 1.0f, 0.0f, -0.20f, &ax, &ay);   /* exact top centre */
-    /* Both angles are world bearings (CCW from +X), so a positive delta means
-       the target is CCW of the nose = to the LEFT. hud_xform's rot is also
-       CCW-positive, so the arrow angle passes straight through: negating it
-       here points the arrow at the mirror image of every turn. */
-    float rot = h->arrow_angle;
-    if (h->art[ART_ARROW].tex) {
-        /* the sprite points up at rot 0; a right turn must lean right */
-        hud_blit(dc, h->art[ART_ARROW].tex, 0.13f, 0.26f, ax, ay, rot,
-                 0.30f, 0.62f, 1.0f, 0.95f);
-    } else {
-        /* No usable arrow art ships in these packs, so this chevron is drawn,
-           not decoded. Two swept bars meeting at the tip -- deliberately plain,
-           so it is never mistaken for the original sprite. */
-        const float L = 0.115f, T = 0.032f, SPREAD = 0.70f;
-        /* forward is "up" at rot 0; screen y is up, so dir = (-sin, cos) */
-        float fx = -sinf(rot), fy = cosf(rot);
-        float tipx = ax + fx * L * 0.62f / dc->asp, tipy = ay + fy * L * 0.62f;
-        for (int side = -1; side <= 1; side += 2) {
-            /* each leg runs BACK from the tip, swept +/-SPREAD off the axis */
-            float c = cosf((float)side * SPREAD), sn = sinf((float)side * SPREAD);
-            float lx = -fx * c - -fy * sn, ly = -fx * sn + -fy * c;
-            float mx = tipx + lx * L * 0.5f / dc->asp, my = tipy + ly * L * 0.5f;
-            hud_blit(dc, 0, L, T, mx, my, atan2f(ly, lx),
-                     0.30f, 0.62f, 1.0f, 0.95f);
-        }
-        /* shaft, so the glyph reads as an arrow rather than a bare V */
-        hud_blit(dc, 0, L * 0.95f, T * 0.82f,
-                 ax - fx * L * 0.10f / dc->asp, ay - fy * L * 0.10f,
-                 atan2f(fy, fx), 0.30f, 0.62f, 1.0f, 0.95f);
-    }
-    if (s->nav_dist_m > 0.5f) {
-        char buf[32];
-        if (s->nav_dist_m >= 1000.0f)
-            snprintf(buf, sizeof buf, "%d KM", (int)(s->nav_dist_m / 1000.0f + 0.5f));
-        else
-            snprintf(buf, sizeof buf, "%d M", (int)(s->nav_dist_m + 0.5f));
-        hud_label(dc, buf, ax, ay - 0.175f, 0.040f, 0.55f, 0.80f, 1.0f, 0.95f);
-    }
-}
-
-/* ------------------------------------------------- race / money / message */
-
-static void hud_draw_status(const HudDC *dc, const HudState *s) {
-    char buf[96];
-    float x, y;
-    hud_place(dc->asp, 1.0f, 1.0f, -0.34f, -0.16f, &x, &y);
-
-    if (s->racing) {
-        /* money is hidden during a race, per the original */
-        if (s->cars > 1) {
-            snprintf(buf, sizeof buf, "POS %d/%d", s->position, s->cars);
-            hud_label(dc, buf, x, y, 0.070f, 1.0f, 0.95f, 0.80f, 1.0f);
-        }
-        hud_status_text(s, buf, sizeof buf);
-        if (buf[0])
-            hud_label(dc, buf, x, y - 0.095f, 0.052f, 0.85f, 0.92f, 1.0f, 1.0f);
-    } else if (hud_shows_money(s)) {
-        snprintf(buf, sizeof buf, "%ld", s->money);
-        hud_label(dc, "BANK", x, y, 0.040f, 0.60f, 0.72f, 0.85f, 1.0f);
-        hud_label(dc, buf, x, y - 0.085f, 0.065f, 1.0f, 0.92f, 0.55f, 1.0f);
-    } else {
-        /* No career/economy system exists yet. Name the gap instead of
-           printing a number that looks like a balance. */
-        hud_label(dc, "BANK", x, y, 0.040f, 0.60f, 0.72f, 0.85f, 0.9f);
-        hud_label(dc, "N/A",  x, y - 0.085f, 0.055f, 0.45f, 0.50f, 0.55f, 0.9f);
-    }
-}
-
-static void hud_draw_message(Hud *h, const HudDC *dc, const HudState *s) {
-    if (s->racing) return;          /* free roam only, as in the original */
-    float x, y;
-    hud_place(dc->asp, -1.0f, 1.0f, 0.30f, -0.13f, &x, &y);
-    hud_blit(dc, h->art[ART_ENGAGE_BACKING].tex, 0.46f, 0.20f, x, y, 0.0f,
-             1.0f, 1.0f, 1.0f, 0.80f);
-    hud_blit(dc, h->art[ART_CINGULAR_LOGO].tex, 0.26f, 0.13f, x, y + 0.025f,
-             0.0f, 1.0f, 1.0f, 1.0f, 0.95f);
-    hud_blit(dc, h->art[ART_CINGULAR_SLOGAN].tex, 0.24f, 0.06f, x, y - 0.055f,
-             0.0f, 1.0f, 1.0f, 1.0f, 0.85f);
-    /* The phone icon means "you have a message". Nothing in the engine can
-       produce one yet, so it is drawn only if something really sets the flag —
-       never on a timer to make the screenshot look busier. */
-    if (s->message_waiting)
-        hud_blit(dc, h->art[ART_ENGAGE_PHONE].tex, 0.075f, 0.075f,
-                 x + 0.19f, y + 0.06f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f);
-}
-
-/* ------------------------------------------------------------------ frame */
-
-void hud_draw(Hud *h, const RProg *rp, GpuMesh *quad,
-              const HudState *st, int width, int height) {
-    if (!h || !rp || !quad || !st || width <= 0 || height <= 0) return;
-
-    HudState s = *st;
-    if (h->preview) {           /* clearly-labelled sample values only */
-        s.have_rpm = 1; s.have_nitro_tank = 1; s.have_boost = 1; s.have_money = 1;
-        s.have_nos = 1; s.have_turbo = 1;   /* show the full cluster */
-        if (s.rpm_redline < 1.0f) s.rpm_redline = 8000.0f;
-        if (s.rpm <= 0.0f) s.rpm = 5200.0f;
-        if (s.speed_kmh <= 0.0f) s.speed_kmh = 137.0f;
-        if (s.gear == 0) s.gear = 4;
-        s.nitro_tank = 0.62f; s.boost = 0.4f; s.money = 250000;
-    }
-
-    HudDC dc; dc.rp = rp; dc.quad = quad; dc.asp = (float)width / (float)height;
-
-    /* --- enter 2D: save what we change so the world pass is untouched --- */
-    GLboolean depth_on = glIsEnabled(GL_DEPTH_TEST);
-    GLboolean blend_on = glIsEnabled(GL_BLEND);
-    GLint blend_src = GL_SRC_ALPHA, blend_dst = GL_ONE_MINUS_SRC_ALPHA;
-    glGetIntegerv(GL_BLEND_SRC_ALPHA, &blend_src);
-    glGetIntegerv(GL_BLEND_DST_ALPHA, &blend_dst);
-    GLboolean depth_mask = GL_TRUE;
-    glGetBooleanv(GL_DEPTH_WRITEMASK, &depth_mask);
-
-    glDisable(GL_DEPTH_TEST);
-    glDepthMask(GL_FALSE);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glUniform1f(rp->uUnlit, 1.0f);
-    glUniform1f(rp->uVColor, 0.0f);
-    /* both unlit branches mix toward uFogColor; a HUD quad's vPos is meaningless
-       so the only safe fog for it is none. Restored below. */
-    GLfloat fog_density = 0.0f;
-    glGetUniformfv(rp->prog, rp->uFogDensity, &fog_density);
-    glUniform1f(rp->uFogDensity, 0.0f);
-    glUniform1f(rp->uAlpha, 1.0f);
-    glUniform1f(rp->uDecal, 0.0f);
-    glUniform1f(rp->uAlphaTest, 0.0f);
-    glUniform1f(rp->uTextureAlpha, 1.0f);   /* HUD art is alpha-blended sprites */
-    glUniform1f(rp->uEmissiveTex, 0.0f);
-    glUniform1f(rp->uVista, 0.0f);
-    glUniform3f(rp->uEmissive, 0.0f, 0.0f, 0.0f);
-
-    hud_draw_minimap(h, &dc, &s);
-    if(s.racing && s.race_kind==N2_RACE_DRAG)hud_draw_drag(h,&dc,&s);
-    else hud_draw_cluster(h, &dc, &s);
-    if(s.racing && s.race_kind==N2_RACE_DRIFT) {
-        float x,y;hud_place(dc.asp,0,1,0,-.18f,&x,&y);
-        hud_blit(&dc,h->art[ART_DRIFT_SCORE].tex,.65f,.08f,x,y,0,1,1,1,.8f);
-        char score[80];snprintf(score,sizeof score,"%.0f  +%.0f",s.drift_score,s.drift_chain);
-        hud_label(&dc,score,x,y,.065f,1,.9f,.5f,1);
-    }
-    hud_draw_status(&dc, &s);
-    if (!s.racing) hud_draw_message(h, &dc, &s);
-    hud_draw_nav_arrow(h, &dc, &s);
-
-    if (h->preview) {
-        float px, py;
-        hud_place(dc.asp, 0.0f, -1.0f, 0.0f, 0.045f, &px, &py);
-        hud_label(&dc, "PREVIEW SAMPLE VALUES", px, py, 0.040f,
-                  1.0f, 0.55f, 0.25f, 1.0f);
-    }
-
-    /* --- restore --- */
-    glUniform1f(rp->uUseTex, 0.0f);
-    glUniform1f(rp->uUnlit, 0.0f);
-    glUniform1f(rp->uEmissiveTex, 0.0f);
-    glUniform1f(rp->uAlpha, 1.0f);
-    glUniform1f(rp->uTextureAlpha, 0.0f);
-    glUniform1f(rp->uFogDensity, fog_density);
-    glUniform3f(rp->uColor, 1.0f, 1.0f, 1.0f);
-    glDepthMask(depth_mask);
-    if (depth_on) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
-    if (blend_on) glEnable(GL_BLEND); else glDisable(GL_BLEND);
-    glBlendFunc((GLenum)blend_src, (GLenum)blend_dst);
+int hud_pick(Hud*h,float nx,float ny,float*wx,float*wy){
+ if(!h||!wx||!wy)return 0;
+ if(h->pick_race)return hud_baseline_map_pick(nx,ny,h->pick_frame.width,h->pick_frame.height,&h->pick_state,wx,wy);
+ HaMapFrame*f=&h->pick_frame;double screenx=(nx+1)*f->width*.5,screeny=(1-ny)*f->height*.5,result[2];if(!ha_map_pick(f,screenx,screeny,1,result)||!h->mask_alpha||h->masknode<0)return 0;
+ float zero[3]={0},one[3]={1,0,0},two[3]={0,1,0},o[3],x[3],y[3];ha_point(&h->package,(size_t)h->masknode,zero,o,0);ha_point(&h->package,(size_t)h->masknode,one,x,0);ha_point(&h->package,(size_t)h->masknode,two,y,0);double scale=fmin(f->width/640.0,f->height/480.0),dx=(screenx-f->width*.5)/scale-o[0],dy=(screeny-f->height*.5)/scale-o[1],a=x[0]-o[0],b=x[1]-o[1],c=y[0]-o[0],d=y[1]-o[1],det=a*d-b*c;
+ HaNode*n=h->package.nodes+h->masknode;if(fabs(det)<1e-12||!n->size[0]||!n->size[1])return 0;double mx=(d*dx-c*dy)/det/n->size[0]+.5,my=(-b*dx+a*dy)/det/n->size[1]+.5,u=n->uv[0]+mx*(n->uv[2]-n->uv[0]),v=n->uv[1]+my*(n->uv[3]-n->uv[1]);double px=fmax(0,fmin(h->mask_width-1,u*h->mask_width-.5)),py=fmax(0,fmin(h->mask_height-1,v*h->mask_height-.5));int ix=(int)px,iy=(int)py,jx=ix+1<h->mask_width?ix+1:ix,jy=iy+1<h->mask_height?iy+1:iy;double tx=px-ix,ty=py-iy;double coverage=(1-ty)*((1-tx)*h->mask_alpha[iy*h->mask_width+ix]+tx*h->mask_alpha[iy*h->mask_width+jx])+ty*((1-tx)*h->mask_alpha[jy*h->mask_width+ix]+tx*h->mask_alpha[jy*h->mask_width+jx]);if(coverage<=0)return 0;*wx=(float)result[0];*wy=(float)result[1];return 1;
 }
