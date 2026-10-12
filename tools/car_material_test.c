@@ -742,6 +742,34 @@ int texture_record_tests(void) {
     printf("\n  T texture-record decode: authored format/draw-mode bytes\n");
     texture_record_rejection_tests();
 
+    /* Digit-leading names are valid HUD texture records, not padding. Cover
+       enumeration and decoding with synthetic RGBA palettes and pixel indices. */
+    for (int digit = 0; digit < 10; ++digit) {
+        unsigned char pixels[1024 + 16] = {0};
+        pixels[0] = 10; pixels[1] = 20; pixels[2] = 30; pixels[3] = 0;
+        pixels[4] = 100; pixels[5] = 130; pixels[6] = 160; pixels[7] = 255;
+        for (int i = 0; i < 16; ++i) pixels[1024 + i] = (unsigned char)(i & 1);
+        char name[24]; snprintf(name, sizeof name, "%dHUD_TEST", digit);
+        uint32_t hash = 0x6000u + (uint32_t)digit;
+        TexRec rec = {name, hash, 0, sizeof pixels, 1024, 4, 4,
+                      5,2,1,0, 0x08, pixels, sizeof pixels, 0};
+        Buf tpk; N2Tpk pack = build_tpk(&tpk, &rec, 1);
+        uint32_t pixel_offset = 1024;
+        memcpy(tpk.b + pack.blk[0].hbeg + 0x24, &pixel_offset, 4);
+        uint32_t keys[2] = {0};
+        chk("digit-leading HUD record is enumerated by its key",
+            n2_tpk_keys(tpk.b, pack, keys, 2) == 1 && keys[0] == hash);
+        N2Tex tex;
+        int decoded = n2_tpk_decode(tpk.b, tpk.n, pack, hash, &tex);
+        chk("digit-leading P8 sprite preserves colour and transparency",
+            decoded && tex.alpha && tex.alpha[0] == 0 && tex.alpha[1] == 255 &&
+            tex.rgb[0] == 10 && tex.rgb[3] == 100 && tex.w == 4 && tex.h == 4);
+        if (decoded) { free(tex.rgb); free(tex.alpha); free(tex.dxt); }
+        chk("digit-leading record cannot bypass truncated pixel bounds",
+            !n2_tpk_decode(tpk.b, tpk.n - 1, pack, hash, &tex));
+        free(pack.blk);
+    }
+
     /* T1: complete opaque DXT1 record (order,usage,blend,wz)=(0,0,0,1),
        c0>c1 (opaque interpolation mode -- no index-3 transparency). */
     {

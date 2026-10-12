@@ -95,7 +95,7 @@ typedef struct { const char *name; uint32_t key; GLuint tex; int w, h;
                  } arc; } HudArt;
 
 enum {
-    ART_BACKING, ART_TACH_BACK, ART_TACH_ARC, ART_TACH_FILL,
+    ART_BACKING, ART_TACH_BACK, ART_TACH_ARC, ART_TACH_FILL, ART_TACH_NEEDLE,
     ART_NOS_BAR, ART_NOS_OVERLAY,
     ART_MAP_MASK, ART_MAP_BORDER, ART_MAP_BACK, ART_MAP_CAR, ART_MAP_NORTH,
     ART_MAP_GPS, ART_MAP_START, ART_MAP_SAFEHOUSE, ART_MAP_CIRCUIT,
@@ -241,6 +241,7 @@ Hud *hud_init(const char *dataroot) {
     hud_art_define(h, ART_TACH_BACK,      "TACH_NOS_BACKING",        0xa9e53dbcu);
     hud_art_define(h, ART_TACH_ARC,       "TACH_NOS_ALPHA",          0x04575433u);
     hud_art_define(h, ART_TACH_FILL,      "TACH_FILL_CUSTOM_00",     0x4738197eu);
+    hud_art_define(h, ART_TACH_NEEDLE,    "3RDPERSON_RPMDIAL_CUSTOM_00", 0x95479060u);
     hud_art_define(h, ART_NOS_BAR,        "SS_NOS",                  0x7ab54f94u);
     hud_art_define(h, ART_NOS_OVERLAY,    "SS_NOS_OVERLAY",          0x59d6e695u);
     hud_art_define(h, ART_MAP_MASK,       "MINIMAP_MASK",            0x40cdc515u);
@@ -304,6 +305,7 @@ Hud *hud_init(const char *dataroot) {
               h->art[a].arc.a0 = fit.a0; h->art[a].arc.a1 = fit.a1; }
             free(t.rgb); free(t.alpha); free(t.dxt);
         }
+        free(tpk.blk);
         free(d);
     }
     for (int a = 0; a < ART_COUNT; a++)
@@ -448,8 +450,9 @@ static void hud_draw_cluster(Hud *h, const HudDC *dc, const HudState *s) {
         arc_r = arc->arc.r * TACH_W;
     }
 
-    hud_blit(dc, h->art[ART_TACH_FILL].tex, arc_r * 1.70f, arc_r * 1.70f,
-             pivx, pivy, 0.0f, 1.0f, 1.0f, 1.0f, 0.28f);
+    if (h->art[ART_TACH_FILL].tex)
+        hud_blit(dc, h->art[ART_TACH_FILL].tex, arc_r * 1.70f, arc_r * 1.70f,
+                 pivx, pivy, 0.0f, 1.0f, 1.0f, 1.0f, 0.28f);
     hud_blit(dc, h->art[ART_TACH_BACK].tex, TACH_W, TACH_H, cx, cy,
              0.0f, 1.0f, 1.0f, 1.0f, 0.85f);
 
@@ -470,15 +473,24 @@ static void hud_draw_cluster(Hud *h, const HudDC *dc, const HudState *s) {
     }
     hud_blit(dc, arc->tex, TACH_W, TACH_H, cx, cy, 0.0f, 1.0f, 1.0f, 1.0f, 0.95f);
 
-    /* needle: no needle sprite ships in the non-drag packs, so this one is
-       drawn. It is the only part of the dial that is not retail art. */
+    /* Skin 00's sprite is 16x128, with the rotation centre at the texture
+       centre and the tip in its bottom image half. Keep its padding and aspect;
+       the selected arc still supplies OpenUG2's provisional pivot/sweep. */
     {   float a = hud_arc_angle(arc, h->needle_rpm, 181.0f, 29.0f);
         float len = arc_r * 0.86f;
-        hud_blit(dc, 0, len, arc_r * 0.048f,
-                 pivx + cosf(a) * len * 0.5f / dc->asp,
-                 pivy + sinf(a) * len * 0.5f, a, 0.95f, 0.16f, 0.12f, 0.95f);
-        hud_blit(dc, 0, arc_r * 0.15f, arc_r * 0.15f, pivx, pivy, 0.0f,
-                 0.10f, 0.10f, 0.12f, 0.95f);
+        const HudArt *needle = &h->art[ART_TACH_NEEDLE];
+        if (needle->tex) {
+            float height = 2 * len, width = height * needle->w / needle->h;
+            hud_blit(dc, needle->tex, width, height, pivx, pivy,
+                     a + (float)M_PI * .5f, 1, 1, 1, .95f);
+        } else {
+            /* Missing/rejected sprite: retain the documented procedural fallback. */
+            hud_blit(dc, 0, len, arc_r * 0.048f,
+                     pivx + cosf(a) * len * 0.5f / dc->asp,
+                     pivy + sinf(a) * len * 0.5f, a, 0.95f, 0.16f, 0.12f, 0.95f);
+            hud_blit(dc, 0, arc_r * 0.15f, arc_r * 0.15f, pivx, pivy, 0.0f,
+                     0.10f, 0.10f, 0.12f, 0.95f);
+        }
     }
 
     char buf[64];
