@@ -1,0 +1,164 @@
+{
+  "provenance": "All palette, pixel and block values are freshly authored synthetic inputs, not original asset samples. Numeric formats follow the data-format specification.",
+  "indexed": {
+    "format": 41,
+    "catalog_byte74": 8,
+    "width": 2,
+    "height": 2,
+    "indices": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "palette_entries_bgra": [
+      [
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        7,
+        19,
+        31,
+        255
+      ],
+      [
+        50,
+        100,
+        150,
+        128
+      ],
+      [
+        255,
+        0,
+        0,
+        64
+      ]
+    ],
+    "expected_rgba": [
+      [
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        31,
+        19,
+        7,
+        255
+      ],
+      [
+        150,
+        100,
+        50,
+        128
+      ],
+      [
+        0,
+        0,
+        255,
+        64
+      ]
+    ],
+    "palette_fixture_rule": "Create256 BGRA entries initialized to zero, then assign the four listed entries to indices0..3. This produces the required1024-byte synthetic palette."
+  },
+  "dxt3": {
+    "format_fourcc": "DXT3",
+    "catalog_byte74": 36,
+    "width": 4,
+    "height": 4,
+    "block_hex": "1032547698badcfe00f81f0000000000",
+    "expected_rgb_each_pixel": [
+      255,
+      0,
+      0
+    ],
+    "expected_alpha_row_major": [
+      0,
+      17,
+      34,
+      51,
+      68,
+      85,
+      102,
+      119,
+      136,
+      153,
+      170,
+      187,
+      204,
+      221,
+      238,
+      255
+    ]
+  },
+  "aligned_data": {
+    "record_header_file_offset": 256,
+    "payload_offset": 264,
+    "expected_aligned_data_base": 384,
+    "image_offset": 32,
+    "expected_image_file_offset": 416
+  },
+  "catalog_pairing": {
+    "catalog_ids": [
+      91,
+      12
+    ],
+    "companion_formats": [
+      41,
+      "DXT3"
+    ],
+    "expected_pairs": [
+      [
+        91,
+        41
+      ],
+      [
+        12,
+        "DXT3"
+      ]
+    ],
+    "note": "Pair entries by position before any hash lookup/sorting."
+  },
+  "bounds": [
+    {
+      "case": "palette extent below1024 for supported standard indexed path",
+      "expected": "reject safely"
+    },
+    {
+      "case": "compressed top level shorter than ceil(width/4)*ceil(height/4)*16",
+      "expected": "reject safely"
+    },
+    {
+      "case": "aligned data base or image slice outside containing data leaf",
+      "expected": "reject safely"
+    },
+    {
+      "case": "zero width or height",
+      "expected": "reject safely"
+    },
+    {
+      "case": "catalog/companion entry count mismatch",
+      "expected": "reject safely"
+    },
+    {
+      "case": "top level extent greater than stored image extent",
+      "expected": "reject safely"
+    }
+  ],
+  "dxt3_low_first_endpoint": {
+    "width": 4,
+    "height": 4,
+    "block_hex": "ffffffffffffffff0000ffffffffffff",
+    "expected_rgba_each_pixel": [
+      170,
+      170,
+      170,
+      255
+    ],
+    "note": "Fresh synthetic endpoints0 and65535 with selector3 must interpolate color and preserve alpha; DXT1 transparency rule does not apply."
+  }
+}

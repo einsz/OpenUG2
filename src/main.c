@@ -36,6 +36,7 @@
 #include "world_resident.h"
 #include "world_mesh.h"   /* F3 prelight/normal/wireframe debug pipeline */
 #include "hud.h"          /* stage 8: opt-in in-game player HUD (--hud) */
+#include "hud_host.h"     /* GL-free HUD context/preview policy */
 #include "world_capture_policy.h"
 #include "world_scenery.h"
 #include "ground_motion.h"
@@ -1978,10 +1979,23 @@ int main(int argc, char **argv) {
          --hud            draw the in-game player HUD (dial, minimap, nav arrow)
          --hud-mph        enable the player HUD with imperial speed units
          --hud-fitted L   which parts the HUD treats as fitted: nos,turbo | none
+         --hud-inferred-redline  opt-in inferred redline trim (spec C1-5)
+         --hud-no-shift-indicator  hide the shift-up icon (default on at a shift
+                          RPM 500 below the gearbox upshift point; set 7 H)
+         --hud-no-shift-flash    draw the shift-up icon steadily lit (no ~1 Hz flash)
+         --hud-nos-level         opt-in inferred NOS level arc (C3-4; needs a level)
+         --hud-nos-glow          opt-in N2O glow label, played when nitrous starts (E3)
+         --hud-glyph-half-texel-inset  compatibility setting: inset glyph sampling by
+                          half a texel (default off; set 8 G6 samples edge to edge)
          --hud-dest X,Y   set a navigation destination at startup (headless
                           equivalent of clicking the minimap)
          --hud-preview    --hud plus labelled sample values for readouts with
-                          no live system yet (nitrous tank, boost, money)
+                          no live system yet: career free-roam Bank balance,
+                          pending message (top-left widget mail/highlight) and
+                          a nitrous tank that drains while N is held and
+                          refills slowly (feeds --hud-nos-level). Normal runs
+                          show none of these. Free roam supplies the career
+                          free-roam context, so the top-left widget idles.
          --devui          open the ImGui developer menu at launch (make debug)
          --collision-walls show current collision wall candidate faces in 3D
          --instance-audit print instance/world/support diagnostics and exit GL-free */
@@ -2000,7 +2014,9 @@ int main(int argc, char **argv) {
        that have no live system with clearly-labelled sample values. */
     int hud_opt = 0, hud_preview_opt = 0, hud_dest_set = 0;
     int hud_imperial = 0;
+    int hud_skin = 0;
     int hud_fitted_set = 0, hud_fitted_nos = 0, hud_fitted_turbo = 0;
+    HudSettings hud_settings; hud_default_settings(&hud_settings);
     float hud_dest[2] = { 0.0f, 0.0f };
     /* M132-R diagnostics. tier: 0 = baseline (old fixed 700 m, no vista),
        1 = ordinary (fog-derived range, no vista), 2 = full (range + vista). */
@@ -2277,7 +2293,23 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--b02-probe") && i+1 < argc) {
             b02probe = argv[++i]; fbcensus = 1; n2_m102 = 1; }
         else if (!strcmp(argv[i], "--hud")) hud_opt = 1;
+        else if (!strcmp(argv[i], "--hud-skin") && i + 1 < argc) {
+            char *end = NULL;
+            long requested = strtol(argv[++i], &end, 10);
+            hud_skin = end && !*end && requested >= 0 && requested <= 10 ? (int)requested : 0;
+            hud_opt = 1;
+        }
         else if (!strcmp(argv[i], "--hud-mph")) { hud_opt = 1; hud_imperial = 1; }
+        /* Opt-in, explicitly labelled inferred/provisional HUD settings from
+           the approved capture amendments. All default off except the shift
+           icon, which set 7 (H3) makes default on; its switches turn it off. */
+        else if (!strcmp(argv[i], "--hud-inferred-redline")) { hud_opt = 1; hud_settings.inferred_redline = 1; }
+        else if (!strcmp(argv[i], "--hud-shift-indicator")) { hud_opt = 1; hud_settings.shift_indicator = 1; } /* now the default; kept for old command lines */
+        else if (!strcmp(argv[i], "--hud-no-shift-indicator")) { hud_opt = 1; hud_settings.shift_indicator = 0; }
+        else if (!strcmp(argv[i], "--hud-no-shift-flash")) { hud_opt = 1; hud_settings.shift_flash = 0; }
+        else if (!strcmp(argv[i], "--hud-nos-level")) { hud_opt = 1; hud_settings.inferred_nos_level = 1; }
+        else if (!strcmp(argv[i], "--hud-nos-glow")) { hud_opt = 1; hud_settings.nos_glow = 1; }
+        else if (!strcmp(argv[i], "--hud-glyph-half-texel-inset")) { hud_opt = 1; hud_settings.glyph_half_texel_inset = 1; } /* set 8 G6 item 4 */
         /* --hud-fitted nos,turbo | none: override which performance parts the
            HUD believes are FITTED. The engine cannot yet report this (the
            performance shop models power curves and transmission only), so
@@ -5787,10 +5819,14 @@ int main(int argc, char **argv) {
        the player clicked on, so it reads the state that was actually drawn
        rather than re-deriving one from a half-updated frame. */
     HudState hud_last_state; memset(&hud_last_state, 0, sizeof hud_last_state);
+    int hud_prev_nitro = 0;
+    float hud_preview_tank = HUD_PREVIEW_TANK_START;   /* --hud-preview sample tank */
+    double hud_preview_clock_ms = 0.0;
     if (hud_opt) {
         hud = hud_init(dataroot);
         if (hud) {
             hud_set_preview(hud, hud_preview_opt);
+            hud_configure(hud, &hud_settings);
             const char *miss = hud_missing(hud);
             printf("player HUD: on%s%s\n",
                    hud_preview_opt ? " (PREVIEW sample values)" : "",
@@ -5875,6 +5911,7 @@ int main(int argc, char **argv) {
     }
 #endif
     int gear = 1; float shift_t = 0.0f;   /* virtual gearbox (engine audio) */
+    int gear_changing = 0;                /* host gear-change interval, for the HUD (F1) */
     float menuspin = 0.0f;   /* orbit-camera angle on the menu screen */
     int running = 1, shotframe = 0, final_status = 0;
     int pending_car = -1, pending_track = -1;
@@ -6096,7 +6133,7 @@ int main(int argc, char **argv) {
                 float nx = (float)e.button.x / (ww > 0 ? (float)ww : 1.0f) * 2.0f - 1.0f;
                 float ny = 1.0f - (float)e.button.y / (wh > 0 ? (float)wh : 1.0f) * 2.0f;
                 float px = 0, py = 0;
-                if (hud_map_pick(nx, ny, mw, mh, &hud_last_state, &px, &py)) {
+                if (hud_pick(hud, nx, ny, &px, &py)) {
                     g_dbg.gps_want_x = px; g_dbg.gps_want_y = py;
                     g_dbg.gps_request = 1;
                     printf("HUD: destination picked at (%.1f, %.1f)\n", px, py);
@@ -7372,7 +7409,9 @@ int main(int argc, char **argv) {
         { float sp = (speed < 0 ? -speed : speed) / PHYS_MAXSPD;
           if(drag_active && g_vehicle_source_valid) {
               gear=drag_gear.gear;g_engine.target_rpm=drag_gear.rpm;g_engine.load=fmaxf(0,throttle);
-          } else eng_gearbox_step(sp, throttle, 1.0f/60.0f, &gear, &shift_t);
+              gear_changing = drag_gear.shift > 0.0f;   /* drivetrain's 0.15 s shift-cut */
+          } else { eng_gearbox_step(sp, throttle, 1.0f/60.0f, &gear, &shift_t);
+              gear_changing = shift_t > 0.0f; }          /* ENG_SHIFT_S clutch window */
           g_engine.master_volume = (race_state==0 ? 0.16f : 0.16f + sp*0.5f);
           g_road_vol = sp*sp*0.35f; }   /* tyre/wind roar rises with speed */
         float fwd[3] = { nf[0], nf[1], 0 };
@@ -9939,6 +9978,10 @@ int main(int argc, char **argv) {
             HudState hs; memset(&hs, 0, sizeof hs);
             hs.speed_kmh = PHYS_KMH(speed);
             hs.imperial_units = hud_imperial;
+            hs.skin_index = hud_skin;
+            /* Translate +X/CCW host heading to the provisional north/clockwise HUD boundary. */
+            hs.map_heading_explicit = 1;
+            hs.map_heading_clockwise = M_PI * .5 - heading;
             hs.car_x = carpos[0]; hs.car_y = carpos[1];
             hs.car_heading = heading;
 
@@ -9948,9 +9991,21 @@ int main(int argc, char **argv) {
             hs.rpm = g_engine.target_rpm;
             hs.rpm_redline = ENG_REDLINE_RPM;   /* the gearbox's own limit */
             hs.rpm_maximum = ENG_REDLINE_RPM;   /* provisional audio bound */
+            hs.have_redline_rpm = 1;
+            /* host shift RPM: a lead below the automatic upshift point, which the
+               gearbox acts on before the HUD could ever see it; transmission
+               mode for H4 (hud_host.h) */
+            hud_host_shift(&hs, ENG_UPSHIFT_RPM, world.city.race.active && world.city.race.kind == N2_RACE_DRAG && g_vehicle_source_valid);
             hs.gear = gear;
+            hs.gear_change_in_progress = (unsigned char)gear_changing;
 
             hs.nitro_active = nitro_active;
+            /* E3 host policy (the retail trigger is unknown): send the glow
+               event when nitrous use begins. The HUD ignores it unless the
+               opt-in setting is on, and while a sequence is running. */
+            hs.clock_ms = (double)SDL_GetTicks();
+            if (nitro_active && !hud_prev_nitro) hud_nos_glow_event(hud, hs.clock_ms);
+            hud_prev_nitro = nitro_active;
             /* FITTED-PART state. The performance shop models four power curves
                and four transmissions from GLOBALB and nothing else -- its own
                UI says turbo mapping and nitrous "remain pending". So:
@@ -10073,6 +10128,18 @@ int main(int argc, char **argv) {
                         printf("HUD: destination reached\n");
                     }
                 }
+            }
+            /* Context and sample inputs (hud_host.h). Free roam supplies the
+               career/free-roam context only; money, messages and the tank stay
+               absent unless --hud-preview supplies labelled samples. */
+            hud_host_context(&hs);
+            if (hud_preview_opt) {
+                double now = hs.clock_ms;
+                float dt = hud_preview_clock_ms > 0.0 ? (float)((now - hud_preview_clock_ms) * 0.001) : 0.0f;
+                hud_preview_clock_ms = now;
+                hud_preview_tank = hud_host_preview_tank_step(hud_preview_tank,
+                    race_nos_allowed && ks[SDL_SCANCODE_N], dt);
+                hud_host_preview_apply(&hs, hud_preview_tank);
             }
             hud_last_state = hs;
             hud_draw(hud, &rp, &quad, &hs, W, H);

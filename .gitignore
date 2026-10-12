@@ -88,3 +88,8 @@ tools/capture_vehicle_shots.sh
 *.shops.txt.tmp.*
 *.districts.txt.tmp.*
 *.edits.txt.tmp.*
+
+# --- Local original game data / install (user-owned discs; never commit) ---
+/games/
+/Need for Speed Underground 2/
+/analysis/
