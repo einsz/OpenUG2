@@ -351,3 +351,15 @@ New approved SHA-256(SPEC.md): `322985b0faf10ba9a2e79bc2d767a94ace46f0ae82b6d57a
 | `test-vectors/capture7.json` | `a2c313a79ce303c87443d5b3007eebb1cbd7098e6547760bf97dcfa68e8cbd67` (unchanged) |
 
 **Approval:** APPROVED (2026-10-12 UTC, reviewer). SHA-256(SPEC.md) = `322985b0faf10ba9a2e79bc2d767a94ace46f0ae82b6d57a5489ea61c22e7c50`. Any later edit invalidates this.
+
+---
+
+## Widescreen policy fold-in (2026-10-13 UTC, reviewer)
+
+Input: coordinator-authored AMENDMENTS-WIDESCREEN.md (project policy). Prior SPEC.md SHA-256 `322985b0faf10ba9a2e79bc2d767a94ace46f0ae82b6d57a5489ea61c22e7c50` matched the latest approval above before editing. No src/ or build/ inspected.
+
+Arithmetic checked: 1920x1080 s=2.25, D=(853.333-640)/2=106.667; left group at -224 -> 216.0 px (wide) / 456.0 (4:3); right group at +216 -> 1686.0 / 1446.0; centre 960; 2560x1080 D=248.889; 1440x1080 is exactly 4:3 so D=0. All correct.
+
+Changes: (1) New SPEC section "Project policy: widescreen HUD fitment (not original behaviour)", labelled as non-original project policy. (2) Provisional-fitment paragraph in "Composition, fitment and feature visibility" now references it (replaces the "centred 4:3 fit until a policy exists" sentence). (3) Reviewer clarifications for testability: exact +-640/6 is not moved; bounds are authored at-rest, computed once per package load, hidden/non-eligible descendants excluded, empty group not moved (marked provisional); explicit output formula; unknowns listed. (4) New synthetic `test-vectors/wide-policy.json` (provenance stated, values reviewer-computed) and entry in `test-vectors/README.md`. (5) AMENDMENTS-WIDESCREEN.md deleted after folding. Contamination scan: no addresses, symbols or original assets; nothing contaminated reached an implementer.
+
+**Approval:** APPROVED (2026-10-13 UTC, reviewer). SHA-256(SPEC.md) = `56009554e2a4f6a3673180a98d5c5875ce3c38acd6a0fd9c5ece382024703aca`. wide-policy.json SHA-256 `9bb2b42d1c8be319e2e335740497d8c6c92232b8ddcc8a735481435ee7ee175a`. Any later edit invalidates this.

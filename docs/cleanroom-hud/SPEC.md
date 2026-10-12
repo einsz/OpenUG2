@@ -55,7 +55,7 @@ The supplied driving package contains 258 descriptors: 174 images, 60 strings, 2
 
 Public report plus corroborated authored geometry: coordinates use a 640×480 logical viewport centered at (0,0), x right, y down, with lower z in front. Compose an object's appearance with all ancestors. A group's size represents scale. For an image, create a centered rectangle using its authored width/height and UVs; transform its local vertices around the authored pivot, then through ancestors. In planar rotation notation, a local point is `position + pivot + R*(vertex - pivot)` before ancestor transforms. Text positions likewise remain local. Keep stable package order for equal depth (provisional tie-break).
 
-Provisional fitment: scale uniformly by `s = min(viewport_width/640, viewport_height/480)` and center the logical viewport at the physical viewport center. Do not stretch one axis independently. Apply this same projection to map, gauges and text. For widescreen, use the resulting centered 4:3 fit until a separate explicitly selected widescreen policy exists. Do not globally shift all descendants to the viewport corners. (Capture set 1 amendment C1-1: this centred uniform fit is observed for a 1920×1080 output; other output modes remain unobserved.)
+Provisional fitment: scale uniformly by `s = min(viewport_width/640, viewport_height/480)` and center the logical viewport at the physical viewport center. Do not stretch one axis independently. Apply this same projection to map, gauges and text. For widescreen, the `4:3` policy is this centred 4:3 fit; the OpenUG2 project-policy section "Project policy: widescreen HUD fitment (not original behaviour)" defines a separately selected `wide` policy, which is the project default. Do not globally shift all descendants to the viewport corners. (Capture set 1 amendment C1-1: this centred uniform fit is observed for a 1920×1080 output; other output modes remain unobserved.)
 
 Provisional standard driving visibility starts from a deny list: only the gauge objects, chosen scale markings/redline/fill, the map road/mask/north/player/border children and their ancestor containers are eligible. Showing an ancestor must not make unrelated siblings eligible. Resolve primary gauge descendants through the ancestors of the whitelisted speed/gear/needle instances, then select gauge resource aliases within that subtree. Reveal the border group with its children recursively when map visibility is enabled. Hide event messages, reward strings, region labels, placeholders, race-only widgets and multiplayer alternatives. Do not display stored authoring sample text as live data. No coordinate table need be copied: consume positions, pivot, color, size, UV and parent links from the assets each run.
 
@@ -658,3 +658,21 @@ Vectors: `capture8.json` (synthetic). In `capture7.json`, `glyph-uv-inset-bounds
 ### Open items added by set 8
 
 Effective glyph scale versus nominal (about 6% on one glyph); filter mode; corner texels outside the cell; re-measurement on more glyphs and on the 14i font.
+
+## Project policy: widescreen HUD fitment (not original behaviour)
+
+Origin: OpenUG2 coordinator policy, requested by the project user on 2026-10-13. This is not derived from the original program and no retail capture supports it. The observed 1920x1080 centred fit (C1-1) is the `4:3` policy below and remains the reference for any comparison with captures. Vectors: `wide-policy.json` (synthetic).
+
+Policies (a run-time option selects one; the default is `wide`; the `4:3` option gives the behaviour in "Provisional fitment"):
+
+* `4:3`: `s = min(W/640, H/480)`, logical 640x480 frame centred in the viewport, no element moved.
+* `wide`: uniform scale `s = H/480` when `W/H > 4/3`; nothing is stretched. Extra logical half-width `D = (W/s - 640)/2` (so `D = (W/H*480 - 640)/2`). Each top-level element group (a direct child of the package root, moved as a whole with all its descendants; descendants are never re-anchored individually) is classified by the horizontal centre `cx` of its composed logical bounds (frame centred at 0, x right, before any shift): `cx < -640/6` -> left-anchored, translated by `-D` logical units; `cx > +640/6` -> right-anchored, translated by `+D`; otherwise (including exactly +-640/6) centred and not moved. For `W/H <= 4/3`, `wide` is identical to `4:3`.
+* Bounds for classification are the axis-aligned bounds of the group's composed authored geometry at rest (no animation), computed once per package load; hidden or non-eligible descendants (see visibility) are excluded, and a group with no eligible geometry is not moved. This choice is provisional so that classification cannot change at run time.
+* Engine-drawn HUD items not from the package (for example a fallback minimap or readouts) follow the same rule using their own logical bounds.
+* Final output position of a logical point `(x, y)` in a group translated by `t` (0, `-D` or `+D`): `X = W/2 + s*(x + t)`, `Y = H/2 + s*y`.
+
+Interaction: minimap picking (see "Minimap metadata and bounded behavior" and the integration map-picking rule) must invert the same final transform including the group translation, so the draw/pick round-trip holds under both policies.
+
+Testable summary: at 640x480 and 1440x1080 both policies are identical (D = 0); at 1920x1080 `s = 2.25`, `D = 106.667`; at 2560x1080 `s = 2.25`, `D = 248.889`; a click at the rendered map centre under `wide` returns the supplied world centre.
+
+Unknowns: behaviour for portrait or ultra-wide extremes beyond arithmetic; whether any group straddling the thresholds looks right in practice; interaction with the user-facing HUD scale options (none specified).

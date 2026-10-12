@@ -8,6 +8,7 @@
 #include "../src/hud.h"
 #include "../src/hud_asset.h"
 #include "../src/hud_host.h"
+#include "../src/hud_baseline.h"
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
@@ -463,6 +464,86 @@ static void test_glyph_sampling_defaults_and_gutter(void) {
     printf("  glyphs: no inset by default, transparent ring, linear  PASS\n");
 }
 
+/* Project policy: widescreen HUD fitment (not original behaviour). The engine-drawn
+ * items follow the same rule as the package groups, and the minimap pick inverts the
+ * final placement under both policies. Spec vectors: docs/cleanroom-hud/test-vectors/wide-policy.json
+ * (checked in tools/hud_spec_test.py); these are the engine-side counterparts. */
+static void test_widescreen_policy_engine_items_and_pick(void) {
+    HudSettings d; hud_default_settings(&d);
+    assert(d.fit_policy == HA_FIT_WIDE);                       /* wide is the default */
+    assert(ha_fit_parse("wide") == HA_FIT_WIDE && ha_fit_parse("WIDE") == HA_FIT_WIDE);
+    assert(ha_fit_parse("4:3") == HA_FIT_43 && ha_fit_parse("4x3") == HA_FIT_43 && ha_fit_parse("43") == HA_FIT_43);
+    assert(ha_fit_parse("") == -1 && ha_fit_parse("16:9") == -1 && ha_fit_parse(NULL) == -1 && ha_fit_parse("widescreen") == -1);
+
+    /* 1920x1080: a left-anchored item sits 0.38 HUD units (0.38*540 px) from its reference edge:
+       the screen edge under wide, the centred 4:3 frame's edge under 4:3. */
+    float x, y;
+    hud_baseline_place_fit(HA_FIT_WIDE, 1920, 1080, -1, -1, 0.38f, 0.38f, &x, &y);
+    assert(near((x + 1) * 960, 0.38f * 540, 1e-2f) && near(y, -0.62f, 1e-6f));
+    hud_baseline_place_fit(HA_FIT_43, 1920, 1080, -1, -1, 0.38f, 0.38f, &x, &y);
+    assert(near((x + 1) * 960, 240 + 0.38f * 540, 1e-2f));
+    hud_baseline_place_fit(HA_FIT_WIDE, 1920, 1080, 1, 1, -0.34f, -0.16f, &x, &y);   /* right group */
+    assert(near((1 - x) * 960, 0.34f * 540, 1e-2f));
+    hud_baseline_place_fit(HA_FIT_43, 1920, 1080, 1, 1, -0.34f, -0.16f, &x, &y);
+    assert(near((1 - x) * 960, 240 + 0.34f * 540, 1e-2f));
+    for (int p = 0; p < 2; p++) {                              /* centred items never move */
+        hud_baseline_place_fit(p, 1920, 1080, 0, 1, 0, -0.20f, &x, &y);
+        assert(x == 0.0f && near(y, 0.80f, 1e-6f));
+        hud_baseline_place_fit(p, 2560, 1080, 0, -1, 0, 0.045f, &x, &y);
+        assert(x == 0.0f);
+    }
+    /* At 4:3 and narrower both policies are the same as the unfitted helper. */
+    const int sizes[][2] = { {640, 480}, {1440, 1080}, {1024, 768}, {800, 1000} };
+    for (int k = 0; k < 4; k++)
+        for (int p = 0; p < 2; p++) {
+            float ax, ay, bx, by;
+            hud_baseline_place_fit(p, sizes[k][0], sizes[k][1], -1, -1, 0.38f, 0.38f, &ax, &ay);
+            hud_baseline_place((float)sizes[k][0] / sizes[k][1], -1, -1, 0.38f, 0.38f, &bx, &by);
+            assert(near(ax, bx, 1e-6f) && near(ay, by, 1e-6f));
+        }
+    /* Wide is exactly the existing edge-anchored layout at every wider aspect. */
+    for (int k = 0; k < 3; k++) {
+        const int w[3] = { 1920, 2560, 1366 }, h[3] = { 1080, 1080, 768 };
+        float ax, ay, bx, by;
+        hud_baseline_place_fit(HA_FIT_WIDE, w[k], h[k], 1, -1, -0.52f, 0.56f, &ax, &ay);
+        hud_baseline_place((float)w[k] / h[k], 1, -1, -0.52f, 0.56f, &bx, &by);
+        assert(near(ax, bx, 1e-5f) && near(ay, by, 1e-6f));
+    }
+
+    /* Minimap picking inverts the placement: clicking the drawn panel centre returns the
+       car's position, a projected world point comes back, and a click at the other policy's
+       centre is off the pick point. Includes a race-sized map radius, which the draw uses. */
+    HudState s; memset(&s, 0, sizeof s);
+    s.car_x = -863.0f; s.car_y = -290.0f; s.car_heading = 0.7f;
+    for (int radius = 0; radius < 2; radius++)
+        for (int k = 0; k < 3; k++)
+            for (int p = 0; p < 2; p++) {
+                const int w[3] = { 1920, 2560, 1440 }, h[3] = { 1080, 1080, 1080 };
+                s.map_radius_m = radius ? 400.0f : 0.0f;
+                float cx, cy, wx, wy;
+                hud_baseline_place_fit(p, w[k], h[k], -1, -1, 0.38f, 0.38f, &cx, &cy);
+                assert(hud_baseline_map_pick_fit(p, cx, cy, w[k], h[k], &s, &wx, &wy));
+                assert(near(wx, s.car_x, 1e-2f) && near(wy, s.car_y, 1e-2f));
+                const float view = radius ? 400.0f : 260.0f, tx = s.car_x + 70, ty = s.car_y + 70;
+                float mx, my;
+                hud_map_project(tx, ty, s.car_x, s.car_y, view, PI * 0.5f - s.car_heading, &mx, &my);
+                const float asp = (float)w[k] / h[k];
+                assert(hud_baseline_map_pick_fit(p, cx + mx * 0.30f / asp, cy + my * 0.30f, w[k], h[k], &s, &wx, &wy));
+                assert(near(wx, tx, 0.5f) && near(wy, ty, 0.5f));
+                if (w[k] != 1440) {
+                    float ox, oy;
+                    hud_baseline_place_fit(!p, w[k], h[k], -1, -1, 0.38f, 0.38f, &ox, &oy);
+                    assert(!hud_baseline_map_pick_fit(p, ox, oy, w[k], h[k], &s, &wx, &wy));
+                }
+            }
+    /* the legacy helper keeps the default (wide) placement */
+    float lx, ly, wx, wy;
+    hud_baseline_place_fit(HA_FIT_WIDE, 1920, 1080, -1, -1, 0.38f, 0.38f, &lx, &ly);
+    s.map_radius_m = 0;
+    assert(hud_map_pick(lx, ly, 1920, 1080, &s, &wx, &wy) && near(wx, s.car_x, 1e-2f));
+    printf("  widescreen policy: engine items, default, pick inverts PASS\n");
+}
+
 int main(void) {
     printf("hud_test:\n");
     test_speed_readout();
@@ -482,6 +563,7 @@ int main(void) {
     test_host_shift_rpm_is_reachable_before_the_automatic_upshift();
     test_shift_icon_defaults_and_host_inputs();
     test_glyph_sampling_defaults_and_gutter();
+    test_widescreen_policy_engine_items_and_pick();
     printf("hud_test: PASS\n");
     return 0;
 }

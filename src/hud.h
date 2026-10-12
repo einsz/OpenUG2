@@ -111,6 +111,8 @@ typedef struct {
     double glow_ms_per_unit;           /* E3 fitted time unit: 0.82 ms per unit; also the H1 shift flash unit */
     int glyph_half_texel_inset;        /* set 8 G6 item 4 compatibility setting, default 0:
                                           glyphs are sampled edge to edge (no inset) */
+    int fit_policy;                    /* project widescreen policy (not original behaviour),
+                                          HA_FIT_WIDE (default, 0) or HA_FIT_43; see hud_asset.h */
 } HudSettings;
 
 /* Opaque GL-side resources. */

@@ -110,6 +110,9 @@ a design at launch. Changing cars clears the vinyl and loads that car’s catalo
   needle uses the player's skin-00 sprite with a procedural fallback. See the
   [speed](docs/HUD_SPEED_READOUT.md), [tachometer](docs/HUD_TACHOMETER.md) and
   [sprite](docs/HUD_SPRITES.md) notes for remaining limits.
+  On windows wider than 4:3 the HUD defaults to a `wide` fitment that hangs the
+  left and right groups off the screen edges; `--hud-fit 4:3` keeps everything
+  in a centred 4:3 frame (see [widescreen HUD](docs/HUD_WIDESCREEN.md)).
 - **Open-world traffic** — traffic and roaming racers follow authored road
   points through steering and speed targets. Player and AI share suspension,
   airborne momentum and landing response; the camera reacts to landing impact.
@@ -315,6 +318,10 @@ the nearest safe authored road; no internal world-mode or spawn flag is needed.
 - `--hud` — enable the prototype player HUD, including live speed/RPM readouts.
 - `--hud-mph` — enable the same HUD with MPH speed presentation; physics remains
   in its existing units.
+- `--hud-fit wide|4:3` — widescreen HUD fitment (enables the HUD). `wide` (the
+  default) keeps the uniform HUD scale and moves the left and right HUD groups
+  to the screen edges at aspects wider than 4:3; `4:3` centres the whole HUD in a
+  4:3 frame. A project policy, not original behaviour; identical at 4:3 and narrower.
 - `--tier ordinary` — production renderer and the default. `--tier full` is an
   experimental panorama path with known visual defects.
 - `--chase D,H` — chase-camera distance and height in metres, e.g. `--chase 9,1.8`.

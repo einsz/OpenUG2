@@ -7,6 +7,8 @@ HudBaseline *hud_baseline_init(const char *root);
 void hud_baseline_free(HudBaseline **h);
 void hud_baseline_draw(HudBaseline *h,const RProg *rp,GpuMesh *quad,const HudState *s,int w,int height);
 void hud_baseline_set_preview(HudBaseline *h,int on);
+/* Project fitment policy (HA_FIT_*, hud_asset.h) for the engine-drawn items; default wide. */
+void hud_baseline_set_fit_policy(HudBaseline *h,int policy);
 int hud_baseline_preview(const HudBaseline *h);
 const char *hud_baseline_missing(const HudBaseline *h);
 /* ---- pure helpers, unit-tested without GL (see tools/hud_baseline_test.c) ---- */
@@ -77,6 +79,19 @@ int hud_baseline_map_pick(float ndc_x, float ndc_y,
  * This is what keeps proportions and safe margins identical across aspects. */
 void hud_baseline_place(float aspect, float anchor_x, float anchor_y,
                float off_x, float off_y, float *ndc_x, float *ndc_y);
+
+/* hud_baseline_place under a fitment policy (HA_FIT_*): the same HUD-unit offsets
+ * from a screen-edge anchor, but the group is classified by its centre and, under
+ * the wide policy at W/H > 4/3, hung off the screen edge; under 4:3 it hangs off the
+ * centred 4:3 frame. At W/H <= 4/3 both equal hud_baseline_place. */
+void hud_baseline_place_fit(int policy, int width, int height, float anchor_x, float anchor_y,
+               float off_x, float off_y, float *ndc_x, float *ndc_y);
+
+/* hud_baseline_map_pick for an explicit policy; it inverts the drawn minimap,
+ * group translation included. hud_baseline_map_pick uses the default (wide). */
+int hud_baseline_map_pick_fit(int policy, float ndc_x, float ndc_y,
+                 int width, int height, const HudState *s,
+                 float *wx, float *wy);
 
 
 #endif
