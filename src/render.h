@@ -291,6 +291,11 @@ GLuint   upload_tex(const N2Tex *t);
    portable CPU-decoded RGBA path (upload_tex) otherwise. Leaves the texture
    bound (callers may override wrap/filter after). */
 GLuint   upload_tpk_texture_to_gpu(const N2Tex *t);
+/* Same as upload_tex / upload_tpk_texture_to_gpu, but first try a user HD
+   override for `key` (tex_override.h; `pack` = source stem or NULL). With no
+   override directory these are exactly the original uploaders. */
+GLuint   upload_tex_keyed(uint32_t key, const char *pack, const N2Tex *t);
+GLuint   upload_tpk_keyed(uint32_t key, const char *pack, const N2Tex *t);
 /* Anisotropic filtering, the one texture-detail knob this renderer was missing.
  * Trilinear alone samples a square footprint, so any surface seen at a grazing
  * angle -- which is most of a road, a kerb and a car's own flanks -- drops to a

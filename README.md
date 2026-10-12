@@ -196,6 +196,8 @@ Developer references:
 - [`docs/VEHICLE_CUSTOMIZATION.md`](docs/VEHICLE_CUSTOMIZATION.md) and
   [`docs/GAME_FLOW.md`](docs/GAME_FLOW.md) — the shop/modification surface and
   the retail game-flow contract behind it.
+- [`docs/TEXTURE_OVERRIDES.md`](docs/TEXTURE_OVERRIDES.md) — optional
+  user-supplied DDS texture replacements (`--tex-overrides DIR`).
 
 ## Build
 

@@ -238,7 +238,8 @@ static int resident_resources_step(WorldResidentResources *resources,
                 }
         }
         if (neighborhood->have_grass)
-            resources->terrain_texture = upload_tex(&neighborhood->grass);
+            resources->terrain_texture = upload_tex_keyed(
+                0x5671B2B5u /* TRN_GRASSC */, NULL, &neighborhood->grass);
         resources->texture_ticks += SDL_GetPerformanceCounter() - texture_begin;
         if (timing) timing->textures_ms = (uint32_t)(
             resources->texture_ticks * 1000 / SDL_GetPerformanceFrequency());
