@@ -29,8 +29,8 @@ else
 endif
 
 # engine modules: orchestrator + Renderer/Physics/AI/Audio/Resources/World
-SRC  := src/main.c src/render.c src/physics.c src/ai.c src/audio.c src/resource.c src/world.c src/world_instance.c src/world_resident.c src/world_mesh.c src/hud.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/gl_state.c
-HDRS := src/world_collision_rules.h src/world_collision.h src/race_log.h src/race.h src/traffic_heatmap.h src/asset_chunks.h src/car_config.h src/car_mod.h src/nfsu2.h src/render.h src/physics.h src/ai.h src/audio.h src/resource.h src/debug.h src/world.h src/world_instance.h src/world_resident.h src/world_mesh.h src/world_capture_policy.h src/world_group_reader.h src/world_scenery.h src/ground_motion.h src/hud.h src/hud_asset.h src/hud_texture.h src/hud_baseline.h src/hud_host.h src/gl_state.h
+SRC  := src/main.c src/render.c src/physics.c src/ai.c src/audio.c src/resource.c src/world.c src/world_instance.c src/world_resident.c src/world_mesh.c src/hud.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/gl_state.c src/camera.c
+HDRS := src/world_collision_rules.h src/world_collision.h src/race_log.h src/race.h src/traffic_heatmap.h src/asset_chunks.h src/car_config.h src/car_mod.h src/nfsu2.h src/render.h src/physics.h src/ai.h src/audio.h src/resource.h src/debug.h src/world.h src/world_instance.h src/world_resident.h src/world_mesh.h src/world_capture_policy.h src/world_group_reader.h src/world_scenery.h src/ground_motion.h src/hud.h src/hud_asset.h src/hud_texture.h src/hud_baseline.h src/hud_host.h src/gl_state.h src/camera.h
 
 .DEFAULT_GOAL := nfsu2   # keep `make` building the binary, not the generated header
 
@@ -82,6 +82,16 @@ build/%.dbg.o: src/%.c $(HDRS) $(GEN)
 
 debug: $(DBG_OBJ) $(IMGUI_OBJ)
 	$(CXX) -O2 $(DBG_OBJ) $(IMGUI_OBJ) -o nfsu2 $(SDL_LIBS) $(GL_LIBS) -lz -lm
+
+# Gameplay camera vs docs/cleanroom-camera/test-vectors (docs/CAMERA.md). DATA may point
+# at an install to also check the real GLOBALB through the loader (structure only);
+# FULL may name a local full per-car table (tv01 columns) to compare values too.
+camera-test: tools/camera_test.c src/camera.c src/camera.h src/nfsu2.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Isrc tools/camera_test.c src/camera.c -o build/camera_test -lm
+	./build/camera_test docs/cleanroom-camera/test-vectors "$(DATA)" "$(FULL)"
+
+.PHONY: camera-test
 
 world-instance-test: tools/world_instance_test.c src/world_instance.c src/physics.c src/physics.h src/world_instance.h src/world_capture_policy.h src/nfsu2.h src/world_group_reader.h src/world_scenery.h
 	@mkdir -p build

@@ -41,6 +41,7 @@
 #include "world_scenery.h"
 #include "ground_motion.h"
 #include "debug.h"
+#include "camera.h"      /* gameplay camera (docs/CAMERA.md) */
 #ifdef OPENUG2_MENU
 #include "frontend/frontend.h"
 #include "frontend/frontend_draw.h"
@@ -642,6 +643,137 @@ static float car_chase_distance(const float bb[6], float requested) {
     /* Honour the requested distance; only a long body's rear can push the
        camera back far enough to keep it outside the mesh. */
     return fmaxf(requested,-bb[0]+0.5f);
+}
+
+/* ---- gameplay camera glue (docs/CAMERA.md) -----------------------------------
+ * The maths lives in camera.c. This block feeds it the player's tick state,
+ * owns the stored option (persisted per player) and the in-car veto probes. */
+typedef struct {
+    CamState cam;
+    CamSettings settings;
+    char settings_path[1024]; int have_path;
+    char car_for[64];            /* car whose camera record is loaded */
+    float prev_vel[3], prev_z; int have_prev;
+    double clock;                /* camera clock, seconds of simulated ticks */
+    int event_key;               /* race-event change detector, -1 = never seen */
+    int look_back;
+} GameCam;
+
+/* Veto probes for the in-car views (SPEC 6.1 conditions 2 and 4). */
+typedef struct {
+    const N2Scene *scene; const float (*bounds)[4];
+    const AiCar *ais; const char *present; int n;
+} GameCamProbe;
+
+#define GAMECAM_OTHER_CAR_MARGIN 0.5f   /* SPEC 6.1.2 */
+#define GAMECAM_PROBE_LIFT       0.3f   /* docs/CAMERA.md D6: keeps the probe off the road itself */
+#define GAMECAM_PROBE_RADIUS     0.05f
+#define GAMECAM_MAIN_VIEW_SCALING 1     /* SPEC 7: 1.1 / 1.265 scales (docs/CAMERA.md D9); 0 = plain */
+#define GAMECAM_CHASE_CLIP_RADIUS .55f   /* > near plane (0.5 m) so walls are not cut open */
+#define GAMECAM_CAR_RANGE        12.0f   /* SPEC 9.2 */
+#define GAMECAM_CAR_MARGIN       0.1f
+#define GAMECAM_SHAKE            1       /* 0 = off */
+#define GAMECAM_SHAKE_VMAX       100.0f  /* SPEC 8 default; per-car value unresolved */
+#define GAMECAM_STOPPED_MPS      2.2f    /* SPEC 8 "effectively stopped" */
+#define GAMECAM_CAR_SPHERE_PAD   1.0f   /* car_view_sphere() adds this to the half diagonal */
+
+static int gamecam_blocked(void *ctx, const float eye[3], const float lo[3], const float hi[3]) {
+    const GameCamProbe *p = (const GameCamProbe *)ctx;
+    if (!p) return 0;
+    for (int k = 0; k < p->n; k++) {
+        if (!p->present[k]) continue;
+        const AiCar *c = &p->ais[k];
+        float dx = c->pos[0]-eye[0], dy = c->pos[1]-eye[1], dz = c->pos[2]-eye[2];
+        float reach = 5.0f + GAMECAM_OTHER_CAR_MARGIN;
+        if (dx*dx + dy*dy + dz*dz > reach*reach) continue;
+        if (cam_point_near_box(eye, c->pos, c->head, c->half_length, c->half_width,
+                               c->height > 0 ? c->height : 1.5f, GAMECAM_OTHER_CAR_MARGIN)) return 1;
+    }
+    if (p->scene) {
+        float a[3] = { lo[0], lo[1], lo[2]+GAMECAM_PROBE_LIFT }, b[3] = { hi[0], hi[1], hi[2] };
+        float seg[3] = { b[0], b[1], b[2] };
+        if (world_camera_clip(p->scene, p->bounds, a, seg, GAMECAM_PROBE_RADIUS) < 1.0f) return 1;
+    }
+    return 0;
+}
+
+static void gamecam_load_car(GameCam *g, const char *dataroot, const char *car);
+static void gamecam_save(GameCam *g) {
+    if (g->have_path && !cam_settings_save(&g->settings, g->settings_path))
+        fprintf(stderr, "camera: could not save %s\n", g->settings_path);
+}
+static void gamecam_apply_option(GameCam *g) {
+    cam_set_requested(&g->cam, cam_view_for_option(g->settings.opt[0]));
+}
+static void gamecam_init(GameCam *g) {
+    memset(g, 0, sizeof *g);
+    cam_init(&g->cam);
+    g->have_path = cam_settings_path(g->settings_path, sizeof g->settings_path);
+    cam_settings_load(&g->settings, g->have_path ? g->settings_path : NULL);
+    g->event_key = -1;
+    gamecam_apply_option(g);
+}
+/* Load the active car's camera record; falls back to the built-in default. */
+static void gamecam_load_car(GameCam *g, const char *dataroot, const char *car) {
+    if (!strcmp(g->car_for, car)) return;
+    snprintf(g->car_for, sizeof g->car_for, "%s", car);
+    CamCarData d; cam_car_data_default(&d);
+    long len = 0; unsigned char *glob = load_global_car_data(dataroot, &len);
+    if (!glob || !cam_car_data_load(glob, len, car, &d)) {
+        cam_car_data_default(&d);
+        fprintf(stderr, "camera: no GLOBALB camera record for %s; using built-in defaults\n", car);
+    }
+    free(glob);
+    cam_set_car(&g->cam, &d);
+    g->have_prev = 0;
+}
+static void gamecam_cycle(GameCam *g, int dir, int drift_allowed) {
+    g->settings.opt[0] = cam_option_cycle(g->settings.opt[0], dir, drift_allowed);
+    gamecam_apply_option(g);
+    gamecam_save(g);
+    printf("camera: %s\n", cam_option_label(g->settings.opt[0]));
+}
+/* Event set-up (SPEC 2.3): runs once when a race event starts or changes. */
+static void gamecam_event(GameCam *g, int active, int event_index, int drift) {
+    int key = active ? event_index + 1 : 0;
+    if (key == g->event_key) return;
+    g->event_key = key;
+    if (!key) return;
+    int opt = cam_option_for_event(g->settings.opt[0], drift);
+    if (opt != g->settings.opt[0]) {
+        g->settings.opt[0] = opt;
+        gamecam_apply_option(g);
+        gamecam_save(g);
+        printf("camera: %s (event set-up)\n", cam_option_label(opt));
+    }
+}
+/* One camera update from a simulation tick (60 Hz). `ride` may be NULL. */
+static void gamecam_tick(GameCam *g, const float carpos[3], const float vel[2], float heading,
+                         const PhysRideState *ride, float body_ride, int drift,
+                         const GameCamProbe *probe, int reset) {
+    if (reset) { g->have_prev = 0; cam_request_snap(&g->cam); }
+    const float dt = 1.0f / PHYS_TICKRATE;
+    float up[3] = {0, 0, 1};
+    if (ride) phys_ride_body_up(ride, heading, up);
+    CamInput in; memset(&in, 0, sizeof in);
+    cam_car_axes(heading, up, &in.car);
+    for (int i = 0; i < 3; i++) in.car.pos[i] = carpos[i] + in.car.up[i]*body_ride;
+    float v[3] = { vel[0]*PHYS_TICKRATE, vel[1]*PHYS_TICKRATE,
+                   g->have_prev ? (carpos[2]-g->prev_z)*PHYS_TICKRATE : 0.0f };
+    for (int i = 0; i < 3; i++) {
+        in.vel[i] = v[i];
+        /* Planar acceleration only; vertical gains are zero in every tuning row. */
+        in.accel[i] = (i < 2 && g->have_prev) ? (v[i]-g->prev_vel[i])*PHYS_TICKRATE : 0.0f;
+        g->prev_vel[i] = v[i];
+    }
+    g->prev_z = carpos[2]; g->have_prev = 1;
+    in.speed = sqrtf(v[0]*v[0] + v[1]*v[1]);
+    in.wheels_down = 4;
+    if (ride) { in.wheels_down = 0; for (int w = 0; w < 4; w++) in.wheels_down += (ride->contact_mask >> w) & 1u; }
+    g->clock += dt; in.clock = g->clock;
+    in.drift_event = drift;
+    in.blocked = probe ? gamecam_blocked : NULL; in.blocked_ctx = (void *)probe;
+    cam_tick(&g->cam, &in, dt);
 }
 
 static int prepare_body_kit(BodyKitCandidate *kit,
@@ -1967,6 +2099,9 @@ int main(int argc, char **argv) {
          --shot-yaw DEG   fixed horizontal camera yaw for --shot (overrides --heading)
          --shot-pitch DEG fixed camera elevation for --shot (positive = above)
          --shot-empty     hide world batches for isolated vehicle captures
+         --camera OPT     start with camera option 0..4 (Bumper Hood Close Far SuperFar); not saved
+         --look-back      hold look-back on for the whole run (captures)
+         --projection P   gameplay camera projection: wide (default, Hor+ above 4:3) or original
          --chase D,H      chase-camera distance/height in metres (e.g. 9,1.8)
          --vehicle-quality low|medium|high  paint/glass detail and reflections
          --no-paint-shine  disable streetlight highlights on vehicle paint
@@ -2008,6 +2143,8 @@ int main(int argc, char **argv) {
     /* --chase D,H: chase-camera distance/height override for reproducible
        captures; --devui opens the ImGui inspector so `--shot` can grab it. */
     float chase_d = -1.0f, chase_h = -1.0f;
+    int arg_cam_opt = -1, arg_look_back = 0;   /* --camera OPT / --look-back (captures) */
+    int arg_cam_projection = CAM_PROJ_DEFAULT; /* --projection original|wide (SPEC 7.1) */
     /* --hud: the stage-8 player HUD. Opt-in, independent of the `1` developer
        overlay toggle, and it replaces the diagnostic overlay rather than
        stacking on top of it. --hud-preview additionally fills the readouts
@@ -2187,6 +2324,19 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--shot-pitch") && i+1 < argc)
             shotpitch = (float)atof(argv[++i]) * 3.14159265f / 180.0f;
         else if (!strcmp(argv[i], "--shot-empty")) shot_empty = 1;
+        else if (!strcmp(argv[i], "--camera") && i+1 < argc) {
+            arg_cam_opt = atoi(argv[++i]);
+            if (arg_cam_opt < 0 || arg_cam_opt >= CAM_NOPT) {
+                fprintf(stderr, "--camera expects 0..4\n"); return 2;
+            }
+        }
+        else if (!strcmp(argv[i], "--look-back")) arg_look_back = 1;
+        else if (!strcmp(argv[i], "--projection") && i+1 < argc) {
+            arg_cam_projection = cam_projection_policy_by_name(argv[++i]);
+            if (arg_cam_projection < 0) {
+                fprintf(stderr, "--projection expects original or wide\n"); return 2;
+            }
+        }
         else if (!strcmp(argv[i], "--chase") && i+1 < argc) {
             if (sscanf(argv[++i], "%f,%f", &chase_d, &chase_h) != 2 ||
                 chase_d < 1.0f || chase_d > 400.0f ||
@@ -6029,6 +6179,8 @@ int main(int argc, char **argv) {
     unsigned ai_pose_generation[N_WORLD_AI]={0};
     float shake_before=0,shake_now=0;
     float camera_want_before[3]={0},camera_target_before[3]={0};
+    GameCam gc; gamecam_init(&gc);   /* docs/CAMERA.md */
+    if (arg_cam_opt >= 0) { gc.settings.opt[0] = arg_cam_opt; gamecam_apply_option(&gc); }
     int camera_history_mode=-1;
     int heat_ticks=0,heat_running=0;
     char heat_context[160]={0};
@@ -6181,6 +6333,13 @@ int main(int argc, char **argv) {
                 else if (k == SDLK_g && hud && !e.key.repeat) {
                     g_dbg.gps_n = 0; g_dbg.gps_request = 0;   /* cancel guidance */
                     printf("HUD: destination cleared\n");
+                }
+                else if (k == SDLK_c && !e.key.repeat && race_state != 3) {
+                    /* Change Camera: C next view, Shift+C previous (SPEC 2.3). */
+                    int drift_ev=world.city.race.active && world.city.race.kind==N2_RACE_DRIFT;
+                    int ev_id=world.city.race.active && world.city.race.ev>=0
+                        ? world.city.ev[world.city.race.ev].id : 0;
+                    gamecam_cycle(&gc,(e.key.keysym.mod & KMOD_SHIFT)?-1:1,cam_drift_allowed(drift_ev,ev_id));
                 }
                 else if (k == SDLK_f && race_state != 3) {
                     if(!e.key.repeat){g_dbg.freecam ^= 1;mlook=0;}
@@ -7114,6 +7273,12 @@ int main(int argc, char **argv) {
         int race_nos_allowed = !world.city.race.active || world.city.race.ev<0 ||
             (world.city.ev[world.city.race.ev].info.kind!=N2_RACE_STREETX &&
              world.city.ev[world.city.race.ev].info.kind!=N2_RACE_DRIFT);
+        /* Gameplay camera: per-car record, event set-up and look-back (held). */
+        gamecam_load_car(&gc,dataroot,carname);
+        int gc_drift=world.city.race.active && world.city.race.kind==N2_RACE_DRIFT;
+        gamecam_event(&gc,world.city.race.active,world.city.race.ev,gc_drift);
+        gc.look_back=race_state!=3 && (arg_look_back || (beam_keys && driving_keys && ks[SDL_SCANCODE_B]));
+        cam_set_look_back(&gc.cam,gc.look_back);
         AiCar live_pose={.pos={carpos[0],carpos[1],carpos[2]},.vel={vel[0],vel[1]},.head=heading,.spd=speed,
             .wheel_angle=player_wheel_angle,.steer=steer_filtered,.ride=g_ride,.ride_ready=g_ride_ready};
         /* Loads, grid placement and debug moves can happen outside ticks. */
@@ -8153,6 +8318,14 @@ int main(int argc, char **argv) {
         /* Use the actual angular travel, even when a fast wheel turns > pi
            or its bounded phase wraps through zero during this tick. */
         pose_before.wheel_angle=player_wheel_angle-speed/fmaxf(carprof.wheel_r*sim_wheel_scale,.05f);
+        {   /* gameplay camera: one update per simulation tick (SPEC 6) */
+            char gpresent[N_WORLD_AI];
+            GameCamProbe gprobe={&scene,(const float (*)[4])world.neighborhood.mbb,ais,gpresent,draw_nai};
+            for(int k=0;k<draw_nai;k++)gpresent[k]=ai_actor_present(k,ai_race,nai,traffic_routes);
+            int incar=gc.cam.requested==CAM_BUMPER || gc.cam.requested==CAM_HOOD;
+            gamecam_tick(&gc,carpos,vel,heading,g_ride_ready?&g_ride:NULL,car_body_ride,gc_drift,
+                         incar?&gprobe:NULL,sim_tick==0 && pose_snap);
+        }
         shake_now=landing_offset;
         for(int k=0;k<draw_nai;k++) {
             ai_pose_now[k]=ais[k];
@@ -8236,6 +8409,28 @@ int main(int argc, char **argv) {
         memcpy(camera_target_before,idealtgt,sizeof idealtgt);
         camera_history_mode=camera_mode;
         float look[3] = { camtgt[0]-cam[0], camtgt[1]-cam[1], camtgt[2]-cam[2] };
+        /* Gameplay camera (docs/CAMERA.md) replaces the chase spring whenever the
+           player is driving and no capture/debug camera owns the view. The menu
+           orbit, --shot-yaw captures, the RMB orbit and the F free camera keep
+           their own paths above. */
+        int gcam_on=race_state!=3 && shotyaw>=1e8f && !free_active && !orbit_active;
+        CamPose gcam_pose; memset(&gcam_pose,0,sizeof gcam_pose);
+        if(gcam_on) {
+            if(!gc.cam.started)
+                gamecam_tick(&gc,carpos,vel,heading,g_ride_ready?&g_ride:NULL,car_body_ride,gc_drift,NULL,1);
+            float gup[3]={render_up[0],render_up[1],render_up[2]};
+            if(render_player.ride_ready && !sstatic && !capture_policy.freeze_motion)
+                phys_ride_body_up(&render_player.ride,render_player.head,gup);
+            CamCarFrame gframe; cam_car_axes(render_player.head,gup,&gframe);
+            for(int c=0;c<3;c++)gframe.pos[c]=render_player.pos[c]+gframe.up[c]*car_body_ride;
+            cam_pose(&gc.cam,&gframe,&gcam_pose);
+            for(int c=0;c<3;c++) {
+                cam[c]=gcam_pose.eye[c];camtgt[c]=gcam_pose.look[c];
+                look[c]=gcam_pose.look[c]-gcam_pose.eye[c];
+            }
+            g_dbg.cam_option=gc.settings.opt[0];g_dbg.cam_view=gcam_pose.view;g_dbg.cam_look_back=gc.look_back;
+        }
+        int player_hidden=follow_roam_ai || (gcam_on && gcam_pose.hide_car);
         if(free_active!=free_was_active) {
             if(free_active) {
                 free_yaw=atan2f(look[1],look[0]);
@@ -8277,7 +8472,7 @@ int main(int argc, char **argv) {
         float P[16], V[16], MVP[16];
         /* Keep the near plane inside the camera collision sphere so nearby
            walls cannot be cut open even after the eye retracts. */
-        float znear = 0.1f;
+        float znear = gcam_on ? gcam_pose.znear : 0.1f;
         /* Far plane from the same fog policy: nothing beyond the 1%-contribution
            distance is drawn, so the depth range only has to cover it (plus 20%
            headroom for batches straddling the gate). Vistas get their own deep
@@ -8285,13 +8480,14 @@ int main(int argc, char **argv) {
         float zfar = g_dbg.fog_density > 1e-5f
                    ? 1.2f * sqrtf(-logf(0.01f)) / g_dbg.fog_density : 2000.0f;
         if (zfar < 500.0f) zfar = 500.0f;
-        mat_persp(0.9f, (float)W/H, znear, zfar, P);
+        if(gcam_on)cam_projection(arg_cam_projection,gcam_pose.fov_bau,W,H,GAMECAM_MAIN_VIEW_SCALING,znear,zfar,P);
+        else mat_persp(0.9f, (float)W/H, znear, zfar, P);
         float view_cam[3]={cam[0],cam[1],cam[2]};
-        if(!free_active && !orbit_active && race_state==1 && !sstatic && !capture_policy.freeze_motion) {
+        if(!gcam_on && !free_active && !orbit_active && race_state==1 && !sstatic && !capture_policy.freeze_motion) {
             view_cam[2]+=render_landing;
             look[2]-=render_landing;
         }
-        if(!free_active && race_state!=3 && shotyaw>=1e8f && !sstatic && !poseshot) {
+        if(!gcam_on && !free_active && race_state!=3 && shotyaw>=1e8f && !sstatic && !poseshot) {
             /* Above-roof anchor lets a wall pull the eye in without putting it
                inside the vehicle. Test after easing/shake, before projection. */
             float anchor[3]={render_player.pos[0],render_player.pos[1],render_player.pos[2]+car_body_ride+carbb[5]+.3f};
@@ -8304,6 +8500,53 @@ int main(int argc, char **argv) {
             }
             cam[2]-=shake; /* do not feed landing shake back into the spring */
         }
+        if(gcam_on) {
+            if(!sstatic && !poseshot && cam_is_chase(gcam_pose.view)) {
+                /* SPEC 9: world pass, then lift the eye over cars close to it. */
+                float anchor[3]={render_player.pos[0],render_player.pos[1],
+                                 render_player.pos[2]+car_body_ride+carbb[5]+.3f};
+                if(view_cam[2]<anchor[2])anchor[2]=view_cam[2];
+                world_camera_clip(&scene,(const float (*)[4])world.neighborhood.mbb,
+                                  anchor,view_cam,GAMECAM_CHASE_CLIP_RADIUS);
+                for(int pass=0;pass<4;pass++) {
+                    int moved=0;
+                    for(int k=0;k<draw_nai;k++) {
+                        if(!ai_actor_present(k,ai_race,nai,traffic_routes))continue;
+                        float ex=render_ais[k].pos[0]-view_cam[0],ey=render_ais[k].pos[1]-view_cam[1],
+                              ez=render_ais[k].pos[2]-view_cam[2];
+                        if(ex*ex+ey*ey+ez*ez>GAMECAM_CAR_RANGE*GAMECAM_CAR_RANGE)continue;
+                        int visual=ai_actor_visual(k,ai_race,nai,world.city.race.active);
+                        const CarSwitchCandidate *vv=(!ai_race || world.city.race.active) && traffic[visual].gpu?&traffic[visual]:NULL;
+                        float vbb[6];
+                        if(vv)memcpy(vbb,vv->bb,sizeof vbb);
+                        else for(int a=0;a<3;a++){vbb[a]=opponent_profile.body[a*2];vbb[a+3]=opponent_profile.body[a*2+1];}
+                        float vc[3],vr=car_view_sphere(vbb,render_ais[k].pos,render_ais[k].head,vc)-GAMECAM_CAR_SPHERE_PAD;
+                        moved|=cam_raise_over_sphere(view_cam,vc,vr,GAMECAM_CAR_MARGIN);
+                    }
+                    if(!moved)break;
+                }
+                for(int c=0;c<3;c++)cam[c]=view_cam[c];
+            }
+            cam_view_matrix(view_cam,gcam_pose.look,gcam_pose.up,V);
+            for(int c=0;c<3;c++)look[c]=gcam_pose.look[c]-view_cam[c];
+            if(!sstatic && !capture_policy.freeze_motion && GAMECAM_SHAKE) {
+                /* SPEC 8. Road type is the ground under the car for every wheel in
+                   contact (docs/CAMERA.md D7); wheels in the air count as NONE. */
+                WGroundHit sg;int cat=world_ground_hit(&scene,render_player.pos[0],render_player.pos[1],
+                                                       render_player.pos[2],&sg);
+                int base=cat==WSURF_ROAD?CAM_SURF_ROAD:cat==WSURF_TERRAIN?CAM_SURF_GRASS:CAM_SURF_NONE;
+                int surf[4];
+                for(int w=0;w<4;w++)
+                    surf[w]=!render_player.ride_ready || ((render_player.ride.contact_mask>>w)&1u)?base:CAM_SURF_NONE;
+                float mps=fabsf(speed)*PHYS_TICKRATE;
+                CamShakeParams sp;
+                cam_shake_params(mps,GAMECAM_SHAKE_VMAX,surf,
+                    world.city.race.active && world.city.race.kind==N2_RACE_DRAG,nitro_active,
+                    mps<GAMECAM_STOPPED_MPS,&sp);
+                float sc[4];cam_shake_values(&sp,gc.clock+render_alpha/PHYS_TICKRATE,sc);
+                cam_shake_apply(sc,gcam_pose.fov_bau,V);
+            }
+        } else
         mat_lookat(view_cam, look, V);
         mat_mul(P, V, MVP);
         if(world2) {
@@ -8366,7 +8609,8 @@ int main(int argc, char **argv) {
            colour as the conservative fallback. */
         if (nsky && (passmode == 0 || passmode == 3 || passbatch >= 0)) {   /* M78/M79 */
             float MVPsky[16], Psky[16];
-            mat_persp(0.9f, (float)W/H, znear, 30000.0f, Psky);
+            if(gcam_on)cam_projection(arg_cam_projection,gcam_pose.fov_bau,W,H,GAMECAM_MAIN_VIEW_SCALING,znear,30000.0f,Psky);
+            else mat_persp(0.9f, (float)W/H, znear, 30000.0f, Psky);
             mat_mul(Psky, V, MVPsky);
             glUniformMatrix4fv(uMVP, 1, GL_FALSE, MVPsky);
             glUniform1f(uUnlit, 0.0f);
@@ -8758,7 +9002,7 @@ int main(int argc, char **argv) {
             glUniform1f(uUnlit,1.0f); glUniform1f(uUseTex,0.0f); glUniform1f(uSoft,0.0f);
             glUniform3f(uColor, 0.0f, 0.0f, 0.0f); glUniform1f(uAlpha, 0.5f);
             for (int c=0; g_dbg.vehicle_quality<=0 && c<=draw_nai; c++) {
-                if((c==0 && follow_roam_ai) ||
+                if((c==0 && player_hidden) ||
                    (c>0 && !ai_actor_present(c-1,ai_race,nai,traffic_routes)) ||
                    (c>0 && !render_ais[c-1].render_visible))continue;
                 float *cp = c==0 ? render_player.pos : render_ais[c-1].pos;
@@ -8793,7 +9037,7 @@ int main(int argc, char **argv) {
                the edges, and sized from the same body AABB the shadow uses so
                it tracks the car's real footprint. Drawn after the shadow so it
                lights the ground the shadow just darkened. */
-            if (!follow_roam_ai && g_dbg.neon_on && g_dbg.neon_str > 0.001f) {
+            if (!player_hidden && g_dbg.neon_on && g_dbg.neon_str > 0.001f) {
                 glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE);
                 glDepthMask(GL_FALSE);
                 glUniform1f(uUnlit,1.0f); glUniform1f(uUseTex,0.0f); glUniform1f(uSoft,1.0f);
@@ -8920,7 +9164,7 @@ int main(int argc, char **argv) {
                 mat_mul(WheelModel,brakeT[k],brakeWorld[k]);
             }
             WGroundHit shadow_ground;
-            if(!follow_roam_ai && world_ground_hit(&scene,render_player.pos[0],render_player.pos[1],render_player.pos[2],&shadow_ground)!=WSURF_NONE) {
+            if(!player_hidden && world_ground_hit(&scene,render_player.pos[0],render_player.pos[1],render_player.pos[2],&shadow_ground)!=WSURF_NONE) {
                 float gp[3]={render_player.pos[0],render_player.pos[1],shadow_ground.z};
                 const N2Scene *rims=nwheelgm>0 && (wheel_brand!=0 || wheel_style!=1)?&wheellib:NULL;
                 int casts=render_car_shadow(&rp,&player_shadow,&car,cgm,stock_wheel,rims,wheelgm,
@@ -8956,7 +9200,7 @@ int main(int argc, char **argv) {
             if (g_dbg.car_cull) { glEnable(GL_CULL_FACE); glCullFace(GL_BACK); }
             /* per-mesh: each part wears its own bound texture (body/wheel/...);
                parts with no in-TPK texture get a sensible flat colour by class. */
-            for (int i = 0; !follow_roam_ai && i < ncar; i++) {
+            for (int i = 0; !player_hidden && i < ncar; i++) {
                 int c = cgm[i].cat;
                 int mount = car.meshes[i].car_mount;
                 if (mount == N2_MOUNT_WHEEL) continue; /* complete tier drawn below */
@@ -9305,7 +9549,7 @@ int main(int argc, char **argv) {
             render_model(&rp,Model);
             /* Windows and lamp covers share one back-to-front pass. Drawing
                in archive order let a far pane overwrite a nearer pane's tint. */
-            if(!follow_roam_ai && ncar>0 && (g_dbg.show_glass || g_dbg.show_lights)) {
+            if(!player_hidden && ncar>0 && (g_dbg.show_glass || g_dbg.show_lights)) {
                 int order[ncar];int count=render_car_glass_order(&car,MVPc,order);
                 glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
                 glDisable(GL_CULL_FACE);glDepthMask(GL_FALSE);
@@ -9347,7 +9591,7 @@ int main(int argc, char **argv) {
                so the halo has a soft edge; plain ONE/ONE would be a hard disc).
                Depth-tested (occluded by nearer body) but no depth write; nudged
                slightly toward the camera so it sits over its own lens. */
-            if (!follow_roam_ai && g_dbg.show_lights && (tail_on || headlights_on)) {
+            if (!player_hidden && g_dbg.show_lights && (tail_on || headlights_on)) {
                 glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE);
                 glDepthMask(GL_FALSE);
                 glUniform1f(uUnlit,1.0f); glUniform1f(uUseTex,0.0f); glUniform1f(uSoft,1.0f);
@@ -9410,7 +9654,7 @@ int main(int argc, char **argv) {
             /* Keep authored wheels and material routing at every speed.
                ponytail: no motion blur until it preserves the selected wheel;
                a generic disc loses its geometry, alpha and rubber materials. */
-            if (!follow_roam_ai && have_wheel && g_dbg.show_tires) {
+            if (!player_hidden && have_wheel && g_dbg.show_tires) {
                 glUniform1f(rp.uVColor, 0.0f);
                 glUniform1f(rp.uDecal, 0.0f);
                 /* Draw every material slice of the selected source wheel tier,

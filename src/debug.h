@@ -155,6 +155,7 @@ typedef struct {
 
     /* --- readouts (engine writes, panel displays) --- */
     float cam[3], car[3], heading, kmh;
+    int   cam_option, cam_view, cam_look_back; /* gameplay camera (docs/CAMERA.md) */
     int   car_meshes, track_meshes, fps;
     int   drawn;
 
