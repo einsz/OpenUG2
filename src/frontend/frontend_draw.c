@@ -4,7 +4,7 @@
  * Uses a minimal shader with position + color uniforms and an embedded
  * 3×5 bitmap font (same glyph set as the main game's render.c, but
  * self-contained — no dependency on render.h). */
-#include "../gl_state.h"   /* GL headers; state changes are recorded by the tracker */
+#include "../gl_state.h"   /* GL headers + CPU state tracker (no glGet* readback) */
 
 #include "frontend_draw.h"
 #include <stdlib.h>
@@ -188,14 +188,14 @@ void fed_draw(FeDraw *d, const Fe *fe, int vp_w, int vp_h) {
     int prev_vp[4];
     int prev_blend_src = 0, prev_blend_dst = 0;
     int prev_buf = 0, prev_attr0 = 0;
-    glGetIntegerv(GL_CURRENT_PROGRAM, &prev_prog);
-    glGetIntegerv(GL_VIEWPORT, prev_vp);
-    prev_blend = glIsEnabled(GL_BLEND);
-    prev_depth = glIsEnabled(GL_DEPTH_TEST);
-    glGetIntegerv(GL_BLEND_SRC, &prev_blend_src);
-    glGetIntegerv(GL_BLEND_DST, &prev_blend_dst);
-    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &prev_buf);
-    glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &prev_attr0);
+    gls_get_integerv(GL_CURRENT_PROGRAM, &prev_prog);
+    gls_get_integerv(GL_VIEWPORT, prev_vp);
+    prev_blend = gls_is_enabled(GL_BLEND);
+    prev_depth = gls_is_enabled(GL_DEPTH_TEST);
+    gls_get_integerv(GL_BLEND_SRC_RGB, &prev_blend_src);
+    gls_get_integerv(GL_BLEND_DST_RGB, &prev_blend_dst);
+    gls_get_integerv(GL_ARRAY_BUFFER_BINDING, &prev_buf);
+    prev_attr0 = gls_attrib_enabled(0);
 
     /* Aspect-correct logical viewport: 4:3 area centered in the window. */
     float aspect = (float)vp_w / (float)vp_h;
