@@ -9947,6 +9947,7 @@ int main(int argc, char **argv) {
             hs.have_rpm = 1;
             hs.rpm = g_engine.target_rpm;
             hs.rpm_redline = ENG_REDLINE_RPM;   /* the gearbox's own limit */
+            hs.rpm_maximum = ENG_REDLINE_RPM;   /* provisional audio bound */
             hs.gear = gear;
 
             hs.nitro_active = nitro_active;
@@ -9983,6 +9984,7 @@ int main(int argc, char **argv) {
                     hs.race_kind=wr->kind;hs.drift_score=wr->drift.bank;hs.drift_chain=wr->drift.chain;
                     if(wr->kind==N2_RACE_DRAG && g_vehicle_source_valid) {
                         hs.rpm=drag_gear.rpm;hs.rpm_redline=g_vehicle_source.redline_rpm;hs.gear=drag_gear.gear;
+                        hs.rpm_maximum=g_vehicle_source.limiter_rpm;
                         hs.engine_heat=drag_gear.heat;hs.engine_failed=wr->failed==1;
                         hs.shift_ready=drag_gear.rpm>=g_vehicle_source.redline_rpm;
                     }

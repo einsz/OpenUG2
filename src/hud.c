@@ -36,6 +36,16 @@ int hud_speed_value(float speed_kmh, int imperial) {
     return (int)magnitude;
 }
 
+float hud_tach_fraction(const HudState *s, float dial_scale) {
+    if (!s || !s->have_rpm || !isfinite(s->rpm) ||
+        !isfinite(dial_scale) || dial_scale <= 0) return 0;
+    if (!isfinite(s->rpm_maximum) || s->rpm_maximum < 0) return 0;
+    float maximum = s->rpm_maximum > 0 ? s->rpm_maximum : s->rpm_redline;
+    if (!isfinite(maximum) || maximum <= 0) return 0;
+    float reading = fminf(maximum, fmaxf(0, s->rpm));
+    return fminf(1, reading / dial_scale);
+}
+
 void hud_map_project(float wx, float wy, float cx, float cy,
                      float radius_m, float rot, float *mx, float *my) {
     if (radius_m < 1e-3f) radius_m = 1e-3f;
@@ -130,8 +140,7 @@ struct Hud {
     HudArt art[ART_COUNT];
     int    preview;
     char   missing[512];
-    /* smoothed display state: a needle that snaps looks broken, and a dial fed
-       straight from a 60 Hz sample jitters on every gear change. */
+    /* Current needle sample; animation state for the other HUD elements. */
     float  needle_rpm, nos_glow, arrow_angle;
     int    arrow_primed;
 };
@@ -462,11 +471,8 @@ static void hud_draw_cluster(Hud *h, const HudDC *dc, const HudState *s) {
     hud_blit(dc, h->art[ART_TACH_BACK].tex, TACH_W, TACH_H, cx, cy,
              0.0f, 1.0f, 1.0f, 1.0f, 0.85f);
 
-    float frac = 0.0f;
-    if (s->have_rpm && s->rpm_redline > 1.0f) frac = s->rpm / s->rpm_redline;
-    if (frac < 0.0f) frac = 0.0f;
-    if (frac > 1.0f) frac = 1.0f;
-    h->needle_rpm += (frac - h->needle_rpm) * 0.35f;
+    float scale = s->rpm_maximum > 0 ? s->rpm_maximum : s->rpm_redline;
+    h->needle_rpm = hud_tach_fraction(s, scale);
     const int SEG = 48;
     for (int i = 0; i < SEG; i++) {
         float f0 = (float)i / SEG;
@@ -548,8 +554,7 @@ static void hud_draw_drag(Hud *h,const HudDC *dc,const HudState *s) {
     float px=cx+(arc->arc.ok?arc->arc.cx-.5f:.5f)*width/dc->asp;
     float py=cy-height*.5f+(arc->arc.ok?arc->arc.cy:1)*width;
     float radius=arc->arc.ok?arc->arc.r*width:width*.75f;
-    float fraction=s->have_rpm?fmaxf(0,fminf(1,s->rpm/(7000+index*1000))):0;
-    h->needle_rpm+=(fraction-h->needle_rpm)*.35f;
+    h->needle_rpm=hud_tach_fraction(s,(float)(7000+index*1000));
     float angle=hud_arc_angle(arc,h->needle_rpm,150,30),length=radius*.85f;
     hud_blit(dc,h->art[ART_DRAG_NEEDLE].tex,length,.035f,
         px+cosf(angle)*length*.5f/dc->asp,py+sinf(angle)*length*.5f,angle,1,1,1,1);

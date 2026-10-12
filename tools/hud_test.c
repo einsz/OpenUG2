@@ -37,6 +37,39 @@ static void test_speed_readout(void) {
     puts("  speed uses current magnitude, units and truncation     PASS");
 }
 
+static void test_tachometer_uses_current_bounded_sample(void) {
+    HudState s = {0};
+    s.have_rpm = 1; s.rpm_redline = 6500; s.rpm_maximum = 7000;
+    s.rpm = 3500;
+    assert(near(hud_tach_fraction(&s, 7000), .5f, 1e-6f));
+    s.rpm = s.rpm_redline;
+    assert(hud_tach_fraction(&s, 7000) < 1); /* redline is not the maximum */
+    s.rpm = 9000;
+    assert(hud_tach_fraction(&s, 7000) == 1);
+    assert(near(hud_tach_fraction(&s, 10000), .7f, 1e-6f));
+    s.rpm = -100;
+    assert(hud_tach_fraction(&s, 7000) == 0);
+    for (int frame = 0; frame < 1000; ++frame) {
+        s.rpm = 5600;
+        assert(near(hud_tach_fraction(&s, 7000), .8f, 1e-6f));
+        s.rpm = 1400;
+        assert(near(hud_tach_fraction(&s, 7000), .2f, 1e-6f));
+    }
+    s.rpm_maximum = 0; s.rpm = 3250;
+    assert(near(hud_tach_fraction(&s, 6500), .5f, 1e-6f));
+    s.have_rpm = 0;
+    assert(hud_tach_fraction(&s, 7000) == 0);
+    s.have_rpm = 1; s.rpm = NAN;
+    assert(hud_tach_fraction(&s, 7000) == 0);
+    s.rpm = 3000; s.rpm_maximum = INFINITY;
+    assert(hud_tach_fraction(&s, 7000) == 0);
+    s.rpm_maximum = NAN;
+    assert(hud_tach_fraction(&s, 7000) == 0);
+    assert(hud_tach_fraction(&s, 0) == 0);
+    assert(hud_tach_fraction(NULL, 7000) == 0);
+    puts("  tachometer uses current RPM and a separate upper bound PASS");
+}
+
 /* ---- 1. arrow angle: the wrap is the whole point ---- */
 static void test_angle_delta_takes_the_short_way(void) {
     assert(near(hud_angle_delta(0.0f, 0.5f), 0.5f, 1e-5f));
@@ -284,6 +317,8 @@ static void test_art_gate_separates_ui_from_noise(void) {
 int main(void) {
     printf("hud_test:\n");
     test_speed_readout();
+
+    test_tachometer_uses_current_bounded_sample();
     test_angle_delta_takes_the_short_way();
     test_map_project_and_pick_round_trip();
     test_layout_keeps_proportions_across_aspects();
