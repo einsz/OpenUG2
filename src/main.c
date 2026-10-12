@@ -1976,6 +1976,7 @@ int main(int argc, char **argv) {
          --no-road-reflections  keep surface sheen without scene reflections
          --world-cull-off  diagnostic: submit offscreen world batches
          --hud            draw the in-game player HUD (dial, minimap, nav arrow)
+         --hud-mph        enable the player HUD with imperial speed units
          --hud-fitted L   which parts the HUD treats as fitted: nos,turbo | none
          --hud-dest X,Y   set a navigation destination at startup (headless
                           equivalent of clicking the minimap)
@@ -1998,6 +1999,7 @@ int main(int argc, char **argv) {
        stacking on top of it. --hud-preview additionally fills the readouts
        that have no live system with clearly-labelled sample values. */
     int hud_opt = 0, hud_preview_opt = 0, hud_dest_set = 0;
+    int hud_imperial = 0;
     int hud_fitted_set = 0, hud_fitted_nos = 0, hud_fitted_turbo = 0;
     float hud_dest[2] = { 0.0f, 0.0f };
     /* M132-R diagnostics. tier: 0 = baseline (old fixed 700 m, no vista),
@@ -2275,6 +2277,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--b02-probe") && i+1 < argc) {
             b02probe = argv[++i]; fbcensus = 1; n2_m102 = 1; }
         else if (!strcmp(argv[i], "--hud")) hud_opt = 1;
+        else if (!strcmp(argv[i], "--hud-mph")) { hud_opt = 1; hud_imperial = 1; }
         /* --hud-fitted nos,turbo | none: override which performance parts the
            HUD believes are FITTED. The engine cannot yet report this (the
            performance shop models power curves and transmission only), so
@@ -9935,6 +9938,7 @@ int main(int argc, char **argv) {
         if (hud) {
             HudState hs; memset(&hs, 0, sizeof hs);
             hs.speed_kmh = PHYS_KMH(speed);
+            hs.imperial_units = hud_imperial;
             hs.car_x = carpos[0]; hs.car_y = carpos[1];
             hs.car_heading = heading;
 

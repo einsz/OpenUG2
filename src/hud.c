@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -25,6 +26,14 @@ float hud_angle_delta(float from, float to) {
     if (d <= -(float)M_PI) d += 2.0f * (float)M_PI;
     if (d >   (float)M_PI) d -= 2.0f * (float)M_PI;
     return d;
+}
+
+int hud_speed_value(float speed_kmh, int imperial) {
+    if (!isfinite(speed_kmh)) return 0;
+    double magnitude = fabs((double)speed_kmh);
+    if (imperial) magnitude /= 1.609344;
+    if (magnitude >= INT_MAX) return INT_MAX;
+    return (int)magnitude;
 }
 
 void hud_map_project(float wx, float wy, float cx, float cy,
@@ -123,7 +132,7 @@ struct Hud {
     char   missing[512];
     /* smoothed display state: a needle that snaps looks broken, and a dial fed
        straight from a 60 Hz sample jitters on every gear change. */
-    float  needle_rpm, needle_speed, nos_glow, arrow_angle;
+    float  needle_rpm, nos_glow, arrow_angle;
     int    arrow_primed;
 };
 
@@ -324,7 +333,7 @@ Hud *hud_init(const char *dataroot) {
             else printf("player HUD: %-22s no usable arc fit\n", a->name);
         }
     }
-    h->needle_rpm = h->needle_speed = 0.0f;
+    h->needle_rpm = 0.0f;
     return h;
 }
 
@@ -482,11 +491,10 @@ static void hud_draw_cluster(Hud *h, const HudDC *dc, const HudState *s) {
     }
 
     char buf[64];
-    float kmh = s->speed_kmh < 0.0f ? -s->speed_kmh : s->speed_kmh;
-    h->needle_speed += (kmh - h->needle_speed) * 0.40f;
-    snprintf(buf, sizeof buf, "%d", (int)(h->needle_speed + 0.5f));
+    snprintf(buf, sizeof buf, "%d", hud_speed_value(s->speed_kmh, s->imperial_units));
     hud_label(dc, buf, pivx, pivy + arc_r * 0.52f, 0.072f, 0.85f, 0.95f, 1.0f, 1.0f);
-    hud_label(dc, "KMH", pivx, pivy + arc_r * 0.22f, 0.026f, 0.55f, 0.70f, 0.80f, 1.0f);
+    hud_label(dc, s->imperial_units ? "MPH" : "KMH", pivx, pivy + arc_r * 0.22f,
+              0.026f, 0.55f, 0.70f, 0.80f, 1.0f);
     if (s->have_rpm) {
         if (s->gear < 0)       snprintf(buf, sizeof buf, "R");
         else if (s->gear == 0) snprintf(buf, sizeof buf, "N");
@@ -552,7 +560,8 @@ static void hud_draw_drag(Hud *h,const HudDC *dc,const HudState *s) {
         cx-.35f/dc->asp,cy-.25f+.25f*heat,0,1,.3f,.1f,1);
     char buf[64];snprintf(buf,sizeof buf,"%d",s->gear);
     hud_label(dc,buf,px,py,.12f,1,1,1,1);
-    snprintf(buf,sizeof buf,"%.0f KMH",fabsf(s->speed_kmh));
+    snprintf(buf,sizeof buf,"%d %s",hud_speed_value(s->speed_kmh,s->imperial_units),
+             s->imperial_units?"MPH":"KMH");
     hud_label(dc,buf,cx,cy+.52f,.055f,.7f,.9f,1,1);
     if(s->have_nos)hud_label(dc,s->nitro_active?"NOS ACTIVE":"NOS N/A",cx,cy-.53f,.04f,.3f,.8f,1,1);
 }
