@@ -1,9 +1,9 @@
-/* gl_state.h — CPU-side GL state tracker.
+/* gl_state.h — CPU-side GL state tracker + per-program uniform mirror.
  *
- * Renderer-boundary migration step 2 (issue #14). Helpers used to
+ * Renderer-boundary migration steps 2 and 3 (issue #14). Helpers used to
  * save/restore the caller's state by reading it back from GL (glIsEnabled,
- * glGetIntegerv, glGetBooleanv, glGetFloatv). A Vulkan backend has no
- * equivalent, so the state is shadowed on the CPU instead:
+ * glGetIntegerv, glGetBooleanv, glGetFloatv, glGetUniformfv). A Vulkan
+ * backend has no equivalent, so the state is shadowed on the CPU instead:
  *
  *  - Each state-setting entry point below is redirected by a function-like
  *    macro to a gls* shim that records the value and then issues exactly the
@@ -12,6 +12,9 @@
  *  - gls_get_* answer from the shadow copy, which starts from the GL spec
  *    defaults whenever the current SDL GL context changes. They never query
  *    GL, except for a pname the tracker does not model (counted below).
+ *  - glUniform* writes are mirrored per (program, location). Linking a
+ *    program zeroes its mirror as GL does, so gls_get_uniformfv() returns the
+ *    floats glGetUniformfv would have.
  *
  * Every TU that includes render.h (or this header) is tracked. Code that
  * changes this state through raw GL (the ImGui GL2 backend) must restore it
@@ -60,6 +63,8 @@ void glsClearDepth(GLdouble depth);
 #endif
 void glsViewport(GLint x, GLint y, GLsizei w, GLsizei h);
 void glsUseProgram(GLuint program);
+void glsLinkProgram(GLuint program);
+void glsDeleteProgram(GLuint program);
 void glsBindFramebuffer(GLenum target, GLuint fbo);
 void glsBindRenderbuffer(GLenum target, GLuint rb);
 void glsDeleteFramebuffers(GLsizei n, const GLuint *ids);
@@ -67,6 +72,16 @@ void glsDeleteRenderbuffers(GLsizei n, const GLuint *ids);
 void glsActiveTexture(GLenum unit);
 void glsBindTexture(GLenum target, GLuint texture);
 void glsDeleteTextures(GLsizei n, const GLuint *ids);
+void glsUniform1f(GLint loc, GLfloat x);
+void glsUniform2f(GLint loc, GLfloat x, GLfloat y);
+void glsUniform3f(GLint loc, GLfloat x, GLfloat y, GLfloat z);
+void glsUniform4f(GLint loc, GLfloat x, GLfloat y, GLfloat z, GLfloat w);
+void glsUniform1i(GLint loc, GLint x);
+void glsUniform1fv(GLint loc, GLsizei count, const GLfloat *v);
+void glsUniform2fv(GLint loc, GLsizei count, const GLfloat *v);
+void glsUniform3fv(GLint loc, GLsizei count, const GLfloat *v);
+void glsUniform4fv(GLint loc, GLsizei count, const GLfloat *v);
+void glsUniformMatrix4fv(GLint loc, GLsizei count, GLboolean transpose, const GLfloat *v);
 
 /* ---- tracked-state getters: drop-in for the glIsEnabled / glGet* forms ----
  * Modelled caps: DEPTH_TEST BLEND CULL_FACE SCISSOR_TEST STENCIL_TEST DITHER
@@ -80,8 +95,15 @@ void gls_get_integerv(GLenum pname, GLint *out);
 void gls_get_booleanv(GLenum pname, GLboolean *out);
 void gls_get_floatv(GLenum pname, GLfloat *out);
 
+/* ---- uniform mirror (replaces glGetUniformfv) ----
+ * Copies the floats last written at `loc` of `program` (n = component count,
+ * e.g. 1, 3, 4 or 16). A glUniform*v(loc, count, ...) array write is stored
+ * contiguously from `loc`, so n may span elements (8 for both uHeadPos
+ * vec4s). loc < 0 leaves `out` untouched, matching glGetUniformfv. */
+void gls_get_uniformfv(GLuint program, GLint loc, GLfloat *out, int n);
+
 /* Reads that had to go to GL because the pname/cap/location is not modelled
- * (diagnostic; 0 in every converted path). */
+ * (diagnostic; 0 in every current path). */
 unsigned gls_fallback_queries(void);
 
 #ifdef __cplusplus
@@ -106,6 +128,8 @@ unsigned gls_fallback_queries(void);
 #  endif
 #  define glViewport(x,y,w,h)             glsViewport(x,y,w,h)
 #  define glUseProgram(p)                 glsUseProgram(p)
+#  define glLinkProgram(p)                glsLinkProgram(p)
+#  define glDeleteProgram(p)              glsDeleteProgram(p)
 #  define glBindFramebuffer(t,f)          glsBindFramebuffer(t,f)
 #  define glBindRenderbuffer(t,r)         glsBindRenderbuffer(t,r)
 #  define glDeleteFramebuffers(n,p)       glsDeleteFramebuffers(n,p)
@@ -113,6 +137,16 @@ unsigned gls_fallback_queries(void);
 #  define glActiveTexture(u)              glsActiveTexture(u)
 #  define glBindTexture(t,x)              glsBindTexture(t,x)
 #  define glDeleteTextures(n,p)           glsDeleteTextures(n,p)
+#  define glUniform1f(l,x)                glsUniform1f(l,x)
+#  define glUniform2f(l,x,y)              glsUniform2f(l,x,y)
+#  define glUniform3f(l,x,y,z)            glsUniform3f(l,x,y,z)
+#  define glUniform4f(l,x,y,z,w)          glsUniform4f(l,x,y,z,w)
+#  define glUniform1i(l,x)                glsUniform1i(l,x)
+#  define glUniform1fv(l,n,v)             glsUniform1fv(l,n,v)
+#  define glUniform2fv(l,n,v)             glsUniform2fv(l,n,v)
+#  define glUniform3fv(l,n,v)             glsUniform3fv(l,n,v)
+#  define glUniform4fv(l,n,v)             glsUniform4fv(l,n,v)
+#  define glUniformMatrix4fv(l,n,t,v)     glsUniformMatrix4fv(l,n,t,v)
 #endif
 
 #endif /* OPENUG2_GL_STATE_H */
