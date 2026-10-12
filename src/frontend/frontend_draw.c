@@ -4,7 +4,7 @@
  * Uses a minimal shader with position + color uniforms and an embedded
  * 3×5 bitmap font (same glyph set as the main game's render.c, but
  * self-contained — no dependency on render.h). */
-#include "../gl_state.h"   /* GL headers + CPU state tracker (no glGet* readback) */
+#include "../rhi_gl_state.h"   /* GL headers + CPU state tracker (no glGet* readback) */
 
 #include "frontend_draw.h"
 #include <stdlib.h>

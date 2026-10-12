@@ -11,7 +11,7 @@
 #include "tex_override.h"
 
 #if defined(__APPLE__) && !defined(N2_GLES)
-/* Bind/Delete Framebuffers/Renderbuffers go through gl_state.c, which maps
+/* Bind/Delete Framebuffers/Renderbuffers go through rhi_gl_state.c, which maps
    them to the EXT entry points itself. */
 #define glGenFramebuffers glGenFramebuffersEXT
 #define glFramebufferTexture2D glFramebufferTexture2DEXT
