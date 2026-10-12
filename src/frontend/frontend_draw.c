@@ -5,6 +5,7 @@
  * 3×5 bitmap font (same glyph set as the main game's render.c, but
  * self-contained — no dependency on render.h). */
 #include "../rhi_gl_state.h"   /* GL headers + CPU state tracker (no glGet* readback) */
+#include "../rhi_gl.h"        /* GL name behind the quad buffer handle */
 
 #include "frontend_draw.h"
 #include <stdlib.h>
@@ -29,7 +30,7 @@ static const char *FE_FS =
 struct FeDraw {
     unsigned prog;
     int uMVP, uColor;
-    unsigned vbo;
+    RhiBuffer vbo;
 };
 
 static unsigned fe_compile(unsigned type, const char *src) {
@@ -74,9 +75,8 @@ FeDraw *fed_init(void) {
 
     /* unit quad: two triangles, (0,0)-(1,1) */
     float quad[] = { 0,0, 1,0, 1,1, 0,0, 1,1, 0,1 };
-    glGenBuffers(1, &d->vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, d->vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof quad, quad, GL_STATIC_DRAW);
+    d->vbo = rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC,
+                                                 sizeof quad, quad});
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     return d;
@@ -214,7 +214,7 @@ void fed_draw(FeDraw *d, const Fe *fe, int vp_w, int vp_h) {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     glUseProgram(d->prog);
-    glBindBuffer(GL_ARRAY_BUFFER, d->vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, rhi_gl_buffer_name(d->vbo));
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
 
@@ -365,6 +365,6 @@ void fed_draw(FeDraw *d, const Fe *fe, int vp_w, int vp_h) {
 void fed_free(FeDraw *d) {
     if (!d) return;
     if (d->prog) glDeleteProgram(d->prog);
-    if (d->vbo) glDeleteBuffers(1, &d->vbo);
+    rhi_buffer_destroy(d->vbo);
     free(d);
 }

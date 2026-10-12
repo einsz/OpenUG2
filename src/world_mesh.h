@@ -14,14 +14,14 @@
 
 typedef struct {
     GLuint   vao;          /* reserved: 0 on GL 2.1 core (no VAO); attribs bound per draw */
-    GLuint   vbo, ibo;
+    RhiBuffer vbo, ibo;
     uint32_t index_count;
     uint32_t chunk_id;
     char     section_name[64];
 } WorldMeshBatch;
 
 /* Upload one section's interleaved BatchedVertex array + u16 index array into a
-   static VBO/IBO. Returns a batch with vbo==0 (skipped at draw) on empty input. */
+   static VBO/IBO. Returns a batch with vbo=={0} (skipped at draw) on empty input. */
 WorldMeshBatch upload_world_mesh_to_gpu(const BatchedVertex *verts, uint32_t vcount,
                                         const uint16_t *indices, uint32_t icount,
                                         const char *section_name, uint32_t chunk_id);

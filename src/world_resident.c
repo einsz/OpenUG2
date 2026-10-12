@@ -571,8 +571,8 @@ int world_resident_retire_step(WorldResident **slot, int max_items) {
         while (*counts[g] > 0) {
             if (!max_items) return 0;
             N2Batch *b = &batches[g][--*counts[g]];
-            GLuint ids[] = {b->vbo, b->ibo};
-            glDeleteBuffers(2, ids);
+            rhi_buffer_destroy(b->vbo);
+            rhi_buffer_destroy(b->ibo);
             max_items--;
         }
     }

@@ -9,6 +9,7 @@
 
 #include "render.h"
 #include "tex_override.h"
+#include "rhi_gl.h"   /* GL names behind buffer handles for the draw code */
 
 #if defined(__APPLE__) && !defined(N2_GLES)
 /* Bind/Delete Framebuffers/Renderbuffers go through rhi_gl_state.c, which maps
@@ -300,15 +301,15 @@ void mat_ground_shadow(const float ground[3],const float normal[3],float m[16]) 
 }
 
 void free_car_shadow(CarShadow *s) {
-    if(s->body)glDeleteBuffers(1,&s->body);
-    if(s->wheel)glDeleteBuffers(1,&s->wheel);
+    rhi_buffer_destroy(s->body);
+    rhi_buffer_destroy(s->wheel);
     memset(s,0,sizeof *s);
 }
 
 /* Flatten indices once per loaded model, not once per frame/traffic actor.
  * Position-only casters merge material slices into one draw per rigid part. */
 static int shadow_vertices(const N2Scene *car,int stock,const N2Scene *rims,
-                           int wheel,GLuint *buffer,int *vertices) {
+                           int wheel,RhiBuffer *buffer,int *vertices) {
     const N2Scene *source=wheel && rims && rims->count?rims:car;
     size_t count=0;
     for(int i=0;i<source->count;i++) {
@@ -334,8 +335,7 @@ static int shadow_vertices(const N2Scene *car,int stock,const N2Scene *rims,
             for(int k=0;k<3;k++){memcpy(positions+n*3,m->verts+m->idx[j+k]*5,3*sizeof(float));n++;}
         }
     }
-    glGenBuffers(1,buffer);glBindBuffer(GL_ARRAY_BUFFER,*buffer);
-    glBufferData(GL_ARRAY_BUFFER,n*3*sizeof *positions,positions,GL_STATIC_DRAW);
+    *buffer=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, n*3*sizeof *positions, positions});
     free(positions);*vertices=(int)n;return 1;
 }
 
@@ -344,8 +344,8 @@ int render_car_shadow(const RProg *r,CarShadow *s,const N2Scene *car,const GpuMe
                       const float model[16],const float wheels[4][16],const float mvp[16],
                       const float ground[3],const float normal[3],int quality) {
     if(!car || !car->count || !gpu || quality<=0)return 0;
-    GLuint body_key=gpu[0].vbo,wheel_key=rims && rims->count && rim_gpu?rim_gpu[0].vbo:
-                                    stock>=0?gpu[stock].vbo:0;
+    uint32_t body_key=gpu[0].vbo.id,wheel_key=rims && rims->count && rim_gpu?rim_gpu[0].vbo.id:
+                                      stock>=0?gpu[stock].vbo.id:0;
     if(s->body_key!=body_key || s->wheel_key!=wheel_key) {
         free_car_shadow(s);
         if(!shadow_vertices(car,stock,rims,0,&s->body,&s->body_count) ||
@@ -367,7 +367,7 @@ int render_car_shadow(const RProg *r,CarShadow *s,const N2Scene *car,const GpuMe
     for(int a=1;a<4;a++)glDisableVertexAttribArray(a);
     /* Body and wheel coverage share the stencil reference for this actor. */
     for(int part=0;part<5;part++) {
-        GLuint buffer=part?s->wheel:s->body;int n=part?s->wheel_count:s->body_count;
+        GLuint buffer=rhi_gl_buffer_name(part?s->wheel:s->body);int n=part?s->wheel_count:s->body_count;
         if(!buffer || !n)continue;
         float matrix[16];mat_mul(projected,part?wheels[part-1]:model,matrix);
         glUniformMatrix4fv(r->uMVP,1,GL_FALSE,matrix);
@@ -550,13 +550,13 @@ int render_rain_vertices(float time,float intensity,int quality,float aspect,Rai
     return n;
 }
 
-int render_rain(const RProg *r,GLuint *vbo,float time,float intensity,int quality,float aspect) {
+int render_rain(const RProg *r,RhiBuffer *vbo,float time,float intensity,int quality,float aspect) {
     if(intensity<=0)return 0;
     RainVertex vertices[RAIN_MAX_DROPS*6];
     int n=render_rain_vertices(time,intensity,quality,aspect,vertices);
     if(!n)return 0;
-    if(!*vbo)glGenBuffers(1,vbo);
-    if(!*vbo)return 0;
+    if(!vbo->id)*vbo=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX, RHI_UPDATE_STREAM, 0, NULL});
+    if(!vbo->id)return 0;
     const GLint loc[]={r->uUnlit,r->uEmissiveTex,r->uUseTex,r->uSoft,r->uAlpha,r->uVista,r->uUVCheck};
     float saved[7],matrix[16];
     for(int i=0;i<7;i++)gls_get_uniformfv(r->prog,loc[i],saved+i,1);
@@ -573,8 +573,7 @@ int render_rain(const RProg *r,GLuint *vbo,float time,float intensity,int qualit
     glUniform1f(r->uSoft,3);glUniform1f(r->uAlpha,.8f*fminf(intensity,1));
     const float identity[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
     glUniformMatrix4fv(r->uMVP,1,GL_FALSE,identity);
-    glBindBuffer(GL_ARRAY_BUFFER,*vbo);
-    glBufferData(GL_ARRAY_BUFFER,(GLsizeiptr)(n*sizeof *vertices),vertices,GL_STREAM_DRAW);
+    rhi_buffer_replace(*vbo,(size_t)n*sizeof *vertices,vertices);
     glEnableVertexAttribArray(0);glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,sizeof(RainVertex),(void*)0);
     glEnableVertexAttribArray(1);glVertexAttribPointer(1,2,GL_FLOAT,GL_FALSE,sizeof(RainVertex),(void*)12);
     glEnableVertexAttribArray(3);glVertexAttribPointer(3,1,GL_FLOAT,GL_FALSE,sizeof(RainVertex),(void*)20);
@@ -590,11 +589,11 @@ int render_rain(const RProg *r,GLuint *vbo,float time,float intensity,int qualit
     return 1;
 }
 
-int render_collision_walls(const RProg *r,GLuint *vbo,const float *faces,int count,
+int render_collision_walls(const RProg *r,RhiBuffer *vbo,const float *faces,int count,
                           const float color[3],const float mvp[16],int through) {
     if(!faces || count<=0 || count>WALL_DEBUG_MAX_FACES)return 0;
-    if(!*vbo)glGenBuffers(1,vbo);
-    if(!*vbo)return 0;
+    if(!vbo->id)*vbo=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX, RHI_UPDATE_STREAM, 0, NULL});
+    if(!vbo->id)return 0;
     static float edges[WALL_DEBUG_MAX_FACES*18];
     for(int t=0;t<count;t++)for(int e=0;e<3;e++) {
         memcpy(edges+t*18+e*6,faces+t*9+e*3,3*sizeof(float));
@@ -615,10 +614,9 @@ int render_collision_walls(const RProg *r,GLuint *vbo,const float *faces,int cou
     glUniform1f(r->uUnlit,1);glUniform1f(r->uEmissiveTex,0);glUniform1f(r->uUseTex,0);
     glUniform1f(r->uSoft,0);glUniform1f(r->uVista,0);glUniform1f(r->uUVCheck,0);
     glUniform3fv(r->uColor,1,color);glUniformMatrix4fv(r->uMVP,1,GL_FALSE,mvp);
-    glBindBuffer(GL_ARRAY_BUFFER,*vbo);
-    glBufferData(GL_ARRAY_BUFFER,(GLsizeiptr)count*27*sizeof(float),NULL,GL_STREAM_DRAW);
-    glBufferSubData(GL_ARRAY_BUFFER,0,(GLsizeiptr)count*9*sizeof(float),faces);
-    glBufferSubData(GL_ARRAY_BUFFER,(GLintptr)count*9*sizeof(float),(GLsizeiptr)count*18*sizeof(float),edges);
+    rhi_buffer_replace(*vbo,(size_t)count*27*sizeof(float),NULL);
+    rhi_buffer_update(*vbo,0,(size_t)count*9*sizeof(float),faces);
+    rhi_buffer_update(*vbo,(size_t)count*9*sizeof(float),(size_t)count*18*sizeof(float),edges);
     glEnableVertexAttribArray(0);glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,0,0);
     for(int a=1;a<4;a++)glDisableVertexAttribArray(a);
     glUniform1f(r->uAlpha,.10f);glDrawArrays(GL_TRIANGLES,0,count*3);
@@ -1357,10 +1355,10 @@ static void mesh_normals(const N2Mesh *m, float *nor) {
 void free_scene_gpu(GpuMesh *gm, int count) {
     if (!gm) return;
     for (int i = 0; i < count; i++) {
-        glDeleteBuffers(1, &gm[i].vbo);
-        glDeleteBuffers(1, &gm[i].nbo);
-        glDeleteBuffers(1, &gm[i].cbo);
-        glDeleteBuffers(1, &gm[i].ibo);
+        rhi_buffer_destroy(gm[i].vbo);
+        rhi_buffer_destroy(gm[i].nbo);
+        rhi_buffer_destroy(gm[i].cbo);
+        rhi_buffer_destroy(gm[i].ibo);
     }
     free(gm);
 }
@@ -1381,16 +1379,11 @@ GpuMesh *upload_scene(N2Scene *s) {
             return NULL;
         }
         mesh_normals(m, nor);
-        glGenBuffers(1,&gm[i].vbo); glBindBuffer(GL_ARRAY_BUFFER,gm[i].vbo);
-        glBufferData(GL_ARRAY_BUFFER, m->nverts*5*sizeof(float), m->verts, GL_STATIC_DRAW);
-        glGenBuffers(1,&gm[i].nbo); glBindBuffer(GL_ARRAY_BUFFER,gm[i].nbo);
-        glBufferData(GL_ARRAY_BUFFER, m->nverts*3*sizeof(float), nor, GL_STATIC_DRAW);
-        if (m->vcol) {
-            glGenBuffers(1,&gm[i].cbo); glBindBuffer(GL_ARRAY_BUFFER,gm[i].cbo);
-            glBufferData(GL_ARRAY_BUFFER, m->nverts*4, m->vcol, GL_STATIC_DRAW);
-        }
-        glGenBuffers(1,&gm[i].ibo); glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,gm[i].ibo);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, m->nidx*sizeof(uint16_t), m->idx, GL_STATIC_DRAW);
+        gm[i].vbo = rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, m->nverts*5*sizeof(float), m->verts});
+        gm[i].nbo = rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, m->nverts*3*sizeof(float), nor});
+        if (m->vcol)
+            gm[i].cbo = rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, (size_t)m->nverts*4, m->vcol});
+        gm[i].ibo = rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_INDEX, RHI_UPDATE_STATIC, m->nidx*sizeof(uint16_t), m->idx});
         gm[i].nidx = m->nidx; gm[i].cat = m->cat; gm[i].texkey = m->texkey;
         gm[i].trim = m->trim; gm[i].draw_mode = m->draw_mode;
         gm[i].car_material = m->car_material;
@@ -1587,19 +1580,17 @@ static int batch_emit(const N2Scene *s, const BSortEnt *ent, int i0, int i1,
     }
     if (audit && audit[0] != '#') batch_audit_report(s, ent, i0, i1, bv, bi, bidx, audit);
     memset(b, 0, sizeof *b);
-    glGenBuffers(1, &b->vbo); glBindBuffer(GL_ARRAY_BUFFER, b->vbo);
-    glBufferData(GL_ARRAY_BUFFER, (long)nv * (long)sizeof *bv, bv, GL_STATIC_DRAW);
-    glGenBuffers(1, &b->ibo); glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, b->ibo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, (long)ni * 2, bi, GL_STATIC_DRAW);
+    b->vbo = rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, (size_t)nv * sizeof *bv, bv});
+    b->ibo = rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_INDEX, RHI_UPDATE_STATIC, (size_t)ni * 2, bi});
     if (glGetError() != GL_NO_ERROR) {
-        glDeleteBuffers(1, &b->vbo); glDeleteBuffers(1, &b->ibo);
+        rhi_buffer_destroy(b->vbo); rhi_buffer_destroy(b->ibo);
         memset(b, 0, sizeof *b); free(bv); free(bi); return 0;
     }
     for(int k=i0;k<i1;k++)b->nprops+=s->meshes[ent[k].idx].prop_id!=0;
     if(b->nprops) {
         b->props=calloc((size_t)b->nprops,sizeof *b->props);
         if(!b->props) {
-            glDeleteBuffers(1,&b->vbo);glDeleteBuffers(1,&b->ibo);
+            rhi_buffer_destroy(b->vbo);rhi_buffer_destroy(b->ibo);
             memset(b,0,sizeof *b);free(bv);free(bi);return 0;
         }
         int vertex=0,prop=0;
@@ -1816,8 +1807,8 @@ void render_batch_array_free(N2Batch **batches, int *count) {
     if (*batches) {
         int n = count && *count > 0 ? *count : 0;
         for (int i = 0; i < n; i++) {
-            if ((*batches)[i].vbo) glDeleteBuffers(1, &(*batches)[i].vbo);
-            if ((*batches)[i].ibo) glDeleteBuffers(1, &(*batches)[i].ibo);
+            rhi_buffer_destroy((*batches)[i].vbo);
+            rhi_buffer_destroy((*batches)[i].ibo);
             free((*batches)[i].props);
         }
         free(*batches);
@@ -1838,9 +1829,8 @@ int render_world_prop_updates(const N2Scene *scene,N2Batch *batches,int count,
         BatchedVertex *v=malloc((size_t)m->nverts*sizeof *v);
         if(!v)return -1;
         if(!batch_mesh_vertices(m,v)){free(v);return -1;}
-        glBindBuffer(GL_ARRAY_BUFFER,b->vbo);
-        glBufferSubData(GL_ARRAY_BUFFER,(long)range->vertex*sizeof *v,(long)m->nverts*sizeof *v,v);
-        if(glGetError()!=GL_NO_ERROR){free(v);return -1;}
+        if(rhi_buffer_update(b->vbo,(size_t)range->vertex*sizeof *v,(size_t)m->nverts*sizeof *v,v)!=RHI_OK ||
+           glGetError()!=GL_NO_ERROR){free(v);return -1;}
         for(int q=0;q<m->nverts;q++)for(int a=0;a<3;a++) {
             b->bbox_min[a]=fminf(b->bbox_min[a],v[q].pos[a]);
             b->bbox_max[a]=fmaxf(b->bbox_max[a],v[q].pos[a]);
@@ -1851,7 +1841,7 @@ int render_world_prop_updates(const N2Scene *scene,N2Batch *batches,int count,
 }
 
 void draw_batch(const N2Batch *b) {
-    glBindBuffer(GL_ARRAY_BUFFER, b->vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, rhi_gl_buffer_name(b->vbo));
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(BatchedVertex), (void*)0);
     glEnableVertexAttribArray(1);
@@ -1860,7 +1850,7 @@ void draw_batch(const N2Batch *b) {
     glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(BatchedVertex), (void*)20);
     glEnableVertexAttribArray(3);
     glVertexAttribPointer(3, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(BatchedVertex), (void*)32);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, b->ibo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, rhi_gl_buffer_name(b->ibo));
     glDrawElements(GL_TRIANGLES, b->index_count, GL_UNSIGNED_SHORT, 0);
 }
 
@@ -1933,31 +1923,28 @@ GpuMesh make_quad(void) {
     float qv[] = {0,0,0,0,0, 1,0,0,1,0, 1,1,0,1,1, 0,1,0,0,1};
     float qn[] = {0,0,1, 0,0,1, 0,0,1, 0,0,1};
     uint16_t qi[] = {0,1,2, 0,2,3};
-    glGenBuffers(1,&quad.vbo); glBindBuffer(GL_ARRAY_BUFFER,quad.vbo);
-    glBufferData(GL_ARRAY_BUFFER,sizeof qv,qv,GL_STATIC_DRAW);
-    glGenBuffers(1,&quad.nbo); glBindBuffer(GL_ARRAY_BUFFER,quad.nbo);
-    glBufferData(GL_ARRAY_BUFFER,sizeof qn,qn,GL_STATIC_DRAW);
-    glGenBuffers(1,&quad.ibo); glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,quad.ibo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER,sizeof qi,qi,GL_STATIC_DRAW);
+    quad.vbo = rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, sizeof qv, qv});
+    quad.nbo = rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, sizeof qn, qn});
+    quad.ibo = rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_INDEX, RHI_UPDATE_STATIC, sizeof qi, qi});
     quad.nidx = 6;
     return quad;
 }
 
 void draw_gpumesh(GpuMesh *g) {
-    if (g->cbo) {
-        glBindBuffer(GL_ARRAY_BUFFER,g->cbo);
+    if (g->cbo.id) {
+        glBindBuffer(GL_ARRAY_BUFFER,rhi_gl_buffer_name(g->cbo));
         glEnableVertexAttribArray(3);
         glVertexAttribPointer(3,4,GL_UNSIGNED_BYTE,GL_TRUE,0,(void*)0);
     } else glDisableVertexAttribArray(3);
-    glBindBuffer(GL_ARRAY_BUFFER, g->vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, rhi_gl_buffer_name(g->vbo));
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5*sizeof(float), (void*)0);
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5*sizeof(float), (void*)(3*sizeof(float)));
-    glBindBuffer(GL_ARRAY_BUFFER, g->nbo);
+    glBindBuffer(GL_ARRAY_BUFFER, rhi_gl_buffer_name(g->nbo));
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g->ibo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, rhi_gl_buffer_name(g->ibo));
     glDrawElements(GL_TRIANGLES, g->nidx, GL_UNSIGNED_SHORT, 0);
 }
 
@@ -1979,8 +1966,8 @@ void render_wheel_mesh(const RProg *r, GpuMesh *mesh, GLuint texture, int mode) 
        Keep its authored RGB (usually black) but make the backing continuous;
        TIRE and RIM retain their authored cutout textures. */
     /* Prelit traffic wheels use a cutout quad for the visible wheel face. */
-    if (mesh->car_material == N2_MAT_INTERIOR && !mesh->cbo) cut = 0;
-    glUniform1f(r->uVColor,mesh->cbo?2.0f:0.0f);
+    if (mesh->car_material == N2_MAT_INTERIOR && !mesh->cbo.id) cut = 0;
+    glUniform1f(r->uVColor,mesh->cbo.id?2.0f:0.0f);
     glBindTexture(GL_TEXTURE_2D,texture);
     glUniform1f(r->uUseTex,texture?1.0f:0.0f);
     glUniform1f(r->uAlphaTest,cut?1.0f:0.0f);

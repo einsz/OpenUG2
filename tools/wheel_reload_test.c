@@ -64,8 +64,8 @@ static GpuMesh *test_upload_scene(N2Scene *s) {
     if (test_stage == 6) return NULL;
     GpuMesh *gm = calloc(s->count, sizeof *gm);
     for (int i = 0; i < s->count; i++) {
-        gm[i].vbo = new_handle(1); gm[i].nbo = new_handle(1);
-        if (test_stage != 7) gm[i].ibo = new_handle(1);
+        gm[i].vbo.id = new_handle(1); gm[i].nbo.id = new_handle(1);
+        if (test_stage != 7) gm[i].ibo.id = new_handle(1);
     }
     if (test_stage == 8) pending_error = GL_OUT_OF_MEMORY;
     return gm;
@@ -73,7 +73,7 @@ static GpuMesh *test_upload_scene(N2Scene *s) {
 static void test_free_scene_gpu(GpuMesh *gm, int n) {
     if (!gm) return;
     for (int i = 0; i < n; i++) {
-        drop_handle(gm[i].vbo, 1); drop_handle(gm[i].nbo, 1); drop_handle(gm[i].ibo, 1);
+        drop_handle(gm[i].vbo.id, 1); drop_handle(gm[i].nbo.id, 1); drop_handle(gm[i].ibo.id, 1);
     }
     free(gm);
 }
