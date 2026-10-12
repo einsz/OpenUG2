@@ -92,7 +92,7 @@ void destroy_world_mesh_batch(WorldMeshBatch *b) {
     memset(b, 0, sizeof *b);
 }
 
-/* ---- GLSL 1.20 program loader (file-based) ---- */
+/* ---- GLSL 1.20 program loader (file-based; GLSL ES 1.00 under N2_GLES) ---- */
 static char *wm_read_text(const char *path) {
     FILE *f = fopen(path, "rb");
     if (!f) return NULL;
@@ -106,8 +106,22 @@ static char *wm_read_text(const char *path) {
 }
 static GLuint wm_compile(GLenum type, const char *src, GLint len) {
     GLuint s = glCreateShader(type);
+#ifdef N2_GLES
+    /* GLSL ES 1.00 variant of the same source: drop the "#version 120" line
+       (ES has no 1.20) and put the ES precision prologue in front. */
+    if (len < 0) len = (GLint)strlen(src);
+    if (len >= 8 && !strncmp(src, "#version", 8)) {
+        const char *nl = memchr(src, '\n', (size_t)len);
+        GLint skip = nl ? (GLint)(nl - src) + 1 : len;
+        src += skip; len -= skip;
+    }
+    const char *parts[2] = { type == GL_VERTEX_SHADER ? GLSL_VS_HEADER : GLSL_FS_HEADER, src };
+    const GLint lens[2] = { -1, len };
+    glShaderSource(s, 2, parts, lens);
+#else
     const GLint *lp = (len < 0) ? NULL : &len;   /* len < 0 = NUL-terminated */
     glShaderSource(s, 1, &src, lp);
+#endif
     glCompileShader(s);
     GLint ok = 0; glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
     if (!ok) {
