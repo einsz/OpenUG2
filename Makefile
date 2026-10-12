@@ -117,6 +117,13 @@ world-resident-test: tools/world_resident_test.c src/world_resident.c src/world.
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -DWORLD_RESIDENT_TESTING -Isrc tools/world_resident_test.c src/world_resident.c src/world.c src/resource.c src/world_instance.c src/render.c src/physics.c -o build/world_resident_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
 	./build/world_resident_test
 
+physics-clock-test: tools/physics_clock_test.c src/physics.c src/physics.h src/nfsu2.h src/ai.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Isrc tools/physics_clock_test.c src/physics.c -o build/physics_clock_test -lm
+	./build/physics_clock_test
+
+.PHONY: physics-clock-test
+
 district-collision-test: tools/district_collision_test.c src/physics.c src/physics.h src/nfsu2.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Isrc tools/district_collision_test.c src/physics.c -o build/district_collision_test -lm
