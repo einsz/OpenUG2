@@ -20,12 +20,6 @@
 #define glFramebufferRenderbuffer glFramebufferRenderbufferEXT
 #endif
 
-#ifdef N2_GLES
-#  define GLSL_HEADER "precision mediump float;\n"
-#else
-#  define GLSL_HEADER "#version 120\n#define lowp\n#define mediump\n#define highp\n"
-#endif
-
 /* World glows use world coordinates, never the preceding car/smoke matrix.
    Additive fog fades to black so sprite rectangles cannot add fog colour. */
 int render_world_glows(const RProg *r,const N2Batch *batches,int count,
@@ -637,7 +631,7 @@ int render_collision_walls(const RProg *r,GLuint *vbo,const float *faces,int cou
 }
 
 static const char *VS =
-    GLSL_HEADER
+    GLSL_VS_HEADER
     "attribute vec3 aPos; attribute vec2 aUV; attribute vec3 aNor; attribute vec4 aColor;\n"
     "uniform mat4 uMVP; uniform mat4 uModel; varying vec2 vUV; varying vec3 vN; varying float vDepth;\n"
     "varying vec3 vPos; varying vec4 vColor;\n"
@@ -649,7 +643,7 @@ static const char *VS =
     "  gl_Position=uMVP*vec4(aPos,1.0); vDepth=gl_Position.w; }\n";
 
 static const char *FS =
-    GLSL_HEADER
+    GLSL_FS_HEADER
     "varying vec2 vUV; varying vec3 vN; varying float vDepth; varying vec3 vPos;\n"
     "varying vec4 vColor;\n"
     "uniform sampler2D uTex;\n"
@@ -1050,6 +1044,21 @@ void write_png(const char *path, int w, int h, const unsigned char *rgb) {
     free(raw); free(comp);
 }
 
+int render_read_rgb(int w, int h, unsigned char *rgb) {
+    unsigned char *rgba = malloc((size_t)w * h * 4);
+    if (!rgba) return 0;
+    glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+    for (int y = 0; y < h; y++) {   /* GL rows are bottom-up */
+        const unsigned char *src = rgba + (size_t)(h - 1 - y) * w * 4;
+        unsigned char *dst = rgb + (size_t)y * w * 3;
+        for (int x = 0; x < w; x++) {
+            dst[x*3] = src[x*4]; dst[x*3+1] = src[x*4+1]; dst[x*3+2] = src[x*4+2];
+        }
+    }
+    free(rgba);
+    return 1;
+}
+
 static GLuint compile(GLenum type, const char *src) {
     GLuint s = glCreateShader(type);
     glShaderSource(s, 1, &src, NULL); glCompileShader(s);
@@ -1070,11 +1079,11 @@ void free_headlight_shadows(HeadlightShadows *s) {
 }
 
 static int headlight_shadow_init(HeadlightShadows *s) {
-    const char *vs=GLSL_HEADER
+    const char *vs=GLSL_VS_HEADER
         "attribute vec3 aPos;attribute vec2 aUV;uniform mat4 uMVP;"
         "varying vec2 uv;varying float distance;"
         "void main(){uv=aUV;gl_Position=uMVP*vec4(aPos,1.0);distance=gl_Position.w;}";
-    const char *fs=GLSL_HEADER
+    const char *fs=GLSL_FS_HEADER
         "uniform sampler2D uTex;uniform float uCutout,uRange;"
         "varying vec2 uv;varying float distance;"
         "void main(){if(uCutout>0.5 && texture2D(uTex,uv).a<0.5)discard;"

@@ -15,6 +15,19 @@
 
 #include "nfsu2.h"
 
+/* Shader prologues. Desktop: GLSL 1.20, precision qualifiers compile away.
+ * GLES: vertex shaders need highp (world coordinates are kilometres, mediump
+ * loses near geometry); fragment highp is optional in ES2, so use it only
+ * where the driver has it. */
+#ifdef N2_GLES
+#  define GLSL_VS_HEADER "precision highp float;\n"
+#  define GLSL_FS_HEADER "#ifdef GL_FRAGMENT_PRECISION_HIGH\nprecision highp float;\n" \
+                         "#else\nprecision mediump float;\n#endif\n"
+#else
+#  define GLSL_VS_HEADER "#version 120\n#define lowp\n#define mediump\n#define highp\n"
+#  define GLSL_FS_HEADER GLSL_VS_HEADER
+#endif
+
 /* per-mesh GPU buffers + computed normals */
 typedef struct {
     GLuint vbo, nbo, cbo, ibo;
@@ -310,5 +323,10 @@ float text_width(const char *s, float px);
 
 /* dev screenshot: rgb is top-left origin, w*h*3 */
 void write_png(const char *path, int w, int h, const unsigned char *rgb);
+
+/* Read the current framebuffer's bottom w*h pixels into rgb (w*h*3, top-left
+ * origin, ready for write_png). Reads GL_RGBA, the one format ES2 guarantees,
+ * and drops alpha. Returns 0 if the buffer could not be allocated. */
+int  render_read_rgb(int w, int h, unsigned char *rgb);
 
 #endif

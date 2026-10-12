@@ -90,20 +90,13 @@ DbgState g_dbg = {
 
 static int capture_frame_png(const char *path, int width, int height) {
     if (!path || width <= 0 || height <= 0) return 0;
-    size_t bytes = (size_t)width * (size_t)height * 3;
-    unsigned char *pixels = (unsigned char *)malloc(bytes);
-    unsigned char *flipped = (unsigned char *)malloc(bytes);
-    if (!pixels || !flipped) {
-        free(pixels); free(flipped);
+    unsigned char *pixels = (unsigned char *)malloc((size_t)width * (size_t)height * 3);
+    if (!pixels || !render_read_rgb(width, height, pixels)) {
+        free(pixels);
         return 0;
     }
-    glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, pixels);
-    for (int y = 0; y < height; y++)
-        memcpy(flipped + (size_t)y * (size_t)width * 3,
-               pixels + (size_t)(height - 1 - y) * (size_t)width * 3,
-               (size_t)width * 3);
-    write_png(path, width, height, flipped);
-    free(pixels); free(flipped);
+    write_png(path, width, height, pixels);
+    free(pixels);
     return 1;
 }
 
@@ -10233,10 +10226,9 @@ int main(int argc, char **argv) {
             int cap = (f == 101) ? 0 : (f == 111) ? 1 : (f == 121) ? 2 : (f == 131) ? 3 : -1;
             if (cap >= 0) {
                 char sp[1024]; snprintf(sp, sizeof sp, "%s_%s.png", smaudit, vn[cap]);
-                unsigned char *px = malloc((size_t)W*H*3), *fl = malloc((size_t)W*H*3);
-                glReadPixels(0, 0, W, H, GL_RGB, GL_UNSIGNED_BYTE, px);
-                for (int y = 0; y < H; y++) memcpy(fl+(size_t)y*W*3, px+(size_t)(H-1-y)*W*3, W*3);
-                write_png(sp, W, H, fl); free(px); free(fl);
+                unsigned char *px = malloc((size_t)W*H*3);
+                if (px && render_read_rgb(W, H, px)) write_png(sp, W, H, px);
+                free(px);
                 printf("SM captured %s (frame %ld, car stationary during countdown)\n", sp, f);
             }
             if (f == 132) {   /* restore normal sampler state, then stop */
@@ -10269,10 +10261,9 @@ int main(int argc, char **argv) {
                     static const char *hn[3] = { "A_dense_centre", "B_road_tangent",
                                                  "C_tangent_reversed" };
                     char sp[1024]; snprintf(sp, sizeof sp, "%s_%s.png", shaudit, hn[shot107]);
-                    unsigned char *px = malloc((size_t)W*H*3), *fl = malloc((size_t)W*H*3);
-                    glReadPixels(0, 0, W, H, GL_RGB, GL_UNSIGNED_BYTE, px);
-                    for (int y = 0; y < H; y++) memcpy(fl+(size_t)y*W*3, px+(size_t)(H-1-y)*W*3, W*3);
-                    write_png(sp, W, H, fl); free(px); free(fl);
+                    unsigned char *px = malloc((size_t)W*H*3);
+                    if (px && render_read_rgb(W, H, px)) write_png(sp, W, H, px);
+                    free(px);
                     printf("M107 capture %s  heading %+.4f  car(%.3f %.3f %.3f) "
                            "cam(%.3f %.3f %.3f) menuspin %.4f\n", sp, heading,
                            carpos[0], carpos[1], carpos[2], cam[0], cam[1], cam[2], menuspin);
@@ -10469,10 +10460,9 @@ int main(int argc, char **argv) {
                            carpos[0], carpos[1], carpos[2]+1.5f);
                     char sp[1024];
                     snprintf(sp, sizeof sp, "%s_yaw%d.png", poseshot, YAW[slot]);
-                    unsigned char *px = malloc((size_t)W*H*3), *fl = malloc((size_t)W*H*3);
-                    glReadPixels(0, 0, W, H, GL_RGB, GL_UNSIGNED_BYTE, px);
-                    for (int y = 0; y < H; y++) memcpy(fl+(size_t)y*W*3, px+(size_t)(H-1-y)*W*3, W*3);
-                    write_png(sp, W, H, fl); free(px); free(fl);
+                    unsigned char *px = malloc((size_t)W*H*3);
+                    if (px && render_read_rgb(W, H, px)) write_png(sp, W, H, px);
+                    free(px);
                     printf("POSE frame written: %s\n", sp);
                 }
                 if (r > 6 + 3*4 + 3) running = 0;
@@ -10481,10 +10471,9 @@ int main(int argc, char **argv) {
             if (tag && shaudit && rshot > 2) tag = NULL;   /* menu frame only */
             if (tag) {
                 char sp[1024]; snprintf(sp, sizeof sp, "%s%s.png", raudit, tag);
-                unsigned char *px = malloc((size_t)W*H*3), *fl = malloc((size_t)W*H*3);
-                glReadPixels(0, 0, W, H, GL_RGB, GL_UNSIGNED_BYTE, px);
-                for (int y = 0; y < H; y++) memcpy(fl+(size_t)y*W*3, px+(size_t)(H-1-y)*W*3, W*3);
-                write_png(sp, W, H, fl); free(px); free(fl);
+                unsigned char *px = malloc((size_t)W*H*3);
+                if (px && render_read_rgb(W, H, px)) write_png(sp, W, H, px);
+                free(px);
                 printf("RA frame written: %s\n", sp);
             }
             if (ra_done) running = 0;
@@ -10512,10 +10501,9 @@ int main(int argc, char **argv) {
         }
         if (daudit && shotframe == 2) {   /* one normal rendered frame at spawn */
             char sp[1024]; snprintf(sp, sizeof sp, "%s_spawn.png", daudit);
-            unsigned char *px = malloc((size_t)W*H*3), *fl = malloc((size_t)W*H*3);
-            glReadPixels(0, 0, W, H, GL_RGB, GL_UNSIGNED_BYTE, px);
-            for (int y = 0; y < H; y++) memcpy(fl+(size_t)y*W*3, px+(size_t)(H-1-y)*W*3, W*3);
-            write_png(sp, W, H, fl); free(px); free(fl);
+            unsigned char *px = malloc((size_t)W*H*3);
+            if (px && render_read_rgb(W, H, px)) write_png(sp, W, H, px);
+            free(px);
             printf("DA spawn frame written: %s\n", sp);
         }
         if (resident_route_audit) {
@@ -10752,11 +10740,9 @@ int main(int argc, char **argv) {
             rda_frame++;
         }
         if (shot && ++shotframe >= shotframes) {
-            unsigned char *px = malloc((size_t)W*H*3), *fl = malloc((size_t)W*H*3);
-            glReadPixels(0, 0, W, H, GL_RGB, GL_UNSIGNED_BYTE, px);
-            for (int y = 0; y < H; y++) memcpy(fl+(size_t)y*W*3, px+(size_t)(H-1-y)*W*3, W*3);
-            write_png(shot, W, H, fl);
-            free(px); free(fl);
+            unsigned char *px = malloc((size_t)W*H*3);
+            if (px && render_read_rgb(W, H, px)) write_png(shot, W, H, px);
+            free(px);
             printf("frame avg: %.1f ms (vsync on), %d/%d world meshes drawn, %d draw calls\n",
                    (SDL_GetTicks()-t0)/(float)shotframe, ndrawn, nm, g_dbg.drawn);
             printf("TIER %s  cutoff %.1f m  far %.1f m\n",
