@@ -8,6 +8,7 @@
 #include <zlib.h>   /* screenshot PNG (dev only) */
 
 #include "render.h"
+#include "tex_override.h"
 
 #if defined(__APPLE__) && !defined(N2_GLES)
 /* Bind/Delete Framebuffers/Renderbuffers go through gl_state.c, which maps
@@ -2089,6 +2090,21 @@ void render_texture_detail(float aniso) {
     }
     g_tex_all_n = live;                                 /* compact away dead ids */
     glBindTexture(GL_TEXTURE_2D, (GLuint)bound);
+}
+
+/* tex_override.c: aniso + tracking for an override it has just bound. */
+void render_tex_finish_bound(GLuint id) { tex_apply_aniso(); tex_track(id); }
+
+/* Keyed siblings of the two uploaders: try a user HD override first (only when
+   --tex-overrides indexed one for this key), else the unchanged original path.
+   The caller keeps `t` for draw mode, alpha policy and measurements. */
+GLuint upload_tex_keyed(uint32_t key, const char *pack, const N2Tex *t) {
+    GLuint id = tex_override_upload(key, pack, t);
+    return id ? id : upload_tex(t);
+}
+GLuint upload_tpk_keyed(uint32_t key, const char *pack, const N2Tex *t) {
+    GLuint id = tex_override_upload(key, pack, t);
+    return id ? id : upload_tpk_texture_to_gpu(t);
 }
 
 GLuint upload_tpk_texture_to_gpu(const N2Tex *t) {

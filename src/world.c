@@ -557,24 +557,32 @@ int world_load(World *w, const char *troot, const char *trackname) {
 
 int g_world_texaudit = 0, g_world_texnoise = 0, g_world_texmiss = 0;
 /* One source order for ordinary meshes, vistas and authored light textures.
-   The shared fallback cannot replace a successful existing resolution. */
+   The shared fallback cannot replace a successful existing resolution.
+   *pack (optional) receives the resolving source's stem for override lookup
+   (NULL for the shared master region). */
 static int world_texture_decode(const World *w, const WRegion *g,
-                                uint32_t key, N2Tex *tex, int common_only) {
+                                uint32_t key, N2Tex *tex, int common_only,
+                                const char **pack) {
     if (common_only) {
+        if (pack) *pack = "INGAMECOMMON";
         int ok = n2_tpk_decode(w->neighborhood.common, w->neighborhood.commonlen, w->neighborhood.commontpk, key, tex);
         if (ok && g_world_texaudit)
             printf("TEXSOURCE key %08x  GLOBAL/InGameCommon.bun\n", key);
         return ok;
     }
+    if (pack) *pack = g->name;
     int ok = n2_tpk_decode(g->data, g->len, g->tpk, key, tex);
     if (!ok && w->neighborhood.loc4) {
+        if (pack) *pack = "LOC4DYNTEX";
         ok = n2_load_car_tex_by_key(w->neighborhood.loc4, w->neighborhood.loc4len, key, tex);
         /* The car decoder now exposes draw metadata. Preserve LOC4's existing
            opaque world policy until its materials receive their own GL audit. */
         if (ok) tex->order=tex->usage=tex->blend=tex->wz=0;
     }
-    if (!ok && w->neighborhood.master)
+    if (!ok && w->neighborhood.master) {
+        if (pack) *pack = NULL;   /* master: plain KEY overrides only */
         ok = n2_tpk_decode(w->neighborhood.master, w->neighborhood.masterlen, w->neighborhood.mastertpk, key, tex);
+    }
     return ok;
 }
 
@@ -659,9 +667,10 @@ static int world_bind_key(World *w, const WRegion *g, uint32_t tk, int pass,
     if (e && e->pass == binding->source && e->key == tk) return 0; /* failed here */
     if (e) { e->key = tk; e->pass = binding->source; }
     N2Tex tt = {0};   /* zero-init: n2_tpk_decode leaves dxt untouched */
-    int ok = world_texture_decode(w, g, tk, &tt, pass);
-    if (ok && !n2_tex_noise(&tt)) {
-        GLuint id = upload_tex(&tt);
+    const char *pack = NULL;
+    int ok = world_texture_decode(w, g, tk, &tt, pass, &pack);
+    if (ok && !n2_tex_noise(&tt)) {   /* noise gate stays on the original */
+        GLuint id = upload_tex_keyed(tk, pack, &tt);
         if (!id || glGetError() != GL_NO_ERROR) {
             if (id) glDeleteTextures(1, &id);
             free(tt.rgb); free(tt.alpha); free(tt.dxt);
