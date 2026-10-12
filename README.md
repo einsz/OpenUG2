@@ -1,5 +1,11 @@
 # OpenUG2
 
+> **Build and contribute from [`development`](https://github.com/whoismept/OpenUG2/tree/development).**
+> This is the active branch for developers, testers and coding agents. `main`
+> receives reviewed integrations and can lag behind ongoing work. Update
+> `development` before investigating a bug or starting a pull request. See
+> [Contributing](CONTRIBUTING.md) for the branch and reporting workflow.
+
 > **Help wanted across the whole project.** OpenUG2 has grown beyond what one
 > maintainer can reasonably research, implement and test alone. Contributors
 > and future maintainers are welcome across asset formats, rendering, physics,
@@ -60,9 +66,10 @@ HUD presentation, fountain animation, sea quality and shop lighting still need w
 | ![Building sign textures and pavement](docs/screenshots/sign_texture_after.png) | ![Water surface beneath the bridge](docs/screenshots/water_after.png) |
 
 
-Known defects are tracked alongside the progress. For example,
-[#6](https://github.com/whoismept/OpenUG2/issues/6) documents a reproducible
-world-surface artifact with its own capture and acceptance criteria.
+Known defects and remaining work are tracked in the
+[contribution roadmap #5](https://github.com/whoismept/OpenUG2/issues/5).
+The earlier black-sheet investigation [#6](https://github.com/whoismept/OpenUG2/issues/6)
+is closed; its captures remain historical evidence.
 
 ### Working today
 
@@ -95,7 +102,14 @@ a design at launch. Changing cars clears the vinyl and loads that car’s catalo
 - **Driving** — keyboard-controlled arcade acceleration, braking, steering,
   handbrake and surface-dependent grip. Per-car source records provide mass,
   torque, gearbox and steering values; measured geometry supplies lateral grip
-  and load transfer.
+  and load transfer. Stock engine input combines the primary and secondary
+  nine-sample curves; torque units and upgraded retail behavior remain provisional.
+- **Player HUD** — `--hud` enables speed, RPM, gear, minimap and race readouts.
+  Speed uses the current magnitude with integer truncation; `--hud-mph` selects
+  MPH for display only. RPM is bounded separately from redline, and the standard
+  needle uses the player's skin-00 sprite with a procedural fallback. See the
+  [speed](docs/HUD_SPEED_READOUT.md), [tachometer](docs/HUD_TACHOMETER.md) and
+  [sprite](docs/HUD_SPRITES.md) notes for remaining limits.
 - **Open-world traffic** — traffic and roaming racers follow authored road
   points through steering and speed targets. Player and AI share suspension,
   airborne momentum and landing response; the camera reacts to landing impact.
@@ -113,6 +127,11 @@ a design at launch. Changing cars clears the vinyl and loads that car’s catalo
 - **Timing and diagnostics** — driving and contacts advance at a fixed 60 Hz,
   with interpolated rendering and chase-camera movement. The ImGui Race Log
   records telemetry; `.` marks a problem and saves its nearby actor snapshot.
+  `make physics-clock-test` checks tick-indexed replay across fixed and irregular
+  frame rates, invalid elapsed times and bounded stall recovery.
+- **Renderer state** — rendering helpers save and restore tracked OpenGL state
+  through a CPU-side cache. `GLS_VERIFY` builds compare it with the driver.
+  OpenGL/OpenGL ES remains the reference; Vulkan and DX12 are not implemented.
 - **World visibility** — production uses the `ordinary` tier, whose view range
   follows the active fog (about 933 m with the current settings). Developer UI
   and provisional HUD elements are hidden by default and toggled with `1`.
@@ -182,13 +201,28 @@ Developer references:
 
 Needs **SDL2** and **zlib**.
 
+Start with the active branch:
+
+```sh
+git clone --branch development https://github.com/whoismept/OpenUG2.git
+cd OpenUG2
+```
+
+For an existing clone, preserve local work, then update:
+
+```sh
+git fetch origin
+git switch development
+git pull --ff-only origin development
+```
+
 ```sh
 # macOS:  brew install sdl2
 # Debian/Ubuntu:  sudo apt install libsdl2-dev zlib1g-dev
 
+make debug           # recommended for development: includes ImGui diagnostics
 make                 # desktop build -> ./nfsu2
 make gles            # OpenGL ES 2.0 build (embedded/mobile ARM)
-make debug           # desktop build + Dear ImGui developer menu (dev only)
 ```
 
 > ⚠️ **Customization, modifications and engine internals live behind
@@ -199,8 +233,9 @@ make debug           # desktop build + Dear ImGui developer menu (dev only)
 > `make debug` and open the panel with `1`. See
 > [Developer menu (ImGui)](#developer-menu-imgui) below.
 
-Cross-compiling for another ARM target is just the compiler swap, e.g.
-`CC=aarch64-linux-gnu-gcc make gles`.
+ARM cross-builds also need target SDL2, zlib and GLES2 headers/libraries;
+changing `CC` alone does not establish device compatibility. See the measured
+[ARM/PortMaster work in #11](https://github.com/whoismept/OpenUG2/issues/11).
 
 ## Developer menu (ImGui)
 
@@ -250,8 +285,8 @@ Point it at your NFS: Underground 2 data directory (the folder containing
 
 ```sh
 ./nfsu2 /path/to/nfsu2/data
-# or:
-make run DATA=/path/to/nfsu2/data
+# Player HUD and developer panel (after make debug):
+./nfsu2 /path/to/nfsu2/data --hud --devui
 ```
 
 The normal command opens the current L4RA open-world reference. The engine
@@ -262,7 +297,7 @@ the nearest safe authored road; no internal world-mode or spawn flag is needed.
 # Open-world reference (STREAML4RA is the default)
 ./nfsu2 DATA
 
-# Another single-region world / sprint reference
+# L4RB drag reference (4201 is Drag, not Sprint)
 ./nfsu2 DATA --car ECLIPSE --track STREAML4RB --event 4201
 
 # Closed-circuit reference (uses the currently verified circuit loader)
@@ -276,7 +311,10 @@ the nearest safe authored road; no internal world-mode or spawn flag is needed.
   instance-driven moving neighborhood. `ALL` still exists for diagnostics but
   is not a supported gameplay composition.
 - `--circuit PATH` — a closed-loop `Paths*.bin` under `TRACKS/`.
-- `--event ID` — start a shipped race event such as L4RB sprint `4201`.
+- `--event ID` — start a shipped race event such as L4RB drag `4201`.
+- `--hud` — enable the prototype player HUD, including live speed/RPM readouts.
+- `--hud-mph` — enable the same HUD with MPH speed presentation; physics remains
+  in its existing units.
 - `--tier ordinary` — production renderer and the default. `--tier full` is an
   experimental panorama path with known visual defects.
 - `--chase D,H` — chase-camera distance and height in metres, e.g. `--chase 9,1.8`.
@@ -322,14 +360,16 @@ src/
   world.*     World: region scene assembly, texture binding, per-mesh bounds
               for culling, grid-accelerated ground/contact queries
   render.*    Renderer: GL objects, shaders, matrices, bitmap font, screenshot
-  physics.*   car kinematics (real units, NFSU2-tuned), wall + car collision
-  ai.*        racing-line opponents, circuit loading
-  audio.*     procedural engine/road/skid synth (no audio assets)
+  gl_state.*  CPU-side OpenGL state tracking and optional driver verification
+  hud.*       prototype player/race HUD and retail sprite loading
+  physics.*   arcade vehicle dynamics, suspension, wall + car collision
+  ai.*        authored-route traffic, roaming racers and race opponents
+  audio.*     user-supplied engine banks/sweeps and procedural sound fallbacks
   resource.*  file mapping + track/car/circuit discovery
   debug.*     optional Dear ImGui dev overlay (`make debug`)
   world_mesh.* batch uploader for the world render debug pipeline
   attrib.h    generic GLOBAL AttribSys diagnostic reader
-tools/   Python utilities used to reverse-engineer & inspect the data formats
+tools/   parser/physics/render tests, native map editor and format diagnostics
 docs/    engine/developer guide and evidence-labelled format reference
 ```
 
@@ -407,6 +447,10 @@ High-value contribution areas:
 
 ### Contribution rules
 
+- Start from current `development` and target it in pull requests. Coding agents
+  must verify the branch and commit before working; include them in bug reports.
+  Read [CONTRIBUTING.md](CONTRIBUTING.md) and the
+  [developer and agent guide](docs/DEVELOPER_GUIDE.md) first.
 - This is a **clean-room reimplementation**. Never commit or paste EA assets,
   executables, decompiled/disassembled output, copyrighted game code or data
   extracted from a retail installation.

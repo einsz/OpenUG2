@@ -9,6 +9,15 @@ OpenUG2 is an early clean-room reimplementation. It is not yet a complete
 Underground 2 replacement, and a successful screenshot is not proof that a
 parser, map or race path is correct.
 
+## Start on the active branch
+
+`development` is the working baseline for humans and coding agents. `main`
+receives reviewed integrations and may lag behind active fixes. Read
+[CONTRIBUTING.md](../CONTRIBUTING.md), fetch the current remote state and verify
+the branch/commit before reproducing an issue or proposing a change. Base
+contribution branches and pull requests on `development`; preserve local work
+when switching or updating. Use `make debug` for interactive diagnostics.
+
 ## 1. Clean-room boundary
 
 Allowed:
@@ -59,7 +68,7 @@ For a new human or LLM developer:
 7. The public header for the subsystem.
 8. The smallest set of implementation functions named by the header/docs.
 
-Do not begin by reading all 6,000+ lines of `main.c`. Find the call site, then
+Do not begin by reading all of `main.c`. Find the call site, then
 follow ownership into `world.c`, `physics.c`, `render.c`, `audio.c` or
 `nfsu2.h`.
 
@@ -276,6 +285,15 @@ strips win the depth test and ground selector. This is current engine policy,
 not a decoded file-format field.
 
 ## 7. Rendering
+
+### Tracked GL state
+
+`gl_state.{c,h}` records the state changed by renderer, HUD, frontend and
+developer-overlay callers through the GL setters it wraps. Renderer helpers
+query that CPU copy when saving/restoring state. `-DGLS_VERIFY` compares tracked
+getters with the driver and aborts on a mismatch. Uniform readbacks and some
+HUD/frontend queries remain; this is not yet a backend-neutral renderer or a
+Vulkan implementation. See [issue #14](https://github.com/whoismept/OpenUG2/issues/14).
 
 ### Batch construction
 
@@ -815,8 +833,10 @@ heading, acceleration/braking, drag, speed-sensitive steering and lateral scrub.
 `PhysSurface` multiplies road/terrain behaviour. `PhysVehicle` reads stock mass,
 torque, steering response and four power/transmission levels from each car's
 `GLOBALB.BUN` record; body and tyre measurements supply lateral grip and load
-transfer. This remains an arcade approximation: gear changes, brake packages
-and suspension upgrades are not simulated yet.
+transfer. Stock engine samples are the pointwise sum of the two nine-sample
+source arrays. Manual drag sampling uses the decoded gearbox and RPM limits;
+the full retail drivetrain, brake packages and suspension upgrades are not
+implemented. Torque units and the upgrade-selection graph remain provisional.
 
 Audio's virtual gearbox is not a physics gearbox.
 
@@ -1035,6 +1055,12 @@ same-route screenshot before integrating it into the eventual retail menu/HUD.
 
 ### Next in-game frontend milestone: driving and race HUD
 
+The current prototype already uses live speed magnitude/truncation, optional
+MPH presentation, bounded RPM telemetry and the skin-00 needle with fallback.
+See [HUD_SPEED_READOUT.md](HUD_SPEED_READOUT.md), [HUD_TACHOMETER.md](HUD_TACHOMETER.md)
+and [HUD_SPRITES.md](HUD_SPRITES.md). The contracts below describe remaining
+integration and acceptance work, not a request to recreate those gauge helpers.
+
 The retail menu/frontend and the in-game driving frontend are separate
 surfaces. The next HUD pass must render from production gameplay state in both
 free-roam/open-world driving and active races; the ImGui inspector remains a
@@ -1134,8 +1160,9 @@ affect one screenshot. A fix belongs at the first boundary where data diverges.
 
 ## 13. Git and collaboration
 
-- Use a descriptive feature branch; never push directly to `main` during
-  development.
+- Base descriptive feature branches and pull requests on current `development`;
+  never push directly to `main`. Reviewed integrations promote development work
+  to `main`.
 - Keep commits scoped and explain measured limitations honestly.
 - Open a draft PR for review when collaborating through GitHub.
 - Do not include “Codex” in branch, commit or PR names.
@@ -1146,6 +1173,7 @@ affect one screenshot. A fix belongs at the first boundary where data diverges.
 For an agent task, specify:
 
 ```text
+Baseline: development branch and exact commit
 Goal: one observable outcome
 Read: exact guide/format section and owning functions
 Evidence: baseline reproduction and named target
