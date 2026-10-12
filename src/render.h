@@ -4,21 +4,14 @@
  * main.c only binds/draws through GpuMesh + the RProg uniform handles.
  *
  * Also the single home of the GL headers: desktop legacy GL 2.1 + GLSL 120, or
- * OpenGL ES 2.0 + GLSL 100 with -DN2_GLES — every module includes GL via here. */
+ * OpenGL ES 2.0 + GLSL 100 with -DN2_GLES — every module includes GL via here
+ * (through gl_state.h, which also routes state-setting calls through the
+ * CPU-side tracker so helpers can save/restore without querying GL). */
 #ifndef OPENUG2_RENDER_H
 #define OPENUG2_RENDER_H
 
 #include <SDL.h>
-#ifdef N2_GLES
-#  include <SDL_opengles2.h>
-#elif defined(__APPLE__)
-#  define GL_SILENCE_DEPRECATION 1
-#  include <OpenGL/gl.h>
-#  include <OpenGL/glext.h>
-#else
-#  define GL_GLEXT_PROTOTYPES 1
-#  include <SDL_opengl.h>
-#endif
+#include "gl_state.h"   /* GL headers + CPU state tracker (no glGet* readback) */
 
 #include "nfsu2.h"
 

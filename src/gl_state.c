@@ -1,0 +1,226 @@
+/* gl_state.c — see gl_state.h. The shims record, then make the identical GL
+ * call; the getters answer from the record. */
+#define GLS_IMPLEMENTATION
+#include "gl_state.h"
+#include <stdio.h>
+#include <stdlib.h>   /* abort() in GLS_VERIFY builds */
+#include <string.h>
+
+#if defined(__APPLE__) && !defined(N2_GLES)
+#define glBindFramebuffer glBindFramebufferEXT
+#define glDeleteFramebuffers glDeleteFramebuffersEXT
+#define glBindRenderbuffer glBindRenderbufferEXT
+#define glDeleteRenderbuffers glDeleteRenderbuffersEXT
+#endif
+
+#define GLS_UNITS 16
+static const GLenum caps[] = {GL_DEPTH_TEST, GL_BLEND, GL_CULL_FACE, GL_SCISSOR_TEST,
+                              GL_STENCIL_TEST, GL_DITHER, GL_POLYGON_OFFSET_FILL};
+#define GLS_NCAPS ((int)(sizeof caps / sizeof caps[0]))
+
+typedef struct {
+    SDL_GLContext ctx;
+    int live;
+    GLboolean enabled[GLS_NCAPS];
+    GLint blend[4];                 /* src_rgb, dst_rgb, src_alpha, dst_alpha */
+    GLint depth_func;
+    GLboolean depth_mask, color_mask[4];
+    GLfloat clear_color[4], clear_depth;
+    GLint viewport[4];
+    GLint program, framebuffer, renderbuffer;
+    GLint active;                   /* unit index, 0-based */
+    GLint tex2d[GLS_UNITS];
+} GlsState;
+
+static GlsState S;
+static unsigned g_fallback;
+
+/* GL spec initial values; the viewport starts at the drawable size. */
+static void gls_reset(SDL_GLContext ctx) {
+    memset(&S, 0, sizeof S);
+    S.ctx = ctx; S.live = 1;
+    for (int i = 0; i < GLS_NCAPS; i++) S.enabled[i] = caps[i] == GL_DITHER;
+    S.blend[0] = S.blend[2] = GL_ONE; S.blend[1] = S.blend[3] = GL_ZERO;
+    S.depth_func = GL_LESS; S.depth_mask = GL_TRUE;
+    for (int i = 0; i < 4; i++) S.color_mask[i] = GL_TRUE;
+    S.clear_depth = 1.0f;
+    SDL_Window *w = SDL_GL_GetCurrentWindow();
+    if (w) SDL_GL_GetDrawableSize(w, &S.viewport[2], &S.viewport[3]);
+}
+
+static GlsState *st(void) {
+    SDL_GLContext ctx = SDL_GL_GetCurrentContext();
+    if (!S.live || S.ctx != ctx) gls_reset(ctx);
+    return &S;
+}
+
+/* A new context may reuse a destroyed one's address: always start clean. */
+SDL_GLContext glsCreateContext(SDL_Window *window) {
+    SDL_GLContext ctx = SDL_GL_CreateContext(window);
+    S.live = 0;
+    return ctx;
+}
+void glsDeleteContext(SDL_GLContext ctx) {
+    if (ctx == S.ctx) S.live = 0;
+    SDL_GL_DeleteContext(ctx);
+}
+
+static int cap_index(GLenum cap) {
+    for (int i = 0; i < GLS_NCAPS; i++) if (caps[i] == cap) return i;
+    return -1;
+}
+
+/* ---- fixed-function shims ---- */
+void glsEnable(GLenum cap) {
+    int i = cap_index(cap); if (i >= 0) st()->enabled[i] = GL_TRUE;
+    glEnable(cap);
+}
+void glsDisable(GLenum cap) {
+    int i = cap_index(cap); if (i >= 0) st()->enabled[i] = GL_FALSE;
+    glDisable(cap);
+}
+void glsBlendFunc(GLenum src, GLenum dst) {
+    GlsState *s = st();
+    s->blend[0] = s->blend[2] = (GLint)src; s->blend[1] = s->blend[3] = (GLint)dst;
+    glBlendFunc(src, dst);
+}
+void glsBlendFuncSeparate(GLenum src_rgb, GLenum dst_rgb, GLenum src_a, GLenum dst_a) {
+    GlsState *s = st();
+    s->blend[0] = (GLint)src_rgb; s->blend[1] = (GLint)dst_rgb;
+    s->blend[2] = (GLint)src_a;   s->blend[3] = (GLint)dst_a;
+    glBlendFuncSeparate(src_rgb, dst_rgb, src_a, dst_a);
+}
+void glsDepthFunc(GLenum func) { st()->depth_func = (GLint)func; glDepthFunc(func); }
+void glsDepthMask(GLboolean mask) { st()->depth_mask = mask ? GL_TRUE : GL_FALSE; glDepthMask(mask); }
+void glsColorMask(GLboolean r, GLboolean g, GLboolean b, GLboolean a) {
+    GlsState *s = st();
+    s->color_mask[0] = r ? GL_TRUE : GL_FALSE; s->color_mask[1] = g ? GL_TRUE : GL_FALSE;
+    s->color_mask[2] = b ? GL_TRUE : GL_FALSE; s->color_mask[3] = a ? GL_TRUE : GL_FALSE;
+    glColorMask(r, g, b, a);
+}
+/* The clear colour is stored as given: callers only ever restore it, and
+ * re-setting the value they set yields the same clear. */
+void glsClearColor(GLfloat r, GLfloat g, GLfloat b, GLfloat a) {
+    GlsState *s = st();
+    s->clear_color[0] = r; s->clear_color[1] = g; s->clear_color[2] = b; s->clear_color[3] = a;
+    glClearColor(r, g, b, a);
+}
+static GLfloat clamp01(GLfloat v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+#ifdef N2_GLES
+void glsClearDepthf(GLfloat depth) { st()->clear_depth = clamp01(depth); glClearDepthf(depth); }
+#else
+void glsClearDepth(GLdouble depth) { st()->clear_depth = clamp01((GLfloat)depth); glClearDepth(depth); }
+#endif
+void glsViewport(GLint x, GLint y, GLsizei w, GLsizei h) {
+    GlsState *s = st();
+    s->viewport[0] = x; s->viewport[1] = y; s->viewport[2] = w; s->viewport[3] = h;
+    glViewport(x, y, w, h);
+}
+void glsUseProgram(GLuint program) { st()->program = (GLint)program; glUseProgram(program); }
+void glsBindFramebuffer(GLenum target, GLuint fbo) {
+    st()->framebuffer = (GLint)fbo; glBindFramebuffer(target, fbo);
+}
+void glsBindRenderbuffer(GLenum target, GLuint rb) {
+    st()->renderbuffer = (GLint)rb; glBindRenderbuffer(target, rb);
+}
+/* Deleting a bound object reverts that binding to 0, as GL does. */
+void glsDeleteFramebuffers(GLsizei n, const GLuint *ids) {
+    GlsState *s = st();
+    for (GLsizei i = 0; i < n; i++) if (ids[i] && (GLint)ids[i] == s->framebuffer) s->framebuffer = 0;
+    glDeleteFramebuffers(n, ids);
+}
+void glsDeleteRenderbuffers(GLsizei n, const GLuint *ids) {
+    GlsState *s = st();
+    for (GLsizei i = 0; i < n; i++) if (ids[i] && (GLint)ids[i] == s->renderbuffer) s->renderbuffer = 0;
+    glDeleteRenderbuffers(n, ids);
+}
+void glsActiveTexture(GLenum unit) { st()->active = (GLint)(unit - GL_TEXTURE0); glActiveTexture(unit); }
+void glsBindTexture(GLenum target, GLuint texture) {
+    GlsState *s = st();
+    if (target == GL_TEXTURE_2D && s->active >= 0 && s->active < GLS_UNITS)
+        s->tex2d[s->active] = (GLint)texture;
+    glBindTexture(target, texture);
+}
+void glsDeleteTextures(GLsizei n, const GLuint *ids) {
+    GlsState *s = st();
+    for (GLsizei i = 0; i < n; i++)
+        for (int u = 0; ids[i] && u < GLS_UNITS; u++) if (s->tex2d[u] == (GLint)ids[i]) s->tex2d[u] = 0;
+    glDeleteTextures(n, ids);
+}
+#ifdef GLS_VERIFY
+static void verify_fail(const char *what, GLenum pname) {
+    fprintf(stderr, "gl_state: tracked %s 0x%04X differs from GL\n", what, (unsigned)pname);
+    abort();
+}
+#endif
+
+/* ---- fixed-function getters ---- */
+GLboolean gls_is_enabled(GLenum cap) {
+    int i = cap_index(cap);
+    if (i < 0) { g_fallback++; return glIsEnabled(cap); }
+    GLboolean v = st()->enabled[i];
+#ifdef GLS_VERIFY
+    if ((glIsEnabled(cap) ? 1 : 0) != (v ? 1 : 0)) verify_fail("enable", cap);
+#endif
+    return v;
+}
+
+/* Returns the number of ints written, 0 when the pname is not modelled. */
+static int tracked_integerv(GLenum pname, GLint *out) {
+    GlsState *s = st();
+    switch (pname) {
+#ifdef GL_BLEND_SRC
+    case GL_BLEND_SRC: out[0] = s->blend[0]; return 1;
+    case GL_BLEND_DST: out[0] = s->blend[1]; return 1;
+#endif
+    case GL_BLEND_SRC_RGB: out[0] = s->blend[0]; return 1;
+    case GL_BLEND_DST_RGB: out[0] = s->blend[1]; return 1;
+    case GL_BLEND_SRC_ALPHA: out[0] = s->blend[2]; return 1;
+    case GL_BLEND_DST_ALPHA: out[0] = s->blend[3]; return 1;
+    case GL_DEPTH_FUNC: out[0] = s->depth_func; return 1;
+    case GL_VIEWPORT: memcpy(out, s->viewport, sizeof s->viewport); return 4;
+    case GL_CURRENT_PROGRAM: out[0] = s->program; return 1;
+    case GL_FRAMEBUFFER_BINDING: out[0] = s->framebuffer; return 1;
+    case GL_RENDERBUFFER_BINDING: out[0] = s->renderbuffer; return 1;
+    case GL_ACTIVE_TEXTURE: out[0] = (GLint)GL_TEXTURE0 + s->active; return 1;
+    case GL_TEXTURE_BINDING_2D:
+        if (s->active < 0 || s->active >= GLS_UNITS) return 0;
+        out[0] = s->tex2d[s->active]; return 1;
+    default: return 0;
+    }
+}
+
+void gls_get_integerv(GLenum pname, GLint *out) {
+    int n = tracked_integerv(pname, out);
+    if (!n) { g_fallback++; glGetIntegerv(pname, out); return; }
+#ifdef GLS_VERIFY
+    GLint real[4]; glGetIntegerv(pname, real);
+    if (memcmp(real, out, (size_t)n * sizeof *out)) verify_fail("integer", pname);
+#endif
+}
+
+void gls_get_booleanv(GLenum pname, GLboolean *out) {
+    GlsState *s = st();
+    int n = 0;
+    if (pname == GL_DEPTH_WRITEMASK) { out[0] = s->depth_mask; n = 1; }
+    else if (pname == GL_COLOR_WRITEMASK) { memcpy(out, s->color_mask, sizeof s->color_mask); n = 4; }
+    if (!n) { g_fallback++; glGetBooleanv(pname, out); return; }
+#ifdef GLS_VERIFY
+    GLboolean real[4]; glGetBooleanv(pname, real);
+    if (memcmp(real, out, (size_t)n)) verify_fail("boolean", pname);
+#endif
+}
+
+void gls_get_floatv(GLenum pname, GLfloat *out) {
+    GlsState *s = st();
+    int n = 0;
+    if (pname == GL_COLOR_CLEAR_VALUE) { memcpy(out, s->clear_color, sizeof s->clear_color); n = 4; }
+    else if (pname == GL_DEPTH_CLEAR_VALUE) { out[0] = s->clear_depth; n = 1; }
+    if (!n) { g_fallback++; glGetFloatv(pname, out); return; }
+#ifdef GLS_VERIFY
+    GLfloat real[4]; glGetFloatv(pname, real);
+    if (memcmp(real, out, (size_t)n * sizeof *out)) verify_fail("float", pname);
+#endif
+}
+
+unsigned gls_fallback_queries(void) { return g_fallback; }
