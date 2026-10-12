@@ -1107,6 +1107,10 @@ Also run the task-relevant deterministic self-test or headless reference:
 - renderer: same-pose before/after PNG plus ordinary-tier regression;
 - physics/contact: `phys_selftest`, `collide_walls_selftest`, synthetic
   harness and L4RA/L4RB trace;
+- scheduling: `make physics-clock-test` runs the core physics self-test and a
+  synthetic input replay across fixed and irregular render cadences, invalid
+  elapsed times and stall catch-up. It checks OpenUG2 contracts, not retail
+  handling equivalence, and needs no game data, window or graphics context;
 - race: supported start, ordered gate sequence and finish condition;
 - portable code: `make gles` where the GLES2 development headers are available.
 

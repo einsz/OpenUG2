@@ -10,9 +10,32 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include <limits.h>
+
+#ifdef NDEBUG
+#error "hud_test requires assertions; remove -DNDEBUG"
+#endif
 
 #define PI 3.14159265358979323846f
 static int near(float a, float b, float eps) { return fabsf(a - b) <= eps; }
+
+static void test_speed_readout(void) {
+    assert(hud_speed_value(137.9f, 0) == 137);
+    assert(hud_speed_value(-137.9f, 0) == 137);
+    assert(hud_speed_value(.99f, 0) == 0);
+    assert(hud_speed_value(80.4f, 1) == 49);
+    assert(hud_speed_value(-80.4f, 1) == 49);
+    assert(hud_speed_value(0, 1) == 0);
+    for (int frame = 0; frame < 1000; ++frame) {
+        assert(hud_speed_value(137.9f, 0) == 137);
+        assert(hud_speed_value(1, 0) == 1); /* no history from the last sample */
+    }
+    assert(hud_speed_value(NAN, 0) == 0);
+    assert(hud_speed_value(INFINITY, 1) == 0);
+    assert(hud_speed_value(1e30f, 0) == INT_MAX);
+    assert(hud_speed_value(-1e30f, 1) == INT_MAX);
+    puts("  speed uses current magnitude, units and truncation     PASS");
+}
 
 static void test_tachometer_uses_current_bounded_sample(void) {
     HudState s = {0};
@@ -293,6 +316,8 @@ static void test_art_gate_separates_ui_from_noise(void) {
 
 int main(void) {
     printf("hud_test:\n");
+    test_speed_readout();
+
     test_tachometer_uses_current_bounded_sample();
     test_angle_delta_takes_the_short_way();
     test_map_project_and_pick_round_trip();
