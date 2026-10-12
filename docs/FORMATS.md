@@ -1125,12 +1125,29 @@ validated before runtime use:
 | gearbox `+0x18` | `u32` | forward gear count |
 | gearbox `+0x20..+0x3c` | `8*f32` | reverse, neutral and six forward ratios |
 | `+0x300..+0x308` | `3*f32` | idle and two RPM thresholds (redline/limiter labels provisional) |
-| `+0x310..+0x330` | `9*f32` | stock torque samples, interpreted as kN·m |
+| `+0x310..+0x330` | `9*f32` | primary engine samples, interpreted as kN·m |
+| `+0x334..+0x354` | `9*f32` | secondary engine samples added to the primary curve during stock composition |
 | `+0x380` | `f32` | currently used as steering response; meaning unverified |
 | `+0x530`, `+0x570`, `+0x5b0`, `+0x5f0` | `9*f32` each | master gain curve and three upgrade curves |
 
-The current mapping assumes torque points span idle to limiter in eight equal
-intervals; the unit and sample domain remain unverified. The master gain curve
+Stock engine input is the pointwise sum of the primary and secondary curves,
+including when no performance upgrade is selected. `N2PhysicsAttr.torque` holds
+that composed curve, not the primary array alone. An independent local check of
+46 car records found seven with nonzero secondary curves. Synthetic parser tests
+cover all nine additions, the zero-secondary fallback and malformed values.
+
+The source of this composition fact is the
+[nfsu2-re record recovery research](https://github.com/troikoss/nfsu2-re/blob/main/docs/pc-physics-parameters.md).
+Its provenance is original executable analysis; this parser change is independently
+written and contains no recovered code or retail sample data. This establishes
+stock curve composition, not the full engine or tyre/body dynamics. OpenUG2's
+power-level additions remain provisional and do not implement the original
+upgrade-selection graph.
+
+The current mapping uses idle to limiter in eight equal intervals. Constructor
+research in [the engine recovery notes](https://github.com/troikoss/nfsu2-re/blob/main/docs/pc-vehicle-physics.md)
+supports these endpoints for the primary curve; the torque unit interpretation
+and complete upgraded behavior remain unverified. The master gain curve
 equals the third upgrade curve; the first two are 0.34 and 0.68 times it in the
 local data. Source evidence supports four gearbox blocks directly. The gain
 curves form a consistent upgrade ladder, but their exact division among the

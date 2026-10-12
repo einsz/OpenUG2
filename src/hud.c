@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -25,6 +26,24 @@ float hud_angle_delta(float from, float to) {
     if (d <= -(float)M_PI) d += 2.0f * (float)M_PI;
     if (d >   (float)M_PI) d -= 2.0f * (float)M_PI;
     return d;
+}
+
+int hud_speed_value(float speed_kmh, int imperial) {
+    if (!isfinite(speed_kmh)) return 0;
+    double magnitude = fabs((double)speed_kmh);
+    if (imperial) magnitude /= 1.609344;
+    if (magnitude >= INT_MAX) return INT_MAX;
+    return (int)magnitude;
+}
+
+float hud_tach_fraction(const HudState *s, float dial_scale) {
+    if (!s || !s->have_rpm || !isfinite(s->rpm) ||
+        !isfinite(dial_scale) || dial_scale <= 0) return 0;
+    if (!isfinite(s->rpm_maximum) || s->rpm_maximum < 0) return 0;
+    float maximum = s->rpm_maximum > 0 ? s->rpm_maximum : s->rpm_redline;
+    if (!isfinite(maximum) || maximum <= 0) return 0;
+    float reading = fminf(maximum, fmaxf(0, s->rpm));
+    return fminf(1, reading / dial_scale);
 }
 
 void hud_map_project(float wx, float wy, float cx, float cy,
@@ -95,7 +114,7 @@ typedef struct { const char *name; uint32_t key; GLuint tex; int w, h;
                  } arc; } HudArt;
 
 enum {
-    ART_BACKING, ART_TACH_BACK, ART_TACH_ARC, ART_TACH_FILL,
+    ART_BACKING, ART_TACH_BACK, ART_TACH_ARC, ART_TACH_FILL, ART_TACH_NEEDLE,
     ART_NOS_BAR, ART_NOS_OVERLAY,
     ART_MAP_MASK, ART_MAP_BORDER, ART_MAP_BACK, ART_MAP_CAR, ART_MAP_NORTH,
     ART_MAP_GPS, ART_MAP_START, ART_MAP_SAFEHOUSE, ART_MAP_CIRCUIT,
@@ -121,9 +140,8 @@ struct Hud {
     HudArt art[ART_COUNT];
     int    preview;
     char   missing[512];
-    /* smoothed display state: a needle that snaps looks broken, and a dial fed
-       straight from a 60 Hz sample jitters on every gear change. */
-    float  needle_rpm, needle_speed, nos_glow, arrow_angle;
+    /* Current needle sample; animation state for the other HUD elements. */
+    float  needle_rpm, nos_glow, arrow_angle;
     int    arrow_primed;
 };
 
@@ -241,6 +259,7 @@ Hud *hud_init(const char *dataroot) {
     hud_art_define(h, ART_TACH_BACK,      "TACH_NOS_BACKING",        0xa9e53dbcu);
     hud_art_define(h, ART_TACH_ARC,       "TACH_NOS_ALPHA",          0x04575433u);
     hud_art_define(h, ART_TACH_FILL,      "TACH_FILL_CUSTOM_00",     0x4738197eu);
+    hud_art_define(h, ART_TACH_NEEDLE,    "3RDPERSON_RPMDIAL_CUSTOM_00", 0x95479060u);
     hud_art_define(h, ART_NOS_BAR,        "SS_NOS",                  0x7ab54f94u);
     hud_art_define(h, ART_NOS_OVERLAY,    "SS_NOS_OVERLAY",          0x59d6e695u);
     hud_art_define(h, ART_MAP_MASK,       "MINIMAP_MASK",            0x40cdc515u);
@@ -304,6 +323,7 @@ Hud *hud_init(const char *dataroot) {
               h->art[a].arc.a0 = fit.a0; h->art[a].arc.a1 = fit.a1; }
             free(t.rgb); free(t.alpha); free(t.dxt);
         }
+        free(tpk.blk);
         free(d);
     }
     for (int a = 0; a < ART_COUNT; a++)
@@ -324,7 +344,7 @@ Hud *hud_init(const char *dataroot) {
             else printf("player HUD: %-22s no usable arc fit\n", a->name);
         }
     }
-    h->needle_rpm = h->needle_speed = 0.0f;
+    h->needle_rpm = 0.0f;
     return h;
 }
 
@@ -448,16 +468,14 @@ static void hud_draw_cluster(Hud *h, const HudDC *dc, const HudState *s) {
         arc_r = arc->arc.r * TACH_W;
     }
 
-    hud_blit(dc, h->art[ART_TACH_FILL].tex, arc_r * 1.70f, arc_r * 1.70f,
-             pivx, pivy, 0.0f, 1.0f, 1.0f, 1.0f, 0.28f);
+    if (h->art[ART_TACH_FILL].tex)
+        hud_blit(dc, h->art[ART_TACH_FILL].tex, arc_r * 1.70f, arc_r * 1.70f,
+                 pivx, pivy, 0.0f, 1.0f, 1.0f, 1.0f, 0.28f);
     hud_blit(dc, h->art[ART_TACH_BACK].tex, TACH_W, TACH_H, cx, cy,
              0.0f, 1.0f, 1.0f, 1.0f, 0.85f);
 
-    float frac = 0.0f;
-    if (s->have_rpm && s->rpm_redline > 1.0f) frac = s->rpm / s->rpm_redline;
-    if (frac < 0.0f) frac = 0.0f;
-    if (frac > 1.0f) frac = 1.0f;
-    h->needle_rpm += (frac - h->needle_rpm) * 0.35f;
+    float scale = s->rpm_maximum > 0 ? s->rpm_maximum : s->rpm_redline;
+    h->needle_rpm = hud_tach_fraction(s, scale);
     const int SEG = 48;
     for (int i = 0; i < SEG; i++) {
         float f0 = (float)i / SEG;
@@ -470,23 +488,31 @@ static void hud_draw_cluster(Hud *h, const HudDC *dc, const HudState *s) {
     }
     hud_blit(dc, arc->tex, TACH_W, TACH_H, cx, cy, 0.0f, 1.0f, 1.0f, 1.0f, 0.95f);
 
-    /* needle: no needle sprite ships in the non-drag packs, so this one is
-       drawn. It is the only part of the dial that is not retail art. */
+    /* Skin 00's sprite is 16x128, with the rotation centre at the texture
+       centre and the tip in its bottom image half. Keep its padding and aspect;
+       the selected arc still supplies OpenUG2's provisional pivot/sweep. */
     {   float a = hud_arc_angle(arc, h->needle_rpm, 181.0f, 29.0f);
         float len = arc_r * 0.86f;
-        hud_blit(dc, 0, len, arc_r * 0.048f,
-                 pivx + cosf(a) * len * 0.5f / dc->asp,
-                 pivy + sinf(a) * len * 0.5f, a, 0.95f, 0.16f, 0.12f, 0.95f);
-        hud_blit(dc, 0, arc_r * 0.15f, arc_r * 0.15f, pivx, pivy, 0.0f,
-                 0.10f, 0.10f, 0.12f, 0.95f);
+        const HudArt *needle = &h->art[ART_TACH_NEEDLE];
+        if (needle->tex) {
+            float height = 2 * len, width = height * needle->w / needle->h;
+            hud_blit(dc, needle->tex, width, height, pivx, pivy,
+                     a + (float)M_PI * .5f, 1, 1, 1, .95f);
+        } else {
+            /* Missing/rejected sprite: retain the documented procedural fallback. */
+            hud_blit(dc, 0, len, arc_r * 0.048f,
+                     pivx + cosf(a) * len * 0.5f / dc->asp,
+                     pivy + sinf(a) * len * 0.5f, a, 0.95f, 0.16f, 0.12f, 0.95f);
+            hud_blit(dc, 0, arc_r * 0.15f, arc_r * 0.15f, pivx, pivy, 0.0f,
+                     0.10f, 0.10f, 0.12f, 0.95f);
+        }
     }
 
     char buf[64];
-    float kmh = s->speed_kmh < 0.0f ? -s->speed_kmh : s->speed_kmh;
-    h->needle_speed += (kmh - h->needle_speed) * 0.40f;
-    snprintf(buf, sizeof buf, "%d", (int)(h->needle_speed + 0.5f));
+    snprintf(buf, sizeof buf, "%d", hud_speed_value(s->speed_kmh, s->imperial_units));
     hud_label(dc, buf, pivx, pivy + arc_r * 0.52f, 0.072f, 0.85f, 0.95f, 1.0f, 1.0f);
-    hud_label(dc, "KMH", pivx, pivy + arc_r * 0.22f, 0.026f, 0.55f, 0.70f, 0.80f, 1.0f);
+    hud_label(dc, s->imperial_units ? "MPH" : "KMH", pivx, pivy + arc_r * 0.22f,
+              0.026f, 0.55f, 0.70f, 0.80f, 1.0f);
     if (s->have_rpm) {
         if (s->gear < 0)       snprintf(buf, sizeof buf, "R");
         else if (s->gear == 0) snprintf(buf, sizeof buf, "N");
@@ -540,8 +566,7 @@ static void hud_draw_drag(Hud *h,const HudDC *dc,const HudState *s) {
     float px=cx+(arc->arc.ok?arc->arc.cx-.5f:.5f)*width/dc->asp;
     float py=cy-height*.5f+(arc->arc.ok?arc->arc.cy:1)*width;
     float radius=arc->arc.ok?arc->arc.r*width:width*.75f;
-    float fraction=s->have_rpm?fmaxf(0,fminf(1,s->rpm/(7000+index*1000))):0;
-    h->needle_rpm+=(fraction-h->needle_rpm)*.35f;
+    h->needle_rpm=hud_tach_fraction(s,(float)(7000+index*1000));
     float angle=hud_arc_angle(arc,h->needle_rpm,150,30),length=radius*.85f;
     hud_blit(dc,h->art[ART_DRAG_NEEDLE].tex,length,.035f,
         px+cosf(angle)*length*.5f/dc->asp,py+sinf(angle)*length*.5f,angle,1,1,1,1);
@@ -552,7 +577,8 @@ static void hud_draw_drag(Hud *h,const HudDC *dc,const HudState *s) {
         cx-.35f/dc->asp,cy-.25f+.25f*heat,0,1,.3f,.1f,1);
     char buf[64];snprintf(buf,sizeof buf,"%d",s->gear);
     hud_label(dc,buf,px,py,.12f,1,1,1,1);
-    snprintf(buf,sizeof buf,"%.0f KMH",fabsf(s->speed_kmh));
+    snprintf(buf,sizeof buf,"%d %s",hud_speed_value(s->speed_kmh,s->imperial_units),
+             s->imperial_units?"MPH":"KMH");
     hud_label(dc,buf,cx,cy+.52f,.055f,.7f,.9f,1,1);
     if(s->have_nos)hud_label(dc,s->nitro_active?"NOS ACTIVE":"NOS N/A",cx,cy-.53f,.04f,.3f,.8f,1,1);
 }

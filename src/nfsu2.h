@@ -3146,7 +3146,8 @@ static int n2_global_wheel_attr(const unsigned char *g, long glen,
 /* Stock and upgraded powertrain data from the same 0x890-byte GLOBALB car
  * record. Values remain in source units; physics.c maps them to the arcade
  * model. Four gearbox blocks, a master gain curve and three upgrade curves are
- * stored per car. Torque units/sample RPMs and the steering label remain
+ * stored per car. Stock engine input combines the primary and secondary
+ * nine-sample curves; torque units and the steering label remain
  * interpretations; exposing source values does not recover the original solver. */
 typedef struct {
     float final_drive, reverse, forward[6];
@@ -3173,7 +3174,16 @@ static int n2_global_physics_attr(const unsigned char *g,long glen,
     N2_PA_F(a->mass_tonnes,0x220);
     N2_PA_F(a->idle_rpm,0x300);N2_PA_F(a->redline_rpm,0x304);
     N2_PA_F(a->limiter_rpm,0x308);
-    memcpy(a->torque,g+record+0x310,sizeof a->torque);
+    /* Stock record composition includes the secondary curve even when no
+       performance packages are selected. Both arrays share the same knots. */
+    for(int i=0;i<9;i++) {
+        float primary,secondary;
+        memcpy(&primary,g+record+0x310+4*i,4);
+        memcpy(&secondary,g+record+0x334+4*i,4);
+        if(!isfinite(primary)||primary<0||primary>5||
+           !isfinite(secondary)||secondary<0||secondary>5)return 0;
+        a->torque[i]=primary+secondary;
+    }
     N2_PA_F(a->steer_ratio,0x380);
     for(int level=0;level<4;level++) {
         N2GearboxAttr *box=a->gearbox+level;int at=gb_at[level];
@@ -3765,7 +3775,8 @@ static int n2_tpk_keys(const unsigned char *d, N2Tpk t, uint32_t *keys, int maxk
     for (int b = 0; b < t.nblk && n < maxk; b++) {
         long hbeg = t.blk[b].hbeg, hend = hbeg + t.blk[b].hsize;
         for (long i = hbeg; i + 0x40 < hend && n < maxk; i++) {
-            if (!(d[i] >= 'A' && d[i] <= 'Z')) continue;
+            if (!((d[i] >= 'A' && d[i] <= 'Z') ||
+                  (d[i] >= '0' && d[i] <= '9'))) continue;
             if (d[i+0x17] != 0) continue;                 /* 24-byte name null-terminated */
             keys[n++] = n2_u32(d + i + 0x18);
             i += 0x7b;                                    /* next 0x7c record */
@@ -3799,7 +3810,8 @@ static int n2_tpk_decode(const unsigned char *d, long len, N2Tpk t, uint32_t has
     for (int b = 0; b < t.nblk; b++) {
         long hbeg = t.blk[b].hbeg, hend = hbeg + t.blk[b].hsize, dbase = t.blk[b].dbase;
         for (long i = hbeg; i + 0x40 < hend; i++) {
-            if (!(d[i] >= 'A' && d[i] <= 'Z')) continue;
+            if (!((d[i] >= 'A' && d[i] <= 'Z') ||
+                  (d[i] >= '0' && d[i] <= '9'))) continue;
             if (n2_u32(d + i + 0x18) != hash) continue;
             /* A rejected candidate's draw flags must not reach a short record. */
             memset(tex, 0, sizeof *tex);

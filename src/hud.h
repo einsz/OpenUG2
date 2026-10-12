@@ -23,7 +23,10 @@
 typedef struct {
     /* --- drivetrain readouts --- */
     float speed_kmh;          /* REAL: PHYS_KMH(speed) */
+    int imperial_units;      /* display only: 0 = KMH, nonzero = MPH */
     float rpm, rpm_redline;   /* PROVISIONAL: the virtual AUDIO gearbox */
+    float rpm_maximum;        /* limiter/upper bound, separate from redline;
+                                0 retains the provisional redline fallback */
     int   gear;               /* <0 reverse, 0 neutral, 1..n forward */
     int   nitro_active;       /* REAL, but binary: there is no tank model */
 
@@ -100,6 +103,16 @@ const char *hud_missing(const Hud *h);
  * arrow rotates by this, so the wrap must be exact or the arrow spins the long
  * way round every time the car crosses the +/-pi seam. */
 float hud_angle_delta(float from, float to);
+
+/* Current speed magnitude, converted for display and truncated to an integer.
+ * The input contract remains km/h in either display mode. Invalid telemetry
+ * returns zero; oversized telemetry saturates to avoid an undefined C cast. */
+int hud_speed_value(float speed_kmh, int imperial);
+
+/* Current sampled RPM, bounded by the engine maximum, as a fraction of the
+ * selected visual dial scale. Stateless: render cadence adds no extra lag.
+ * A missing maximum uses redline for existing/provisional callers. */
+float hud_tach_fraction(const HudState *s, float dial_scale);
 
 /* World -> minimap transform. The map is a north-up-or-heading-up window of
  * radius `radius_m` around (cx,cy); `rot` is the rotation applied (0 for

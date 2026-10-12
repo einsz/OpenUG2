@@ -10,9 +10,65 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include <limits.h>
+
+#ifdef NDEBUG
+#error "hud_test requires assertions; remove -DNDEBUG"
+#endif
 
 #define PI 3.14159265358979323846f
 static int near(float a, float b, float eps) { return fabsf(a - b) <= eps; }
+
+static void test_speed_readout(void) {
+    assert(hud_speed_value(137.9f, 0) == 137);
+    assert(hud_speed_value(-137.9f, 0) == 137);
+    assert(hud_speed_value(.99f, 0) == 0);
+    assert(hud_speed_value(80.4f, 1) == 49);
+    assert(hud_speed_value(-80.4f, 1) == 49);
+    assert(hud_speed_value(0, 1) == 0);
+    for (int frame = 0; frame < 1000; ++frame) {
+        assert(hud_speed_value(137.9f, 0) == 137);
+        assert(hud_speed_value(1, 0) == 1); /* no history from the last sample */
+    }
+    assert(hud_speed_value(NAN, 0) == 0);
+    assert(hud_speed_value(INFINITY, 1) == 0);
+    assert(hud_speed_value(1e30f, 0) == INT_MAX);
+    assert(hud_speed_value(-1e30f, 1) == INT_MAX);
+    puts("  speed uses current magnitude, units and truncation     PASS");
+}
+
+static void test_tachometer_uses_current_bounded_sample(void) {
+    HudState s = {0};
+    s.have_rpm = 1; s.rpm_redline = 6500; s.rpm_maximum = 7000;
+    s.rpm = 3500;
+    assert(near(hud_tach_fraction(&s, 7000), .5f, 1e-6f));
+    s.rpm = s.rpm_redline;
+    assert(hud_tach_fraction(&s, 7000) < 1); /* redline is not the maximum */
+    s.rpm = 9000;
+    assert(hud_tach_fraction(&s, 7000) == 1);
+    assert(near(hud_tach_fraction(&s, 10000), .7f, 1e-6f));
+    s.rpm = -100;
+    assert(hud_tach_fraction(&s, 7000) == 0);
+    for (int frame = 0; frame < 1000; ++frame) {
+        s.rpm = 5600;
+        assert(near(hud_tach_fraction(&s, 7000), .8f, 1e-6f));
+        s.rpm = 1400;
+        assert(near(hud_tach_fraction(&s, 7000), .2f, 1e-6f));
+    }
+    s.rpm_maximum = 0; s.rpm = 3250;
+    assert(near(hud_tach_fraction(&s, 6500), .5f, 1e-6f));
+    s.have_rpm = 0;
+    assert(hud_tach_fraction(&s, 7000) == 0);
+    s.have_rpm = 1; s.rpm = NAN;
+    assert(hud_tach_fraction(&s, 7000) == 0);
+    s.rpm = 3000; s.rpm_maximum = INFINITY;
+    assert(hud_tach_fraction(&s, 7000) == 0);
+    s.rpm_maximum = NAN;
+    assert(hud_tach_fraction(&s, 7000) == 0);
+    assert(hud_tach_fraction(&s, 0) == 0);
+    assert(hud_tach_fraction(NULL, 7000) == 0);
+    puts("  tachometer uses current RPM and a separate upper bound PASS");
+}
 
 /* ---- 1. arrow angle: the wrap is the whole point ---- */
 static void test_angle_delta_takes_the_short_way(void) {
@@ -260,6 +316,9 @@ static void test_art_gate_separates_ui_from_noise(void) {
 
 int main(void) {
     printf("hud_test:\n");
+    test_speed_readout();
+
+    test_tachometer_uses_current_bounded_sample();
     test_angle_delta_takes_the_short_way();
     test_map_project_and_pick_round_trip();
     test_layout_keeps_proportions_across_aspects();

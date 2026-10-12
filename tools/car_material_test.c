@@ -68,6 +68,31 @@ static void physics_attr_test(void) {
         fabsf(a.gearbox[0].forward[0]-3.2f)<1e-6f&&
         fabsf(a.gearbox[3].final_drive-3.8f)<1e-6f&&
         fabsf(a.torque_gain[3][8]-.27f)<1e-6f);
+    /* Synthetic secondary samples: a zero upgrade state must still include
+       every stock knot. Unrelated upgrade curves must remain untouched. */
+    Buf stock=root;
+    for(int i=0;i<9;i++) {
+        float secondary=(i+1)*.125f;
+        memcpy(root.b+24+0x334+4*i,&secondary,4);
+    }
+    chk("stock secondary engine curve decodes without upgrades",
+        n2_global_physics_attr(root.b,root.n,"TESTCAR",&a));
+    int complete=1;
+    for(int i=0;i<9;i++) {
+        float expected=(.12f+i*.01f)+(i+1)*.125f;
+        if(a.torque[i]!=expected)complete=0;
+    }
+    chk("all nine engine knots include the secondary contribution",complete);
+    chk("stock composition leaves power-upgrade samples intact",
+        fabsf(a.torque_gain[3][8]-.27f)<1e-6f);
+    const float invalid_secondary[]={NAN,INFINITY,-INFINITY,-.125f,6};
+    int rejects=1;
+    for(unsigned i=0;i<sizeof invalid_secondary/sizeof invalid_secondary[0];i++) {
+        memcpy(root.b+24+0x334,&invalid_secondary[i],4);
+        if(n2_global_physics_attr(root.b,root.n,"TESTCAR",&a))rejects=0;
+    }
+    chk("invalid secondary engine samples are rejected",rejects);
+    root=stock;
     chk("all wheel dimensions and inertia retain source values and offset",
         n2_global_car_shape(root.b,root.n,"TESTCAR",&shape)&&shape.record_offset==24&&
         shape.body[0]==4&&shape.body[1]==2&&shape.body[2]==1.5f&&
@@ -741,6 +766,34 @@ static void texture_record_rejection_tests(void) {
 int texture_record_tests(void) {
     printf("\n  T texture-record decode: authored format/draw-mode bytes\n");
     texture_record_rejection_tests();
+
+    /* Digit-leading names are valid HUD texture records, not padding. Cover
+       enumeration and decoding with synthetic RGBA palettes and pixel indices. */
+    for (int digit = 0; digit < 10; ++digit) {
+        unsigned char pixels[1024 + 16] = {0};
+        pixels[0] = 10; pixels[1] = 20; pixels[2] = 30; pixels[3] = 0;
+        pixels[4] = 100; pixels[5] = 130; pixels[6] = 160; pixels[7] = 255;
+        for (int i = 0; i < 16; ++i) pixels[1024 + i] = (unsigned char)(i & 1);
+        char name[24]; snprintf(name, sizeof name, "%dHUD_TEST", digit);
+        uint32_t hash = 0x6000u + (uint32_t)digit;
+        TexRec rec = {name, hash, 0, sizeof pixels, 1024, 4, 4,
+                      5,2,1,0, 0x08, pixels, sizeof pixels, 0};
+        Buf tpk; N2Tpk pack = build_tpk(&tpk, &rec, 1);
+        uint32_t pixel_offset = 1024;
+        memcpy(tpk.b + pack.blk[0].hbeg + 0x24, &pixel_offset, 4);
+        uint32_t keys[2] = {0};
+        chk("digit-leading HUD record is enumerated by its key",
+            n2_tpk_keys(tpk.b, pack, keys, 2) == 1 && keys[0] == hash);
+        N2Tex tex;
+        int decoded = n2_tpk_decode(tpk.b, tpk.n, pack, hash, &tex);
+        chk("digit-leading P8 sprite preserves colour and transparency",
+            decoded && tex.alpha && tex.alpha[0] == 0 && tex.alpha[1] == 255 &&
+            tex.rgb[0] == 10 && tex.rgb[3] == 100 && tex.w == 4 && tex.h == 4);
+        if (decoded) { free(tex.rgb); free(tex.alpha); free(tex.dxt); }
+        chk("digit-leading record cannot bypass truncated pixel bounds",
+            !n2_tpk_decode(tpk.b, tpk.n - 1, pack, hash, &tex));
+        free(pack.blk);
+    }
 
     /* T1: complete opaque DXT1 record (order,usage,blend,wz)=(0,0,0,1),
        c0>c1 (opaque interpolation mode -- no index-3 transparency). */

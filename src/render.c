@@ -10,16 +10,14 @@
 #include "render.h"
 
 #if defined(__APPLE__) && !defined(N2_GLES)
+/* Bind/Delete Framebuffers/Renderbuffers go through gl_state.c, which maps
+   them to the EXT entry points itself. */
 #define glGenFramebuffers glGenFramebuffersEXT
-#define glBindFramebuffer glBindFramebufferEXT
 #define glFramebufferTexture2D glFramebufferTexture2DEXT
 #define glCheckFramebufferStatus glCheckFramebufferStatusEXT
-#define glDeleteFramebuffers glDeleteFramebuffersEXT
 #define glGenRenderbuffers glGenRenderbuffersEXT
-#define glBindRenderbuffer glBindRenderbufferEXT
 #define glRenderbufferStorage glRenderbufferStorageEXT
 #define glFramebufferRenderbuffer glFramebufferRenderbufferEXT
-#define glDeleteRenderbuffers glDeleteRenderbuffersEXT
 #endif
 
 #ifdef N2_GLES
@@ -71,13 +69,13 @@ int render_district_lights(const RProg *r, GpuMesh *quad, GLuint texture,
     glGetUniformfv(rp.prog,rp.uFogColor,fog_color);
     glGetUniformfv(rp.prog,rp.uMVP,saved_mvp);
     GLint texture_before, blend_src_rgb, blend_dst_rgb, blend_src_a, blend_dst_a;
-    glGetIntegerv(GL_TEXTURE_BINDING_2D,&texture_before);
-    glGetIntegerv(GL_BLEND_SRC_RGB,&blend_src_rgb);
-    glGetIntegerv(GL_BLEND_DST_RGB,&blend_dst_rgb);
-    glGetIntegerv(GL_BLEND_SRC_ALPHA,&blend_src_a);
-    glGetIntegerv(GL_BLEND_DST_ALPHA,&blend_dst_a);
-    GLboolean blend_before=glIsEnabled(GL_BLEND), depth_before=glIsEnabled(GL_DEPTH_TEST);
-    GLboolean depth_mask; glGetBooleanv(GL_DEPTH_WRITEMASK,&depth_mask);
+    gls_get_integerv(GL_TEXTURE_BINDING_2D,&texture_before);
+    gls_get_integerv(GL_BLEND_SRC_RGB,&blend_src_rgb);
+    gls_get_integerv(GL_BLEND_DST_RGB,&blend_dst_rgb);
+    gls_get_integerv(GL_BLEND_SRC_ALPHA,&blend_src_a);
+    gls_get_integerv(GL_BLEND_DST_ALPHA,&blend_dst_a);
+    GLboolean blend_before=gls_is_enabled(GL_BLEND), depth_before=gls_is_enabled(GL_DEPTH_TEST);
+    GLboolean depth_mask; gls_get_booleanv(GL_DEPTH_WRITEMASK,&depth_mask);
     float ll = sqrtf(look[0]*look[0] + look[1]*look[1] + look[2]*look[2]);
     if (ll < 1e-4f) ll = 1.0f;
     float ld[3] = {look[0]/ll, look[1]/ll, look[2]/ll};
@@ -204,10 +202,10 @@ int render_road_reflections(const RProg *r,RoadReflections *s,
     for(int i=0;i<count;i++)nearby+=road_reflection_receiver(&batches[i],cam);
     if(!nearby)return 0;
     GLint viewport[4],active,bindings[3];
-    glGetIntegerv(GL_VIEWPORT,viewport);glGetIntegerv(GL_ACTIVE_TEXTURE,&active);
+    gls_get_integerv(GL_VIEWPORT,viewport);gls_get_integerv(GL_ACTIVE_TEXTURE,&active);
     if(viewport[2]<=0 || viewport[3]<=0)return 0;
     const GLenum units[]={GL_TEXTURE0,GL_TEXTURE3,GL_TEXTURE4};
-    for(int i=0;i<3;i++){glActiveTexture(units[i]);glGetIntegerv(GL_TEXTURE_BINDING_2D,&bindings[i]);}
+    for(int i=0;i<3;i++){glActiveTexture(units[i]);gls_get_integerv(GL_TEXTURE_BINDING_2D,&bindings[i]);}
     GLuint *textures[]={&s->color,&s->depth};
     int resize=s->width!=viewport[2] || s->height!=viewport[3];
     for(int i=0;i<2;i++) {
@@ -236,11 +234,11 @@ int render_road_reflections(const RProg *r,RoadReflections *s,
     glGetUniformfv(r->prog,r->uMVP,matrix);glGetUniformfv(r->prog,r->uModel,model);
     glGetUniformfv(r->prog,r->uReflectionParams,params);
     GLint df,sr,dr,sa,da;GLboolean mask;
-    GLboolean depth=glIsEnabled(GL_DEPTH_TEST),blend=glIsEnabled(GL_BLEND),cull=glIsEnabled(GL_CULL_FACE);
-    GLboolean offset=glIsEnabled(GL_POLYGON_OFFSET_FILL);
-    glGetIntegerv(GL_DEPTH_FUNC,&df);glGetBooleanv(GL_DEPTH_WRITEMASK,&mask);
-    glGetIntegerv(GL_BLEND_SRC_RGB,&sr);glGetIntegerv(GL_BLEND_DST_RGB,&dr);
-    glGetIntegerv(GL_BLEND_SRC_ALPHA,&sa);glGetIntegerv(GL_BLEND_DST_ALPHA,&da);
+    GLboolean depth=gls_is_enabled(GL_DEPTH_TEST),blend=gls_is_enabled(GL_BLEND),cull=gls_is_enabled(GL_CULL_FACE);
+    GLboolean offset=gls_is_enabled(GL_POLYGON_OFFSET_FILL);
+    gls_get_integerv(GL_DEPTH_FUNC,&df);gls_get_booleanv(GL_DEPTH_WRITEMASK,&mask);
+    gls_get_integerv(GL_BLEND_SRC_RGB,&sr);gls_get_integerv(GL_BLEND_DST_RGB,&dr);
+    gls_get_integerv(GL_BLEND_SRC_ALPHA,&sa);gls_get_integerv(GL_BLEND_DST_ALPHA,&da);
     glEnable(GL_DEPTH_TEST);glDepthFunc(GL_EQUAL);glDepthMask(GL_FALSE);
     glDisable(GL_CULL_FACE);glDisable(GL_POLYGON_OFFSET_FILL);
     glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
@@ -364,7 +362,7 @@ int render_car_shadow(const RProg *r,CarShadow *s,const N2Scene *car,const GpuMe
     float projection[16],projected[16];mat_ground_shadow(ground,normal,projection);
     mat_mul(mvp,projection,projected);
     int draws=0;
-    GLboolean cull=glIsEnabled(GL_CULL_FACE);
+    GLboolean cull=gls_is_enabled(GL_CULL_FACE);
     glDisable(GL_CULL_FACE);glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
     glDepthMask(GL_FALSE);glEnable(GL_STENCIL_TEST);glStencilMask(0xff);
     glStencilFunc(GL_EQUAL,0,0xff);glStencilOp(GL_KEEP,GL_KEEP,GL_INCR);
@@ -404,16 +402,16 @@ int render_car_environment(const RProg *r,CarEnvironment *s,const N2Batch *world
     }
     GLint program,fbo,rb,viewport[4],active,texture,depthfunc,sr,dr,sa,da;
     GLfloat clear[4];GLboolean depthmask,color_mask[4];
-    GLboolean depth=glIsEnabled(GL_DEPTH_TEST),blend=glIsEnabled(GL_BLEND),cull=glIsEnabled(GL_CULL_FACE);
-    GLboolean scissor=glIsEnabled(GL_SCISSOR_TEST),stencil=glIsEnabled(GL_STENCIL_TEST);
-    glGetIntegerv(GL_CURRENT_PROGRAM,&program);glGetIntegerv(GL_FRAMEBUFFER_BINDING,&fbo);
-    glGetIntegerv(GL_RENDERBUFFER_BINDING,&rb);glGetIntegerv(GL_VIEWPORT,viewport);
-    glGetIntegerv(GL_ACTIVE_TEXTURE,&active);glActiveTexture(GL_TEXTURE0);
-    glGetIntegerv(GL_TEXTURE_BINDING_2D,&texture);glGetIntegerv(GL_DEPTH_FUNC,&depthfunc);
-    glGetFloatv(GL_COLOR_CLEAR_VALUE,clear);glGetBooleanv(GL_DEPTH_WRITEMASK,&depthmask);
-    glGetBooleanv(GL_COLOR_WRITEMASK,color_mask);
-    glGetIntegerv(GL_BLEND_SRC_RGB,&sr);glGetIntegerv(GL_BLEND_DST_RGB,&dr);
-    glGetIntegerv(GL_BLEND_SRC_ALPHA,&sa);glGetIntegerv(GL_BLEND_DST_ALPHA,&da);
+    GLboolean depth=gls_is_enabled(GL_DEPTH_TEST),blend=gls_is_enabled(GL_BLEND),cull=gls_is_enabled(GL_CULL_FACE);
+    GLboolean scissor=gls_is_enabled(GL_SCISSOR_TEST),stencil=gls_is_enabled(GL_STENCIL_TEST);
+    gls_get_integerv(GL_CURRENT_PROGRAM,&program);gls_get_integerv(GL_FRAMEBUFFER_BINDING,&fbo);
+    gls_get_integerv(GL_RENDERBUFFER_BINDING,&rb);gls_get_integerv(GL_VIEWPORT,viewport);
+    gls_get_integerv(GL_ACTIVE_TEXTURE,&active);glActiveTexture(GL_TEXTURE0);
+    gls_get_integerv(GL_TEXTURE_BINDING_2D,&texture);gls_get_integerv(GL_DEPTH_FUNC,&depthfunc);
+    gls_get_floatv(GL_COLOR_CLEAR_VALUE,clear);gls_get_booleanv(GL_DEPTH_WRITEMASK,&depthmask);
+    gls_get_booleanv(GL_COLOR_WRITEMASK,color_mask);
+    gls_get_integerv(GL_BLEND_SRC_RGB,&sr);gls_get_integerv(GL_BLEND_DST_RGB,&dr);
+    gls_get_integerv(GL_BLEND_SRC_ALPHA,&sa);gls_get_integerv(GL_BLEND_DST_ALPHA,&da);
     int size=quality==1?64:128,draws=0;
     if(s->size!=size) {
         free_car_environment(s);s->size=size;s->capture=render_program();
@@ -568,11 +566,11 @@ int render_rain(const RProg *r,GLuint *vbo,float time,float intensity,int qualit
     float saved[7],matrix[16];
     for(int i=0;i<7;i++)glGetUniformfv(r->prog,loc[i],saved+i);
     glGetUniformfv(r->prog,r->uMVP,matrix);
-    GLboolean depth=glIsEnabled(GL_DEPTH_TEST),blend=glIsEnabled(GL_BLEND),cull=glIsEnabled(GL_CULL_FACE),mask;
+    GLboolean depth=gls_is_enabled(GL_DEPTH_TEST),blend=gls_is_enabled(GL_BLEND),cull=gls_is_enabled(GL_CULL_FACE),mask;
     GLint sr,dr,sa,da;
-    glGetBooleanv(GL_DEPTH_WRITEMASK,&mask);
-    glGetIntegerv(GL_BLEND_SRC_RGB,&sr);glGetIntegerv(GL_BLEND_DST_RGB,&dr);
-    glGetIntegerv(GL_BLEND_SRC_ALPHA,&sa);glGetIntegerv(GL_BLEND_DST_ALPHA,&da);
+    gls_get_booleanv(GL_DEPTH_WRITEMASK,&mask);
+    gls_get_integerv(GL_BLEND_SRC_RGB,&sr);gls_get_integerv(GL_BLEND_DST_RGB,&dr);
+    gls_get_integerv(GL_BLEND_SRC_ALPHA,&sa);gls_get_integerv(GL_BLEND_DST_ALPHA,&da);
     glDisable(GL_DEPTH_TEST);glDepthMask(GL_FALSE);glDisable(GL_CULL_FACE);
     glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
     glUniform1f(r->uUnlit,1);glUniform1f(r->uEmissiveTex,0);glUniform1f(r->uUseTex,0);
@@ -611,11 +609,11 @@ int render_collision_walls(const RProg *r,GLuint *vbo,const float *faces,int cou
     float saved[7],matrix[16],old_color[3];
     for(int i=0;i<7;i++)glGetUniformfv(r->prog,loc[i],saved+i);
     glGetUniformfv(r->prog,r->uMVP,matrix);glGetUniformfv(r->prog,r->uColor,old_color);
-    GLboolean depth=glIsEnabled(GL_DEPTH_TEST),blend=glIsEnabled(GL_BLEND),cull=glIsEnabled(GL_CULL_FACE),mask;
+    GLboolean depth=gls_is_enabled(GL_DEPTH_TEST),blend=gls_is_enabled(GL_BLEND),cull=gls_is_enabled(GL_CULL_FACE),mask;
     GLint sr,dr,sa,da;
-    glGetBooleanv(GL_DEPTH_WRITEMASK,&mask);
-    glGetIntegerv(GL_BLEND_SRC_RGB,&sr);glGetIntegerv(GL_BLEND_DST_RGB,&dr);
-    glGetIntegerv(GL_BLEND_SRC_ALPHA,&sa);glGetIntegerv(GL_BLEND_DST_ALPHA,&da);
+    gls_get_booleanv(GL_DEPTH_WRITEMASK,&mask);
+    gls_get_integerv(GL_BLEND_SRC_RGB,&sr);gls_get_integerv(GL_BLEND_DST_RGB,&dr);
+    gls_get_integerv(GL_BLEND_SRC_ALPHA,&sa);gls_get_integerv(GL_BLEND_DST_ALPHA,&da);
     if(through)glDisable(GL_DEPTH_TEST);else glEnable(GL_DEPTH_TEST);
     glDepthMask(GL_FALSE);glDisable(GL_CULL_FACE);glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
@@ -1130,14 +1128,14 @@ int render_headlight_shadows(const RProg *r,HeadlightShadows *s,const N2Batch *b
     glGetUniformfv(r->prog,r->uHeadUp,up);glGetUniformfv(r->prog,r->uHeadShape,shape);
     GLint program,fbo,rb,viewport[4],active,texture,depthfunc;
     GLfloat clear[4],clear_depth;GLboolean mask[4],depthmask;
-    GLboolean depth=glIsEnabled(GL_DEPTH_TEST),blend=glIsEnabled(GL_BLEND),cull=glIsEnabled(GL_CULL_FACE);
-    GLboolean scissor=glIsEnabled(GL_SCISSOR_TEST),dither=glIsEnabled(GL_DITHER);
-    glGetIntegerv(GL_CURRENT_PROGRAM,&program);glGetIntegerv(GL_FRAMEBUFFER_BINDING,&fbo);
-    glGetIntegerv(GL_RENDERBUFFER_BINDING,&rb);glGetIntegerv(GL_VIEWPORT,viewport);
-    glGetIntegerv(GL_ACTIVE_TEXTURE,&active);glActiveTexture(GL_TEXTURE0);
-    glGetIntegerv(GL_TEXTURE_BINDING_2D,&texture);glGetIntegerv(GL_DEPTH_FUNC,&depthfunc);
-    glGetFloatv(GL_COLOR_CLEAR_VALUE,clear);glGetBooleanv(GL_COLOR_WRITEMASK,mask);
-    glGetBooleanv(GL_DEPTH_WRITEMASK,&depthmask);glGetFloatv(GL_DEPTH_CLEAR_VALUE,&clear_depth);
+    GLboolean depth=gls_is_enabled(GL_DEPTH_TEST),blend=gls_is_enabled(GL_BLEND),cull=gls_is_enabled(GL_CULL_FACE);
+    GLboolean scissor=gls_is_enabled(GL_SCISSOR_TEST),dither=gls_is_enabled(GL_DITHER);
+    gls_get_integerv(GL_CURRENT_PROGRAM,&program);gls_get_integerv(GL_FRAMEBUFFER_BINDING,&fbo);
+    gls_get_integerv(GL_RENDERBUFFER_BINDING,&rb);gls_get_integerv(GL_VIEWPORT,viewport);
+    gls_get_integerv(GL_ACTIVE_TEXTURE,&active);glActiveTexture(GL_TEXTURE0);
+    gls_get_integerv(GL_TEXTURE_BINDING_2D,&texture);gls_get_integerv(GL_DEPTH_FUNC,&depthfunc);
+    gls_get_floatv(GL_COLOR_CLEAR_VALUE,clear);gls_get_booleanv(GL_COLOR_WRITEMASK,mask);
+    gls_get_booleanv(GL_DEPTH_WRITEMASK,&depthmask);gls_get_floatv(GL_DEPTH_CLEAR_VALUE,&clear_depth);
     int draws=0;float matrices[2][16];
     if(!s->fbo && !headlight_shadow_init(s)) {
         free_headlight_shadows(s);s->failed=1;
@@ -1958,11 +1956,11 @@ void render_wheel_mesh(const RProg *r, GpuMesh *mesh, GLuint texture, int mode) 
                        r->uRimTint,r->uSpec,r->uEnv,r->uClearcoat,r->uVColor};
     float saved[10];for(int i=0;i<10;i++)glGetUniformfv(r->prog,loc[i],saved+i);
     GLint oldtex,src,dst,srca,dsta;
-    glGetIntegerv(GL_TEXTURE_BINDING_2D,&oldtex);
-    glGetIntegerv(GL_BLEND_SRC_RGB,&src);glGetIntegerv(GL_BLEND_DST_RGB,&dst);
-    glGetIntegerv(GL_BLEND_SRC_ALPHA,&srca);glGetIntegerv(GL_BLEND_DST_ALPHA,&dsta);
-    GLboolean blend=glIsEnabled(GL_BLEND),depth=glIsEnabled(GL_DEPTH_TEST),mask;
-    glGetBooleanv(GL_DEPTH_WRITEMASK,&mask);
+    gls_get_integerv(GL_TEXTURE_BINDING_2D,&oldtex);
+    gls_get_integerv(GL_BLEND_SRC_RGB,&src);gls_get_integerv(GL_BLEND_DST_RGB,&dst);
+    gls_get_integerv(GL_BLEND_SRC_ALPHA,&srca);gls_get_integerv(GL_BLEND_DST_ALPHA,&dsta);
+    GLboolean blend=gls_is_enabled(GL_BLEND),depth=gls_is_enabled(GL_DEPTH_TEST),mask;
+    gls_get_booleanv(GL_DEPTH_WRITEMASK,&mask);
     unsigned char amode = mesh->draw_mode ? mesh->draw_mode : (unsigned char)mode;
     int cut=texture && amode==N2_DRAW_CUTOUT, translucent=texture && amode==N2_DRAW_BLEND;
     /* The wheel INTERIOR slice is the inboard barrel/backing. Its atlas
@@ -2081,7 +2079,7 @@ void render_texture_detail(float aniso) {
     if (aniso > (float)g_tex_aniso_max) aniso = (float)g_tex_aniso_max;
     if (aniso == g_tex_aniso) return;
     g_tex_aniso = aniso;
-    GLint bound = 0; glGetIntegerv(GL_TEXTURE_BINDING_2D, &bound);
+    GLint bound = 0; gls_get_integerv(GL_TEXTURE_BINDING_2D, &bound);
     int live = 0;
     for (int i = 0; i < g_tex_all_n; i++) {
         if (!glIsTexture(g_tex_all[i])) continue;      /* freed since upload */

@@ -4,14 +4,7 @@
  * Uses a minimal shader with position + color uniforms and an embedded
  * 3×5 bitmap font (same glyph set as the main game's render.c, but
  * self-contained — no dependency on render.h). */
-#ifdef __APPLE__
-#ifndef GL_SILENCE_DEPRECATION
-#define GL_SILENCE_DEPRECATION
-#endif
-#include <OpenGL/gl.h>
-#else
-#include <GL/gl.h>
-#endif
+#include "../gl_state.h"   /* GL headers; state changes are recorded by the tracker */
 
 #include "frontend_draw.h"
 #include <stdlib.h>
