@@ -68,6 +68,31 @@ static void physics_attr_test(void) {
         fabsf(a.gearbox[0].forward[0]-3.2f)<1e-6f&&
         fabsf(a.gearbox[3].final_drive-3.8f)<1e-6f&&
         fabsf(a.torque_gain[3][8]-.27f)<1e-6f);
+    /* Synthetic secondary samples: a zero upgrade state must still include
+       every stock knot. Unrelated upgrade curves must remain untouched. */
+    Buf stock=root;
+    for(int i=0;i<9;i++) {
+        float secondary=(i+1)*.125f;
+        memcpy(root.b+24+0x334+4*i,&secondary,4);
+    }
+    chk("stock secondary engine curve decodes without upgrades",
+        n2_global_physics_attr(root.b,root.n,"TESTCAR",&a));
+    int complete=1;
+    for(int i=0;i<9;i++) {
+        float expected=(.12f+i*.01f)+(i+1)*.125f;
+        if(a.torque[i]!=expected)complete=0;
+    }
+    chk("all nine engine knots include the secondary contribution",complete);
+    chk("stock composition leaves power-upgrade samples intact",
+        fabsf(a.torque_gain[3][8]-.27f)<1e-6f);
+    const float invalid_secondary[]={NAN,INFINITY,-INFINITY,-.125f,6};
+    int rejects=1;
+    for(unsigned i=0;i<sizeof invalid_secondary/sizeof invalid_secondary[0];i++) {
+        memcpy(root.b+24+0x334,&invalid_secondary[i],4);
+        if(n2_global_physics_attr(root.b,root.n,"TESTCAR",&a))rejects=0;
+    }
+    chk("invalid secondary engine samples are rejected",rejects);
+    root=stock;
     chk("all wheel dimensions and inertia retain source values and offset",
         n2_global_car_shape(root.b,root.n,"TESTCAR",&shape)&&shape.record_offset==24&&
         shape.body[0]==4&&shape.body[1]==2&&shape.body[2]==1.5f&&
