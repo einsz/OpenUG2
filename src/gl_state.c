@@ -14,6 +14,7 @@
 #endif
 
 #define GLS_UNITS 16
+#define GLS_ATTRIBS 16
 #define GLS_PROGRAMS 32
 static const GLenum caps[] = {GL_DEPTH_TEST, GL_BLEND, GL_CULL_FACE, GL_SCISSOR_TEST,
                               GL_STENCIL_TEST, GL_DITHER, GL_POLYGON_OFFSET_FILL};
@@ -33,9 +34,10 @@ typedef struct {
     GLboolean depth_mask, color_mask[4];
     GLfloat clear_color[4], clear_depth;
     GLint viewport[4];
-    GLint program, framebuffer, renderbuffer;
+    GLint program, framebuffer, renderbuffer, array_buffer;
     GLint active;                   /* unit index, 0-based */
     GLint tex2d[GLS_UNITS];
+    GLint attrib[GLS_ATTRIBS];
     GlsProgram prog[GLS_PROGRAMS];
 } GlsState;
 
@@ -158,6 +160,24 @@ void glsDeleteTextures(GLsizei n, const GLuint *ids) {
         for (int u = 0; ids[i] && u < GLS_UNITS; u++) if (s->tex2d[u] == (GLint)ids[i]) s->tex2d[u] = 0;
     glDeleteTextures(n, ids);
 }
+void glsBindBuffer(GLenum target, GLuint buffer) {
+    if (target == GL_ARRAY_BUFFER) st()->array_buffer = (GLint)buffer;
+    glBindBuffer(target, buffer);
+}
+void glsDeleteBuffers(GLsizei n, const GLuint *ids) {
+    GlsState *s = st();
+    for (GLsizei i = 0; i < n; i++) if (ids[i] && (GLint)ids[i] == s->array_buffer) s->array_buffer = 0;
+    glDeleteBuffers(n, ids);
+}
+void glsEnableVertexAttribArray(GLuint index) {
+    if (index < GLS_ATTRIBS) st()->attrib[index] = 1;
+    glEnableVertexAttribArray(index);
+}
+void glsDisableVertexAttribArray(GLuint index) {
+    if (index < GLS_ATTRIBS) st()->attrib[index] = 0;
+    glDisableVertexAttribArray(index);
+}
+
 /* ---- uniform mirror ---- */
 static GlsProgram *find_program(GlsState *s, GLuint id, int create) {
     GlsProgram *free_slot = NULL;
@@ -303,6 +323,7 @@ static int tracked_integerv(GLenum pname, GLint *out) {
     case GL_CURRENT_PROGRAM: out[0] = s->program; return 1;
     case GL_FRAMEBUFFER_BINDING: out[0] = s->framebuffer; return 1;
     case GL_RENDERBUFFER_BINDING: out[0] = s->renderbuffer; return 1;
+    case GL_ARRAY_BUFFER_BINDING: out[0] = s->array_buffer; return 1;
     case GL_ACTIVE_TEXTURE: out[0] = (GLint)GL_TEXTURE0 + s->active; return 1;
     case GL_TEXTURE_BINDING_2D:
         if (s->active < 0 || s->active >= GLS_UNITS) return 0;
@@ -342,6 +363,17 @@ void gls_get_floatv(GLenum pname, GLfloat *out) {
     GLfloat real[4]; glGetFloatv(pname, real);
     if (memcmp(real, out, (size_t)n * sizeof *out)) verify_fail("float", pname);
 #endif
+}
+
+GLint gls_attrib_enabled(GLuint index) {
+    if (index >= GLS_ATTRIBS) { GLint v = 0; g_fallback++;
+        glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &v); return v; }
+    GLint v = st()->attrib[index];
+#ifdef GLS_VERIFY
+    GLint real = 0; glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &real);
+    if (!real != !v) verify_fail("attrib", (GLenum)index);
+#endif
+    return v;
 }
 
 unsigned gls_fallback_queries(void) { return g_fallback; }

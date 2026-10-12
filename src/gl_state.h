@@ -72,6 +72,10 @@ void glsDeleteRenderbuffers(GLsizei n, const GLuint *ids);
 void glsActiveTexture(GLenum unit);
 void glsBindTexture(GLenum target, GLuint texture);
 void glsDeleteTextures(GLsizei n, const GLuint *ids);
+void glsBindBuffer(GLenum target, GLuint buffer);
+void glsDeleteBuffers(GLsizei n, const GLuint *ids);
+void glsEnableVertexAttribArray(GLuint index);
+void glsDisableVertexAttribArray(GLuint index);
 void glsUniform1f(GLint loc, GLfloat x);
 void glsUniform2f(GLint loc, GLfloat x, GLfloat y);
 void glsUniform3f(GLint loc, GLfloat x, GLfloat y, GLfloat z);
@@ -88,12 +92,13 @@ void glsUniformMatrix4fv(GLint loc, GLsizei count, GLboolean transpose, const GL
  * POLYGON_OFFSET_FILL. Modelled pnames: BLEND_{SRC,DST}[_RGB|_ALPHA],
  * DEPTH_FUNC, VIEWPORT, CURRENT_PROGRAM, FRAMEBUFFER_BINDING,
  * RENDERBUFFER_BINDING, ACTIVE_TEXTURE, TEXTURE_BINDING_2D (active unit),
- * DEPTH_WRITEMASK, COLOR_WRITEMASK, COLOR_CLEAR_VALUE,
+ * ARRAY_BUFFER_BINDING, DEPTH_WRITEMASK, COLOR_WRITEMASK, COLOR_CLEAR_VALUE,
  * DEPTH_CLEAR_VALUE. */
 GLboolean gls_is_enabled(GLenum cap);
 void gls_get_integerv(GLenum pname, GLint *out);
 void gls_get_booleanv(GLenum pname, GLboolean *out);
 void gls_get_floatv(GLenum pname, GLfloat *out);
+GLint gls_attrib_enabled(GLuint index);  /* GL_VERTEX_ATTRIB_ARRAY_ENABLED */
 
 /* ---- uniform mirror (replaces glGetUniformfv) ----
  * Copies the floats last written at `loc` of `program` (n = component count,
@@ -137,6 +142,10 @@ unsigned gls_fallback_queries(void);
 #  define glActiveTexture(u)              glsActiveTexture(u)
 #  define glBindTexture(t,x)              glsBindTexture(t,x)
 #  define glDeleteTextures(n,p)           glsDeleteTextures(n,p)
+#  define glBindBuffer(t,b)               glsBindBuffer(t,b)
+#  define glDeleteBuffers(n,p)            glsDeleteBuffers(n,p)
+#  define glEnableVertexAttribArray(i)    glsEnableVertexAttribArray(i)
+#  define glDisableVertexAttribArray(i)   glsDisableVertexAttribArray(i)
 #  define glUniform1f(l,x)                glsUniform1f(l,x)
 #  define glUniform2f(l,x,y)              glsUniform2f(l,x,y)
 #  define glUniform3f(l,x,y,z)            glsUniform3f(l,x,y,z)
