@@ -3781,7 +3781,8 @@ static int n2_tpk_keys(const unsigned char *d, N2Tpk t, uint32_t *keys, int maxk
     for (int b = 0; b < t.nblk && n < maxk; b++) {
         long hbeg = t.blk[b].hbeg, hend = hbeg + t.blk[b].hsize;
         for (long i = hbeg; i + 0x40 < hend && n < maxk; i++) {
-            if (!(d[i] >= 'A' && d[i] <= 'Z')) continue;
+            if (!((d[i] >= 'A' && d[i] <= 'Z') ||
+                  (d[i] >= '0' && d[i] <= '9'))) continue;
             if (d[i+0x17] != 0) continue;                 /* 24-byte name null-terminated */
             keys[n++] = n2_u32(d + i + 0x18);
             i += 0x7b;                                    /* next 0x7c record */
@@ -3815,7 +3816,8 @@ static int n2_tpk_decode(const unsigned char *d, long len, N2Tpk t, uint32_t has
     for (int b = 0; b < t.nblk; b++) {
         long hbeg = t.blk[b].hbeg, hend = hbeg + t.blk[b].hsize, dbase = t.blk[b].dbase;
         for (long i = hbeg; i + 0x40 < hend; i++) {
-            if (!(d[i] >= 'A' && d[i] <= 'Z')) continue;
+            if (!((d[i] >= 'A' && d[i] <= 'Z') ||
+                  (d[i] >= '0' && d[i] <= '9'))) continue;
             if (n2_u32(d + i + 0x18) != hash) continue;
             /* A rejected candidate's draw flags must not reach a short record. */
             memset(tex, 0, sizeof *tex);

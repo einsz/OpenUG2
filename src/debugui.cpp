@@ -3,13 +3,7 @@
  * Backends: SDL2 + legacy OpenGL2 (matches the app's 2.1/compat GL context). */
 #include <cstdio>
 #include <SDL.h>
-#ifdef __APPLE__
-#  define GL_SILENCE_DEPRECATION 1
-#  include <OpenGL/gl.h>
-#else
-#  define GL_GLEXT_PROTOTYPES 1
-#  include <SDL_opengl.h>
-#endif
+#include "gl_state.h"   /* GL headers; state changes are recorded by the tracker */
 #include "imgui.h"
 #include "backends/imgui_impl_sdl2.h"
 #include "backends/imgui_impl_opengl2.h"
