@@ -238,6 +238,8 @@ void rhi_buffer_destroy(RhiBuffer buf) {
     glDeleteBuffers(1, &b->name);
     b->name = 0;
     b->size = 0;
+    /* Retire the slot before its generation wraps and revives stale handles. */
+    if (b->generation == UINT8_MAX) return;
     b->generation++;
     g_buffers.free_list[g_buffers.free_count++] = buf.id & RHI_GL_SLOT_MASK;
 }
