@@ -26,8 +26,11 @@ struct PauseMenu {
     UgCtx ctx;
     int loaded, compatible, closing;
     FeAction closing_action;
-    float ui_ms, close_ms, marker_x, marker_from, marker_to, marker_ms;
-    int rail_drag, marker_native, nav_direction, capture_actions, capture_last_action;
+    float ui_ms, close_ms, marker_x;
+    float scroll;                /* continuous item-row position in item units, BEHAVIOR 1.5 */
+    int press_center;            /* primary press began on the centred item, BEHAVIOR 4.1 */
+    int blinks_posted;           /* arrow blink messages sent (verification counter) */
+    int capture_actions, capture_last_action;
     int slot, caption, marker, left, right;
     int roles[PAUSE_ROLE_COUNT], bound;
     int pool[PAUSE_POOL_COUNT], npool;
@@ -95,11 +98,12 @@ void pause_menu_destroy(PauseMenu *p) {
 void pause_menu_open(PauseMenu *p) {
     if(!p)return;
     fe_pause_init(&p->state);p->open=1;p->closing=0;p->closing_action=FE_ACTION_NONE;
-    p->ui_ms=p->close_ms=p->marker_ms=0;
+    p->ui_ms=p->close_ms=0;
     if(p->pill_initialized){ug_anim_free(&p->pill_pulse);ug_anim_free(&p->pill_glow);}
     ug_anim_init(&p->pill_pulse,UG_WHITE,0,0);ug_anim_init(&p->pill_glow,UG_WHITE,0,0);
     p->pill_initialized=1;p->pill_hover=-1;
-    p->marker_x=p->marker_from=p->marker_to=50;p->rail_drag=p->marker_native=p->nav_direction=0;
+    p->marker_x=50;p->press_center=0;p->blinks_posted=0;
+    p->scroll=(float)p->state.selected;
     p->original=p->compatible && p->gl && pause_scene_open(p);
     if(p->compatible && !p->original)fprintf(stderr,"pause: %s\n",p->status);
 }
@@ -114,41 +118,42 @@ static float pause_marker_target(const PauseMenu *p) {
     }
     return n>1?50+546.0f*rank/(n-1):50;
 }
-static int pause_can_step(const PauseMenu *p,int dir) {
-    Fe copy=p->state;
-    if(copy.screen!=FE_SCREEN_PAUSE)return 0;
-    fe_input(&copy,dir<0?FE_INPUT_UP:FE_INPUT_DOWN);
-    return copy.selected!=p->state.selected;
+/* BEHAVIOR 3.1: the row never wraps. Returns the enabled entry one step away in `dir`, or -1. */
+static int pause_step_target(const PauseMenu *p,int dir) {
+    if(p->state.screen!=FE_SCREEN_PAUSE)return -1;
+    for(int k=p->state.selected+dir;k>=0 && k<p->state.entry_count;k+=dir)
+        if(p->state.entries[k].enabled)return k;
+    return -1;
 }
-static void pause_selection_changed(PauseMenu *p,int before) {
-    int direction=p->nav_direction?p->nav_direction:(p->state.selected<before?-1:1);
-    p->nav_direction=0;
+static int pause_can_step(const PauseMenu *p,int dir) {return pause_step_target(p,dir)>=0;}
+/* Selection is logically current at the input frame (BEHAVIOR 1.8): the marker snaps (2.1) and
+ * the arrows switch (3.3) here; only the icon row keeps sliding in pause_menu_update. */
+static void pause_selection_changed(PauseMenu *p,int before,int direction) {
     if(p->state.selected==before)return;
-    p->marker_native=0;
-    p->marker_from=p->marker_x;p->marker_to=pause_marker_target(p);p->marker_ms=0;
+    p->marker_x=pause_marker_target(p);
     if(p->loaded) {
-        /* Package directional events explicitly target the arrow, BINDING 5. */
-        ug_scene_post(&p->scene,direction<0?0x9120409Eu:0xB5971BF1u,
-                      direction<0?0x000DE06Du:0x000DE087u);
+        /* Hidden wins over blink (3.6): an arrow with nothing beyond it never starts one. */
+        if(pause_can_step(p,direction)) {
+            /* Package directional events explicitly target the arrow, BINDING 5. */
+            ug_scene_post(&p->scene,direction<0?0x9120409Eu:0xB5971BF1u,
+                          direction<0?0x000DE06Du:0x000DE087u);
+            p->blinks_posted++;
+        }
         pause_bind_apply(p);
     }
 }
 static void pause_dispatch(PauseMenu *p,FeInput in) {
     if(p->closing || p->state.pending!=FE_ACTION_NONE)return;
-    int before=p->state.selected;
-    p->nav_direction=in==FE_INPUT_UP?-1:in==FE_INPUT_DOWN?1:0;
+    if(p->state.screen==FE_SCREEN_PAUSE && (in==FE_INPUT_UP || in==FE_INPUT_DOWN)) {
+        int direction=in==FE_INPUT_UP?-1:1,target=pause_step_target(p,direction);
+        if(target<0)return; /* end of the row: no change of any kind */
+        int before=p->state.selected;
+        p->state.selected=target;pause_selection_changed(p,before,direction);
+        return;
+    }
     fe_input(&p->state,in);
-    if(p->loaded && (p->state.pending==FE_ACTION_RESUME || p->state.pending==FE_ACTION_QUIT))
-        ug_scene_post(&p->scene,in==FE_INPUT_BACK?UG_MSG_REQ_BACK:UG_MSG_REQ_FORWARD,0);
-    pause_selection_changed(p,before);
-}
-static void pause_rail_select(PauseMenu *p,float x) {
-    int n=0,ids[FE_MENU_MAX];
-    for(int i=0;i<p->state.entry_count;i++)if(p->state.entries[i].enabled)ids[n++]=i;
-    if(!n)return;
-    float u=fmaxf(0,fminf(1,(x-50)/546));
-    int index=(int)floorf((n-1)*u+.5f),before=p->state.selected;
-    p->state.selected=ids[index];pause_selection_changed(p,before);
+    /* Only the quit exit plays the authored exit; resume never waits for it (BEHAVIOR 5). */
+    if(p->loaded && p->state.pending==FE_ACTION_QUIT)ug_scene_post(&p->scene,UG_MSG_REQ_FORWARD,0);
 }
 const char *pause_menu_caption(const PauseMenu *p) {
     if(!p || p->state.selected<0 || p->state.selected>=p->state.entry_count)return "";
@@ -156,10 +161,13 @@ const char *pause_menu_caption(const PauseMenu *p) {
     return e->action==FE_ACTION_RESUME?"Return to Explore Mode":e->label;
 }
 
-void pause_menu_pointer(PauseMenu *p,float px,float py,int w,int h) {
-    if(!pause_menu_is_open(p) || w<=0 || h<=0 || p->state.pending!=FE_ACTION_NONE || p->closing)return;
-    float x,y;
-    pause_menu_to_virtual(pause_menu_transform(w,h),px,py,&x,&y);
+/* Pointer input in top-left virtual units, BEHAVIOR 4. The Back/Continue pills and the quit
+ * confirmation keep their press-time behaviour. The centred item activates on release, and only
+ * when the press began on it. Neighbours, arrows, rail, marker and empty space are inert. */
+static int pause_in_center(float x,float y) {return ug_rect_hit(pause_menu_center_hit(),x,y);}
+static void pause_pointer_press(PauseMenu *p,float x,float y) {
+    p->press_center=0;
+    if(!pause_menu_is_open(p) || p->state.pending!=FE_ACTION_NONE || p->closing)return;
     if(x<0 || x>=640 || y<0 || y>=480)return;
     FeInput in=FE_INPUT_NONE;
     if(p->state.screen==FE_SCREEN_QUIT_CONFIRM) {
@@ -169,26 +177,20 @@ void pause_menu_pointer(PauseMenu *p,float px,float py,int w,int h) {
         in=FE_INPUT_CONFIRM;
     } else if(ug_rect_hit(pause_menu_bounds(PAUSE_BACK),x,y))in=FE_INPUT_BACK;
     else if(ug_rect_hit(pause_menu_bounds(PAUSE_CONTINUE),x,y))in=FE_INPUT_CONFIRM;
-    else {
-        if(ug_rect_hit((UgRect){33.3f,184,579.1f,8.9f},x,y)) {
-            pause_rail_select(p,x);return;
-        }
-        if(ug_rect_hit((UgRect){45,213,31,31},x,y)) {
-            if(pause_can_step(p,-1))pause_dispatch(p,FE_INPUT_UP);
-            return;
-        }
-        if(ug_rect_hit((UgRect){564.5f,213,31,31},x,y)) {
-            if(pause_can_step(p,1))pause_dispatch(p,FE_INPUT_DOWN);
-            return;
-        }
-        for(int i=0;i<p->state.entry_count;i++) {
-            if(ug_rect_hit(pause_menu_item_bounds(i-p->state.selected),x,y)) {
-                if(p->state.entries[i].enabled) { int before=p->state.selected;p->state.selected=i;pause_selection_changed(p,before); }
-                return; /* selection alone; never dispatch a host action */
-            }
-        }
-    }
+    else {p->press_center=p->state.screen==FE_SCREEN_PAUSE && pause_in_center(x,y);return;}
     pause_dispatch(p,in);
+}
+static void pause_pointer_release(PauseMenu *p,float x,float y) {
+    int armed=p->press_center;p->press_center=0;
+    if(!armed || !pause_menu_is_open(p) || p->state.pending!=FE_ACTION_NONE || p->closing)return;
+    if(p->state.screen==FE_SCREEN_PAUSE && pause_in_center(x,y))pause_dispatch(p,FE_INPUT_CONFIRM);
+}
+/* Complete primary click at a window point (press and release together). */
+void pause_menu_pointer(PauseMenu *p,float px,float py,int w,int h) {
+    if(!pause_menu_is_open(p) || w<=0 || h<=0)return;
+    float x,y;
+    pause_menu_to_virtual(pause_menu_transform(w,h),px,py,&x,&y);
+    pause_pointer_press(p,x,y);pause_pointer_release(p,x,y);
 }
 
 /* PC pills use the existing shared focus/glow animations (base 5/6.8, pause 3). */
@@ -227,22 +229,19 @@ void pause_menu_event(PauseMenu *p,const SDL_Event *e,SDL_Window *win) {
     else if(e->type==SDL_MOUSEWHEEL && e->wheel.y) {
         int d=e->wheel.direction==SDL_MOUSEWHEEL_FLIPPED?-e->wheel.y:e->wheel.y;
         in=d>0?FE_INPUT_UP:FE_INPUT_DOWN;
-    } else if(e->type==SDL_MOUSEBUTTONDOWN && e->button.button==SDL_BUTTON_LEFT && win) {
+    } else if((e->type==SDL_MOUSEBUTTONDOWN || e->type==SDL_MOUSEBUTTONUP) && e->button.button==SDL_BUTTON_LEFT && win) {
         int w,h;SDL_GetWindowSize(win,&w,&h);
         if(w<=0 || h<=0)return;
         float x,y;pause_menu_to_virtual(pause_menu_transform(w,h),e->button.x,e->button.y,&x,&y);
-        p->rail_drag=p->state.screen==FE_SCREEN_PAUSE && ug_rect_hit((UgRect){33.3f,184,579.1f,8.9f},x,y);
-        pause_menu_pointer(p,e->button.x,e->button.y,w,h);
+        if(e->type==SDL_MOUSEBUTTONDOWN)pause_pointer_press(p,x,y);else pause_pointer_release(p,x,y);
         return;
-    } else if(e->type==SDL_MOUSEBUTTONUP && e->button.button==SDL_BUTTON_LEFT) p->rail_drag=0;
-    else if(e->type==SDL_MOUSEMOTION && win) {
+    } else if(e->type==SDL_MOUSEMOTION && win) {
         int w,h;SDL_GetWindowSize(win,&w,&h);
         if(w>0 && h>0) {
             float x,y;pause_menu_to_virtual(pause_menu_transform(w,h),e->motion.x,e->motion.y,&x,&y);
-            pause_pill_hover(p,x,y);
-            if(p->rail_drag && p->state.screen==FE_SCREEN_PAUSE)pause_rail_select(p,x);
-            if(p->loaded) {UgPtr ptr={.type=UG_PT_MOVE,.x=x-320,.y=y-240};ug_scene_pointer(&p->scene,&ptr);}
+            pause_pill_hover(p,x,y); /* hover never changes selection, art or sound (BEHAVIOR 4.5) */
         }
+        return;
     }
     pause_dispatch(p,in);
 }
@@ -251,8 +250,7 @@ FeAction pause_menu_update(PauseMenu *p,float seconds) {
     float ms=fmaxf(0,seconds*1000);
     p->ui_ms+=ms;p->ctx.time_ms=p->ui_ms;
     ug_anim_update(&p->pill_pulse,ms);ug_anim_update(&p->pill_glow,ms);
-    p->marker_ms=fminf(160,p->marker_ms+ms);
-    if(!p->marker_native)p->marker_x=p->marker_from+(p->marker_to-p->marker_from)*p->marker_ms/160;
+    p->scroll=pause_scroll_advance(p->scroll,(float)p->state.selected,ms);
     int exit_done=0;
     if(p->loaded) {
         ug_scene_update(&p->scene,ms);
@@ -266,9 +264,16 @@ FeAction pause_menu_update(PauseMenu *p,float seconds) {
     }
     fe_update(&p->state,seconds);
     FeAction a=fe_poll_action(&p->state);
-    if(a==FE_ACTION_RESUME || a==FE_ACTION_QUIT) {
+    if(a==FE_ACTION_RESUME) {
+        /* BEHAVIOR 5.3: every resume path unpauses at the input frame. The authored fade-out and
+         * its 320 ms exit-complete event are presentation only; waiting for them (or for the
+         * viewer's 900 ms exit timeout) was the delay. The overlay disappears with the menu. */
+        p->open=0;p->closing=0;p->press_center=0;
+        return a;
+    }
+    if(a==FE_ACTION_QUIT) {
         if(!p->loaded){p->open=0;return a;}
-        p->closing=1;p->closing_action=a;p->close_ms=0;p->rail_drag=0;
+        p->closing=1;p->closing_action=a;p->close_ms=0;p->press_center=0;
     } else if(a!=FE_ACTION_NONE)return a;
     if(p->closing) {
         p->close_ms+=ms;
@@ -382,16 +387,6 @@ static int pause_bind_detect(PauseMenu *p) {
     p->bound=p->state.entry_count<=p->npool;
     return p->bound;
 }
-static int pause_position_track(const UgNode *n) {
-    const UgScript *script=n->pl.running?n->pl.cur:NULL;
-    if(!script)return 0;
-    for(int i=0;i<script->ntracks;i++) {
-        const UgTrack *t=&script->tracks[i];
-        int end=(int)t->prop+ug_type_ncomp(t->type);
-        if(t->nkeys>1 && t->prop<=UG_P_POS+1 && end>UG_P_POS)return 1;
-    }
-    return 0;
-}
 /* Visible texel centre, including the native transparent-margin offset. */
 static float pause_marker_offset_x(PauseMenu *p,const UgNode *n) {
     int tex=n->tex_override>0?n->tex_override:n->tex;
@@ -413,12 +408,16 @@ static void pause_bind_apply(PauseMenu *p) {
     int valid=p->state.selected>=0 && p->state.selected<p->state.entry_count;
     for(int k=0;k<p->npool;k++) {
         UgNode *n=&s->nodes[p->pool[k]];
-        int offset=k-p->state.selected;
-        n->app_hidden=!valid || k>=p->state.entry_count || abs(offset)>1 || k>=FE_MENU_MAX || !p->item_tex[k];
-        n->tex_override=k<p->state.entry_count && k<FE_MENU_MAX?p->item_tex[k]:0;
-        if(!n->app_hidden) {
-            ug_scene_set_world_pos(s,n->index,slot->pos[0]+158.0f*offset,slot->pos[1]);
-            n->props.w[UG_P_SIZE]=offset?96:118;n->props.w[UG_P_SIZE+1]=offset?48:59;
+        /* BEHAVIOR 1.5: every icon sits at the fractional scroll position; an icon is drawn
+         * iff its opacity multiplier is positive (|k-s| < 1.8). Only the icons move. */
+        PauseIconPlace ic=pause_icon_place(k,p->scroll);
+        int listed=k<p->state.entry_count && k<FE_MENU_MAX;
+        n->app_hidden=!valid || !listed || ic.alpha<=0 || !p->item_tex[k];
+        n->tex_override=listed?p->item_tex[k]:0;
+        n->app_opacity=ic.alpha;
+        if(listed) {
+            ug_scene_set_world_pos(s,n->index,slot->pos[0]+ic.dx,slot->pos[1]);
+            n->props.w[UG_P_SIZE]=ic.w;n->props.w[UG_P_SIZE+1]=ic.h;
             /* Preserve evaluated color/fade/highlight; assignment controls only art/position/size/visibility. */
         }
     }
@@ -427,10 +426,8 @@ static void pause_bind_apply(PauseMenu *p) {
     if(valid && p->state.selected<p->npool && s->focus!=p->pool[p->state.selected])
         ug_scene_set_focus(s,p->pool[p->state.selected]);
     UgNode *marker=&s->nodes[p->marker];
-    float dx=pause_marker_offset_x(p,marker);
-    if(pause_position_track(marker))p->marker_native=1;
-    if(p->marker_native)p->marker_x=marker->we+dx+320;
-    else ug_scene_set_world_pos(s,p->marker,p->marker_x-320-dx,marker->wf);
+    /* BEHAVIOR 2: the marker is never interpolated; it is always at the logical target. */
+    ug_scene_set_world_pos(s,p->marker,p->marker_x-320-pause_marker_offset_x(p,marker),marker->wf);
     s->nodes[p->left].app_hidden=!pause_can_step(p,-1);
     s->nodes[p->right].app_hidden=!pause_can_step(p,1);
     ug_scene_relayout(s);
@@ -488,7 +485,8 @@ void pause_menu_draw(PauseMenu *p,int width,int height) {
 
 /* Verification adapter: advance only UI time, never host scene/camera state.
  * Replay syntax is comma-separated absolute times: 400:Right,480:Continue.
- * pointer/hover/rail_down/rail_move take top-left virtual x:y; rail_up releases.
+ * pointer (a complete click), press, release and hover take top-left virtual x:y; right_click is
+ * the secondary button (Back). rail_down/rail_move/rail_up are accepted but inert (BEHAVIOR 4.4).
  * The normal gameplay adapter never calls these entry points. */
 static void pause_capture_tick(PauseMenu *p,float seconds) {
     FeAction a=pause_menu_update(p,seconds);
@@ -512,18 +510,15 @@ int pause_menu_capture_replay(PauseMenu *p,const char *events,float elapsed_ms,i
         else if(!strcmp(name,"Left"))pause_dispatch(p,FE_INPUT_UP);
         else if(!strcmp(name,"Enter") || !strcmp(name,"Continue"))pause_dispatch(p,FE_INPUT_CONFIRM);
         else if(!strcmp(name,"Back") || !strcmp(name,"Escape"))pause_dispatch(p,FE_INPUT_BACK);
-        else if(!strcmp(name,"rail_up"))p->rail_drag=0;
-        else if(fields>=3 && (!strcmp(name,"rail_down") || !strcmp(name,"rail_move"))) {
-            if(!strcmp(name,"rail_down")) {
-                p->rail_drag=p->state.screen==FE_SCREEN_PAUSE && ug_rect_hit((UgRect){33.3f,184,579.1f,8.9f},x,fields==4?y:188.4f);
-            }
-            if(p->rail_drag && !p->closing && p->open)pause_rail_select(p,x);
-        } else if(fields==4 && !strcmp(name,"pointer")) {
+        else if(!strcmp(name,"right_click"))pause_dispatch(p,FE_INPUT_BACK);
+        else if(!strcmp(name,"rail_up") || (fields>=3 && (!strcmp(name,"rail_down") || !strcmp(name,"rail_move")))) {}
+        else if(fields==4 && !strcmp(name,"pointer")) {
             PauseTransform t=pause_menu_transform(w,h);
             pause_menu_pointer(p,(float)(t.ox+x*t.scale),(float)(t.oy+y*t.scale),w,h);
-        } else if(fields==4 && !strcmp(name,"hover") && p->loaded) {
-            pause_pill_hover(p,x,y);UgPtr ptr={.type=UG_PT_MOVE,.x=x-320,.y=y-240};ug_scene_pointer(&p->scene,&ptr);
-        } else {free(copy);return 0;}
+        } else if(fields==4 && !strcmp(name,"press"))pause_pointer_press(p,x,y);
+        else if(fields==4 && !strcmp(name,"release"))pause_pointer_release(p,x,y);
+        else if(fields==4 && !strcmp(name,"hover"))pause_pill_hover(p,x,y);
+        else {free(copy);return 0;}
         pause_capture_tick(p,0);
     }
     free(copy);pause_capture_advance(p,elapsed_ms-previous);
@@ -534,6 +529,13 @@ int pause_menu_capture_replay(PauseMenu *p,const char *events,float elapsed_ms,i
 /* Separate reference evaluator. It shares only reviewed data identities, Fe's
  * existing supported action semantics, UgScene and native drawing primitives.
  * It never calls production detection/binding/update/input/capture functions. */
+/* Independent no-wrap neighbour search for the reference evaluator. */
+static int pause_reference_step(const PauseMenu *r,int direction) {
+    if(r->state.screen!=FE_SCREEN_PAUSE)return -1;
+    int k=r->state.selected+direction;
+    while(k>=0 && k<r->state.entry_count && !r->state.entries[k].enabled)k+=direction;
+    return k>=0 && k<r->state.entry_count?k:-1;
+}
 static void pause_reference_apply(PauseMenu *r) {
     UgScene *s=&r->scene;
     int selected=r->state.selected,valid=selected>=0 && selected<r->state.entry_count;
@@ -544,12 +546,14 @@ static void pause_reference_apply(PauseMenu *r) {
     const UgFngObject *anchor=s->nodes[r->slot].obj;
     for(int i=0;i<PAUSE_POOL_COUNT;i++) {
         UgNode *n=&s->nodes[r->pool[i]];
-        int distance=i-selected;
-        n->app_hidden=!valid || i>=r->state.entry_count || abs(distance)>1 || i>=FE_MENU_MAX || !r->item_tex[i];
-        n->tex_override=i<r->state.entry_count && i<FE_MENU_MAX?r->item_tex[i]:0;
-        if(!n->app_hidden) {
-            ug_scene_set_world_pos(s,n->index,anchor->pos[0]+distance*158,anchor->pos[1]);
-            n->props.w[UG_P_SIZE]=distance?96:118;n->props.w[UG_P_SIZE+1]=distance?48:59;
+        PauseIconPlace ic=pause_icon_place(i,r->scroll);
+        int listed=i<r->state.entry_count && i<FE_MENU_MAX;
+        n->app_hidden=!valid || !listed || ic.alpha<=0 || !r->item_tex[i];
+        n->tex_override=listed?r->item_tex[i]:0;
+        n->app_opacity=ic.alpha;
+        if(listed) {
+            ug_scene_set_world_pos(s,n->index,anchor->pos[0]+ic.dx,anchor->pos[1]);
+            n->props.w[UG_P_SIZE]=ic.w;n->props.w[UG_P_SIZE+1]=ic.h;
         }
     }
     if(valid && s->focus!=r->pool[selected])ug_scene_set_focus(s,r->pool[selected]);
@@ -559,10 +563,8 @@ static void pause_reference_apply(PauseMenu *r) {
     float offset=pause_marker_offset_x(r,marker);
     /* BINDING 5: marker's authored tracks are color-only; reviewed D position is separate. */
     ug_scene_set_world_pos(s,r->marker,r->marker_x-320-offset,marker->wf);
-    for(int direction=-1;direction<=1;direction+=2) {
-        Fe next=r->state;fe_input(&next,direction<0?FE_INPUT_UP:FE_INPUT_DOWN);
-        s->nodes[direction<0?r->left:r->right].app_hidden=next.selected==selected || r->state.screen!=FE_SCREEN_PAUSE;
-    }
+    for(int direction=-1;direction<=1;direction+=2)
+        s->nodes[direction<0?r->left:r->right].app_hidden=pause_reference_step(r,direction)<0;
     int hint=ug_scene_find_guid(s,0x000E24A1u);if(hint>=0)s->nodes[hint].app_hidden=1;
     ug_scene_relayout(s);
 }
@@ -586,8 +588,8 @@ static int pause_reference_open(PauseMenu *r) {
     r->slot=r->roles[PAUSE_ROLE_SLOT];r->caption=r->roles[PAUSE_ROLE_CAPTION];
     r->marker=r->roles[PAUSE_ROLE_MARKER];r->left=r->roles[PAUSE_ROLE_LEFT];r->right=r->roles[PAUSE_ROLE_RIGHT];
     r->npool=PAUSE_POOL_COUNT;r->bound=1;fe_pause_init(&r->state);
-    r->ui_ms=r->close_ms=r->marker_ms=0;r->marker_x=r->marker_from=r->marker_to=50;
-    r->open=1;r->closing=0;r->closing_action=FE_ACTION_NONE;r->rail_drag=0;
+    r->ui_ms=r->close_ms=0;r->marker_x=50;r->scroll=0;r->press_center=0;
+    r->open=1;r->closing=0;r->closing_action=FE_ACTION_NONE;
     ug_scene_update(&r->scene,0);pause_reference_apply(r);return 1;
 }
 static void pause_reference_advance(PauseMenu *r,float milliseconds) {
@@ -595,8 +597,7 @@ static void pause_reference_advance(PauseMenu *r,float milliseconds) {
     while((first || milliseconds>0) && r->open) {
         first=0;
         float dt=fminf(milliseconds,10);milliseconds-=dt;r->ui_ms+=dt;r->ctx.time_ms=r->ui_ms;
-        r->marker_ms=fminf(r->marker_ms+dt,160);
-        r->marker_x=r->marker_from+(r->marker_to-r->marker_from)*(r->marker_ms/160);
+        r->scroll=pause_scroll_advance(r->scroll,(float)r->state.selected,dt);
         ug_anim_update(&r->pill_pulse,dt);ug_anim_update(&r->pill_glow,dt);
         ug_scene_update(&r->scene,dt);
         int completed=0;uint32_t msg;
@@ -616,14 +617,16 @@ static void pause_reference_advance(PauseMenu *r,float milliseconds) {
 }
 static int pause_reference_event(PauseMenu *r,const char *event,float x,float y,int coordinates) {
     if(!strcmp(event,"open"))return pause_reference_open(r);
-    FeInput input=FE_INPUT_NONE;int before=r->state.selected,explicit_index=-1,direction=0;
-    int rail=!strcmp(event,"rail_down") || !strcmp(event,"rail_move");
+    FeInput input=FE_INPUT_NONE;int before=r->state.selected,direction=0,click=0;
     if(!strcmp(event,"Right")){input=FE_INPUT_DOWN;direction=1;}
     else if(!strcmp(event,"Left")){input=FE_INPUT_UP;direction=-1;}
     else if(!strcmp(event,"Enter") || !strcmp(event,"Continue"))input=FE_INPUT_CONFIRM;
-    else if(!strcmp(event,"Back") || !strcmp(event,"Escape"))input=FE_INPUT_BACK;
-    else if(!strcmp(event,"rail_up")){r->rail_drag=0;return 1;}
-    else if(!strcmp(event,"hover") && coordinates==2) {
+    else if(!strcmp(event,"Back") || !strcmp(event,"Escape") || !strcmp(event,"right_click"))input=FE_INPUT_BACK;
+    else if(!strcmp(event,"rail_up") || ((!strcmp(event,"rail_down") || !strcmp(event,"rail_move")) && coordinates>=1))return 1;
+    else if(!strcmp(event,"press") || !strcmp(event,"release") || !strcmp(event,"pointer")) {
+        if(coordinates!=2)return 0;
+        click=1;
+    } else if(!strcmp(event,"hover") && coordinates==2) {
         int hover=-1;
         if(r->state.screen==FE_SCREEN_PAUSE && !r->closing) {
             for(int k=0;k<2;k++)if(ug_rect_hit(pause_menu_bounds(k?PAUSE_CONTINUE:PAUSE_BACK),x,y))hover=k;
@@ -633,43 +636,45 @@ static int pause_reference_event(PauseMenu *r,const char *event,float x,float y,
             if(hover>=0){ug_anim_play(&r->pill_pulse,UG_ANIM_PILL_FOCUS,0);ug_anim_play(&r->pill_glow,UG_ANIM_PILL_GLOW,0);}
             else{ug_anim_stop(&r->pill_pulse);ug_anim_stop(&r->pill_glow);}
         }
-        UgPtr ptr={.type=UG_PT_MOVE,.x=x-320,.y=y-240};ug_scene_pointer(&r->scene,&ptr);return 1;
-    } else if((!strcmp(event,"pointer") && coordinates==2) || (rail && coordinates>=1)) {
-        if(rail && coordinates==1)y=188.4f;
-        if(!r->open || r->closing)return 1;
-        if(r->state.screen==FE_SCREEN_QUIT_CONFIRM) {
-            if(ug_rect_hit((UgRect){170,264,140,40},x,y)){r->state.quit_sel=0;input=FE_INPUT_CONFIRM;}
-            else if(ug_rect_hit((UgRect){330,264,140,40},x,y)){r->state.quit_sel=1;input=FE_INPUT_CONFIRM;}
-        } else if(ug_rect_hit(pause_menu_bounds(PAUSE_BACK),x,y))input=FE_INPUT_BACK;
-        else if(ug_rect_hit(pause_menu_bounds(PAUSE_CONTINUE),x,y))input=FE_INPUT_CONFIRM;
-        else if(rail || ug_rect_hit((UgRect){33.3f,184,579.1f,8.9f},x,y)) {
-            if(!strcmp(event,"rail_down"))r->rail_drag=ug_rect_hit((UgRect){33.3f,184,579.1f,8.9f},x,y);
-            if(!rail || r->rail_drag) {
-                int enabled[FE_MENU_MAX],n=0;
-                for(int i=0;i<r->state.entry_count;i++)if(r->state.entries[i].enabled)enabled[n++]=i;
-                if(n)explicit_index=enabled[(int)floorf(fmaxf(0,fminf(1,(x-50)/546))*(n-1)+.5f)];
-            }
-        } else if(ug_rect_hit((UgRect){45,213,31,31},x,y)){input=FE_INPUT_UP;direction=-1;}
-        else if(ug_rect_hit((UgRect){564.5f,213,31,31},x,y)){input=FE_INPUT_DOWN;direction=1;}
-        else for(int i=0;i<r->state.entry_count;i++)
-            if(r->state.entries[i].enabled && ug_rect_hit(pause_menu_item_bounds(i-before),x,y)){explicit_index=i;break;}
+        return 1;
     } else return 0;
     if(!r->open || r->closing)return 1;
-    if(explicit_index>=0)r->state.selected=explicit_index;
-    else fe_input(&r->state,input);
+    if(click) {
+        int press=strcmp(event,"release")!=0,release=strcmp(event,"press")!=0,armed=r->press_center;
+        r->press_center=0;
+        if(press && r->state.screen==FE_SCREEN_QUIT_CONFIRM) {
+            if(ug_rect_hit((UgRect){170,264,140,40},x,y)){r->state.quit_sel=0;input=FE_INPUT_CONFIRM;}
+            else if(ug_rect_hit((UgRect){330,264,140,40},x,y)){r->state.quit_sel=1;input=FE_INPUT_CONFIRM;}
+        } else if(press && ug_rect_hit(pause_menu_bounds(PAUSE_BACK),x,y))input=FE_INPUT_BACK;
+        else if(press && ug_rect_hit(pause_menu_bounds(PAUSE_CONTINUE),x,y))input=FE_INPUT_CONFIRM;
+        else {
+            if(press && r->state.screen==FE_SCREEN_PAUSE)armed=ug_rect_hit(pause_menu_center_hit(),x,y);
+            if(release && armed && r->state.screen==FE_SCREEN_PAUSE && ug_rect_hit(pause_menu_center_hit(),x,y))input=FE_INPUT_CONFIRM;
+            else if(!release)r->press_center=armed;
+        }
+        if(input==FE_INPUT_NONE)return 1;
+    }
+    if(direction) {
+        int target=pause_reference_step(r,direction);
+        if(target<0)return 1; /* no wrap */
+        r->state.selected=target;
+    } else fe_input(&r->state,input);
     if(r->state.selected!=before) {
-        if(!direction)direction=r->state.selected>before?1:-1;
-        ug_scene_post(&r->scene,direction<0?0x9120409Eu:0xB5971BF1u,direction<0?0xDE06Du:0xDE087u);
         int enabled=0,rank=0;
         for(int i=0;i<r->state.entry_count;i++)if(r->state.entries[i].enabled){enabled++;if(i<r->state.selected)rank++;}
-        r->marker_from=r->marker_x;r->marker_to=enabled>1?50+546.0f*rank/(enabled-1):50;r->marker_ms=0;
+        r->marker_x=enabled>1?50+546.0f*rank/(enabled-1):50; /* snaps */
+        if(pause_reference_step(r,direction)>=0)
+            ug_scene_post(&r->scene,direction<0?0x9120409Eu:0xB5971BF1u,direction<0?0xDE06Du:0xDE087u);
     }
     FeAction action=fe_poll_action(&r->state);
-    if(action==FE_ACTION_RESUME || action==FE_ACTION_QUIT) {
-        ug_scene_post(&r->scene,input==FE_INPUT_BACK?UG_MSG_REQ_BACK:UG_MSG_REQ_FORWARD,0);
+    if(action==FE_ACTION_RESUME) {
+        r->open=0;r->capture_actions++;r->capture_last_action=action; /* immediate */
+    } else if(action==FE_ACTION_QUIT) {
+        ug_scene_post(&r->scene,UG_MSG_REQ_FORWARD,0);
         r->closing=1;r->closing_action=action;r->close_ms=0;
     } else if(action!=FE_ACTION_NONE){r->capture_actions++;r->capture_last_action=action;}
-    pause_reference_apply(r);pause_reference_advance(r,0);return 1;
+    if(r->open){pause_reference_apply(r);pause_reference_advance(r,0);}
+    return 1;
 }
 int pause_menu_draw_reference(PauseMenu *p,int width,int height,float elapsed_ms,const char *events) {
     if(!p || !p->gl || !p->package.nobj || !isfinite(elapsed_ms) || elapsed_ms<0 || width<=0 || height<=0)return 0;

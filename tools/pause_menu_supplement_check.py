@@ -15,10 +15,18 @@ def equal(a,b):
     if isinstance(b,(int,float)) and not isinstance(b,bool):return abs(a-b)<.003
     return a==b
 
+# BEHAVIOR.md (precedence table) supersedes these motion.json cases: wrap, interpolated marker x,
+# arrow-click stepping, rail pointer selection. tools/pause_menu_behavior_check.py covers their
+# replacements (marker snap, no-wrap, inert pointer input) from behavior.json.
+SUPERSEDED={'wrapping_first','right_keyboard_motion','rapid_reversal','left_arrow_motion',
+            'rail_click_middle','rail_drag_last','resize_during_motion'}
 count=0
+skipped=0
 for filename in ('opacity.json','motion.json','authored.json'):
     for case in json.loads((root/filename).read_text())['cases']:
         i,e=case['input'],case['expected']
+        if filename=='motion.json' and case['id'] in SUPERSEDED:
+            skipped+=1;continue
         if filename=='motion.json' and case['id']!='rendered_animation_missing':
             got=json.loads(subprocess.check_output([binary,'motion',case['id'],str(i.get('N',3)),str(i.get('i',i.get('initial_i',0)))],text=True))
             for key,value in got.items():
@@ -43,7 +51,7 @@ for filename in ('opacity.json','motion.json','authored.json'):
             got=vector_policy(case['id'],i)
             assert equal(got,e),(case['id'],got,e)
         count+=1
-print(f'pause supplements: {count} cases encoded; synthetic state/arithmetic/policy PASS')
+print(f'pause supplements: {count} cases encoded ({skipped} motion cases superseded by behavior.json); synthetic state/arithmetic/policy PASS')
 print('Actual retail package metadata, matched-frame opacity/glow/marker parity and genuine-art rendering remain unverified.')
 
 for case in json.loads((root/'binding.json').read_text())['cases']:

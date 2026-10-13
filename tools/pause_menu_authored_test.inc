@@ -5,27 +5,25 @@ static void authored_checks(void) {
     FeMenuEntry entries[]={{"A",FE_ACTION_RESUME,1},{"B",FE_ACTION_RACE_SELECT,1},{"C",FE_ACTION_FREE_ROAM,1}};
     fe_set_entries(&p.state,entries,3);
     assert(fabsf(pause_marker_target(&p)-50)<.001f);
-    assert(pause_can_step(&p,-1) && pause_can_step(&p,1));
+    assert(!pause_can_step(&p,-1) && pause_can_step(&p,1)); /* no wrap */
+    /* BEHAVIOR 2: the marker snaps on the input frame and is never interpolated. */
     pause_dispatch(&p,FE_INPUT_DOWN);
-    assert(p.state.selected==1 && p.marker_x==50);
+    assert(p.state.selected==1 && fabsf(p.marker_x-323.0f)<.001f);
     pause_menu_update(&p,.08f);
-    assert(fabsf(p.marker_x-186.5f)<.001f);
+    assert(fabsf(p.marker_x-323.0f)<.001f);
     pause_dispatch(&p,FE_INPUT_UP);
-    pause_menu_update(&p,.08f);
-    assert(fabsf(p.marker_x-118.25f)<.001f);
-    pause_menu_update(&p,.08f);
-    assert(fabsf(p.marker_x-50)<.001f);
+    assert(p.state.selected==0 && p.marker_x==50);
+    pause_dispatch(&p,FE_INPUT_DOWN);
+    /* BEHAVIOR 4.4: rail, marker and arrow clicks are inert; the centred item needs press and release. */
     pause_menu_pointer(&p,323,188.4f,640,480);
-    assert(p.state.selected==1 && p.state.pending==FE_ACTION_NONE);
     pause_menu_pointer(&p,60,228,640,480);
-    assert(p.state.selected==0);
     pause_menu_pointer(&p,580,228,640,480);
-    assert(p.state.selected==1);
+    assert(p.state.selected==1 && p.state.pending==FE_ACTION_NONE && p.marker_x==323.0f);
     pause_menu_pointer(&p,540,302,640,480);
     assert(pause_menu_update(&p,0)==FE_ACTION_RACE_SELECT);
     assert(pause_menu_update(&p,0)==FE_ACTION_NONE);
     pause_menu_open(&p);
-    assert(p.ui_ms==0 && p.marker_x==50 && !p.rail_drag);
+    assert(p.ui_ms==0 && p.marker_x==50 && !p.press_center && p.scroll==0);
     pause_menu_update(&p,.1f);
     pause_dispatch(&p,FE_INPUT_BACK);
     assert(pause_menu_update(&p,0)==FE_ACTION_RESUME);
@@ -73,32 +71,14 @@ static void motion_vector(int argc,char **argv) {
     assert(n>0 && n<=FE_MENU_MAX);
     for(int i=0;i<n;i++)entries[i]=(FeMenuEntry){"Synthetic action",FE_ACTION_RACE_SELECT,1};
     fe_set_entries(&p.state,entries,n);p.state.selected=initial;
-    p.marker_x=p.marker_from=p.marker_to=pause_marker_target(&p);
-    if(!strncmp(id,"clamped_",8) || !strcmp(id,"wrapping_first") || !strcmp(id,"singleton")) {
-        /* Boundary fixture models both spec policies; host production keeps Fe's wrap. */
-        int wrap=!strcmp(id,"wrapping_first");
-        int left=wrap?pause_can_step(&p,-1):initial>0;
-        int right=wrap?pause_can_step(&p,1):initial<n-1;
+    p.marker_x=pause_marker_target(&p);p.scroll=(float)initial;
+    if(!strncmp(id,"clamped_",8) || !strcmp(id,"singleton")) {
+        int left=pause_can_step(&p,-1),right=pause_can_step(&p,1);
         printf("{\"marker_center\":[%.6f,188.4],\"left_arrow\":%s,\"right_arrow\":%s,\"Left_target_i\":%d}\n",p.marker_x,left?"true":"false",right?"true":"false",n-1);
-    } else if(!strcmp(id,"right_keyboard_motion") || !strcmp(id,"left_arrow_motion")) {
-        if(id[0]=='r')pause_dispatch(&p,FE_INPUT_DOWN);
-        else pause_menu_pointer(&p,60,228,640,480);
-        float x0=p.marker_x;pause_menu_update(&p,.08f);float x1=p.marker_x;pause_menu_update(&p,.08f);
-        printf("{\"logical_i\":%d,\"glyph_and_caption_entry\":%d,\"marker_x\":[%.6f,%.6f,%.6f],\"simulation_paused\":%s,\"action_invocations\":0}\n",p.state.selected,p.state.selected,x0,x1,p.marker_x,p.open?"true":"false");
-    } else if(!strcmp(id,"rail_click_middle") || !strcmp(id,"rail_drag_last")) {
-        pause_menu_pointer(&p,id[5]=='c'?323:600,188.4f,640,480);
-        printf("{\"logical_i\":%d,\"target_marker_center\":[%.6f,188.4],\"action_invocations\":%d}\n",p.state.selected,p.marker_to,p.state.pending!=FE_ACTION_NONE);
-    } else if(!strcmp(id,"rapid_reversal")) {
-        pause_dispatch(&p,FE_INPUT_DOWN);pause_menu_update(&p,.08f);float x0=p.marker_x;
-        pause_dispatch(&p,FE_INPUT_UP);pause_menu_update(&p,.08f);float x1=p.marker_x;pause_menu_update(&p,.08f);
-        printf("{\"logical_i_after_second_event\":%d,\"marker_x\":[%.6f,%.6f,%.6f],\"stale_action_invocations\":%d}\n",p.state.selected,x0,x1,p.marker_x,p.state.pending!=FE_ACTION_NONE);
     } else if(!strcmp(id,"continue_during_motion")) {
         pause_dispatch(&p,FE_INPUT_DOWN);pause_menu_update(&p,.08f);int selected=p.state.selected;
         pause_menu_pointer(&p,540,302,640,480);FeAction a=pause_menu_update(&p,0),b=pause_menu_update(&p,0);
         printf("{\"invoked_entry\":%d,\"action_invocations\":%d}\n",selected,(a!=FE_ACTION_NONE)+(b!=FE_ACTION_NONE));
-    } else if(!strcmp(id,"resize_during_motion")) {
-        pause_dispatch(&p,FE_INPUT_DOWN);pause_menu_update(&p,.08f);PauseTransform t=pause_menu_transform(1280,960);
-        printf("{\"logical_i\":%d,\"marker_virtual_at_resize\":[%.6f,188.4],\"marker_pixel_at_resize\":[%.6f,376.8],\"target_marker_pixel\":[%.6f,376.8]}\n",p.state.selected,p.marker_x,t.ox+p.marker_x*t.scale,t.ox+p.marker_to*t.scale);
     } else if(!strcmp(id,"glow_cycle")) {
         UgAnim animation;ug_anim_init(&animation,UG_WHITE,0,0);ug_anim_play(&animation,UG_ANIM_BREATHE,0);
         float times[]={0,480,800,1200},values[4],last=0;

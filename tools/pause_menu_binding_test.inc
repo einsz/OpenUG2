@@ -58,12 +58,12 @@ static void binding_checks(void) {
     assert(p.scene.nodes[p.roles[PAUSE_ROLE_HEADING]].text_override && !strcmp(p.scene.nodes[p.roles[PAUSE_ROLE_HEADING]].text_override,"Pause"));
     assert(p.scene.nodes[24].app_hidden);
     float alpha=p.scene.nodes[p.roles[PAUSE_ROLE_GLOW]].props.w[UG_P_COLOR+3];
-    pause_dispatch(&p,FE_INPUT_DOWN);pause_menu_update(&p,.08f);
+    pause_dispatch(&p,FE_INPUT_DOWN);pause_menu_update(&p,.3f); /* slide has settled */
     assert(p.state.selected==1 && !strcmp(p.scene.nodes[p.caption].text_override,"Quit Game"));
     assert(p.scene.nodes[p.pool[1]].tex_override==2 && p.scene.nodes[p.pool[1]].props.w[UG_P_SIZE]==118);
     assert(fabsf(p.scene.nodes[p.pool[0]].we-p.scene.nodes[p.pool[1]].we+158)<.001f);
     assert(p.scene.nodes[p.roles[PAUSE_ROLE_GLOW]].props.w[UG_P_COLOR+3]==alpha);
-    assert(fabsf(p.scene.nodes[p.marker].we+320-323)<.001f);
+    assert(fabsf(p.scene.nodes[p.marker].we+320-596)<.001f); /* snapped, not halfway */
     /* Empty catalogues suppress placeholders/caption; real pool scripts survive rebinding. */
     p.state.entry_count=0;pause_bind_apply(&p);
     for(int k=0;k<10;k++)assert(p.scene.nodes[p.pool[k]].app_hidden);
@@ -113,13 +113,16 @@ static void binding_reference_checks(void) {
     assert(pause_reference_open(&r));pause_reference_advance(&r,800);
     assert(r.state.selected==0 && r.ui_ms==800);
     assert(pause_reference_event(&r,"Right",0,0,0));
+    assert(r.state.selected==1 && fabsf(r.marker_x-596)<.001f); /* snapped on the input frame */
     pause_reference_advance(&r,80);
-    assert(r.state.selected==1 && fabsf(r.marker_x-323)<.001f);
+    assert(fabsf(r.marker_x-596)<.001f && r.scroll>0.8f && r.scroll<1);
     assert(!strcmp(r.scene.nodes[r.caption].text_override,"Quit Game"));
     assert(r.scene.nodes[r.pool[1]].props.w[UG_P_COLOR+3]==119);
     assert(p.state.selected==0 && p.ui_ms==0); /* reference never advances/mutates production */
-    assert(pause_reference_event(&r,"Left",0,0,0));pause_reference_advance(&r,160);
+    assert(pause_reference_event(&r,"Left",0,0,0));
     assert(r.state.selected==0 && fabsf(r.marker_x-50)<.001f);
+    assert(pause_reference_event(&r,"Left",0,0,0) && r.state.selected==0); /* no wrap */
+    pause_reference_advance(&r,300);assert(r.scroll==0);
     assert(pause_reference_event(&r,"Back",0,0,0));pause_reference_advance(&r,1000);
     assert(!r.open && r.capture_actions==1);
     assert(pause_reference_event(&r,"open",0,0,0));

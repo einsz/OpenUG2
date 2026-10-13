@@ -5,6 +5,7 @@
 
 #include "pause_menu_binding_test.inc"
 #include "pause_menu_authored_test.inc"
+#include "pause_menu_behavior_test.inc"
 
 static void focused_checks(void) {
     authored_checks();
@@ -12,7 +13,11 @@ static void focused_checks(void) {
     pause_menu_open(&p);
     SDL_Event e={0};e.type=SDL_KEYDOWN;e.key.keysym.sym=SDLK_LEFT;
     pause_menu_event(&p,&e,NULL);
-    assert(p.state.selected==1); /* recorded independent baseline wraps */
+    assert(p.state.selected==0 && p.scroll==0 && p.marker_x==50); /* no wrap: Left at the first item does nothing */
+    e.key.keysym.sym=SDLK_RIGHT;pause_menu_event(&p,&e,NULL);
+    assert(p.state.selected==1 && p.marker_x==596);
+    pause_menu_event(&p,&e,NULL);
+    assert(p.state.selected==1 && p.marker_x==596); /* no wrap at the last item either */
     e.key.keysym.sym=SDLK_RETURN;
     pause_menu_event(&p,&e,NULL);
     assert(p.state.screen==FE_SCREEN_QUIT_CONFIRM && p.state.quit_sel==0);
@@ -23,13 +28,15 @@ static void focused_checks(void) {
     pause_menu_pointer(&p,540,302,640,480);
     e.key.keysym.sym=SDLK_RETURN;pause_menu_event(&p,&e,NULL);
     assert(pause_menu_update(&p,0)==FE_ACTION_RESUME);
+    assert(!p.open); /* resume closes the menu in the same update (BEHAVIOR 5.3) */
     assert(pause_menu_update(&p,0)==FE_ACTION_NONE); /* pending action consumed once */
     pause_menu_open(&p);
     pause_menu_pointer(&p,540,302,640,480); /* Continue uses selected action */
-    assert(pause_menu_update(&p,0)==FE_ACTION_RESUME);
+    assert(pause_menu_update(&p,0)==FE_ACTION_RESUME && !p.open);
     pause_menu_open(&p);
-    pause_menu_pointer(&p,479,227,640,480);
-    assert(p.state.selected==1 && p.state.pending==FE_ACTION_NONE);
+    pause_menu_pointer(&p,479,227,640,480); /* neighbour click is inert */
+    assert(p.state.selected==0 && p.state.pending==FE_ACTION_NONE);
+    p.state.selected=1;p.scroll=1;
     pause_menu_pointer(&p,540,302,640,480);
     assert(p.state.screen==FE_SCREEN_QUIT_CONFIRM && p.open);
     pause_menu_pointer(&p,104,302,640,480); /* covered top-level Back is inert */
@@ -37,7 +44,7 @@ static void focused_checks(void) {
     pause_menu_pointer(&p,240,284,640,480);
     assert(p.state.screen==FE_SCREEN_PAUSE);
     p.state.entries[1].enabled=0;
-    p.state.selected=0;
+    p.state.selected=0;p.scroll=0;
     pause_menu_pointer(&p,479,227,640,480);
     assert(p.state.selected==0);
     e.key.keysym.sym=SDLK_RIGHT;pause_menu_event(&p,&e,NULL);
@@ -47,7 +54,8 @@ static void focused_checks(void) {
         pause_menu_open(&p);
         PauseTransform t=pause_menu_transform(sizes[i][0],sizes[i][1]);
         pause_menu_pointer(&p,(float)(t.ox+479*t.scale),(float)(t.oy+227*t.scale),sizes[i][0],sizes[i][1]);
-        assert(p.state.selected==1);
+        assert(p.state.selected==0 && p.state.pending==FE_ACTION_NONE);
+        p.state.selected=1;p.scroll=1;
         pause_menu_pointer(&p,(float)(t.ox+540*t.scale),(float)(t.oy+302*t.scale),sizes[i][0],sizes[i][1]);
         assert(p.state.screen==FE_SCREEN_QUIT_CONFIRM);
     }
@@ -174,6 +182,11 @@ int main(int argc, char **argv) {
     if (!strcmp(argv[1],"binding")) { binding_vector(argv[2]);return 0; }
     if (!strcmp(argv[1],"motion")) { motion_vector(argc,argv);return 0; }
     if (!strcmp(argv[1],"authored-samples")) { authored_sample_fixture();return 0; }
+    if (!strcmp(argv[1],"behavior-timeline")) { behavior_timeline(argc,argv);return 0; }
+    if (!strcmp(argv[1],"behavior-place")) { behavior_place(argv[2]);return 0; }
+    if (!strcmp(argv[1],"behavior-substeps")) { behavior_substeps();return 0; }
+    if (!strcmp(argv[1],"behavior-blink")) { behavior_blink(argv[2]);return 0; }
+    if (!strcmp(argv[1],"behavior-resume")) { behavior_resume(argv[2]);return 0; }
     if (!strcmp(argv[1],"checks")) { focused_checks();return 0; }
     if (!strcmp(argv[1],"correction")) { correction_vector(atoi(argv[2]));return 0; }
     if (!strcmp(argv[1], "geometry")) {

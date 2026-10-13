@@ -373,12 +373,13 @@ build/ugui_demo: tools/ugui_demo.c $(UGUI_APP) $(UGUI_SRC) src/ugui/ugui_gl.c sr
 ugui-demo: build/ugui_demo
 .PHONY: ugui-test ugui-demo
 
-build/pause_menu_test: tools/pause_menu_test.c tools/pause_menu_authored_test.inc tools/pause_menu_binding_test.inc src/pause_menu.c $(HDRS) $(UGUI_SRC)
+build/pause_menu_test: tools/pause_menu_test.c tools/pause_menu_authored_test.inc tools/pause_menu_binding_test.inc tools/pause_menu_behavior_test.inc src/pause_menu.c $(HDRS) $(UGUI_SRC)
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/pause_menu_test.c src/frontend/frontend.c $(UGUI_SRC) src/ugui/ugui_gl.c src/gl_state.c -o $@ $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lm
 pause-menu-test: build/pause_menu_test
 	env -u UGUI_DATA -u NFSU2_DATA python3 tools/pause_menu_vector_check.py build/pause_menu_test tools/pause_menu_vectors
 	env -u UGUI_DATA -u NFSU2_DATA python3 tools/pause_menu_supplement_check.py build/pause_menu_test tools/pause_menu_vectors
+	env -u UGUI_DATA -u NFSU2_DATA python3 tools/pause_menu_behavior_check.py build/pause_menu_test tools/pause_menu_vectors
 .PHONY: pause-menu-test
 
 build/pause_menu_gl_test: tools/pause_menu_gl_test.c $(HDRS) $(UGUI_SRC)

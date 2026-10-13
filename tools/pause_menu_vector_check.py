@@ -24,16 +24,22 @@ def compare(expected, actual, path="", visual_tolerance=None):
             assert abs(value-got) <= .001, (here,value,got)
 
 total=0
+superseded=0
+# BEHAVIOR 4.4 supersedes interaction.json's neighbour-icon click selection (pointer on a
+# neighbouring icon does nothing); behavior.json pointer_click_inert_* cases replace it.
+SUPERSEDED_EVENTS={"configuration_icon_click"}
 for case in json.loads((spec/"geometry.json").read_text())["cases"]:
     w,h=case["input"]["viewport"]
     out=subprocess.check_output([binary,"geometry",str(w),str(h)],text=True)
     compare(case["expected"],json.loads(out));total+=1
 for case in json.loads((spec/"interaction.json").read_text())["cases"]:
     i=case["input"]
+    if i["event"] in SUPERSEDED_EVENTS:
+        superseded+=1;continue
     out=subprocess.check_output([binary,"interaction",i["event"],i.get("selected","resume")],text=True)
     compare(case["expected"],json.loads(out));total+=1
 for index, case in enumerate(json.loads((spec/"corrections.json").read_text())["cases"]):
     out=subprocess.check_output([binary,"correction",str(index)],text=True)
     compare(case["expected"],json.loads(out),visual_tolerance=2);total+=1
-print(f"pause vectors: PASS ({total} cases; synthetic configuration follows existing Fe dispatch)")
+print(f"pause vectors: PASS ({total} cases, {superseded} superseded by behavior.json; synthetic configuration follows existing Fe dispatch)")
 print("Retail resource metadata/alias equality and rendered fidelity remain unresolved without verifier runtime inputs; correction resources above use synthetic fixtures.")

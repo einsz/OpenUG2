@@ -6347,6 +6347,9 @@ int main(int argc, char **argv) {
         FeAction pause_action = pause_menu_update(pause_menu, (float)fmin(frame_seconds, .1));
         if (pause_action == FE_ACTION_QUIT) running = 0;
         else if (pause_action == FE_ACTION_RESUME) {
+            /* Immediate (BEHAVIOR 5): the adapter returns RESUME on the input frame; no fade,
+             * exit event or timer gates it. The paused frame above never simulated, and the
+             * next frame simulates and accepts driving input again. */
             SDL_ShowCursor(pause_cursor);
             SDL_SetRelativeMouseMode(g_dbg.freecam && race_state != 3 ? SDL_TRUE : SDL_FALSE);
             if (adev) SDL_PauseAudioDevice(adev, 0);

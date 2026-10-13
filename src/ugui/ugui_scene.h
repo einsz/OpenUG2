@@ -32,6 +32,7 @@ typedef struct {
     const char *text_override;   /* application-supplied text (replaces the stored string), or NULL */
     int tex_override;            /* application-supplied texture (library index + 1), or 0 */
     int app_hidden;              /* application decided this object (and its children) is not shown */
+    float app_opacity;           /* application opacity multiplier on the evaluated alpha (1 = none; ug_scene_init sets 1) */
 } UgNode;
 
 struct UgScene {
