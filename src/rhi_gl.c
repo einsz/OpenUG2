@@ -527,11 +527,80 @@ RhiResult rhi_texture_set_sampler(RhiTexture tex, RhiSampler sampler) {
 /* ------------------------------------------------------------------------------ */
 /* A handful of programs: a fixed table with generation-checked ids. */
 #define RHI_GL_MAX_SHADERS 64u
+#define RHI_GL_MAX_PARAM_BLOCKS 4u
+
+/* One parameter block of a program: the game-visible storage, the bytes last
+ * uploaded (GL's own values: zero after linking) and a location per field. */
+typedef struct {
+    const RhiParamLayout *layout;   /* the caller's table, kept by pointer */
+    unsigned char        *data, *uploaded;
+    GLint                *location;
+} RhiGlParamBlock;
 
 static struct {
-    GLuint  program[RHI_GL_MAX_SHADERS];   /* 0 = free slot */
-    uint8_t generation[RHI_GL_MAX_SHADERS];
+    GLuint          program[RHI_GL_MAX_SHADERS];   /* 0 = free slot */
+    uint8_t         generation[RHI_GL_MAX_SHADERS];
+    RhiGlParamBlock block[RHI_GL_MAX_SHADERS][RHI_GL_MAX_PARAM_BLOCKS];
+    uint32_t        block_count[RHI_GL_MAX_SHADERS];
 } g_shaders;
+
+static void param_blocks_free(int slot) {
+    for (uint32_t b = 0; b < g_shaders.block_count[slot]; b++) {
+        RhiGlParamBlock *pb = &g_shaders.block[slot][b];
+        free(pb->data); free(pb->uploaded); free(pb->location);
+        memset(pb, 0, sizeof *pb);
+    }
+    g_shaders.block_count[slot] = 0;
+}
+
+/* ---- std140 checks ---- */
+static uint32_t param_align(RhiParamType t) {
+    return t == RHI_PARAM_VEC2 ? 8u : (t == RHI_PARAM_VEC3 || t == RHI_PARAM_VEC4 ||
+                                       t == RHI_PARAM_MAT4) ? 16u : 4u;
+}
+static uint32_t param_size(RhiParamType t) {
+    switch (t) {
+    case RHI_PARAM_VEC2: return 8u;
+    case RHI_PARAM_VEC3: return 12u;
+    case RHI_PARAM_VEC4: return 16u;
+    case RHI_PARAM_MAT4: return 64u;
+    default:             return 4u;
+    }
+}
+
+RhiResult rhi_param_layout_check(const RhiParamLayout *l) {
+    const char *name = l && l->name ? l->name : "params";
+    if (!l || !l->fields || !l->field_count) {
+        fprintf(stderr, "rhi: %s: empty parameter layout\n", name);
+        return RHI_ERR_INVALID;
+    }
+    for (uint32_t i = 0; i < l->field_count; i++) {
+        const RhiParamField *f = &l->fields[i];
+        if (!f->name || f->type < RHI_PARAM_FLOAT || f->type > RHI_PARAM_INT || !f->count) {
+            fprintf(stderr, "rhi: %s: field %u is malformed\n", name, (unsigned)i);
+            return RHI_ERR_INVALID;
+        }
+        if (f->count > 1 && f->type != RHI_PARAM_VEC4 && f->type != RHI_PARAM_MAT4) {
+            fprintf(stderr, "rhi: %s: %s: std140 arrays must be vec4 or mat4\n", name, f->name);
+            return RHI_ERR_INVALID;
+        }
+        uint32_t end = f->offset + param_size(f->type) * f->count;
+        if (f->offset % param_align(f->type) || end > l->size || end < f->offset) {
+            fprintf(stderr, "rhi: %s: %s: offset %u breaks std140 alignment or the block size\n",
+                    name, f->name, (unsigned)f->offset);
+            return RHI_ERR_INVALID;
+        }
+        for (uint32_t j = 0; j < i; j++) {
+            const RhiParamField *g = &l->fields[j];
+            uint32_t gend = g->offset + param_size(g->type) * g->count;
+            if (f->offset < gend && g->offset < end) {
+                fprintf(stderr, "rhi: %s: %s overlaps %s\n", name, f->name, g->name);
+                return RHI_ERR_INVALID;
+            }
+        }
+    }
+    return RHI_OK;
+}
 
 static int shader_slot(RhiShader shader) {
     uint32_t slot = shader.id & RHI_GL_SLOT_MASK;
@@ -598,15 +667,81 @@ RhiShader rhi_shader_create(const RhiShaderDesc *desc) {
         glDeleteProgram(p);
         return out;
     }
+    if (desc->param_block_count > RHI_GL_MAX_PARAM_BLOCKS ||
+        (desc->param_block_count && !desc->param_blocks)) {
+        fprintf(stderr, "rhi: %s: too many parameter blocks\n", label);
+        glDeleteProgram(p);
+        return out;
+    }
+    for (uint32_t b = 0; b < desc->param_block_count; b++) {
+        const RhiParamLayout *l = desc->param_blocks[b];
+        RhiGlParamBlock *pb = &g_shaders.block[slot][b];
+        g_shaders.block_count[slot] = b + 1;
+        if (!l || rhi_param_layout_check(l) != RHI_OK ||
+            !(pb->data = (unsigned char *)calloc(1, l->size)) ||
+            !(pb->uploaded = (unsigned char *)calloc(1, l->size)) ||
+            !(pb->location = (GLint *)malloc(l->field_count * sizeof *pb->location))) {
+            fprintf(stderr, "rhi: %s: parameter block %u unusable\n", label, (unsigned)b);
+            param_blocks_free(slot);
+            glDeleteProgram(p);
+            return out;
+        }
+        pb->layout = l;
+        for (uint32_t i = 0; i < l->field_count; i++)   /* -1: unused by the shader */
+            pb->location[i] = glGetUniformLocation(p, l->fields[i].name);
+    }
     g_shaders.program[slot] = p;
     out.id = ((uint32_t)g_shaders.generation[slot] << RHI_GL_SLOT_BITS) | (uint32_t)(slot + 1);
     return out;
+}
+
+void *rhi_shader_params(RhiShader shader, uint32_t block) {
+    int i = shader_slot(shader);
+    if (i < 0 || block >= g_shaders.block_count[i]) return NULL;
+    return g_shaders.block[i][block].data;
+}
+
+static void param_upload(const RhiParamField *f, GLint loc, const void *v) {
+    GLsizei n = (GLsizei)f->count;
+    switch (f->type) {
+    case RHI_PARAM_FLOAT: glUniform1fv(loc, n, (const GLfloat *)v); break;
+    case RHI_PARAM_VEC2:  glUniform2fv(loc, n, (const GLfloat *)v); break;
+    case RHI_PARAM_VEC3:  glUniform3fv(loc, n, (const GLfloat *)v); break;
+    case RHI_PARAM_VEC4:  glUniform4fv(loc, n, (const GLfloat *)v); break;
+    case RHI_PARAM_MAT4:  glUniformMatrix4fv(loc, n, GL_FALSE, (const GLfloat *)v); break;
+    case RHI_PARAM_INT:   glUniform1i(loc, *(const GLint *)v); break;
+    }
+}
+
+void rhi_gl_flush_params(void) {
+    static int last = -1;   /* the shader found last time, usually the same */
+    GLint current = 0;
+    gls_get_integerv(GL_CURRENT_PROGRAM, &current);
+    if (!current) return;
+    int slot = -1;
+    if (last >= 0 && g_shaders.program[last] == (GLuint)current) slot = last;
+    for (uint32_t i = 0; slot < 0 && i < RHI_GL_MAX_SHADERS; i++)
+        if (g_shaders.program[i] == (GLuint)current) slot = (int)i;
+    if (slot < 0) return;   /* a program not created through rhi_shader_create */
+    last = slot;
+    for (uint32_t b = 0; b < g_shaders.block_count[slot]; b++) {
+        RhiGlParamBlock *pb = &g_shaders.block[slot][b];
+        const RhiParamLayout *l = pb->layout;
+        for (uint32_t i = 0; i < l->field_count; i++) {
+            const RhiParamField *f = &l->fields[i];
+            size_t off = f->offset, n = param_size(f->type) * f->count;
+            if (pb->location[i] < 0 || !memcmp(pb->data + off, pb->uploaded + off, n)) continue;
+            param_upload(f, pb->location[i], pb->data + off);
+            memcpy(pb->uploaded + off, pb->data + off, n);
+        }
+    }
 }
 
 void rhi_shader_destroy(RhiShader shader) {
     int i = shader_slot(shader);
     if (i < 0) return;
     glDeleteProgram(g_shaders.program[i]);
+    param_blocks_free(i);
     g_shaders.program[i] = 0;
     g_shaders.generation[i]++;
 }

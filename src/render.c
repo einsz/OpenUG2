@@ -737,11 +737,13 @@ static char *shader_text(const char *header, const unsigned char *body, unsigned
 RhiShader render_shader_create(const char *label,
                                const char *vs_header, const unsigned char *vs, unsigned vs_len,
                                const char *fs_header, const unsigned char *fs, unsigned fs_len,
-                               const char *const *attributes, uint32_t count) {
+                               const char *const *attributes, uint32_t count,
+                               const RhiParamLayout *const *blocks, uint32_t block_count) {
     char *v = shader_text(vs_header, vs, vs_len), *f = shader_text(fs_header, fs, fs_len);
     RhiShader out = {0};
     if (v && f)
-        out = rhi_shader_create(&(RhiShaderDesc){ v, f, attributes, count, label });
+        out = rhi_shader_create(&(RhiShaderDesc){ v, f, attributes, count, label,
+                                                  blocks, block_count });
     free(v); free(f);
     return out;
 }
@@ -761,7 +763,7 @@ static int headlight_shadow_init(HeadlightShadows *s) {
     s->shader=render_shader_create("headlight shadow",
         GLSL_VS_HEADER, src_shaders_headlight_shadow_vert, src_shaders_headlight_shadow_vert_len,
         GLSL_FS_HEADER, src_shaders_headlight_shadow_frag, src_shaders_headlight_shadow_frag_len,
-        attributes, 2);
+        attributes, 2, NULL, 0);
     s->program=rhi_gl_shader_program(s->shader);if(!s->program)return 0;
     s->mvp=glGetUniformLocation(s->program,"uMVP");
     s->cutout=glGetUniformLocation(s->program,"uCutout");
@@ -922,7 +924,8 @@ RProg render_program(void) {
     RProg r;
     r.shader = render_shader_create("ug2",
         GLSL_VS_HEADER, src_shaders_ug2_vert, src_shaders_ug2_vert_len,
-        GLSL_FS_HEADER, src_shaders_ug2_frag, src_shaders_ug2_frag_len, attributes, 4);
+        GLSL_FS_HEADER, src_shaders_ug2_frag, src_shaders_ug2_frag_len, attributes, 4,
+        NULL, 0);
     r.prog = rhi_gl_shader_program(r.shader);
     glUseProgram(r.prog);
     r.uMVP     = glGetUniformLocation(r.prog, "uMVP");

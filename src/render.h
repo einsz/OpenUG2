@@ -230,11 +230,13 @@ void render_model(const RProg *r,const float model[16]);
 RProg    render_program(void);          /* compile+link the shader, fetch uniforms */
 /* Build a shader from embedded source bodies (make: generated_shaders.h), each
    prefixed with a header (GLSL_VS_HEADER / GLSL_FS_HEADER, or ""). Attribute i
-   is attributes[i]. Returns {0} on failure. */
+   is attributes[i]; blocks are its parameter layouts (may be NULL, 0).
+   Returns {0} on failure. */
 RhiShader render_shader_create(const char *label,
                                const char *vs_header, const unsigned char *vs, unsigned vs_len,
                                const char *fs_header, const unsigned char *fs, unsigned fs_len,
-                               const char *const *attributes, uint32_t count);
+                               const char *const *attributes, uint32_t count,
+                               const RhiParamLayout *const *blocks, uint32_t block_count);
 GpuMesh *upload_scene(N2Scene *s);      /* VBO/NBO/IBO per mesh, normals computed */
 void free_scene_gpu(GpuMesh *gm, int count);
 GpuMesh  make_wheel(float R, float halfW);  /* procedural tyre (see render.c) */

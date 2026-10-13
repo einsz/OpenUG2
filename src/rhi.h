@@ -228,6 +228,37 @@ RhiSampler rhi_texture_sampler(RhiTexture tex);
 /* One vertex + fragment program. Opaque handle like RhiBuffer, {0} = none. */
 typedef struct RhiShader { uint32_t id; } RhiShader;
 
+/* Parameter blocks: a C struct owned by the game, described by a layout table.
+ * Offsets follow std140 (rhi_param_layout_check), so a backend can upload the
+ * bytes as one uniform buffer; the GL backend maps fields to uniforms by name. */
+typedef enum RhiParamType {
+    RHI_PARAM_FLOAT = 1,
+    RHI_PARAM_VEC2  = 2,
+    RHI_PARAM_VEC3  = 3,
+    RHI_PARAM_VEC4  = 4,
+    RHI_PARAM_MAT4  = 5,   /* column-major, 16 floats */
+    RHI_PARAM_INT   = 6    /* 32-bit; also sampler units until texture binding */
+} RhiParamType;
+
+typedef struct RhiParamField {
+    const char  *name;     /* uniform name in the shader */
+    RhiParamType type;
+    uint32_t     offset;   /* bytes from the start of the block */
+    uint32_t     count;    /* array length; 1 = not an array */
+} RhiParamField;
+
+typedef struct RhiParamLayout {
+    const RhiParamField *fields;
+    uint32_t             field_count;
+    uint32_t             size;   /* sizeof the C struct */
+    const char          *name;
+} RhiParamLayout;
+
+/* RHI_OK when every field is aligned and sized as std140 requires and lies
+ * inside the block (arrays only of VEC4/MAT4, whose std140 stride is their
+ * size); otherwise RHI_ERR_INVALID with the first problem on stderr. */
+RhiResult rhi_param_layout_check(const RhiParamLayout *layout);
+
 typedef struct RhiShaderDesc {
     /* Complete source text in the backend's language (GL: GLSL 1.20, or
      * GLSL ES 1.00 for RHI_BACKEND_GLES2); NUL-terminated. */
@@ -236,12 +267,19 @@ typedef struct RhiShaderDesc {
     const char *const *attribute_names;
     uint32_t           attribute_count;
     const char        *label;   /* for error messages; may be NULL */
+    /* Parameter blocks the shader reads (block i = param_blocks[i]). */
+    const RhiParamLayout *const *param_blocks;
+    uint32_t           param_block_count;
 } RhiShaderDesc;
 
 /* Compiles and links. Returns {0} on failure; the compiler log goes to stderr. */
 RhiShader rhi_shader_create(const RhiShaderDesc *desc);
 /* {0} is ignored. The handle becomes invalid. */
 void      rhi_shader_destroy(RhiShader shader);
+/* The storage of parameter block `block` (layout->size bytes, zero at
+ * creation). Its contents at each draw with the shader are what that draw
+ * sees; write it any time. NULL for an invalid shader or block. */
+void     *rhi_shader_params(RhiShader shader, uint32_t block);
 
 #ifdef __cplusplus
 }

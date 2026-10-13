@@ -37,7 +37,7 @@ FeDraw *fed_init(void) {
     char *vs = fe_shader_text(src_shaders_frontend_vert, src_shaders_frontend_vert_len);
     char *fs = fe_shader_text(src_shaders_frontend_frag, src_shaders_frontend_frag_len);
     if (vs && fs)
-        d->shader = rhi_shader_create(&(RhiShaderDesc){ vs, fs, attributes, 1, "frontend" });
+        d->shader = rhi_shader_create(&(RhiShaderDesc){ vs, fs, attributes, 1, "frontend", NULL, 0 });
     free(vs); free(fs);
     d->prog = rhi_gl_shader_program(d->shader);
     if (!d->prog) {
