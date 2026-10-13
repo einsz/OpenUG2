@@ -258,6 +258,54 @@ T(test_entry_oob_returns_null) {
     assert(fe_entry(&fe, 0) != 0);
 }
 
+T(test_pause_opens_without_title_or_gameplay_action) {
+    Fe fe; fe_pause_init(&fe);
+    assert(fe_screen(&fe) == FE_SCREEN_PAUSE);
+    assert(fe_selected(&fe) == 0);
+    assert(fe_poll_action(&fe) == FE_ACTION_NONE);
+    fe_input(&fe, FE_INPUT_CONFIRM);
+    assert(fe_poll_action(&fe) == FE_ACTION_RESUME);
+    assert(fe_poll_action(&fe) == FE_ACTION_NONE);
+}
+
+T(test_pause_escape_resumes) {
+    Fe fe; fe_pause_init(&fe);
+    fe_input(&fe, FE_INPUT_DOWN);
+    fe_input(&fe, FE_INPUT_BACK);
+    assert(fe_poll_action(&fe) == FE_ACTION_RESUME);
+    assert(fe_poll_action(&fe) == FE_ACTION_NONE);
+}
+
+T(test_pause_quit_cancel_stays_paused) {
+    Fe fe; fe_pause_init(&fe);
+    fe_input(&fe, FE_INPUT_DOWN);
+    fe_input(&fe, FE_INPUT_CONFIRM);
+    assert(fe_screen(&fe) == FE_SCREEN_QUIT_CONFIRM);
+    assert(fe_quit_sel(&fe) == 0);
+    assert(fe_poll_action(&fe) == FE_ACTION_NONE);
+    fe_input(&fe, FE_INPUT_BACK);
+    assert(fe_screen(&fe) == FE_SCREEN_PAUSE);
+    assert(fe_poll_action(&fe) == FE_ACTION_NONE);
+    fe_input(&fe, FE_INPUT_CONFIRM);
+    fe_input(&fe, FE_INPUT_CONFIRM); /* default No */
+    assert(fe_screen(&fe) == FE_SCREEN_PAUSE);
+    assert(fe_poll_action(&fe) == FE_ACTION_NONE);
+}
+
+T(test_pause_quit_requires_yes) {
+    Fe fe; fe_pause_init(&fe);
+    fe_input(&fe, FE_INPUT_DOWN);
+    fe_input(&fe, FE_INPUT_CONFIRM);
+    fe_input(&fe, FE_INPUT_DOWN);
+    fe_input(&fe, FE_INPUT_CONFIRM);
+    assert(fe_poll_action(&fe) == FE_ACTION_QUIT);
+    assert(fe_poll_action(&fe) == FE_ACTION_NONE);
+    fe_pause_init(&fe);
+    assert(fe_selected(&fe) == 0);
+    assert(fe_screen(&fe) == FE_SCREEN_PAUSE);
+    assert(fe_poll_action(&fe) == FE_ACTION_NONE);
+}
+
 /* ---- main ---- */
 int main(void) {
     printf("frontend_test:\n");
@@ -284,6 +332,10 @@ int main(void) {
     RUN(test_held_reset_on_dir_change);
     RUN(test_pulse_bounded);
     RUN(test_entry_oob_returns_null);
+    RUN(test_pause_opens_without_title_or_gameplay_action);
+    RUN(test_pause_escape_resumes);
+    RUN(test_pause_quit_cancel_stays_paused);
+    RUN(test_pause_quit_requires_yes);
     printf("ALL PASSED (%d tests)\n", tests);
     return 0;
 }

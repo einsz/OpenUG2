@@ -212,12 +212,15 @@ void ug_gl_destroy(UgGL *g) {
     free(g);
 }
 
-void ug_gl_render(UgGL *g, const UgCanvas *cv, int win_w, int win_h) {
+static void render_canvas(UgGL *g, const UgCanvas *cv, int win_w, int win_h, int overlay) {
     if (!g || cv->n == 0 || win_w <= 0 || win_h <= 0) return;
     UgView v = ug_view_fit(win_w, win_h);
 
-    /* save the few states we touch (CPU tracker, no GL readback) */
+    /* Save caller state. The tracker mirrors usual state; an already enabled
+     * scissor rectangle needs one fallback query because it is not mirrored. */
     int prev_prog = 0, prev_buf = 0, prev_tex = 0, prev_blend_src = 0, prev_blend_dst = 0;
+    int prev_active=GL_TEXTURE0, prev_scissor_box[4]={0};
+    int prev_blend_src_a=0,prev_blend_dst_a=0;
     int prev_vp[4];
     int prev_blend = gls_is_enabled(GL_BLEND), prev_depth = gls_is_enabled(GL_DEPTH_TEST);
     int prev_cull = gls_is_enabled(GL_CULL_FACE), prev_scissor = gls_is_enabled(GL_SCISSOR_TEST);
@@ -225,13 +228,20 @@ void ug_gl_render(UgGL *g, const UgCanvas *cv, int win_w, int win_h) {
     gls_get_integerv(GL_VIEWPORT, prev_vp);
     gls_get_integerv(GL_BLEND_SRC_RGB, &prev_blend_src);
     gls_get_integerv(GL_BLEND_DST_RGB, &prev_blend_dst);
+    gls_get_integerv(GL_BLEND_SRC_ALPHA,&prev_blend_src_a);
+    gls_get_integerv(GL_BLEND_DST_ALPHA,&prev_blend_dst_a);
     gls_get_integerv(GL_ARRAY_BUFFER_BINDING, &prev_buf);
+    gls_get_integerv(GL_ACTIVE_TEXTURE, &prev_active);
+    glActiveTexture(GL_TEXTURE0);
     gls_get_integerv(GL_TEXTURE_BINDING_2D, &prev_tex);
+    if(prev_scissor)gls_get_integerv(GL_SCISSOR_BOX,prev_scissor_box);
     int prev_attr[5];
     for (int i = 0; i < 5; i++) prev_attr[i] = gls_attrib_enabled((unsigned)i);
 
-    glViewport(v.x0, win_h - v.y0 - v.h, v.w, v.h);
-    glScissor(v.x0, win_h - v.y0 - v.h, v.w, v.h);
+    glViewport(overlay ? 0 : v.x0, overlay ? 0 : win_h - v.y0 - v.h,
+               overlay ? win_w : v.w, overlay ? win_h : v.h);
+    glScissor(overlay ? 0 : v.x0, overlay ? 0 : win_h - v.y0 - v.h,
+              overlay ? win_w : v.w, overlay ? win_h : v.h);
     glEnable(GL_SCISSOR_TEST);
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
@@ -243,6 +253,7 @@ void ug_gl_render(UgGL *g, const UgCanvas *cv, int win_w, int win_h) {
                       0, -2.0f / UG_SCREEN_H, 0, 0,
                       0, 0, 1, 0,
                       0, 0, 0, 1};
+    if (overlay) { proj[0] = 2.0f * v.scale / win_w; proj[5] = -2.0f * v.scale / win_h; }
     glUniformMatrix4fv(g->uProj, 1, GL_FALSE, proj);
     glUniform1f(g->uPx, v.scale);
     glActiveTexture(GL_TEXTURE0);
@@ -280,11 +291,21 @@ void ug_gl_render(UgGL *g, const UgCanvas *cv, int win_w, int win_h) {
         if (!prev_attr[i]) glDisableVertexAttribArray((unsigned)i);
     glBindBuffer(GL_ARRAY_BUFFER, (unsigned)prev_buf);
     glBindTexture(GL_TEXTURE_2D, (unsigned)prev_tex);
+    glActiveTexture((unsigned)prev_active);
     glUseProgram((unsigned)prev_prog);
-    glBlendFunc((unsigned)prev_blend_src, (unsigned)prev_blend_dst);
+    glBlendFuncSeparate((unsigned)prev_blend_src,(unsigned)prev_blend_dst,
+                        (unsigned)prev_blend_src_a,(unsigned)prev_blend_dst_a);
     if (!prev_blend) glDisable(GL_BLEND);
     if (prev_depth) glEnable(GL_DEPTH_TEST);
     if (prev_cull) glEnable(GL_CULL_FACE);
     if (!prev_scissor) glDisable(GL_SCISSOR_TEST);
+    else glScissor(prev_scissor_box[0],prev_scissor_box[1],prev_scissor_box[2],prev_scissor_box[3]);
     glViewport(prev_vp[0], prev_vp[1], prev_vp[2], prev_vp[3]);
+}
+
+void ug_gl_render(UgGL *g, const UgCanvas *cv, int win_w, int win_h) {
+    render_canvas(g, cv, win_w, win_h, 0);
+}
+void ug_gl_render_overlay(UgGL *g, const UgCanvas *cv, int win_w, int win_h) {
+    render_canvas(g, cv, win_w, win_h, 1);
 }

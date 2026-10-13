@@ -41,6 +41,8 @@
 #include "world_scenery.h"
 #include "ground_motion.h"
 #include "debug.h"
+#include "pause_menu.h"
+#include "ugui/ugui_gl.h"
 #ifdef OPENUG2_MENU
 #include "frontend/frontend.h"
 #include "frontend/frontend_draw.h"
@@ -1946,6 +1948,11 @@ int main(int argc, char **argv) {
                           not a supported playable open-world composition.
          --circuit PATH   circuit Paths .bin under TRACKS/ (default ROUTESL4RF/Paths4602.bin)
          --shot out.png   render one frame and exit
+         --pause-shot     include authored pause UI in --shot (requires genuine UI resources)
+         --pause-ui-ms T  UI-only elapsed phase for capture (default 800 ms)
+         --pause-events S deterministic timed UI events, e.g. 800:Right,880:Left
+         --pause-off FILE save same-frame frozen scene-only pair before UI
+         --pause-reference capture independent populated authored reference with UI replay
          --resolution WxH window/render size (default 1920x1080; also used by audits)
          --carinfo CAR    dump CAR's part list + texture catalog and exit (GL-free)
          --world2         legacy alias; instance world is automatic for one STREAM
@@ -2086,11 +2093,19 @@ int main(int argc, char **argv) {
     int want_event_id = 0;   /* --event <id>: boot straight into a race event */
     int shotframes = 40;     /* --frames N: how long --shot drives before the grab */
     int shotframes_set = 0;
+    int pause_shot = 0, pause_reference=0;
+    float pause_ui_ms=800;
+    const char *pause_off=NULL,*pause_events=NULL;
     const char *tex_override_dir = NULL;   /* --tex-overrides DIR: HD DDS overrides (off by default) */
     int tex_override_off = 0, tex_override_budget = 0;
     int want_laps = 2;       /* --laps N: race distance for --event */
     for (int i = 1; i < argc; i++) {
         if      (!strcmp(argv[i], "--shot")    && i+1 < argc) shot      = argv[++i];
+        else if (!strcmp(argv[i], "--pause-shot")) pause_shot = 1;
+        else if (!strcmp(argv[i], "--pause-ui-ms") && i+1<argc) pause_ui_ms=(float)atof(argv[++i]);
+        else if (!strcmp(argv[i], "--pause-events") && i+1<argc) pause_events=argv[++i];
+        else if (!strcmp(argv[i], "--pause-off") && i+1<argc) pause_off=argv[++i];
+        else if (!strcmp(argv[i], "--pause-reference")) {pause_reference=1;pause_shot=1;}
         else if (!strcmp(argv[i], "--resolution")) {
             char extra;
             if (i+1 >= argc ||
@@ -2540,6 +2555,13 @@ int main(int argc, char **argv) {
         shotyaw = world2_heading_deg * 3.14159265f / 180.0f;
     if (shot_empty && !shot) {
         fprintf(stderr, "--shot-empty requires --shot\n");
+        return 2;
+    }
+    if(!isfinite(pause_ui_ms) || pause_ui_ms<0 || ((pause_off || pause_events) && !pause_shot)) {
+        fprintf(stderr,"pause capture requires --pause-shot and a finite nonnegative UI phase\n");return 2;
+    }
+    if (pause_shot && !shot) {
+        fprintf(stderr, "--pause-shot requires --shot\n");
         return 2;
     }
     if (carinfo) return dump_car_info(dataroot, carinfo);   /* inspect one car, GL-free, exit */
@@ -6007,6 +6029,8 @@ int main(int argc, char **argv) {
     char heat_context[160]={0};
     RaceLog race_log={0};g_dbg.race_log=&race_log;
     unsigned log_serial=0;int log_event=-1;
+    PauseMenu *pause_menu = NULL;
+    int pause_cursor = SDL_ENABLE;
     while (running) {
         pf_mark(PF_FRAME_TOP);
         uint32_t resident_frame_begin = SDL_GetTicks();
@@ -6015,6 +6039,7 @@ int main(int argc, char **argv) {
         sim_counter=resident_frame_counter;
         float frame_scale=deterministic_sim?1:(float)fmin(frame_seconds*PHYS_TICKRATE,8);
         int sim_reset=0;
+        int pause_frame = pause_menu_is_open(pause_menu);
         if (retired_resident) {
             uint32_t begin = SDL_GetTicks();
             /* ponytail: work quota, not a hard millisecond deadline. Keep GL
@@ -6052,6 +6077,35 @@ int main(int argc, char **argv) {
         traffic_world.traffic_target=g_dbg.traffic_target;
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
+            if (e.type == SDL_QUIT) { running = 0; continue; }
+            int pause_allowed = 1;
+#ifdef OPENUG2_MENU
+            pause_allowed = !frontend_open;
+#endif
+            int pause_key = e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE;
+            int pause_start = e.type == SDL_CONTROLLERBUTTONDOWN &&
+                              e.cbutton.button == SDL_CONTROLLER_BUTTON_START;
+            if (pause_allowed && (pause_key || pause_start) && !pause_menu_is_open(pause_menu)) {
+                if (pause_key && e.key.repeat) continue;
+                /* Consume the whole opening frame so no queued input reaches driving. */
+                pause_frame = 1;
+                if (!pause_menu) pause_menu = pause_menu_create(dataroot);
+                if (pause_menu) {
+                    pause_menu_open(pause_menu);
+                    pause_cursor = SDL_ShowCursor(SDL_QUERY);
+                    SDL_ShowCursor(SDL_ENABLE);
+                    SDL_SetRelativeMouseMode(SDL_FALSE); mlook = 0;
+                    if (adev) SDL_PauseAudioDevice(adev, 1);
+                    printf("pause: opened at (%.3f %.3f %.3f), speed %.3f\n",
+                           carpos[0], carpos[1], carpos[2], speed);
+                } else fprintf(stderr, "pause: unable to create menu\n");
+                continue;
+            }
+            if (pause_menu_is_open(pause_menu)) {
+                pause_menu_event(pause_menu, &e, win);
+                continue;
+            }
+            if (pause_frame) continue;
             if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_1 &&
                 !e.key.repeat) {
                 g_devui = !g_devui;
@@ -6150,8 +6204,7 @@ int main(int argc, char **argv) {
                 }
                 else
 #endif
-                if (k == SDLK_ESCAPE) running = 0;
-                else if (k == SDLK_g && hud && !e.key.repeat) {
+                if (k == SDLK_g && hud && !e.key.repeat) {
                     g_dbg.gps_n = 0; g_dbg.gps_request = 0;   /* cancel guidance */
                     printf("HUD: destination cleared\n");
                 }
@@ -6290,6 +6343,18 @@ int main(int argc, char **argv) {
                 }
             }
         }
+
+        FeAction pause_action = pause_menu_update(pause_menu, (float)fmin(frame_seconds, .1));
+        if (pause_action == FE_ACTION_QUIT) running = 0;
+        else if (pause_action == FE_ACTION_RESUME) {
+            SDL_ShowCursor(pause_cursor);
+            SDL_SetRelativeMouseMode(g_dbg.freecam && race_state != 3 ? SDL_TRUE : SDL_FALSE);
+            if (adev) SDL_PauseAudioDevice(adev, 0);
+            sim_reset = 1;
+            printf("pause: resumed at (%.3f %.3f %.3f), speed %.3f\n",
+                   carpos[0], carpos[1], carpos[2], speed);
+        }
+        if (pause_frame) frame_scale = 0;
 
 #ifdef OPENUG2_MENU
         if (frontend_open) {
@@ -7071,14 +7136,16 @@ int main(int argc, char **argv) {
         /* Inputs and rendering remain per frame; vehicle motion, contacts,
            race timers and effects advance together at PHYS_TICKRATE. */
         if(sim_reset){sim_clock=(PhysClock){0};frame_seconds=0;sim_counter=SDL_GetPerformanceCounter();}
-        int sim_steps=deterministic_sim?1:phys_clock_steps(&sim_clock,frame_seconds);
+        /* Drop paused wall time rather than simulating it when the menu closes. */
+        if (pause_frame) sim_clock = (PhysClock){0};
+        int sim_steps=pause_frame?0:deterministic_sim?1:phys_clock_steps(&sim_clock,frame_seconds);
         int pf_spawns=0;
         float sim_wheel_scale=g_dbg.wheel_scale>0.05f?g_dbg.wheel_scale:1.0f;
         float car_ride=carprof.ride*sim_wheel_scale;
         float car_body_ride=body_ride_height(car_ride,car_floor,g_dbg.body_drop);
-        int beam_keys=1,driving_keys=!g_dbg.freecam;
+        int beam_keys=!pause_frame,driving_keys=!g_dbg.freecam && !pause_frame;
 #ifdef DEBUG_UI
-        beam_keys=!dbgui_want_keyboard();
+        beam_keys=beam_keys && !dbgui_want_keyboard();
         driving_keys=driving_keys && !(g_devui && dbgui_want_text());
 #endif
         int beam_high=g_dbg.headlight_mode==1 || (beam_keys && ks[SDL_SCANCODE_L]);
@@ -8135,7 +8202,7 @@ int main(int argc, char **argv) {
                 ai_pose_before[k]=ai_pose_now[k]; /* births/respawns snap, never sweep through the world */
         }
         }
-        float render_alpha=deterministic_sim || sstatic || capture_policy.freeze_motion
+        float render_alpha=pause_frame || deterministic_sim || sstatic || capture_policy.freeze_motion
             ?1:(float)(sim_clock.remainder*PHYS_TICKRATE);
         AiCar render_player,render_ais[N_WORLD_AI];
         ai_render_pose(&render_player,&pose_before,&pose_now,render_alpha);
@@ -8171,7 +8238,7 @@ int main(int argc, char **argv) {
         }
         int free_active=g_dbg.freecam && race_state!=3 && shotyaw>=1e8f;
         int orbit_active=!free_active && (mlook || perf_orbit!=0.0f) && race_state!=3 && shotyaw>=1e8f;
-        if(orbit_active && orbit_was_active && perf_orbit!=0.0f)orbit_yaw+=perf_orbit;
+        if(orbit_active && orbit_was_active && perf_orbit!=0.0f && !pause_frame)orbit_yaw+=perf_orbit;
         if(orbit_active) {
             if(!orbit_was_active) {
                 orbit_yaw=atan2f(render_player.pos[1]-cam[1],render_player.pos[0]-cam[0])-render_player.head;
@@ -8194,6 +8261,11 @@ int main(int argc, char **argv) {
         if(pose_snap || camera_history_mode!=camera_mode) {
             memcpy(camera_want_before,want,sizeof want);
             memcpy(camera_target_before,idealtgt,sizeof idealtgt);
+        }
+        /* Escape can be queued during loading, before the first chase frame. */
+        if (pause_frame && camera_history_mode < 0 && !free_active) {
+            memcpy(cam, want, sizeof want);
+            memcpy(camtgt, idealtgt, sizeof idealtgt);
         }
         if(deterministic_sim) { /* Keep existing fixed-tick captures/audits exact. */
             if(!free_active)for(int c=0;c<3;c++)cam[c]+=(want[c]-cam[c])*k;
@@ -10757,6 +10829,32 @@ int main(int argc, char **argv) {
             rda_frame++;
         }
         if (shot && ++shotframe >= shotframes) {
+            /* Verification-only capture: the same production pause compositor
+             * over the final engine scene, before framebuffer readback. */
+            if (pause_shot) {
+                if (!pause_menu) pause_menu = pause_menu_create(dataroot);
+                pause_menu_open(pause_menu);
+                if (!pause_reference && !pause_menu_visual_available(pause_menu)) {
+                    fprintf(stderr, "pause-shot: genuine UI resources unavailable\n");
+                    final_status = 1;
+                    running = 0;
+                    continue;
+                }
+                if (pause_off && !capture_frame_png(pause_off,W,H)) {final_status=1;running=0;continue;}
+                if(pause_reference) {
+                    if(!pause_menu_draw_reference(pause_menu,W,H,pause_ui_ms,pause_events)) {
+                        fprintf(stderr,"pause-reference: authored populated reference unavailable or replay invalid\n");
+                        final_status=1;running=0;continue;
+                    }
+                } else {
+                    if(!pause_menu_capture_replay(pause_menu,pause_events,pause_ui_ms,W,H)) {
+                        fprintf(stderr,"pause-shot: invalid replay syntax/timestamps\n");final_status=1;running=0;continue;
+                    }
+                    pause_menu_draw(pause_menu, W, H);
+                    if(!pause_menu_visual_available(pause_menu)) {final_status=1;running=0;continue;}
+                }
+                if (ug_gl_errors("pause-shot")) final_status = 1;
+            }
             unsigned char *px = malloc((size_t)W*H*3);
             if (px && render_read_rgb(W, H, px)) write_png(shot, W, H, px);
             free(px);
@@ -10924,6 +11022,11 @@ int main(int argc, char **argv) {
             fed_draw(frontend_draw, &frontend, fw, fh);
         }
 #endif
+        if (pause_menu_is_open(pause_menu)) {
+            int pw, ph;
+            SDL_GL_GetDrawableSize(win, &pw, &ph);
+            pause_menu_draw(pause_menu, pw, ph);
+        }
         pf_mark(PF_POST_DRAW); pf_gpu(pf_frame,-1);
         SDL_GL_SwapWindow(win);
         pf_mark(PF_SWAP);
@@ -10949,6 +11052,7 @@ int main(int argc, char **argv) {
     }
 
     race_log_stop(&race_log);g_dbg.race_log=NULL;
+    pause_menu_destroy(pause_menu);
 #ifdef DEBUG_UI
     dbgui_shutdown();
 #endif

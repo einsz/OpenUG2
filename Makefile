@@ -28,9 +28,12 @@ else
   GL_LIBS := -lGL
 endif
 
+UGUI_IMAGE_LIBS := $(shell pkg-config --libs libpng libcrypto)
 # engine modules: orchestrator + Renderer/Physics/AI/Audio/Resources/World
-SRC  := src/main.c src/render.c src/physics.c src/ai.c src/audio.c src/resource.c src/world.c src/world_instance.c src/world_resident.c src/world_mesh.c src/hud.c src/gl_state.c src/tex_override.c
+GAME_UI_SRC := $(wildcard src/ugui/*.c) src/pause_menu.c src/frontend/frontend.c src/frontend/frontend_draw.c
+SRC  := src/main.c src/render.c src/physics.c src/ai.c src/audio.c src/resource.c src/world.c src/world_instance.c src/world_resident.c src/world_mesh.c src/hud.c src/gl_state.c src/tex_override.c $(GAME_UI_SRC)
 HDRS := src/world_collision_rules.h src/world_collision.h src/race_log.h src/race.h src/traffic_heatmap.h src/asset_chunks.h src/car_config.h src/car_mod.h src/nfsu2.h src/render.h src/physics.h src/ai.h src/audio.h src/resource.h src/debug.h src/world.h src/world_instance.h src/world_resident.h src/world_mesh.h src/world_capture_policy.h src/world_group_reader.h src/world_scenery.h src/ground_motion.h src/hud.h src/gl_state.h src/tex_override.h
+HDRS += src/pause_menu_binding.h src/pause_menu.h src/pause_menu_layout.h src/frontend/frontend.h src/frontend/frontend_draw.h $(wildcard src/ugui/*.h)
 
 .DEFAULT_GOAL := nfsu2   # keep `make` building the binary, not the generated header
 
@@ -45,18 +48,17 @@ $(GEN): src/world_debug_120.vert src/world_debug_120.frag
 	@xxd -i src/world_debug_120.frag >> $@
 
 nfsu2: $(SRC) $(HDRS) $(GEN)
-	$(CC) $(CFLAGS) $(SDL_CFLAGS) $(SRC) -o nfsu2 $(SDL_LIBS) $(GL_LIBS) -lz -lm
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) $(SRC) -o nfsu2 $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lz -lm
 
 # Explicit build variants. Both write the same `nfsu2` executable; the last
 # target built is the one that is currently on disk.
 normal: $(SRC) $(HDRS) $(GEN)
-	$(CC) $(CFLAGS) $(SDL_CFLAGS) $(SRC) -o nfsu2 $(SDL_LIBS) $(GL_LIBS) -lz -lm
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) $(SRC) -o nfsu2 $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lz -lm
 
-menu: $(SRC) $(HDRS) src/frontend/frontend.c src/frontend/frontend_draw.c \
-	      src/frontend/frontend.h src/frontend/frontend_draw.h $(GEN)
+menu: $(SRC) $(HDRS) $(GEN)
 	$(CC) $(CFLAGS) -DOPENUG2_MENU $(SDL_CFLAGS) $(SRC) \
-		src/frontend/frontend.c src/frontend/frontend_draw.c -o nfsu2 \
-		$(SDL_LIBS) $(GL_LIBS) -lz -lm
+		-o nfsu2 \
+		$(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lz -lm
 
 # Dev build with the Dear ImGui debug overlay + freecam controls (`make debug`).
 # The engine stays C; ImGui + the wrapper compile as C++ and link together.
@@ -81,7 +83,7 @@ build/%.dbg.o: src/%.c $(HDRS) $(GEN)
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -DDEBUG_UI -c $< -o $@
 
 debug: $(DBG_OBJ) $(IMGUI_OBJ)
-	$(CXX) -O2 $(DBG_OBJ) $(IMGUI_OBJ) -o nfsu2 $(SDL_LIBS) $(GL_LIBS) -lz -lm
+	$(CXX) -O2 $(DBG_OBJ) $(IMGUI_OBJ) -o nfsu2 $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lz -lm
 
 world-instance-test: tools/world_instance_test.c src/world_instance.c src/physics.c src/physics.h src/world_instance.h src/world_capture_policy.h src/nfsu2.h src/world_group_reader.h src/world_scenery.h
 	@mkdir -p build
@@ -193,7 +195,7 @@ wheel-render-test: tools/wheel_render_test.c src/render.c src/gl_state.c src/tex
 
 wheel-reload-test: tools/wheel_reload_test.c $(SRC) $(HDRS) $(GEN)
 	@mkdir -p build
-	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/wheel_reload_test.c $(filter-out src/main.c,$(SRC)) -o build/wheel_reload_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/wheel_reload_test.c $(filter-out src/main.c,$(SRC)) -o build/wheel_reload_test $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lz -lm
 	./build/wheel_reload_test
 
 .PHONY: wheel-reload-test
@@ -370,3 +372,18 @@ build/ugui_demo: tools/ugui_demo.c $(UGUI_APP) $(UGUI_SRC) src/ugui/ugui_gl.c sr
 	$(CC) $(CFLAGS) $(UGUI_FLAGS) $(SDL_CFLAGS) tools/ugui_demo.c $(UGUI_APP) $(UGUI_SRC) src/ugui/ugui_gl.c src/gl_state.c -o $@ $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lm
 ugui-demo: build/ugui_demo
 .PHONY: ugui-test ugui-demo
+
+build/pause_menu_test: tools/pause_menu_test.c tools/pause_menu_authored_test.inc tools/pause_menu_binding_test.inc src/pause_menu.c $(HDRS) $(UGUI_SRC)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/pause_menu_test.c src/frontend/frontend.c $(UGUI_SRC) src/ugui/ugui_gl.c src/gl_state.c -o $@ $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lm
+pause-menu-test: build/pause_menu_test
+	env -u UGUI_DATA -u NFSU2_DATA python3 tools/pause_menu_vector_check.py build/pause_menu_test cleanroom/spec/pause-menu/test-vectors
+	env -u UGUI_DATA -u NFSU2_DATA python3 tools/pause_menu_supplement_check.py build/pause_menu_test cleanroom/spec/pause-menu/test-vectors
+.PHONY: pause-menu-test
+
+build/pause_menu_gl_test: tools/pause_menu_gl_test.c $(HDRS) $(UGUI_SRC)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc $< $(UGUI_SRC) src/ugui/ugui_gl.c src/gl_state.c -o $@ $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lm
+pause-menu-gl-test: build/pause_menu_gl_test
+	SDL_VIDEODRIVER=offscreen ./build/pause_menu_gl_test
+.PHONY: pause-menu-gl-test
