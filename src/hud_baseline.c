@@ -7,6 +7,7 @@
  * or the developer UI.
  */
 #include "hud_baseline.h"
+#include "hud_asset.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -103,6 +104,24 @@ void hud_baseline_place(float aspect, float anchor_x, float anchor_y,
     *ndc_y = anchor_y + off_y;
 }
 
+/* Project policy (SPEC "Project policy: widescreen HUD fitment"): placement of
+ * an engine-drawn group under the selected fitment policy. The group is first
+ * placed in the centred 4:3 frame (screen-edge anchors become the frame edges
+ * +-fe), its centre is classified by the shared rule, and `wide` then moves
+ * left/right groups outward by the extra half-width D, expressed in NDC. For
+ * W/H <= 4/3, and for the 4:3 policy, nothing moves. */
+void hud_baseline_place_fit(int policy, int width, int height, float anchor_x, float anchor_y,
+                   float off_x, float off_y, float *ndc_x, float *ndc_y) {
+    double aspect = height > 0 && width > 0 ? (double)width / height : 1.0;
+    if (aspect < 1e-3) aspect = 1e-3;
+    double frame = aspect > 4.0 / 3.0 ? (4.0 / 3.0) / aspect : 1.0;
+    double x = anchor_x * frame + off_x / aspect;
+    double logical_cx = x * aspect * 240.0;           /* NDC -> logical units, s = H/480 */
+    double t = ha_fit_translation(policy, width, height, logical_cx);
+    *ndc_x = (float)(x + t / (aspect * 240.0));
+    *ndc_y = anchor_y + off_y;
+}
+
 /* --------------------------------------------------------------- resources */
 
 /* One art slot. `key` is the TPK record hash; `tex` is 0 when it did not load,
@@ -143,6 +162,7 @@ struct HudBaseline {
     /* Current needle sample; animation state for the other HUD elements. */
     float  needle_rpm, nos_glow, arrow_angle;
     int    arrow_primed;
+    int    fit_policy;     /* HA_FIT_*; zero = wide, the project default */
 };
 
 /* Source containers, tried in order. Every key is looked up in each until one
@@ -355,13 +375,20 @@ void hud_baseline_free(HudBaseline **hp) {
     *hp = NULL;
 }
 
+void hud_baseline_set_fit_policy(HudBaseline *h, int policy) { if (h) h->fit_policy = policy; }
+
 void hud_baseline_set_preview(HudBaseline *h, int on) { if (h) h->preview = on ? 1 : 0; }
 int  hud_baseline_preview(const HudBaseline *h) { return h ? h->preview : 0; }
 const char *hud_baseline_missing(const HudBaseline *h) { return h ? h->missing : ""; }
 
 /* ----------------------------------------------------------------- drawing */
 
-typedef struct { const RProg *rp; GpuMesh *quad; float asp; } HudDC;
+typedef struct { const RProg *rp; GpuMesh *quad; float asp; int w, h, policy; } HudDC;
+
+static void hud_baseline_dc_place(const HudDC *dc, float ax, float ay, float ox, float oy,
+                         float *x, float *y) {
+    hud_baseline_place_fit(dc->policy, dc->w, dc->h, ax, ay, ox, oy, x, y);
+}
 
 /* Place the unit quad (local 0..1) as a rotated rectangle centred at (cx,cy)
  * NDC, sized (w,h) in HUD units. Width is divided by the aspect so a square
@@ -457,7 +484,7 @@ static void hud_baseline_draw_cluster(HudBaseline *h, const HudDC *dc, const Hud
        drive it either. Both reasons point the same way, so the gauge is
        absent rather than dead. */
     float cx, cy;
-    hud_baseline_place(dc->asp, 1.0f, -1.0f, -0.52f, 0.56f, &cx, &cy);
+    hud_baseline_dc_place(dc, 1.0f, -1.0f, -0.52f, 0.56f, &cx, &cy);
     const HudArt *arc = &h->art[ART_TACH_ARC];
     float pivx = cx, pivy = cy - TACH_H * 0.5f, arc_r = TACH_W * 0.42f;
     if (arc->arc.ok) {
@@ -512,7 +539,7 @@ static void hud_baseline_draw_cluster(HudBaseline *h, const HudDC *dc, const Hud
     /* ---- N2O bar: present only when nitrous is FITTED ---- */
     if (hud_baseline_shows_nos(s)) {
         float bx, by;
-        hud_baseline_place(dc->asp, 1.0f, -1.0f, -0.52f, 0.235f, &bx, &by);
+        hud_baseline_dc_place(dc, 1.0f, -1.0f, -0.52f, 0.235f, &bx, &by);
         hud_baseline_blit(dc, h->art[ART_NOS_BAR].tex, 0.62f, 0.078f, bx, by,
                  0.0f, 0.35f, 0.38f, 0.45f, 0.85f);
         float fill = s->have_nitro_tank ? s->nitro_tank
@@ -540,13 +567,13 @@ static void hud_baseline_draw_cluster(HudBaseline *h, const HudDC *dc, const Hud
 
 /* One definition of where the panel sits, shared by the draw and the pick so
    they can never drift apart. */
-static void hud_baseline_map_center(float asp, float *cx, float *cy) {
-    hud_baseline_place(asp, -1.0f, -1.0f, 0.38f, 0.38f, cx, cy);
+static void hud_baseline_map_center(int policy, int width, int height, float *cx, float *cy) {
+    hud_baseline_place_fit(policy, width, height, -1.0f, -1.0f, 0.38f, 0.38f, cx, cy);
 }
 
 /* Drag's tall tach uses its own source art and fitted needle pivot. */
 static void hud_baseline_draw_drag(HudBaseline *h,const HudDC *dc,const HudState *s) {
-    float cx,cy;hud_baseline_place(dc->asp,1,-1,-.65f,.62f,&cx,&cy);
+    float cx,cy;hud_baseline_dc_place(dc,1,-1,-.65f,.62f,&cx,&cy);
     int index=s->rpm_redline<=7000 ? 0 : s->rpm_redline<=8000 ? 1 : s->rpm_redline<=9000 ? 2 : 3;
     const HudArt *arc=&h->art[ART_DRAG_ARC7+index];float width=.45f,height=.9f;
     hud_baseline_blit(dc,h->art[ART_DRAG_BACK].tex,width,height,cx,cy,0,1,1,1,.9f);
@@ -575,25 +602,33 @@ static float hud_baseline_map_rot(const HudState *s) {
     return (float)M_PI * 0.5f - s->car_heading;
 }
 
-int hud_baseline_map_pick(float ndc_x, float ndc_y,
+int hud_baseline_map_pick_fit(int policy, float ndc_x, float ndc_y,
                  int width, int height, const HudState *s,
                  float *wx, float *wy) {
     if (!s || !wx || !wy || width <= 0 || height <= 0) return 0;
     float asp = (float)width / (float)height, cx, cy;
-    hud_baseline_map_center(asp, &cx, &cy);
-    /* NDC -> normalised panel coordinates (the exact inverse of the draw) */
+    hud_baseline_map_center(policy, width, height, &cx, &cy);
+    /* NDC -> normalised panel coordinates (the exact inverse of the draw,
+       including the group translation folded into the panel centre) */
     float mx = (ndc_x - cx) * asp / MAP_R, my = (ndc_y - cy) / MAP_R;
     if (mx * mx + my * my > 1.0f) return 0;          /* outside the round panel */
     float rot = hud_baseline_map_rot(s), c = cosf(-rot), sn = sinf(-rot);
     float dx = mx * c - my * sn, dy = mx * sn + my * c;
-    *wx = s->car_x + dx * MAP_VIEW;
-    *wy = s->car_y + dy * MAP_VIEW;
+    const float view = s->map_radius_m > 1.0f ? s->map_radius_m : MAP_VIEW; /* same window as the draw */
+    *wx = s->car_x + dx * view;
+    *wy = s->car_y + dy * view;
     return 1;
+}
+
+int hud_baseline_map_pick(float ndc_x, float ndc_y,
+                 int width, int height, const HudState *s,
+                 float *wx, float *wy) {
+    return hud_baseline_map_pick_fit(HA_FIT_WIDE, ndc_x, ndc_y, width, height, s, wx, wy);
 }
 
 static void hud_baseline_draw_minimap(HudBaseline *h, const HudDC *dc, const HudState *s) {
     float cx, cy;
-    hud_baseline_map_center(dc->asp, &cx, &cy);
+    hud_baseline_map_center(dc->policy, dc->w, dc->h, &cx, &cy);
 
     /* Heading-up, like the original: the world rotates so the car's forward
        axis points at the top of the panel. World heading 0 = +X, and "up" on
@@ -733,7 +768,7 @@ static void hud_baseline_draw_nav_arrow(HudBaseline *h, const HudDC *dc, const H
         h->arrow_angle = hud_baseline_angle_delta(0.0f, h->arrow_angle);
     }
     float ax, ay;
-    hud_baseline_place(dc->asp, 0.0f, 1.0f, 0.0f, -0.20f, &ax, &ay);   /* exact top centre */
+    hud_baseline_dc_place(dc, 0.0f, 1.0f, 0.0f, -0.20f, &ax, &ay);   /* exact top centre */
     /* Both angles are world bearings (CCW from +X), so a positive delta means
        the target is CCW of the nose = to the LEFT. hud_baseline_xform's rot is also
        CCW-positive, so the arrow angle passes straight through: negating it
@@ -779,7 +814,7 @@ static void hud_baseline_draw_nav_arrow(HudBaseline *h, const HudDC *dc, const H
 static void hud_baseline_draw_status(const HudDC *dc, const HudState *s) {
     char buf[96];
     float x, y;
-    hud_baseline_place(dc->asp, 1.0f, 1.0f, -0.34f, -0.16f, &x, &y);
+    hud_baseline_dc_place(dc, 1.0f, 1.0f, -0.34f, -0.16f, &x, &y);
 
     if (s->racing) {
         /* money is hidden during a race, per the original */
@@ -805,7 +840,7 @@ static void hud_baseline_draw_status(const HudDC *dc, const HudState *s) {
 static void hud_baseline_draw_message(HudBaseline *h, const HudDC *dc, const HudState *s) {
     if (s->racing) return;          /* free roam only, as in the original */
     float x, y;
-    hud_baseline_place(dc->asp, -1.0f, 1.0f, 0.30f, -0.13f, &x, &y);
+    hud_baseline_dc_place(dc, -1.0f, 1.0f, 0.30f, -0.13f, &x, &y);
     hud_baseline_blit(dc, h->art[ART_ENGAGE_BACKING].tex, 0.46f, 0.20f, x, y, 0.0f,
              1.0f, 1.0f, 1.0f, 0.80f);
     hud_baseline_blit(dc, h->art[ART_CINGULAR_LOGO].tex, 0.26f, 0.13f, x, y + 0.025f,
@@ -838,6 +873,7 @@ void hud_baseline_draw(HudBaseline *h, const RProg *rp, GpuMesh *quad,
     }
 
     HudDC dc; dc.rp = rp; dc.quad = quad; dc.asp = (float)width / (float)height;
+    dc.w = width; dc.h = height; dc.policy = h->fit_policy;
 
     /* --- enter 2D: save what we change so the world pass is untouched --- */
     GLboolean depth_on = glIsEnabled(GL_DEPTH_TEST);
@@ -872,7 +908,7 @@ void hud_baseline_draw(HudBaseline *h, const RProg *rp, GpuMesh *quad,
         if (s.race_kind==N2_RACE_DRAG) hud_baseline_draw_drag(h,&dc,&s);
         else hud_baseline_draw_cluster(h,&dc,&s);
         if (s.race_kind==N2_RACE_DRIFT) {
-            float x,y; hud_baseline_place(dc.asp,0,1,0,-.18f,&x,&y);
+            float x,y; hud_baseline_dc_place(&dc,0,1,0,-.18f,&x,&y);
             hud_baseline_blit(&dc,h->art[ART_DRIFT_SCORE].tex,.65f,.08f,x,y,0,1,1,1,.8f);
             char score[80]; snprintf(score,sizeof score,"%.0f  +%.0f",s.drift_score,s.drift_chain);
             hud_baseline_label(&dc,score,x,y,.065f,1,.9f,.5f,1);
@@ -883,7 +919,7 @@ void hud_baseline_draw(HudBaseline *h, const RProg *rp, GpuMesh *quad,
 
     if (h->preview) {
         float px, py;
-        hud_baseline_place(dc.asp, 0.0f, -1.0f, 0.0f, 0.045f, &px, &py);
+        hud_baseline_dc_place(&dc, 0.0f, -1.0f, 0.0f, 0.045f, &px, &py);
         hud_baseline_label(&dc, "PREVIEW SAMPLE VALUES", px, py, 0.040f,
                   1.0f, 0.55f, 0.25f, 1.0f);
     }

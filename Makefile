@@ -113,7 +113,7 @@ car-material-test: tools/car_material_test.c src/nfsu2.h src/car_config.h src/ca
 
 # HUD maths only: no GL calls are executed, but hud.c still references the GL
 # symbols, so the link needs the same libraries as the engine.
-hud-test: tools/hud_test.c src/hud.c src/hud.h src/hud_host.h src/hud_asset.h src/audio.h src/render.c src/render.h src/gl_state.c src/nfsu2.h
+hud-test: tools/hud_test.c src/hud.c src/hud.h src/hud_host.h src/hud_asset.h src/hud_baseline.h src/hud_texture.h src/audio.h src/render.c src/render.h src/gl_state.c src/nfsu2.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/hud_test.c src/hud.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/render.c src/gl_state.c \
 		-o build/hud_test $(SDL_LIBS) $(GL_LIBS) -lz -lm

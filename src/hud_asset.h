@@ -28,6 +28,29 @@ void ha_point(const HaPackage *p,size_t node,const float in[3],float out[3],floa
 int ha_speed(double mps,int metric,char out[32]);
 int ha_gear(int gear,char out[32]);
 int ha_fit(int width,int height,float x,float y,float out[3]);
+/* Project policy (not original behaviour): HUD fitment policy, selected at run
+ * time. HA_FIT_WIDE is the project default (and the zero value). Both keep
+ * s = min(W/640, H/480) with nothing stretched; `wide` additionally moves whole
+ * top-level element groups outward by the extra logical half-width D when
+ * W/H > 4/3, and equals `4:3` otherwise. */
+enum { HA_FIT_WIDE=0, HA_FIT_43=1 };
+/* Scale s and extra logical half-width D (0 unless wide and W/H > 4/3).
+ * 0 for a nonpositive viewport. Either output may be NULL. */
+int ha_fit_scale(int policy,int width,int height,double *scale,double *extra);
+/* Group classification by the horizontal centre of its composed logical bounds
+ * (frame centred at 0, before any shift): -1 left (cx < -640/6), +1 right
+ * (cx > 640/6), 0 centred (exactly +-640/6, or nonfinite, is not moved). */
+int ha_fit_anchor(double group_cx);
+/* Logical translation t of a group with classification centre `group_cx`:
+ * -D, 0 or +D; 0 for an invalid viewport. */
+double ha_fit_translation(int policy,int width,int height,double group_cx);
+/* Final output of logical point (x, y) in that group: out = {s, X, Y} with
+ * X = W/2 + s*(x+t), Y = H/2 + s*y. Returns 0 for a nonpositive viewport. */
+int ha_fit_point(int policy,int width,int height,double group_cx,double x,double y,double out[3]);
+/* Command-line spelling: "wide" or "4:3" (also "4x3", "43"), case-insensitive.
+ * Returns HA_FIT_* or -1 when unrecognised. ha_fit_name gives the canonical spelling. */
+int ha_fit_parse(const char *name);
+const char *ha_fit_name(int policy);
 int ha_scale(double maximum);
 double ha_rpm_angle(double rpm,double maximum,double initial);
 int ha_needle_calibrate(HaNode *node);

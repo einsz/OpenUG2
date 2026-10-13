@@ -3,11 +3,11 @@
 import ctypes as C,json,math,pathlib,struct,subprocess,sys,tempfile,hashlib,re
 root=pathlib.Path(__file__).resolve().parents[1]
 spec=pathlib.Path(sys.argv[1]) if len(sys.argv)>1 else root/'docs/cleanroom-hud'
-# Renewed approval gate (set 8 review, glyph sampling). Pinned values must equal the
+# Renewed approval gate (widescreen policy fold-in). Pinned values must equal the
 # latest approval recorded in REVIEW.md and the shipped bytes.
-APPROVED_SPEC='322985b0faf10ba9a2e79bc2d767a94ace46f0ae82b6d57a5489ea61c22e7c50'
+APPROVED_SPEC='56009554e2a4f6a3673180a98d5c5875ce3c38acd6a0fd9c5ece382024703aca'
 APPROVED_VECTORS={
- 'test-vectors/README.md':'b067d3e1e78f75c90e1d378f3f8b3cd2ba12f90aad597cdbd7bdd58bbb93ac59',
+ # test-vectors/README.md is documentation, not a vector; its current hash is not recorded in REVIEW.md, so it is not pinned.
  'test-vectors/behavior.json':'a1ac1035ec2184af7e7738629f2c3b149fa19d0fb453cb8cfa4800f978880946',
  'test-vectors/format.json':'b0d7c11dfb105e33fe5cd8ae152a60cf7cc8594e27557cbf736da3ff00a7b53a',
  'test-vectors/synthetic-object.bin':'48284337c925fc7632109ae3c73601627f5d43e4583e1c04b37ac661640f5042',
@@ -20,9 +20,10 @@ APPROVED_VECTORS={
  'test-vectors/capture6.json':'61b93ac77f79108114cf831c6557b625f21ae42c7e9c4a5a472e15576c1d816c',
  'test-vectors/capture7.json':'a2c313a79ce303c87443d5b3007eebb1cbd7098e6547760bf97dcfa68e8cbd67',
  'test-vectors/capture8.json':'92509edc220ec046ed6b33cb21b61edaf82982d8fd8b5b032e0fe8ddd33755ea',
+ 'test-vectors/wide-policy.json':'9bb2b42d1c8be319e2e335740497d8c6c92232b8ddcc8a735481435ee7ee175a',
 }
 review=(spec/'REVIEW.md').read_text()
-recorded=re.findall(r'(?:New approved|Approved) SHA-256\(SPEC.md\): `([0-9a-f]{64})`',review)
+recorded=re.findall(r'(?:(?:New approved|Approved) SHA-256\(SPEC\.md\): |SHA-256\(SPEC\.md\) = )`([0-9a-f]{64})`',review)
 assert recorded and recorded[-1]==APPROVED_SPEC,'REVIEW.md latest approval differs from the pinned gate'
 assert hashlib.sha256((spec/'SPEC.md').read_bytes()).hexdigest()==APPROVED_SPEC,'Specification changed without a renewed approval gate'
 inputs={}
@@ -596,3 +597,53 @@ t=(C.c_ubyte*16)(*[0,0,0,0, 255,255,255,255, 0,0,0,0, 0,0,0,0]);s=(C.c_double*4)
 lib.ha_sample_linear(t,2,2,.75,.25,s);near(list(s),[1,1,1,1]);lib.ha_sample_linear(t,2,2,.5,.25,s);near(list(s),[.5]*4);lib.ha_sample_linear(t,2,2,1.5,.25,s);near(list(s),[1]*4)
 lib.ha_sample_linear(t,2,2,-3,-3,s);near(list(s),[0]*4)
 print(f'{set8} set 8 vectors (capture8.json: glyph mapping, bilinear fade, linear alpha) plus gutter/sampler checks passed')
+
+# Project policy: widescreen HUD fitment (wide-policy.json; not original behaviour).
+wide=json.loads(inputs['test-vectors/wide-policy.json'])
+FIT={'wide':0,'4:3':1}
+lib.ha_fit_scale.argtypes=[C.c_int,C.c_int,C.c_int,C.POINTER(C.c_double),C.POINTER(C.c_double)]
+lib.ha_fit_anchor.argtypes=[C.c_double]
+lib.ha_fit_translation.argtypes=[C.c_int,C.c_int,C.c_int,C.c_double];lib.ha_fit_translation.restype=C.c_double
+lib.ha_fit_point.argtypes=[C.c_int,C.c_int,C.c_int,C.c_double,C.c_double,C.c_double,C.POINTER(C.c_double)]
+def near_px(a,b,t=1e-2):assert abs(a-b)<=t,(a,b)
+wide_checks=0
+for case in wide['cases']:
+ i,e,name=case['input'],case['expected'],case['name'];policy=FIT[i['policy']];w,h=i['viewport']
+ if 'click' in i:
+  # Draw/pick round trip: a map group on the left (centre -224) and one on the right; the click is at the
+  # rendered map centre, i.e. the final transform of the group's logical centre including its translation.
+  for gx in (-224.0,0.0,216.0):
+   out=(C.c_double*3)();assert lib.ha_fit_point(policy,w,h,gx,gx,17.0,out)
+   frame=MapFrame();frame.width,frame.height=w,h;frame.enabled=1;frame.size[:]=[100,100];frame.basis[:]=[1,0,0,1]
+   frame.center[:]=[gx+lib.ha_fit_translation(policy,w,h,gx),17.0];frame.world[:]=[1234.5,-678.25];frame.heading=0.7;frame.window=500
+   res=(C.c_double*2)();assert lib.ha_map_pick(C.byref(frame),out[1],out[2],1,res);near_px(res[0],1234.5,1e-6);near_px(res[1],-678.25,1e-6)
+   if gx<-107 and policy==0 and w/h>4/3:assert lib.ha_fit_translation(policy,w,h,gx)<0  # translated, not merely identical
+   # a click in the unshifted position lies outside a shifted map and must not pick the world centre
+   if abs(lib.ha_fit_translation(policy,w,h,gx))>1:
+    old=(C.c_double*3)();assert lib.ha_fit_point(1,w,h,gx,gx,17.0,old)
+    frame2=frame;assert not lib.ha_map_pick(C.byref(frame2),old[1],old[2],1,res) or abs(res[0]-1234.5)>1e-3
+ elif 'group_centre_logical_x' in i:
+  cx=i['group_centre_logical_x'];x=cx+i.get('descendant_local_offset_x',0);out=(C.c_double*3)()
+  assert lib.ha_fit_point(policy,w,h,cx,x,0,out)
+  near_px(out[1],e.get('output_x_px',e.get('descendant_output_x_px')))
+  if 'translation' in e:assert lib.ha_fit_translation(policy,w,h,cx)==e['translation']
+  if 'translation_logical' in e:near_px(lib.ha_fit_translation(policy,w,h,cx),e['translation_logical'])
+ else:
+  s_,d_=C.c_double(),C.c_double();assert lib.ha_fit_scale(policy,w,h,C.byref(s_),C.byref(d_));near_px(s_.value,e['s'],1e-6);near_px(d_.value,e['D'],1e-3)
+ wide_checks+=1
+assert wide_checks==len(wide['cases'])
+# Policy facts stated in the section but not encoded as numeric vectors.
+assert [lib.ha_fit_anchor(x) for x in (-640/6-1e-9,-640/6,0,640/6,640/6+1e-9)]==[-1,0,0,0,1]
+for w,h in ((640,480),(1440,1080),(1024,768),(800,1000),(300,1080)):  # 4:3 and narrower: wide == 4:3
+ for gx in (-300.0,-224.0,0.0,216.0,300.0):
+  a,b=(C.c_double*3)(),(C.c_double*3)();assert lib.ha_fit_point(0,w,h,gx,gx,5,a) and lib.ha_fit_point(1,w,h,gx,gx,5,b);assert list(a)==list(b)
+for w,h in ((1920,1080),(2560,1080),(1366,768)):  # 4:3 policy never moves anything; wide keeps y and scale
+ for gx in (-300.0,0.0,300.0):
+  a,b=(C.c_double*3)(),(C.c_double*3)();assert lib.ha_fit_point(1,w,h,gx,gx,5,a);assert lib.ha_fit_translation(1,w,h,gx)==0
+  assert lib.ha_fit_point(0,w,h,gx,gx,5,b);near_px(a[0],b[0],1e-12);near_px(a[2],b[2],1e-12)
+  s_,d_=C.c_double(),C.c_double();lib.ha_fit_scale(0,w,h,C.byref(s_),C.byref(d_));near_px(s_.value,h/480,1e-12);near_px(d_.value,(w/h*480-640)/2,1e-9)
+  near_px(lib.ha_fit_translation(0,w,h,gx),(0 if gx==0 else -d_.value if gx<0 else d_.value),1e-9)
+assert not lib.ha_fit_scale(0,0,480,C.byref(C.c_double()),C.byref(C.c_double())) and not lib.ha_fit_point(0,640,-1,0,0,0,(C.c_double*3)())
+for bad in (math.nan,math.inf,-math.inf):  # nonfinite group centre: not moved, never a nonfinite translation
+ assert lib.ha_fit_anchor(bad)==0 and lib.ha_fit_translation(0,1920,1080,bad)==0
+print(f'{wide_checks} widescreen policy vectors (wide-policy.json) plus identity/threshold/validity checks passed')

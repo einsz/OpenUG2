@@ -56,6 +56,29 @@ float ha_text_start(float a,float s,unsigned b,float w){return a-w*s*((b&2)?1:(b
 int ha_gear(int gear,char out[32]){out[0]=0;if(gear==-1)strcpy(out,"R");else if(gear==0)strcpy(out,"N");else if(gear>0)snprintf(out,32,"%d",gear);else return 0;return 1;}
 int ha_fit(int w,int h,float x,float y,float out[3]){if(w<=0||h<=0)return 0;out[0]=fminf(w/640.0f,h/480.0f);out[1]=w/2.0f+x*out[0];out[2]=h/2.0f+y*out[0];return 1;}
 
+/* Project policy: widescreen HUD fitment (SPEC "Project policy: widescreen HUD fitment (not original behaviour)"). */
+int ha_fit_scale(int policy,int w,int h,double*scale,double*extra){
+ if(w<=0||h<=0)return 0;
+ double s=fmin(w/640.0,h/480.0),d=0;
+ /* wide: only for W/H > 4/3, tested in integers so exactly 4:3 gives D = 0 */
+ if(policy==HA_FIT_WIDE&&3.0*w>4.0*h){s=h/480.0;d=(w/s-640.0)/2.0;}
+ if(scale)*scale=s;
+ if(extra)*extra=d;
+ return 1;}
+int ha_fit_parse(const char*name){
+ if(!name)return -1;
+ char t[8];size_t n=strlen(name);if(n==0||n>=sizeof t)return -1;
+ for(size_t i=0;i<=n;i++){char c=name[i];t[i]=(char)(c>='A'&&c<='Z'?c+32:c);}
+ if(!strcmp(t,"wide"))return HA_FIT_WIDE;
+ if(!strcmp(t,"4:3")||!strcmp(t,"4x3")||!strcmp(t,"43"))return HA_FIT_43;
+ return -1;}
+const char*ha_fit_name(int policy){return policy==HA_FIT_43?"4:3":"wide";}
+int ha_fit_anchor(double cx){const double edge=640.0/6.0;if(!isfinite(cx))return 0;return cx<-edge?-1:cx>edge?1:0;}
+double ha_fit_translation(int policy,int w,int h,double cx){double s,d;if(!ha_fit_scale(policy,w,h,&s,&d))return 0;return ha_fit_anchor(cx)*d;}
+int ha_fit_point(int policy,int w,int h,double group_cx,double x,double y,double out[3]){
+ double s,d;if(!ha_fit_scale(policy,w,h,&s,&d))return 0;
+ double t=ha_fit_anchor(group_cx)*d;out[0]=s;out[1]=w/2.0+s*(x+t);out[2]=h/2.0+s*y;return 1;}
+
 int ha_map_pick(const HaMapFrame*f,double x,double y,double coverage,double out[2]){
  if(!f||!f->enabled||f->width<=0||f->height<=0||!isfinite(x)||!isfinite(y)||!isfinite(coverage)||coverage<=0||f->size[0]<=0||f->size[1]<=0||f->window<=0)return 0;
  double scale=fmin(f->width/640.0,f->height/480.0),dx=(x-f->width*.5)/scale-f->center[0],dy=(y-f->height*.5)/scale-f->center[1],det=f->basis[0]*f->basis[3]-f->basis[1]*f->basis[2];

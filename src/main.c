@@ -2114,6 +2114,10 @@ int main(int argc, char **argv) {
          --hud            draw the in-game player HUD (dial, minimap, nav arrow)
          --hud-mph        enable the player HUD with imperial speed units
          --hud-fitted L   which parts the HUD treats as fitted: nos,turbo | none
+         --hud-fit P      widescreen HUD fitment, a project policy (not original
+                          behaviour): wide (default) hangs the left/right HUD
+                          groups off the screen edges when the aspect is wider
+                          than 4:3; 4:3 keeps the whole HUD in a centred 4:3 frame
          --hud-inferred-redline  opt-in inferred redline trim (spec C1-5)
          --hud-no-shift-indicator  hide the shift-up icon (default on at a shift
                           RPM 500 below the gearbox upshift point; set 7 H)
@@ -2459,6 +2463,11 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--hud-no-shift-flash")) { hud_opt = 1; hud_settings.shift_flash = 0; }
         else if (!strcmp(argv[i], "--hud-nos-level")) { hud_opt = 1; hud_settings.inferred_nos_level = 1; }
         else if (!strcmp(argv[i], "--hud-nos-glow")) { hud_opt = 1; hud_settings.nos_glow = 1; }
+        else if (!strcmp(argv[i], "--hud-fit") && i + 1 < argc) {
+            int fit = ha_fit_parse(argv[++i]);
+            if (fit < 0) { fprintf(stderr, "--hud-fit expects wide or 4:3\n"); return 2; }
+            hud_opt = 1; hud_settings.fit_policy = fit;
+        }
         else if (!strcmp(argv[i], "--hud-glyph-half-texel-inset")) { hud_opt = 1; hud_settings.glyph_half_texel_inset = 1; } /* set 8 G6 item 4 */
         /* --hud-fitted nos,turbo | none: override which performance parts the
            HUD believes are FITTED. The engine cannot yet report this (the
@@ -5978,9 +5987,9 @@ int main(int argc, char **argv) {
             hud_set_preview(hud, hud_preview_opt);
             hud_configure(hud, &hud_settings);
             const char *miss = hud_missing(hud);
-            printf("player HUD: on%s%s\n",
+            printf("player HUD: on%s%s, fit %s\n",
                    hud_preview_opt ? " (PREVIEW sample values)" : "",
-                   miss[0] ? "" : ", all art loaded");
+                   miss[0] ? "" : ", all art loaded", ha_fit_name(hud_settings.fit_policy));
             if (miss[0]) printf("player HUD: missing art -> %s\n", miss);
         } else printf("player HUD: initialisation failed; running without it\n");
     }
