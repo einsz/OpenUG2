@@ -203,7 +203,7 @@ static void car_render_test(const RProg *r) {
         assert(render_car_environment(r,&env,batches,count,NULL,0,origin,1)>0);
         assert(env.ready==(face==5));assert(env.face==(face+1)%6);
     }
-    assert(env.size==64);glActiveTexture(GL_TEXTURE5);glBindTexture(GL_TEXTURE_CUBE_MAP,env.cube[env.front]);
+    assert(env.size==64);glActiveTexture(GL_TEXTURE5);glBindTexture(GL_TEXTURE_CUBE_MAP,rhi_gl_texture_name(env.cube[env.front]));
     unsigned char pixels[64*64*4];
     for(int face=0;face<6;face++) {
         glGetTexImage(GL_TEXTURE_CUBE_MAP_POSITIVE_X+face,0,GL_RGBA,GL_UNSIGNED_BYTE,pixels);
@@ -225,7 +225,7 @@ static void car_render_test(const RProg *r) {
     assert(env.size==128 && !env.ready && env.origin[0]==.5f);
     assert(!render_car_environment(r,&env,batches,count,NULL,0,origin,0));
     float ready;ug2_copy(&ready, &r->p->uEnvReady, 1);assert(ready==0);
-    GLuint cube=env.cube[0];free_car_environment(&env);assert(!glIsTexture(cube));
+    GLuint cube=rhi_gl_texture_name(env.cube[0]);free_car_environment(&env);assert(cube && !glIsTexture(cube));
     render_batch_array_free(&batches,&count);for(int i=0;i<6;i++)rhi_texture_destroy(textures[i]);
     glActiveTexture(GL_TEXTURE0);r->p->uEnvReady = 0;
     ug2_copy(r->p->uMVP, clip, 16);r->p->uAmbient = .5f;r->p->uDiffuse = .5f;
