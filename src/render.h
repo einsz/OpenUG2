@@ -15,6 +15,19 @@
 
 #include "nfsu2.h"
 
+/* Shader prologues. Desktop: GLSL 1.20, precision qualifiers compile away.
+ * GLES: vertex shaders need highp (world coordinates are kilometres, mediump
+ * loses near geometry); fragment highp is optional in ES2, so use it only
+ * where the driver has it. */
+#ifdef N2_GLES
+#  define GLSL_VS_HEADER "precision highp float;\n"
+#  define GLSL_FS_HEADER "#ifdef GL_FRAGMENT_PRECISION_HIGH\nprecision highp float;\n" \
+                         "#else\nprecision mediump float;\n#endif\n"
+#else
+#  define GLSL_VS_HEADER "#version 120\n#define lowp\n#define mediump\n#define highp\n"
+#  define GLSL_FS_HEADER GLSL_VS_HEADER
+#endif
+
 /* per-mesh GPU buffers + computed normals */
 typedef struct {
     GLuint vbo, nbo, cbo, ibo;
@@ -291,6 +304,11 @@ GLuint   upload_tex(const N2Tex *t);
    portable CPU-decoded RGBA path (upload_tex) otherwise. Leaves the texture
    bound (callers may override wrap/filter after). */
 GLuint   upload_tpk_texture_to_gpu(const N2Tex *t);
+/* Same as upload_tex / upload_tpk_texture_to_gpu, but first try a user HD
+   override for `key` (tex_override.h; `pack` = source stem or NULL). With no
+   override directory these are exactly the original uploaders. */
+GLuint   upload_tex_keyed(uint32_t key, const char *pack, const N2Tex *t);
+GLuint   upload_tpk_keyed(uint32_t key, const char *pack, const N2Tex *t);
 /* Anisotropic filtering, the one texture-detail knob this renderer was missing.
  * Trilinear alone samples a square footprint, so any surface seen at a grazing
  * angle -- which is most of a road, a kerb and a car's own flanks -- drops to a
@@ -310,5 +328,10 @@ float text_width(const char *s, float px);
 
 /* dev screenshot: rgb is top-left origin, w*h*3 */
 void write_png(const char *path, int w, int h, const unsigned char *rgb);
+
+/* Read the current framebuffer's bottom w*h pixels into rgb (w*h*3, top-left
+ * origin, ready for write_png). Reads GL_RGBA, the one format ES2 guarantees,
+ * and drops alpha. Returns 0 if the buffer could not be allocated. */
+int  render_read_rgb(int w, int h, unsigned char *rgb);
 
 #endif

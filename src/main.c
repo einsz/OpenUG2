@@ -37,6 +37,7 @@
 #include "world_mesh.h"   /* F3 prelight/normal/wireframe debug pipeline */
 #include "hud.h"          /* stage 8: opt-in in-game player HUD (--hud) */
 #include "hud_host.h"     /* GL-free HUD context/preview policy */
+#include "tex_override.h" /* --tex-overrides DIR: optional HD DDS replacements */
 #include "world_capture_policy.h"
 #include "world_scenery.h"
 #include "ground_motion.h"
@@ -92,20 +93,13 @@ DbgState g_dbg = {
 
 static int capture_frame_png(const char *path, int width, int height) {
     if (!path || width <= 0 || height <= 0) return 0;
-    size_t bytes = (size_t)width * (size_t)height * 3;
-    unsigned char *pixels = (unsigned char *)malloc(bytes);
-    unsigned char *flipped = (unsigned char *)malloc(bytes);
-    if (!pixels || !flipped) {
-        free(pixels); free(flipped);
+    unsigned char *pixels = (unsigned char *)malloc((size_t)width * (size_t)height * 3);
+    if (!pixels || !render_read_rgb(width, height, pixels)) {
+        free(pixels);
         return 0;
     }
-    glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, pixels);
-    for (int y = 0; y < height; y++)
-        memcpy(flipped + (size_t)y * (size_t)width * 3,
-               pixels + (size_t)(height - 1 - y) * (size_t)width * 3,
-               (size_t)width * 3);
-    write_png(path, width, height, flipped);
-    free(pixels); free(flipped);
+    write_png(path, width, height, pixels);
+    free(pixels);
     return 1;
 }
 
@@ -279,7 +273,7 @@ static int load_rim_style(const unsigned char *wldata, long wllen,
     for (int i = 0; i < n; i++)
         if (!gm[i].vbo || !gm[i].nbo || !gm[i].ibo) goto failed;
     {
-        rimtex = upload_tpk_texture_to_gpu(&rt);
+        rimtex = upload_tpk_keyed(tk, "WHEELS", &rt);
         rimmode=n2_tex_mode(&rt);
         /* rim sheets are atlases with UVs in [0,1]: clamp so REPEAT wrap +
            mip filtering cannot bleed the opposite border in (same reason as
@@ -477,7 +471,7 @@ static int prepare_car_switch(CarSwitchCandidate *candidate,
         }
         int slot = candidate->ntextures++;
         candidate->tex_keys[slot] = key;
-        candidate->textures[slot] = upload_tpk_texture_to_gpu(&tex);
+        candidate->textures[slot] = upload_tpk_keyed(key, name, &tex);
         candidate->alpha[slot] = tex.alpha != NULL && tex.dxtfmt != 1;
         candidate->mode[slot] = (char)n2_tex_mode(&tex);
         free(tex.rgb); free(tex.alpha); free(tex.dxt);
@@ -826,7 +820,7 @@ static int prepare_body_kit(BodyKitCandidate *kit,
             free(t.rgb);free(t.alpha);free(t.dxt);goto failed;
         }
         int j=kit->ntextures++;
-        kit->keys[j]=tk;kit->textures[j]=upload_tpk_texture_to_gpu(&t);
+        kit->keys[j]=tk;kit->textures[j]=upload_tpk_keyed(tk,NULL,&t);
         kit->alpha[j]=t.alpha!=NULL && t.dxtfmt!=1;
         kit->mode[j]=(char)n2_tex_mode(&t);
         glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
@@ -2056,7 +2050,7 @@ static int select_car_vinyl(int choice) {
         N2Tex tex={0};
         int loaded=g_vinyl_data && n2_load_car_tex_by_key(g_vinyl_data,g_vinyl_len,
                                                         g_vinyl_keys[choice-1],&tex);
-        if(loaded)next=upload_tex(&tex);
+        if(loaded)next=upload_tex_keyed(g_vinyl_keys[choice-1],"VINYLS",&tex);
         free(tex.rgb);free(tex.alpha);free(tex.dxt);
         if(!next || glGetError()!=GL_NO_ERROR) {
             if(next)glDeleteTextures(1,&next);
@@ -2137,7 +2131,11 @@ int main(int argc, char **argv) {
                           free-roam context, so the top-left widget idles.
          --devui          open the ImGui developer menu at launch (make debug)
          --collision-walls show current collision wall candidate faces in 3D
-         --instance-audit print instance/world/support diagnostics and exit GL-free */
+         --instance-audit print instance/world/support diagnostics and exit GL-free
+         --tex-overrides DIR  replace textures with user DDS files from DIR
+                          (docs/TEXTURE_OVERRIDES.md); off by default
+         --no-tex-overrides  ignore --tex-overrides
+         --tex-override-budget MiB  GPU memory cap for overrides (default 1536) */
     const char *dataroot = ".", *shot = NULL, *objdump = NULL, *carinfo = NULL;
     int render_width = 1920, render_height = 1080;
     const char *xaudit = NULL;   /* --transform-audit REGION: GL-free placement forensics */
@@ -2245,6 +2243,8 @@ int main(int argc, char **argv) {
     int want_event_id = 0;   /* --event <id>: boot straight into a race event */
     int shotframes = 40;     /* --frames N: how long --shot drives before the grab */
     int shotframes_set = 0;
+    const char *tex_override_dir = NULL;   /* --tex-overrides DIR: HD DDS overrides (off by default) */
+    int tex_override_off = 0, tex_override_budget = 0;
     int want_laps = 2;       /* --laps N: race distance for --event */
     for (int i = 1; i < argc; i++) {
         if      (!strcmp(argv[i], "--shot")    && i+1 < argc) shot      = argv[++i];
@@ -2379,6 +2379,10 @@ int main(int argc, char **argv) {
             posefrac = (float)atof(argv[++i]);
         else if (!strcmp(argv[i], "--local-scene-audit")) lsaudit = 1;
         else if (!strcmp(argv[i], "--tex-audit")) g_world_texaudit = 1;
+        else if (!strcmp(argv[i], "--tex-overrides") && i+1 < argc) tex_override_dir = argv[++i];
+        else if (!strcmp(argv[i], "--no-tex-overrides")) tex_override_off = 1;
+        else if (!strcmp(argv[i], "--tex-override-budget") && i+1 < argc)
+            tex_override_budget = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--lod-census")) lodcensus = 1;
         else if (!strcmp(argv[i], "--nan-sweep")) nansweep = 1;
         else if (!strcmp(argv[i], "--local-scene-objects")) lsaudit = 2;
@@ -3730,6 +3734,10 @@ int main(int argc, char **argv) {
       g_tex_aniso = want; g_dbg.tex_detail = want;
       printf("texture detail: %.0fx anisotropic (max %dx)%s\n", (double)want,
              g_tex_aniso_max, g_tex_aniso_max <= 1 ? " -- extension absent" : ""); }
+    /* Optional HD texture overrides; nothing is scanned or uploaded without a
+       directory, so the default path is unchanged. */
+    if (tex_override_dir && !tex_override_off)
+        tex_override_init(tex_override_dir, tex_override_budget);
 #ifdef DEBUG_UI
     dbgui_init(win, ctx);
 #endif
@@ -4612,7 +4620,7 @@ int main(int argc, char **argv) {
             if (!loaded && globdata)
                 loaded = n2_tpk_decode(globdata, globlen, globaltpk, tk, &ct);
             if (loaded) {
-                mapkey[nmap] = tk; maptex[nmap] = upload_tpk_texture_to_gpu(&ct);
+                mapkey[nmap] = tk; maptex[nmap] = upload_tpk_keyed(tk, carname, &ct);
                 /* Preserve the existing decal policy: newly retained DXT1
                    cutout alpha is not a paint/vinyl compositing mask. */
                 mapalpha[nmap] = ct.alpha != NULL && ct.dxtfmt != 1;
@@ -5750,7 +5758,9 @@ int main(int argc, char **argv) {
     }
 
     GLuint texTerr = world2 ? active_resident->resources.terrain_texture
-        : (world.neighborhood.have_grass ? upload_tex(&world.neighborhood.grass) : 0);
+        : (world.neighborhood.have_grass
+           ? upload_tex_keyed(0x5671B2B5u /* TRN_GRASSC */, NULL, &world.neighborhood.grass)
+           : 0);
     GLuint texWheel = make_wheel_tex();   /* radial alloy-rim look for the tyres */
 
     /* Aftermarket rim library. NOT CARS/WHEELS/GEOMETRY.BIN -- that file is a
@@ -10553,10 +10563,9 @@ int main(int argc, char **argv) {
             int cap = (f == 101) ? 0 : (f == 111) ? 1 : (f == 121) ? 2 : (f == 131) ? 3 : -1;
             if (cap >= 0) {
                 char sp[1024]; snprintf(sp, sizeof sp, "%s_%s.png", smaudit, vn[cap]);
-                unsigned char *px = malloc((size_t)W*H*3), *fl = malloc((size_t)W*H*3);
-                glReadPixels(0, 0, W, H, GL_RGB, GL_UNSIGNED_BYTE, px);
-                for (int y = 0; y < H; y++) memcpy(fl+(size_t)y*W*3, px+(size_t)(H-1-y)*W*3, W*3);
-                write_png(sp, W, H, fl); free(px); free(fl);
+                unsigned char *px = malloc((size_t)W*H*3);
+                if (px && render_read_rgb(W, H, px)) write_png(sp, W, H, px);
+                free(px);
                 printf("SM captured %s (frame %ld, car stationary during countdown)\n", sp, f);
             }
             if (f == 132) {   /* restore normal sampler state, then stop */
@@ -10589,10 +10598,9 @@ int main(int argc, char **argv) {
                     static const char *hn[3] = { "A_dense_centre", "B_road_tangent",
                                                  "C_tangent_reversed" };
                     char sp[1024]; snprintf(sp, sizeof sp, "%s_%s.png", shaudit, hn[shot107]);
-                    unsigned char *px = malloc((size_t)W*H*3), *fl = malloc((size_t)W*H*3);
-                    glReadPixels(0, 0, W, H, GL_RGB, GL_UNSIGNED_BYTE, px);
-                    for (int y = 0; y < H; y++) memcpy(fl+(size_t)y*W*3, px+(size_t)(H-1-y)*W*3, W*3);
-                    write_png(sp, W, H, fl); free(px); free(fl);
+                    unsigned char *px = malloc((size_t)W*H*3);
+                    if (px && render_read_rgb(W, H, px)) write_png(sp, W, H, px);
+                    free(px);
                     printf("M107 capture %s  heading %+.4f  car(%.3f %.3f %.3f) "
                            "cam(%.3f %.3f %.3f) menuspin %.4f\n", sp, heading,
                            carpos[0], carpos[1], carpos[2], cam[0], cam[1], cam[2], menuspin);
@@ -10789,10 +10797,9 @@ int main(int argc, char **argv) {
                            carpos[0], carpos[1], carpos[2]+1.5f);
                     char sp[1024];
                     snprintf(sp, sizeof sp, "%s_yaw%d.png", poseshot, YAW[slot]);
-                    unsigned char *px = malloc((size_t)W*H*3), *fl = malloc((size_t)W*H*3);
-                    glReadPixels(0, 0, W, H, GL_RGB, GL_UNSIGNED_BYTE, px);
-                    for (int y = 0; y < H; y++) memcpy(fl+(size_t)y*W*3, px+(size_t)(H-1-y)*W*3, W*3);
-                    write_png(sp, W, H, fl); free(px); free(fl);
+                    unsigned char *px = malloc((size_t)W*H*3);
+                    if (px && render_read_rgb(W, H, px)) write_png(sp, W, H, px);
+                    free(px);
                     printf("POSE frame written: %s\n", sp);
                 }
                 if (r > 6 + 3*4 + 3) running = 0;
@@ -10801,10 +10808,9 @@ int main(int argc, char **argv) {
             if (tag && shaudit && rshot > 2) tag = NULL;   /* menu frame only */
             if (tag) {
                 char sp[1024]; snprintf(sp, sizeof sp, "%s%s.png", raudit, tag);
-                unsigned char *px = malloc((size_t)W*H*3), *fl = malloc((size_t)W*H*3);
-                glReadPixels(0, 0, W, H, GL_RGB, GL_UNSIGNED_BYTE, px);
-                for (int y = 0; y < H; y++) memcpy(fl+(size_t)y*W*3, px+(size_t)(H-1-y)*W*3, W*3);
-                write_png(sp, W, H, fl); free(px); free(fl);
+                unsigned char *px = malloc((size_t)W*H*3);
+                if (px && render_read_rgb(W, H, px)) write_png(sp, W, H, px);
+                free(px);
                 printf("RA frame written: %s\n", sp);
             }
             if (ra_done) running = 0;
@@ -10832,10 +10838,9 @@ int main(int argc, char **argv) {
         }
         if (daudit && shotframe == 2) {   /* one normal rendered frame at spawn */
             char sp[1024]; snprintf(sp, sizeof sp, "%s_spawn.png", daudit);
-            unsigned char *px = malloc((size_t)W*H*3), *fl = malloc((size_t)W*H*3);
-            glReadPixels(0, 0, W, H, GL_RGB, GL_UNSIGNED_BYTE, px);
-            for (int y = 0; y < H; y++) memcpy(fl+(size_t)y*W*3, px+(size_t)(H-1-y)*W*3, W*3);
-            write_png(sp, W, H, fl); free(px); free(fl);
+            unsigned char *px = malloc((size_t)W*H*3);
+            if (px && render_read_rgb(W, H, px)) write_png(sp, W, H, px);
+            free(px);
             printf("DA spawn frame written: %s\n", sp);
         }
         if (resident_route_audit) {
@@ -11072,11 +11077,9 @@ int main(int argc, char **argv) {
             rda_frame++;
         }
         if (shot && ++shotframe >= shotframes) {
-            unsigned char *px = malloc((size_t)W*H*3), *fl = malloc((size_t)W*H*3);
-            glReadPixels(0, 0, W, H, GL_RGB, GL_UNSIGNED_BYTE, px);
-            for (int y = 0; y < H; y++) memcpy(fl+(size_t)y*W*3, px+(size_t)(H-1-y)*W*3, W*3);
-            write_png(shot, W, H, fl);
-            free(px); free(fl);
+            unsigned char *px = malloc((size_t)W*H*3);
+            if (px && render_read_rgb(W, H, px)) write_png(shot, W, H, px);
+            free(px);
             printf("frame avg: %.1f ms (vsync on), %d/%d world meshes drawn, %d draw calls\n",
                    (SDL_GetTicks()-t0)/(float)shotframe, ndrawn, nm, g_dbg.drawn);
             printf("TIER %s  cutoff %.1f m  far %.1f m\n",
@@ -11231,6 +11234,7 @@ int main(int argc, char **argv) {
                 printf("player AI follow: %.1f m, lane offset %.2f m\n",
                        traffic_routes[0].travelled,traffic_routes[0].lane_offset);
             printf("wrote %s (%dx%d) after driving to (%.0f,%.0f)\n", shot, W, H, carpos[0], carpos[1]);
+            tex_override_stats();   /* no-op unless --tex-overrides indexed files */
             running = 0;
         }
 #ifdef OPENUG2_MENU
@@ -11335,6 +11339,7 @@ int main(int argc, char **argv) {
     if(wall_debug_vbo)glDeleteBuffers(1,&wall_debug_vbo);
     free_headlight_shadows(&headlight_shadows);
     clear_car_vinyl();
+    tex_override_shutdown();   /* frees the index only; no-op when off */
     SDL_GL_DeleteContext(ctx); SDL_DestroyWindow(win); SDL_Quit();
     return final_status;
 }

@@ -8,6 +8,7 @@
 #include <zlib.h>   /* screenshot PNG (dev only) */
 
 #include "render.h"
+#include "tex_override.h"
 
 #if defined(__APPLE__) && !defined(N2_GLES)
 /* Bind/Delete Framebuffers/Renderbuffers go through gl_state.c, which maps
@@ -20,17 +21,11 @@
 #define glFramebufferRenderbuffer glFramebufferRenderbufferEXT
 #endif
 
-#ifdef N2_GLES
-#  define GLSL_HEADER "precision mediump float;\n"
-#else
-#  define GLSL_HEADER "#version 120\n#define lowp\n#define mediump\n#define highp\n"
-#endif
-
 /* World glows use world coordinates, never the preceding car/smoke matrix.
    Additive fog fades to black so sprite rectangles cannot add fog colour. */
 int render_world_glows(const RProg *r,const N2Batch *batches,int count,
                         const float mvp[16]) {
-    float fog[3];glGetUniformfv(r->prog,r->uFogColor,fog);
+    float fog[3];gls_get_uniformfv(r->prog,r->uFogColor,fog,3);
     render_model(r,NULL);
     glUniformMatrix4fv(r->uMVP,1,GL_FALSE,mvp);
     glUniform1f(r->uAlpha,1);glUniform1f(r->uSoft,0);
@@ -64,10 +59,10 @@ int render_district_lights(const RProg *r, GpuMesh *quad, GLuint texture,
     const GLint scalar_loc[] = {rp.uUnlit, rp.uEmissiveTex, rp.uUseTex,
                                 rp.uSoft, rp.uAlpha};
     float scalars[5], color[3], fog_color[3], saved_mvp[16];
-    for (int i=0; i<5; i++) glGetUniformfv(rp.prog,scalar_loc[i],scalars+i);
-    glGetUniformfv(rp.prog,rp.uColor,color);
-    glGetUniformfv(rp.prog,rp.uFogColor,fog_color);
-    glGetUniformfv(rp.prog,rp.uMVP,saved_mvp);
+    for (int i=0; i<5; i++) gls_get_uniformfv(rp.prog,scalar_loc[i],scalars+i,1);
+    gls_get_uniformfv(rp.prog,rp.uColor,color,3);
+    gls_get_uniformfv(rp.prog,rp.uFogColor,fog_color,3);
+    gls_get_uniformfv(rp.prog,rp.uMVP,saved_mvp,16);
     GLint texture_before, blend_src_rgb, blend_dst_rgb, blend_src_a, blend_dst_a;
     gls_get_integerv(GL_TEXTURE_BINDING_2D,&texture_before);
     gls_get_integerv(GL_BLEND_SRC_RGB,&blend_src_rgb);
@@ -230,9 +225,9 @@ int render_road_reflections(const RProg *r,RoadReflections *s,
     const GLint loc[]={r->uUnlit,r->uVista,r->uEmissiveTex,r->uUVCheck,r->uFlipN,
         r->uFresnel,r->uAlphaTest,r->uWetness,r->uRoadReflection};
     float saved[9],matrix[16],model[16],params[4];
-    for(int i=0;i<9;i++)glGetUniformfv(r->prog,loc[i],saved+i);
-    glGetUniformfv(r->prog,r->uMVP,matrix);glGetUniformfv(r->prog,r->uModel,model);
-    glGetUniformfv(r->prog,r->uReflectionParams,params);
+    for(int i=0;i<9;i++)gls_get_uniformfv(r->prog,loc[i],saved+i,1);
+    gls_get_uniformfv(r->prog,r->uMVP,matrix,16);gls_get_uniformfv(r->prog,r->uModel,model,16);
+    gls_get_uniformfv(r->prog,r->uReflectionParams,params,4);
     GLint df,sr,dr,sa,da;GLboolean mask;
     GLboolean depth=gls_is_enabled(GL_DEPTH_TEST),blend=gls_is_enabled(GL_BLEND),cull=gls_is_enabled(GL_CULL_FACE);
     GLboolean offset=gls_is_enabled(GL_POLYGON_OFFSET_FILL);
@@ -447,9 +442,9 @@ int render_car_environment(const RProg *r,CarEnvironment *s,const N2Batch *world
     glActiveTexture(GL_TEXTURE5);glBindTexture(GL_TEXTURE_CUBE_MAP,s->cube[s->front]);
     glActiveTexture(GL_TEXTURE0);
     const RProg *cr=&s->capture;float ambient,diffuse,fog,fc[3],sun[3];
-    glGetUniformfv(r->prog,r->uAmbient,&ambient);glGetUniformfv(r->prog,r->uDiffuse,&diffuse);
-    glGetUniformfv(r->prog,r->uFogDensity,&fog);glGetUniformfv(r->prog,r->uFogColor,fc);
-    glGetUniformfv(r->prog,r->uLight,sun);
+    gls_get_uniformfv(r->prog,r->uAmbient,&ambient,1);gls_get_uniformfv(r->prog,r->uDiffuse,&diffuse,1);
+    gls_get_uniformfv(r->prog,r->uFogDensity,&fog,1);gls_get_uniformfv(r->prog,r->uFogColor,fc,3);
+    gls_get_uniformfv(r->prog,r->uLight,sun,3);
     glUniform1f(cr->uAmbient,ambient);glUniform1f(cr->uDiffuse,diffuse);
     glUniform3fv(cr->uFogColor,1,fc);glUniform3fv(cr->uLight,1,sun);
     glUniform3fv(cr->uCamPos,1,s->origin);glUniform1f(cr->uVColor,1);render_model(cr,NULL);
@@ -564,8 +559,8 @@ int render_rain(const RProg *r,GLuint *vbo,float time,float intensity,int qualit
     if(!*vbo)return 0;
     const GLint loc[]={r->uUnlit,r->uEmissiveTex,r->uUseTex,r->uSoft,r->uAlpha,r->uVista,r->uUVCheck};
     float saved[7],matrix[16];
-    for(int i=0;i<7;i++)glGetUniformfv(r->prog,loc[i],saved+i);
-    glGetUniformfv(r->prog,r->uMVP,matrix);
+    for(int i=0;i<7;i++)gls_get_uniformfv(r->prog,loc[i],saved+i,1);
+    gls_get_uniformfv(r->prog,r->uMVP,matrix,16);
     GLboolean depth=gls_is_enabled(GL_DEPTH_TEST),blend=gls_is_enabled(GL_BLEND),cull=gls_is_enabled(GL_CULL_FACE),mask;
     GLint sr,dr,sa,da;
     gls_get_booleanv(GL_DEPTH_WRITEMASK,&mask);
@@ -607,8 +602,8 @@ int render_collision_walls(const RProg *r,GLuint *vbo,const float *faces,int cou
     }
     const GLint loc[]={r->uUnlit,r->uEmissiveTex,r->uUseTex,r->uSoft,r->uAlpha,r->uVista,r->uUVCheck};
     float saved[7],matrix[16],old_color[3];
-    for(int i=0;i<7;i++)glGetUniformfv(r->prog,loc[i],saved+i);
-    glGetUniformfv(r->prog,r->uMVP,matrix);glGetUniformfv(r->prog,r->uColor,old_color);
+    for(int i=0;i<7;i++)gls_get_uniformfv(r->prog,loc[i],saved+i,1);
+    gls_get_uniformfv(r->prog,r->uMVP,matrix,16);gls_get_uniformfv(r->prog,r->uColor,old_color,3);
     GLboolean depth=gls_is_enabled(GL_DEPTH_TEST),blend=gls_is_enabled(GL_BLEND),cull=gls_is_enabled(GL_CULL_FACE),mask;
     GLint sr,dr,sa,da;
     gls_get_booleanv(GL_DEPTH_WRITEMASK,&mask);
@@ -637,7 +632,7 @@ int render_collision_walls(const RProg *r,GLuint *vbo,const float *faces,int cou
 }
 
 static const char *VS =
-    GLSL_HEADER
+    GLSL_VS_HEADER
     "attribute vec3 aPos; attribute vec2 aUV; attribute vec3 aNor; attribute vec4 aColor;\n"
     "uniform mat4 uMVP; uniform mat4 uModel; varying vec2 vUV; varying vec3 vN; varying float vDepth;\n"
     "varying vec3 vPos; varying vec4 vColor;\n"
@@ -649,7 +644,7 @@ static const char *VS =
     "  gl_Position=uMVP*vec4(aPos,1.0); vDepth=gl_Position.w; }\n";
 
 static const char *FS =
-    GLSL_HEADER
+    GLSL_FS_HEADER
     "varying vec2 vUV; varying vec3 vN; varying float vDepth; varying vec3 vPos;\n"
     "varying vec4 vColor;\n"
     "uniform sampler2D uTex;\n"
@@ -1022,7 +1017,7 @@ static void png_chunk(FILE *f, const char *tag, const unsigned char *d, uLong n)
     unsigned char len[4] = { n>>24, n>>16, n>>8, n };
     fwrite(len, 1, 4, f);
     uLong crc = crc32(0, (const Bytef*)tag, 4);
-    crc = crc32(crc, d, n);
+    if (n) crc = crc32(crc, d, n);   /* crc32(crc, NULL, 0) returns 0, not crc */
     fwrite(tag, 1, 4, f); fwrite(d, 1, n, f);
     unsigned char c[4] = { crc>>24, crc>>16, crc>>8, crc };
     fwrite(c, 1, 4, f);
@@ -1050,6 +1045,21 @@ void write_png(const char *path, int w, int h, const unsigned char *rgb) {
     free(raw); free(comp);
 }
 
+int render_read_rgb(int w, int h, unsigned char *rgb) {
+    unsigned char *rgba = malloc((size_t)w * h * 4);
+    if (!rgba) return 0;
+    glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+    for (int y = 0; y < h; y++) {   /* GL rows are bottom-up */
+        const unsigned char *src = rgba + (size_t)(h - 1 - y) * w * 4;
+        unsigned char *dst = rgb + (size_t)y * w * 3;
+        for (int x = 0; x < w; x++) {
+            dst[x*3] = src[x*4]; dst[x*3+1] = src[x*4+1]; dst[x*3+2] = src[x*4+2];
+        }
+    }
+    free(rgba);
+    return 1;
+}
+
 static GLuint compile(GLenum type, const char *src) {
     GLuint s = glCreateShader(type);
     glShaderSource(s, 1, &src, NULL); glCompileShader(s);
@@ -1070,11 +1080,11 @@ void free_headlight_shadows(HeadlightShadows *s) {
 }
 
 static int headlight_shadow_init(HeadlightShadows *s) {
-    const char *vs=GLSL_HEADER
+    const char *vs=GLSL_VS_HEADER
         "attribute vec3 aPos;attribute vec2 aUV;uniform mat4 uMVP;"
         "varying vec2 uv;varying float distance;"
         "void main(){uv=aUV;gl_Position=uMVP*vec4(aPos,1.0);distance=gl_Position.w;}";
-    const char *fs=GLSL_HEADER
+    const char *fs=GLSL_FS_HEADER
         "uniform sampler2D uTex;uniform float uCutout,uRange;"
         "varying vec2 uv;varying float distance;"
         "void main(){if(uCutout>0.5 && texture2D(uTex,uv).a<0.5)discard;"
@@ -1117,15 +1127,15 @@ int render_batch_in_view(const N2Batch *b,const float m[16]) {
 }
 
 int render_headlight_shadows(const RProg *r,HeadlightShadows *s,const N2Batch *batches,int count) {
-    float gain;glGetUniformfv(r->prog,r->uHeadGain,&gain);
+    float gain;gls_get_uniformfv(r->prog,r->uHeadGain,&gain,1);
     glUniform1f(r->uHeadShadow,0.0f);
     if(gain<=0 || s->failed)return s->failed?-1:0;
     float pos[2][4],forward[3],right[3],up[3],shape[4];
-    /* glGetUniformfv returns one array element, not the whole array. */
-    glGetUniformfv(r->prog,r->uHeadPos,pos[0]);
-    glGetUniformfv(r->prog,glGetUniformLocation(r->prog,"uHeadPos[1]"),pos[1]);
-    glGetUniformfv(r->prog,r->uHeadForward,forward);glGetUniformfv(r->prog,r->uHeadRight,right);
-    glGetUniformfv(r->prog,r->uHeadUp,up);glGetUniformfv(r->prog,r->uHeadShape,shape);
+    /* Inputs come from the CPU uniform mirror of render_headlights' writes;
+       the mirror keeps the 2-element uHeadPos array contiguous. */
+    gls_get_uniformfv(r->prog,r->uHeadPos,pos[0],8);
+    gls_get_uniformfv(r->prog,r->uHeadForward,forward,3);gls_get_uniformfv(r->prog,r->uHeadRight,right,3);
+    gls_get_uniformfv(r->prog,r->uHeadUp,up,3);gls_get_uniformfv(r->prog,r->uHeadShape,shape,4);
     GLint program,fbo,rb,viewport[4],active,texture,depthfunc;
     GLfloat clear[4],clear_depth;GLboolean mask[4],depthmask;
     GLboolean depth=gls_is_enabled(GL_DEPTH_TEST),blend=gls_is_enabled(GL_BLEND),cull=gls_is_enabled(GL_CULL_FACE);
@@ -1954,7 +1964,7 @@ void draw_gpumesh(GpuMesh *g) {
 void render_wheel_mesh(const RProg *r, GpuMesh *mesh, GLuint texture, int mode) {
     const GLint loc[]={r->uUseTex,r->uAlphaTest,r->uTextureAlpha,r->uAlpha,r->uDecal,
                        r->uRimTint,r->uSpec,r->uEnv,r->uClearcoat,r->uVColor};
-    float saved[10];for(int i=0;i<10;i++)glGetUniformfv(r->prog,loc[i],saved+i);
+    float saved[10];for(int i=0;i<10;i++)gls_get_uniformfv(r->prog,loc[i],saved+i,1);
     GLint oldtex,src,dst,srca,dsta;
     gls_get_integerv(GL_TEXTURE_BINDING_2D,&oldtex);
     gls_get_integerv(GL_BLEND_SRC_RGB,&src);gls_get_integerv(GL_BLEND_DST_RGB,&dst);
@@ -2089,6 +2099,21 @@ void render_texture_detail(float aniso) {
     }
     g_tex_all_n = live;                                 /* compact away dead ids */
     glBindTexture(GL_TEXTURE_2D, (GLuint)bound);
+}
+
+/* tex_override.c: aniso + tracking for an override it has just bound. */
+void render_tex_finish_bound(GLuint id) { tex_apply_aniso(); tex_track(id); }
+
+/* Keyed siblings of the two uploaders: try a user HD override first (only when
+   --tex-overrides indexed one for this key), else the unchanged original path.
+   The caller keeps `t` for draw mode, alpha policy and measurements. */
+GLuint upload_tex_keyed(uint32_t key, const char *pack, const N2Tex *t) {
+    GLuint id = tex_override_upload(key, pack, t);
+    return id ? id : upload_tex(t);
+}
+GLuint upload_tpk_keyed(uint32_t key, const char *pack, const N2Tex *t) {
+    GLuint id = tex_override_upload(key, pack, t);
+    return id ? id : upload_tpk_texture_to_gpu(t);
 }
 
 GLuint upload_tpk_texture_to_gpu(const N2Tex *t) {

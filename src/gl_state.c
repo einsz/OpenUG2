@@ -3,7 +3,7 @@
 #define GLS_IMPLEMENTATION
 #include "gl_state.h"
 #include <stdio.h>
-#include <stdlib.h>   /* abort() in GLS_VERIFY builds */
+#include <stdlib.h>
 #include <string.h>
 
 #if defined(__APPLE__) && !defined(N2_GLES)
@@ -14,9 +14,16 @@
 #endif
 
 #define GLS_UNITS 16
+#define GLS_ATTRIBS 16
+#define GLS_PROGRAMS 32
 static const GLenum caps[] = {GL_DEPTH_TEST, GL_BLEND, GL_CULL_FACE, GL_SCISSOR_TEST,
                               GL_STENCIL_TEST, GL_DITHER, GL_POLYGON_OFFSET_FILL};
 #define GLS_NCAPS ((int)(sizeof caps / sizeof caps[0]))
+
+/* One uniform location: up to a mat4, plus how many floats the last write
+ * stored there (array elements continue at the following locations). */
+typedef struct { GLfloat v[16]; int n; } GlsSlot;
+typedef struct { GLuint id; int nslot; GlsSlot *slot; } GlsProgram;
 
 typedef struct {
     SDL_GLContext ctx;
@@ -27,16 +34,22 @@ typedef struct {
     GLboolean depth_mask, color_mask[4];
     GLfloat clear_color[4], clear_depth;
     GLint viewport[4];
-    GLint program, framebuffer, renderbuffer;
+    GLint program, framebuffer, renderbuffer, array_buffer;
     GLint active;                   /* unit index, 0-based */
     GLint tex2d[GLS_UNITS];
+    GLint attrib[GLS_ATTRIBS];
+    GlsProgram prog[GLS_PROGRAMS];
 } GlsState;
 
 static GlsState S;
 static unsigned g_fallback;
+static int g_prog_overflow;         /* table filled up: unknown programs ask GL */
+
+static void drop_program(GlsProgram *p) { free(p->slot); memset(p, 0, sizeof *p); }
 
 /* GL spec initial values; the viewport starts at the drawable size. */
 static void gls_reset(SDL_GLContext ctx) {
+    for (int i = 0; i < GLS_PROGRAMS; i++) drop_program(&S.prog[i]);
     memset(&S, 0, sizeof S);
     S.ctx = ctx; S.live = 1;
     for (int i = 0; i < GLS_NCAPS; i++) S.enabled[i] = caps[i] == GL_DITHER;
@@ -147,12 +160,140 @@ void glsDeleteTextures(GLsizei n, const GLuint *ids) {
         for (int u = 0; ids[i] && u < GLS_UNITS; u++) if (s->tex2d[u] == (GLint)ids[i]) s->tex2d[u] = 0;
     glDeleteTextures(n, ids);
 }
+void glsBindBuffer(GLenum target, GLuint buffer) {
+    if (target == GL_ARRAY_BUFFER) st()->array_buffer = (GLint)buffer;
+    glBindBuffer(target, buffer);
+}
+void glsDeleteBuffers(GLsizei n, const GLuint *ids) {
+    GlsState *s = st();
+    for (GLsizei i = 0; i < n; i++) if (ids[i] && (GLint)ids[i] == s->array_buffer) s->array_buffer = 0;
+    glDeleteBuffers(n, ids);
+}
+void glsEnableVertexAttribArray(GLuint index) {
+    if (index < GLS_ATTRIBS) st()->attrib[index] = 1;
+    glEnableVertexAttribArray(index);
+}
+void glsDisableVertexAttribArray(GLuint index) {
+    if (index < GLS_ATTRIBS) st()->attrib[index] = 0;
+    glDisableVertexAttribArray(index);
+}
+
+/* ---- uniform mirror ---- */
+static GlsProgram *find_program(GlsState *s, GLuint id, int create) {
+    GlsProgram *free_slot = NULL;
+    for (int i = 0; i < GLS_PROGRAMS; i++) {
+        if (s->prog[i].id == id) return &s->prog[i];
+        if (!s->prog[i].id && !free_slot) free_slot = &s->prog[i];
+    }
+    if (!create) return NULL;
+    if (!free_slot) { g_prog_overflow = 1; return NULL; }
+    free_slot->id = id;
+    return free_slot;
+}
+
+void glsLinkProgram(GLuint program) {
+    GlsState *s = st();
+    GlsProgram *p = find_program(s, program, 0);
+    if (p) drop_program(p);         /* a (re)link resets every uniform to 0 */
+    glLinkProgram(program);
+}
+void glsDeleteProgram(GLuint program) {
+    GlsProgram *p = program ? find_program(st(), program, 0) : NULL;
+    if (p) drop_program(p);
+    glDeleteProgram(program);
+}
+
+/* Record `count` elements of `comp` floats starting at `loc` of the current
+ * program. Element i lands in slot loc+i (consecutive array locations). */
+static void record(GLint loc, int comp, GLsizei count, const GLfloat *v) {
+    GlsState *s = st();
+    if (loc < 0 || count <= 0 || !s->program) return;
+    GlsProgram *p = find_program(s, (GLuint)s->program, 1);
+    if (!p) return;
+    int need = loc + count;
+    if (need > p->nslot) {
+        int n = p->nslot ? p->nslot : 64;
+        while (n < need) n *= 2;
+        GlsSlot *grown = realloc(p->slot, (size_t)n * sizeof *grown);
+        if (!grown) return;
+        memset(grown + p->nslot, 0, (size_t)(n - p->nslot) * sizeof *grown);
+        p->slot = grown; p->nslot = n;
+    }
+    for (GLsizei i = 0; i < count; i++) {
+        memcpy(p->slot[loc + i].v, v + (size_t)i * comp, (size_t)comp * sizeof *v);
+        p->slot[loc + i].n = comp;
+    }
+}
+
+void glsUniform1f(GLint loc, GLfloat x) { record(loc, 1, 1, &x); glUniform1f(loc, x); }
+void glsUniform2f(GLint loc, GLfloat x, GLfloat y) {
+    GLfloat v[2] = {x, y}; record(loc, 2, 1, v); glUniform2f(loc, x, y);
+}
+void glsUniform3f(GLint loc, GLfloat x, GLfloat y, GLfloat z) {
+    GLfloat v[3] = {x, y, z}; record(loc, 3, 1, v); glUniform3f(loc, x, y, z);
+}
+void glsUniform4f(GLint loc, GLfloat x, GLfloat y, GLfloat z, GLfloat w) {
+    GLfloat v[4] = {x, y, z, w}; record(loc, 4, 1, v); glUniform4f(loc, x, y, z, w);
+}
+void glsUniform1i(GLint loc, GLint x) {
+    GLfloat f = (GLfloat)x; record(loc, 1, 1, &f); glUniform1i(loc, x);
+}
+void glsUniform1fv(GLint loc, GLsizei count, const GLfloat *v) { record(loc, 1, count, v); glUniform1fv(loc, count, v); }
+void glsUniform2fv(GLint loc, GLsizei count, const GLfloat *v) { record(loc, 2, count, v); glUniform2fv(loc, count, v); }
+void glsUniform3fv(GLint loc, GLsizei count, const GLfloat *v) { record(loc, 3, count, v); glUniform3fv(loc, count, v); }
+void glsUniform4fv(GLint loc, GLsizei count, const GLfloat *v) { record(loc, 4, count, v); glUniform4fv(loc, count, v); }
+void glsUniformMatrix4fv(GLint loc, GLsizei count, GLboolean transpose, const GLfloat *v) {
+    if (!transpose) record(loc, 16, count, v);
+    else {                          /* store column-major, as GL reports it */
+        for (GLsizei i = 0; i < count; i++) {
+            GLfloat m[16];
+            for (int r = 0; r < 4; r++) for (int c = 0; c < 4; c++) m[c * 4 + r] = v[i * 16 + r * 4 + c];
+            record(loc + i, 16, 1, m);
+        }
+    }
+    glUniformMatrix4fv(loc, count, transpose, v);
+}
+
 #ifdef GLS_VERIFY
 static void verify_fail(const char *what, GLenum pname) {
     fprintf(stderr, "gl_state: tracked %s 0x%04X differs from GL\n", what, (unsigned)pname);
     abort();
 }
 #endif
+
+void gls_get_uniformfv(GLuint program, GLint loc, GLfloat *out, int n) {
+    if (loc < 0 || n <= 0) return;
+    GlsProgram *p = find_program(st(), program, 0);
+    if (!p && g_prog_overflow) {    /* untracked program: read GL per element */
+        g_fallback++;
+        GLint step = 1; GLfloat tmp[16];
+        for (int at = 0; at < n; at += step) {
+            glGetUniformfv(program, loc++, tmp);
+            step = n - at < 16 ? n - at : 16;   /* caller's n is one element */
+            memcpy(out + at, tmp, (size_t)step * sizeof *tmp);
+        }
+        return;
+    }
+    int at = 0, slot = loc;
+    while (at < n) {
+        const GlsSlot *sl = p && slot < p->nslot ? &p->slot[slot] : NULL;
+        int take = sl && sl->n ? sl->n : n - at;   /* unwritten: zero, as after link */
+        if (take > n - at) take = n - at;
+        for (int i = 0; i < take; i++) out[at + i] = sl && sl->n ? sl->v[i] : 0.0f;
+        at += take; slot++;
+    }
+#ifdef GLS_VERIFY
+    GLfloat real[16];
+    for (int at2 = 0, sl2 = loc; at2 < n; sl2++) {
+        glGetUniformfv(program, sl2, real);
+        const GlsSlot *sl = p && sl2 < p->nslot ? &p->slot[sl2] : NULL;
+        int take = sl && sl->n ? sl->n : n - at2;
+        if (take > n - at2) take = n - at2;
+        if (memcmp(real, out + at2, (size_t)take * sizeof *real)) verify_fail("uniform", (GLenum)loc);
+        at2 += take;
+    }
+#endif
+}
 
 /* ---- fixed-function getters ---- */
 GLboolean gls_is_enabled(GLenum cap) {
@@ -182,6 +323,7 @@ static int tracked_integerv(GLenum pname, GLint *out) {
     case GL_CURRENT_PROGRAM: out[0] = s->program; return 1;
     case GL_FRAMEBUFFER_BINDING: out[0] = s->framebuffer; return 1;
     case GL_RENDERBUFFER_BINDING: out[0] = s->renderbuffer; return 1;
+    case GL_ARRAY_BUFFER_BINDING: out[0] = s->array_buffer; return 1;
     case GL_ACTIVE_TEXTURE: out[0] = (GLint)GL_TEXTURE0 + s->active; return 1;
     case GL_TEXTURE_BINDING_2D:
         if (s->active < 0 || s->active >= GLS_UNITS) return 0;
@@ -221,6 +363,17 @@ void gls_get_floatv(GLenum pname, GLfloat *out) {
     GLfloat real[4]; glGetFloatv(pname, real);
     if (memcmp(real, out, (size_t)n * sizeof *out)) verify_fail("float", pname);
 #endif
+}
+
+GLint gls_attrib_enabled(GLuint index) {
+    if (index >= GLS_ATTRIBS) { GLint v = 0; g_fallback++;
+        glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &v); return v; }
+    GLint v = st()->attrib[index];
+#ifdef GLS_VERIFY
+    GLint real = 0; glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &real);
+    if (!real != !v) verify_fail("attrib", (GLenum)index);
+#endif
+    return v;
 }
 
 unsigned gls_fallback_queries(void) { return g_fallback; }

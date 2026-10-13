@@ -3,7 +3,7 @@
  * Backends: SDL2 + legacy OpenGL2 (matches the app's 2.1/compat GL context). */
 #include <cstdio>
 #include <SDL.h>
-#include "gl_state.h"   /* GL headers; state changes are recorded by the tracker */
+#include "gl_state.h"   /* GL headers + CPU state tracker (no glGet* readback) */
 #include "imgui.h"
 #include "backends/imgui_impl_sdl2.h"
 #include "backends/imgui_impl_opengl2.h"
@@ -971,7 +971,7 @@ extern "C" void dbgui_render(void) {
     ImGui::Render();
     /* the app binds its shader program once and never rebinds; the GL2 backend
        is fixed-function, so unbind the program around it and restore after. */
-    GLint prev = 0; glGetIntegerv(GL_CURRENT_PROGRAM, &prev);
+    GLint prev = 0; gls_get_integerv(GL_CURRENT_PROGRAM, &prev);
     glUseProgram(0);
     /* the GL2 backend draws with client-side arrays: any VBO the app left bound
        would make glVertexPointer read garbage, and attrib 0 aliases gl_Vertex. */
