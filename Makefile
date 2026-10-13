@@ -377,8 +377,8 @@ build/pause_menu_test: tools/pause_menu_test.c tools/pause_menu_authored_test.in
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/pause_menu_test.c src/frontend/frontend.c $(UGUI_SRC) src/ugui/ugui_gl.c src/gl_state.c -o $@ $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lm
 pause-menu-test: build/pause_menu_test
-	env -u UGUI_DATA -u NFSU2_DATA python3 tools/pause_menu_vector_check.py build/pause_menu_test cleanroom/spec/pause-menu/test-vectors
-	env -u UGUI_DATA -u NFSU2_DATA python3 tools/pause_menu_supplement_check.py build/pause_menu_test cleanroom/spec/pause-menu/test-vectors
+	env -u UGUI_DATA -u NFSU2_DATA python3 tools/pause_menu_vector_check.py build/pause_menu_test tools/pause_menu_vectors
+	env -u UGUI_DATA -u NFSU2_DATA python3 tools/pause_menu_supplement_check.py build/pause_menu_test tools/pause_menu_vectors
 .PHONY: pause-menu-test
 
 build/pause_menu_gl_test: tools/pause_menu_gl_test.c $(HDRS) $(UGUI_SRC)

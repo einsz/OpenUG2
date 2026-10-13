@@ -1,0 +1,283 @@
+{
+  "provenance": "Freshly authored D behavioural expectations. Highlight curve adopted from previously approved base GUI data observations; pause assignment and all marker timing/index mapping are D. No original runtime sequence or asset payload.",
+  "position_tolerance_virtual": 1,
+  "cases": [
+    {
+      "id": "clamped_first",
+      "input": {
+        "N": 3,
+        "i": 0,
+        "boundary": "clamp"
+      },
+      "expected": {
+        "marker_center": [
+          50,
+          188.4
+        ],
+        "left_arrow": false,
+        "right_arrow": true
+      }
+    },
+    {
+      "id": "clamped_middle",
+      "input": {
+        "N": 3,
+        "i": 1,
+        "boundary": "clamp"
+      },
+      "expected": {
+        "marker_center": [
+          323,
+          188.4
+        ],
+        "left_arrow": true,
+        "right_arrow": true
+      }
+    },
+    {
+      "id": "clamped_last",
+      "input": {
+        "N": 3,
+        "i": 2,
+        "boundary": "clamp"
+      },
+      "expected": {
+        "marker_center": [
+          596,
+          188.4
+        ],
+        "left_arrow": true,
+        "right_arrow": false
+      }
+    },
+    {
+      "id": "wrapping_first",
+      "input": {
+        "N": 3,
+        "i": 0,
+        "boundary": "wrap"
+      },
+      "expected": {
+        "marker_center": [
+          50,
+          188.4
+        ],
+        "left_arrow": true,
+        "right_arrow": true,
+        "Left_target_i": 2
+      }
+    },
+    {
+      "id": "singleton",
+      "input": {
+        "N": 1,
+        "i": 0
+      },
+      "expected": {
+        "marker_center": [
+          50,
+          188.4
+        ],
+        "left_arrow": false,
+        "right_arrow": false
+      }
+    },
+    {
+      "id": "right_keyboard_motion",
+      "input": {
+        "N": 3,
+        "i": 0,
+        "event": "Right",
+        "elapsed_ui_ms": [
+          0,
+          80,
+          160
+        ]
+      },
+      "expected": {
+        "logical_i": 1,
+        "glyph_and_caption_entry": 1,
+        "marker_x": [
+          50,
+          186.5,
+          323
+        ],
+        "simulation_paused": true
+      }
+    },
+    {
+      "id": "left_arrow_motion",
+      "input": {
+        "N": 3,
+        "i": 1,
+        "event": "primary_click_left_arrow",
+        "elapsed_ui_ms": [
+          0,
+          80,
+          160
+        ]
+      },
+      "expected": {
+        "logical_i": 0,
+        "glyph_and_caption_entry": 0,
+        "marker_x": [
+          323,
+          186.5,
+          50
+        ],
+        "action_invocations": 0
+      }
+    },
+    {
+      "id": "rail_click_middle",
+      "input": {
+        "N": 5,
+        "i": 0,
+        "event": "rail_primary_click",
+        "pointer_virtual": [
+          323,
+          188.4
+        ]
+      },
+      "expected": {
+        "logical_i": 2,
+        "target_marker_center": [
+          323,
+          188.4
+        ],
+        "action_invocations": 0
+      }
+    },
+    {
+      "id": "rail_drag_last",
+      "input": {
+        "N": 5,
+        "i": 2,
+        "event": "rail_primary_drag",
+        "pointer_virtual": [
+          600,
+          188.4
+        ]
+      },
+      "expected": {
+        "logical_i": 4,
+        "target_marker_center": [
+          596,
+          188.4
+        ],
+        "action_invocations": 0
+      }
+    },
+    {
+      "id": "rapid_reversal",
+      "input": {
+        "N": 3,
+        "initial_i": 0,
+        "events": [
+          {
+            "at_ms": 0,
+            "event": "Right"
+          },
+          {
+            "at_ms": 80,
+            "event": "Left"
+          }
+        ],
+        "sample_ui_ms": [
+          80,
+          160,
+          240
+        ]
+      },
+      "expected": {
+        "logical_i_after_second_event": 0,
+        "marker_x": [
+          186.5,
+          118.25,
+          50
+        ],
+        "stale_action_invocations": 0
+      }
+    },
+    {
+      "id": "continue_during_motion",
+      "input": {
+        "N": 3,
+        "initial_i": 0,
+        "events": [
+          {
+            "at_ms": 0,
+            "event": "Right"
+          },
+          {
+            "at_ms": 80,
+            "event": "Continue"
+          }
+        ]
+      },
+      "expected": {
+        "invoked_entry": 1,
+        "action_invocations": 1
+      }
+    },
+    {
+      "id": "resize_during_motion",
+      "input": {
+        "N": 3,
+        "initial_i": 0,
+        "event": "Right",
+        "resize_at_ui_ms": 80,
+        "new_viewport": [
+          1280,
+          960
+        ]
+      },
+      "expected": {
+        "logical_i": 1,
+        "marker_virtual_at_resize": [
+          186.5,
+          188.4
+        ],
+        "marker_pixel_at_resize": [
+          373,
+          376.8
+        ],
+        "target_marker_pixel": [
+          646,
+          376.8
+        ]
+      }
+    },
+    {
+      "id": "glow_cycle",
+      "input": {
+        "phase_ui_ms": [
+          0,
+          480,
+          800,
+          1200
+        ]
+      },
+      "expected": {
+        "normalized_glow_alpha": [
+          1,
+          0.5,
+          0,
+          1
+        ],
+        "glyph_and_caption_visible_all_samples": true,
+        "actual_peak_zero_glow_difference_min_display_levels": 8
+      }
+    },
+    {
+      "id": "rendered_animation_missing",
+      "input": {
+        "timer_advances": true,
+        "actual_frames_identical_across_glow_phases": true
+      },
+      "expected": {
+        "animation_acceptance": "fail"
+      }
+    }
+  ]
+}

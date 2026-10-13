@@ -1,0 +1,179 @@
+{
+  "provenance": "independently authored integration acceptance; not original runtime observation",
+  "synthetic_catalogue": [
+    {
+      "action": "resume",
+      "caption": "Return to Explore Mode",
+      "enabled": true
+    },
+    {
+      "action": "supported_configuration",
+      "caption": "Synthetic configuration action",
+      "enabled": true
+    }
+  ],
+  "cases": [
+    {
+      "input": {
+        "event": "open_pause",
+        "gameplay_running": true
+      },
+      "expected": {
+        "paused": true,
+        "selected": "resume",
+        "caption": "Return to Explore Mode",
+        "title": "Pause",
+        "back_label": "Back",
+        "accept_label": "Continue"
+      }
+    },
+    {
+      "input": {
+        "paused": true,
+        "selected": "resume",
+        "event": "right"
+      },
+      "expected": {
+        "paused": true,
+        "selected": "supported_configuration",
+        "caption": "Synthetic configuration action",
+        "invocations": 0
+      }
+    },
+    {
+      "input": {
+        "paused": true,
+        "selected": "supported_configuration",
+        "event": "left"
+      },
+      "expected": {
+        "paused": true,
+        "selected": "resume",
+        "caption": "Return to Explore Mode",
+        "invocations": 0
+      }
+    },
+    {
+      "input": {
+        "paused": true,
+        "selected": "resume",
+        "event": "enter"
+      },
+      "expected": {
+        "paused": false,
+        "resume_invocations": 1
+      }
+    },
+    {
+      "input": {
+        "paused": true,
+        "selected": "resume",
+        "event": "continue_click"
+      },
+      "expected": {
+        "paused": false,
+        "resume_invocations": 1
+      }
+    },
+    {
+      "input": {
+        "paused": true,
+        "view": "top_level",
+        "event": "back_click"
+      },
+      "expected": {
+        "paused": false,
+        "cancel_invocations": 1
+      }
+    },
+    {
+      "input": {
+        "paused": true,
+        "view": "top_level",
+        "event": "escape"
+      },
+      "expected": {
+        "paused": false,
+        "cancel_invocations": 1
+      }
+    },
+    {
+      "input": {
+        "paused": true,
+        "selected": "resume",
+        "event": "configuration_icon_click"
+      },
+      "expected": {
+        "paused": true,
+        "selected": "supported_configuration",
+        "invocations": 0
+      }
+    },
+    {
+      "input": {
+        "paused": true,
+        "selected": "supported_configuration",
+        "event": "continue_click"
+      },
+      "expected": {
+        "supported_configuration_invocations": 1,
+        "existing_configuration_behavior_preserved": true
+      }
+    },
+    {
+      "input": {
+        "paused": true,
+        "selected": "supported_configuration",
+        "event": "resize",
+        "viewport": [
+          1280,
+          720
+        ]
+      },
+      "expected": {
+        "paused": true,
+        "selected": "supported_configuration",
+        "caption": "Synthetic configuration action"
+      }
+    },
+    {
+      "input": {
+        "paused": true,
+        "event": "gameplay_accelerator"
+      },
+      "expected": {
+        "simulation_advancement_from_input": 0,
+        "paused": true
+      }
+    },
+    {
+      "input": {
+        "paused": true,
+        "disabled_action": true,
+        "event": "disabled_item_click_and_continue"
+      },
+      "expected": {
+        "disabled_action_invocations": 0
+      }
+    }
+  ],
+  "exact_text_exception": {
+    "labels": [
+      "Pause",
+      "Return to Explore Mode",
+      "Back",
+      "Continue"
+    ],
+    "reason": "Short observable user-requested visual compatibility text; explicitly permitted by SPEC.md section 1."
+  },
+  "disabled_fixture": {
+    "action": "synthetic_disabled_action",
+    "caption": "Synthetic disabled action",
+    "enabled": false
+  },
+  "case_defaults": {
+    "independent_cases": true,
+    "view": "top_level",
+    "invocation_counters_initial": 0
+  }
+}

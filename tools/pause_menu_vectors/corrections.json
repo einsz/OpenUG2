@@ -1,0 +1,180 @@
+{
+  "provenance": "Independently authored acceptance expectations from original screenshot measurements and retail data facts; no original asset payload. Resource lookup cases require external authorized runtime data.",
+  "edge_tolerance_virtual": 2,
+  "cases": [
+    {
+      "input": {
+        "reference_state": "initial_pause_return_to_explore",
+        "runtime_input": "GLOBAL/InGameCommon.bun"
+      },
+      "expected": {
+        "selected_key": "0x62AA0DF6",
+        "neighbor_key": "0x520DE4E3",
+        "selected_size": [
+          128,
+          64
+        ],
+        "neighbor_size": [
+          128,
+          64
+        ],
+        "selected_alpha_bbox": [
+          35,
+          3,
+          93,
+          61
+        ],
+        "neighbor_alpha_bbox": [
+          20,
+          13,
+          107,
+          51
+        ],
+        "selected_visible_bounds": [
+          293.8,
+          198.7,
+          347.6,
+          253.3
+        ],
+        "neighbor_visible_bounds": [
+          446.2,
+          211.6,
+          512.0,
+          242.7
+        ]
+      }
+    },
+    {
+      "input": {
+        "runtime_input": "GLOBAL/GLOBALB.BUN",
+        "resource_keys": [
+          "0x367B3E04",
+          "0x9943D584",
+          "0xA79FA3B1"
+        ]
+      },
+      "expected": {
+        "decoded_level_zero_rgba_equal": true,
+        "dimensions": [
+          32,
+          32
+        ],
+        "alpha_bbox": [
+          2,
+          2,
+          30,
+          30
+        ],
+        "arrow_visible_bounds": [
+          566.7,
+          215.1,
+          592.9,
+          240.9
+        ]
+      }
+    },
+    {
+      "input": {
+        "viewport": [
+          1920,
+          1080
+        ],
+        "labels": [
+          "Back",
+          "Continue"
+        ]
+      },
+      "expected": {
+        "virtual_ink_bounds": {
+          "Back": [
+            94.2,
+            296,
+            115.6,
+            304.9
+          ],
+          "Continue": [
+            520.9,
+            296,
+            561.8,
+            304.9
+          ]
+        },
+        "reference_pixel_ink_bounds": {
+          "Back": [
+            452,
+            666,
+            500,
+            686
+          ],
+          "Continue": [
+            1412,
+            666,
+            1504,
+            686
+          ]
+        },
+        "approximate_ink_height_virtual": 8.9
+      }
+    },
+    {
+      "input": {
+        "surface": "selector"
+      },
+      "expected": {
+        "upper_left": "rounded",
+        "upper_right": "rounded",
+        "lower_left": "square",
+        "lower_right": "square",
+        "corner_transition_extent_virtual_range": [
+          4,
+          10
+        ]
+      }
+    },
+    {
+      "input": {
+        "surface": "caption"
+      },
+      "expected": {
+        "upper_left": "square",
+        "upper_right": "square",
+        "lower_left": "rounded",
+        "lower_right": "rounded",
+        "corner_transition_extent_virtual_range": [
+          4,
+          10
+        ]
+      }
+    },
+    {
+      "input": {
+        "region": "rail_marker"
+      },
+      "expected": {
+        "bright_core_shape": "circular",
+        "center_virtual": [
+          50,
+          188.4
+        ],
+        "visible_bounds_virtual": [
+          45.3,
+          184.4,
+          55.1,
+          192.9
+        ],
+        "flat_block_acceptable": false,
+        "original_resource_alias": "unknown"
+      }
+    },
+    {
+      "input": {
+        "selected_key": "0x12BB5EA2",
+        "neighbor_key": "0x4C9E34E6",
+        "resources_are_genuine": true
+      },
+      "expected": {
+        "initial_reference_artwork_matches": false
+      }
+    }
+  ]
+}

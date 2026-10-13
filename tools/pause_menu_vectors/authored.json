@@ -1,0 +1,175 @@
+{
+  "provenance": "Sanitized verifier evaluation of authorized retail data through independent supported runtime; not original-game execution. D capture/integration cases independently authored. No original asset payload. AUTHORED.md has priority over opacity absolute bands and generic motion timing.",
+  "cases": [
+    {
+      "id": "resolve_authored_pause",
+      "input": {
+        "package_name": "UI_pause.fng"
+      },
+      "expected": {
+        "package_key": "0x32124083",
+        "decoded_size": 33044,
+        "object_count": 63,
+        "resource_count": 14
+      }
+    },
+    {
+      "id": "evaluated_entry_highlight",
+      "input": {
+        "fresh_open": true,
+        "elapsed_ui_ms": [
+          0,
+          100,
+          200,
+          300,
+          600,
+          700,
+          800
+        ]
+      },
+      "expected": {
+        "effective_object_alpha_before_texture": {
+          "outer": [
+            0,
+            78,
+            209,
+            235,
+            235,
+            235,
+            235
+          ],
+          "selector": [
+            0,
+            33,
+            89,
+            100,
+            100,
+            100,
+            100
+          ],
+          "caption": [
+            0,
+            22,
+            58,
+            65,
+            65,
+            65,
+            65
+          ],
+          "highlight": [
+            0,
+            58,
+            108,
+            90,
+            117,
+            162,
+            207
+          ]
+        },
+        "byte_tolerance": 1
+      }
+    },
+    {
+      "id": "cancel_during_entry_reopen",
+      "input": {
+        "events": [
+          {
+            "at_ms": 0,
+            "event": "open"
+          },
+          {
+            "at_ms": 100,
+            "event": "Back"
+          },
+          {
+            "at_ms": 500,
+            "event": "open"
+          }
+        ]
+      },
+      "expected": {
+        "new_open_alpha_phase": "fresh_entry",
+        "stale_action_invocations": 0
+      }
+    },
+    {
+      "id": "authored_pair_requirement",
+      "input": {
+        "authored_object_alphas_pass": true,
+        "actual_matched_reference_render_available": false
+      },
+      "expected": {
+        "authored_opacity_parity": "unverified"
+      }
+    },
+    {
+      "id": "authored_parity_positive",
+      "input": {
+        "production_minus_reference_T_rgb": [
+          0.01,
+          -0.01,
+          0
+        ],
+        "production_minus_reference_F_rgb": [
+          2,
+          -2,
+          0
+        ],
+        "all_other_pair_checks_pass": true
+      },
+      "expected": {
+        "matched_composite_parity": true
+      }
+    },
+    {
+      "id": "manual_override_negative",
+      "input": {
+        "package_supported": true,
+        "render_matches_approximate_bands": true,
+        "supported_authored_property_overridden": true
+      },
+      "expected": {
+        "authored_integration_acceptance": false
+      }
+    },
+    {
+      "id": "authored_motion_state_only",
+      "input": {
+        "object_alpha_samples_pass": true,
+        "actual_timed_matched_render_frames_available": false
+      },
+      "expected": {
+        "authored_motion_parity": "unverified"
+      }
+    },
+    {
+      "id": "authored_motion_pixel_positive",
+      "input": {
+        "actual_timed_matched_render_frames_available": true,
+        "reference_peak_phase_glow_value": 100,
+        "reference_second_phase_glow_value": 80,
+        "production_peak_phase_glow_value": 101,
+        "production_second_phase_glow_value": 81,
+        "matched_phase_subset_fraction_within_2_levels": 1.0,
+        "marker_center_error_virtual": 0.5,
+        "all_other_motion_checks_pass": true
+      },
+      "expected": {
+        "authored_motion_parity": "pass"
+      }
+    },
+    {
+      "id": "authored_motion_pixel_static_negative",
+      "input": {
+        "actual_timed_matched_render_frames_available": true,
+        "reference_peak_phase_glow_value": 100,
+        "reference_second_phase_glow_value": 80,
+        "production_peak_phase_glow_value": 100,
+        "production_second_phase_glow_value": 100
+      },
+      "expected": {
+        "authored_motion_parity": "fail"
+      }
+    }
+  ]
+}

@@ -1,0 +1,343 @@
+{
+  "provenance": "Observed decoded retail data identities and geometry; integration cases are synthetic D acceptance, not original-game captures.",
+  "package_key": "0x32124083",
+  "package_sha256": "014bdc7d0d0451b099cabacb36dabf3a8bb879a886ea2f1e9b02096c6e4448f3",
+  "objects": [
+    {
+      "role": "right_arrow",
+      "object_hash": "0x444969FE",
+      "guid": "0x000DE087",
+      "parent_guid": "0x00000000",
+      "type": 1,
+      "resource_index": 2,
+      "local_position": [
+        259.1396484375,
+        -12.769493103027344,
+        20.0
+      ],
+      "size": [
+        26.0,
+        26.0,
+        0.0
+      ]
+    },
+    {
+      "role": "left_arrow",
+      "object_hash": "0x444969FD",
+      "guid": "0x000DE06D",
+      "parent_guid": "0x00000000",
+      "type": 1,
+      "resource_index": 2,
+      "local_position": [
+        -250.29071044921875,
+        -12.769493103027344,
+        20.0
+      ],
+      "size": [
+        26.0,
+        26.0,
+        0.0
+      ]
+    },
+    {
+      "role": "marker",
+      "object_hash": "0x3FBB7A4E",
+      "guid": "0x000DDF2B",
+      "parent_guid": "0x00000000",
+      "type": 1,
+      "resource_index": 3,
+      "local_position": [
+        218.03018188476562,
+        -52.28211212158203,
+        1.0
+      ],
+      "size": [
+        16.0,
+        16.0,
+        0.0
+      ]
+    },
+    {
+      "role": "rail",
+      "object_hash": "0x688A1551",
+      "guid": "0x000DDF2A",
+      "parent_guid": "0x00000000",
+      "type": 1,
+      "resource_index": 4,
+      "local_position": [
+        3.0,
+        -52.0,
+        2.0
+      ],
+      "size": [
+        562.0,
+        8.0,
+        0.0
+      ]
+    },
+    {
+      "role": "placement_slot",
+      "object_hash": "0xB04669E3",
+      "guid": "0x000DB84F",
+      "parent_guid": "0x00000000",
+      "type": 1,
+      "resource_index": 5,
+      "local_position": [
+        0.3883514404296875,
+        -14.296133995056152,
+        10.0
+      ],
+      "size": [
+        118.0,
+        59.0,
+        0.0
+      ]
+    },
+    {
+      "role": "presentation_group",
+      "object_hash": "0x8D7E0C53",
+      "guid": "0x000DDF11",
+      "parent_guid": "0x00000000",
+      "type": 5,
+      "resource_index": 5,
+      "local_position": [
+        -39.0,
+        -21.0,
+        83.43000030517578
+      ],
+      "size": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "role": "heading",
+      "object_hash": "0x42ADB44C",
+      "guid": "0x000DDF12",
+      "parent_guid": "0x000DDF11",
+      "type": 2,
+      "resource_index": 1,
+      "local_position": [
+        -247.7142791748047,
+        -61.28570556640625,
+        16.571426391601562
+      ],
+      "size": [
+        0.75,
+        0.75,
+        1.0
+      ]
+    },
+    {
+      "role": "selector_surface",
+      "object_hash": "0x371F1C93",
+      "guid": "0x000DDF1D",
+      "parent_guid": "0x000DDF11",
+      "type": 5,
+      "resource_index": 5,
+      "local_position": [
+        41.290000915527344,
+        7.081681251525879,
+        6.570000171661377
+      ],
+      "size": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "role": "caption_surface",
+      "object_hash": "0xDE2F4E52",
+      "guid": "0x000DDF25",
+      "parent_guid": "0x000DDF11",
+      "type": 5,
+      "resource_index": 5,
+      "local_position": [
+        41.0,
+        53.0,
+        6.570000171661377
+      ],
+      "size": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "role": "caption",
+      "object_hash": "0x5E7B09C9",
+      "guid": "0x000DDF29",
+      "parent_guid": "0x000DDF11",
+      "type": 2,
+      "resource_index": 1,
+      "local_position": [
+        41.290000915527344,
+        41.0,
+        16.56999969482422
+      ],
+      "size": [
+        0.699999988079071,
+        0.699999988079071,
+        1.0
+      ]
+    },
+    {
+      "role": "selected_backing",
+      "object_hash": "0x687FDA31",
+      "guid": "0x000DE222",
+      "parent_guid": "0x000DDF11",
+      "type": 1,
+      "resource_index": 8,
+      "local_position": [
+        39.2599983215332,
+        6.710000038146973,
+        50.0
+      ],
+      "size": [
+        126.0,
+        62.0,
+        0.0
+      ]
+    },
+    {
+      "role": "selected_glow",
+      "object_hash": "0xDF422345",
+      "guid": "0x000DF02E",
+      "parent_guid": "0x000DDF11",
+      "type": 1,
+      "resource_index": 9,
+      "local_position": [
+        39.25552749633789,
+        6.996406555175781,
+        -82.42857360839844
+      ],
+      "size": [
+        126.0,
+        62.0,
+        0.0
+      ]
+    },
+    {
+      "role": "outer_fill",
+      "object_hash": "0x0DE769B5",
+      "guid": "0x000E2709",
+      "parent_guid": "0x000DDF11",
+      "type": 5,
+      "resource_index": 5,
+      "local_position": [
+        41.0,
+        -6.0,
+        450.0
+      ],
+      "size": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "role": "outer_border",
+      "object_hash": "0x52BDEE1D",
+      "guid": "0x000E4FE3",
+      "parent_guid": "0x000DDF11",
+      "type": 5,
+      "resource_index": 5,
+      "local_position": [
+        42.25553894042969,
+        42.99640655517578,
+        -82.42857360839844
+      ],
+      "size": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  ],
+  "pool": [
+    {
+      "object_hash": "0xB51549B8",
+      "guid": "0x000E254C"
+    },
+    {
+      "object_hash": "0x4B4E3890",
+      "guid": "0x000E2547"
+    },
+    {
+      "object_hash": "0x4B4E388F",
+      "guid": "0x000E2542"
+    },
+    {
+      "object_hash": "0x4B4E388E",
+      "guid": "0x000E253D"
+    },
+    {
+      "object_hash": "0x4B4E388D",
+      "guid": "0x000E2538"
+    },
+    {
+      "object_hash": "0x4B4E388C",
+      "guid": "0x000E2533"
+    },
+    {
+      "object_hash": "0x4B4E388B",
+      "guid": "0x000E252E"
+    },
+    {
+      "object_hash": "0x4B4E388A",
+      "guid": "0x000E2529"
+    },
+    {
+      "object_hash": "0x4B4E3889",
+      "guid": "0x000E2524"
+    },
+    {
+      "object_hash": "0x4B4E3888",
+      "guid": "0x000DB813"
+    }
+  ],
+  "cases": [
+    {
+      "case": "unpopulated",
+      "expected": "No debug placeholder or hidden placement slot becomes visible; caption has no stale application label."
+    },
+    {
+      "case": "two_supported_actions",
+      "input": {
+        "entries": [
+          "resume",
+          "quit"
+        ],
+        "selected": 0
+      },
+      "expected": {
+        "caption": "resume application label",
+        "selected_texture": "0x62AA0DF6",
+        "right_neighbor_texture": "0x4C9E34E6",
+        "unused_pool_visible": false
+      }
+    },
+    {
+      "case": "two_supported_actions_select_quit",
+      "input": {
+        "entries": [
+          "resume",
+          "quit"
+        ],
+        "selected": 1
+      },
+      "expected": {
+        "caption": "quit application label",
+        "selected_texture": "0x4C9E34E6",
+        "left_neighbor_texture": "0x62AA0DF6",
+        "unused_pool_visible": false
+      }
+    },
+    {
+      "case": "reopen",
+      "expected": "Fresh authored entry/highlight phase, fresh catalogue caption, no offscreen pool leftovers."
+    }
+  ]
+}
