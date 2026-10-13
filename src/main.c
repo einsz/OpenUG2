@@ -3732,6 +3732,8 @@ int main(int argc, char **argv) {
     RProg rp = render_program();
     UG2WorldPipelines wpipe;   /* sky, vista and world passes */
     render_world_pipelines(&rp, &wpipe);
+    UG2CarPipelines cpipe;     /* car bodies, glass, lamp halos */
+    render_car_pipelines(&rp, &cpipe);
     HeadlightShadows headlight_shadows = {0};
     RhiBuffer rain_vbo = {0};
     RhiBuffer wall_debug_vbo = {0};
@@ -9370,7 +9372,15 @@ int main(int argc, char **argv) {
                     ug2_copy(rp.p->uMVP, MVPc, 16);
                     render_model(&rp,Model);
                     if (g_dbg.car_cull) glEnable(GL_CULL_FACE);
-                } else { draw_gpumesh(&cgm[i]); g_dbg.drawn++; }
+                } else {
+                    RhiCullMode cull = g_dbg.car_cull ? RHI_CULL_BACK : RHI_CULL_NONE;
+#ifdef DEBUG_UI
+                    if (insp_on && g_dbg.insp_cull)
+                        cull = g_dbg.insp_cull == 1 ? RHI_CULL_BACK : RHI_CULL_FRONT;
+#endif
+                    rhi_cmd_bind_pipeline(cpipe.opaque[cull]);
+                    render_draw_gpumesh(&cgm[i]); g_dbg.drawn++;
+                }
 #ifdef DEBUG_UI
                 if (insp_on && g_dbg.insp_wire) glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
                 if (insp_on && g_dbg.insp_highlight) rp.p->uUnlit = 0.0f;
@@ -9497,7 +9507,10 @@ int main(int argc, char **argv) {
                             render_wheel_mesh(&rp,&draw_gpu[i],tex,texmode);g_dbg.drawn++;}
                         ug2_copy(rp.p->uMVP, AIMVPc, 16);
                         render_model(&rp,AIModel);
-                    } else { draw_gpumesh(&draw_gpu[i]); g_dbg.drawn++; }
+                    } else {
+                        rhi_cmd_bind_pipeline(cpipe.opaque[RHI_CULL_NONE]);
+                        render_draw_gpumesh(&draw_gpu[i]); g_dbg.drawn++;
+                    }
                 }
                 if(g_dbg.show_tires){
                     rp.p->uVColor = 0.0f;
@@ -9517,7 +9530,8 @@ int main(int argc, char **argv) {
                         rp.p->uUseTex = 1.0f;glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(texWheel));
                         for(int w=0;w<4;w++){float MW[16];mat_mul(AIWheelMVP,aiWheelT[w],MW);
                             ug2_copy(rp.p->uMVP, MW, 16);render_model(&rp,aiWheelWorld[w]);
-                            draw_gpumesh(draw_wheelmesh->vbo.id?draw_wheelmesh:&wheelmesh);
+                            rhi_cmd_bind_pipeline(cpipe.opaque[RHI_CULL_NONE]);
+                            render_draw_gpumesh(draw_wheelmesh->vbo.id?draw_wheelmesh:&wheelmesh);
                             g_dbg.drawn++;}
                     }
                 }
@@ -9526,8 +9540,8 @@ int main(int argc, char **argv) {
                 render_model(&rp,AIModel);
                 if(g_dbg.show_glass||g_dbg.show_lights){
                     int order[draw_nmesh];int count=render_car_glass_order(draw_scene,AIMVPc,order);
-                    glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
-                    glDepthMask(GL_FALSE);rp.p->uUseTex = 0.0f;rp.p->uDecal = 0.0f;
+                    rhi_cmd_bind_pipeline(cpipe.glass);
+                    rp.p->uUseTex = 0.0f;rp.p->uDecal = 0.0f;
                     rp.p->uFresnel = 1.0f;rp.p->uGloss = 90.0f;
                     for(int q=0;q<count;q++){
                         int i=order[q],window=draw_gpu[i].cat==N2_CAR_GLASS;
@@ -9536,7 +9550,7 @@ int main(int argc, char **argv) {
                         rp.p->uEnv = window?.95f*qglass[vq]:.65f;
                         rp.p->uAlpha = window?.46f:g_dbg.headlight_lens_alpha;
                         if(window)ug2_vec3(rp.p->uColor, .020f, .024f, .032f);else ug2_vec3(rp.p->uColor, .30f, .32f, .34f);
-                        draw_gpumesh(&draw_gpu[i]);g_dbg.drawn++;
+                        render_draw_gpumesh(&draw_gpu[i]);g_dbg.drawn++;
                     }
                     rp.p->uAlpha = 1.0f;rp.p->uFresnel = 0.0f;
                     glDepthMask(GL_TRUE);glDisable(GL_BLEND);
@@ -9552,8 +9566,7 @@ int main(int argc, char **argv) {
                in archive order let a far pane overwrite a nearer pane's tint. */
             if(!player_hidden && ncar>0 && (g_dbg.show_glass || g_dbg.show_lights)) {
                 int order[ncar];int count=render_car_glass_order(&car,MVPc,order);
-                glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
-                glDisable(GL_CULL_FACE);glDepthMask(GL_FALSE);
+                rhi_cmd_bind_pipeline(cpipe.glass);
                 rp.p->uDecal = 0.0f;rp.p->uUseTex = 0.0f;
                 rp.p->uClearcoat = 0.0f;rp.p->uFresnel = 1.0f;
                 rp.p->uGloss = 90.0f;
@@ -9567,7 +9580,7 @@ int main(int argc, char **argv) {
                     if(window)ug2_vec3(rp.p->uColor, .020f, .024f, .032f);
                     else ug2_vec3(rp.p->uColor, .30f, .32f, .34f);
 #ifdef DEBUG_UI
-                    glDepthMask(window && g_dbg.insp_glass_depth?GL_TRUE:GL_FALSE);
+                    rhi_cmd_bind_pipeline(window && g_dbg.insp_glass_depth ? cpipe.glass_depth : cpipe.glass);
                     int selected=g_dbg.insp_sel==i;
                     if(selected && g_dbg.insp_highlight) {
                         rp.p->uUnlit = 1.0f;rp.p->uAlpha = 1.0f;
@@ -9575,7 +9588,7 @@ int main(int argc, char **argv) {
                     }
                     if(selected && g_dbg.insp_wire)glPolygonMode(GL_FRONT_AND_BACK,GL_LINE);
 #endif
-                    draw_gpumesh(cgm+i);g_dbg.drawn++;
+                    render_draw_gpumesh(cgm+i);g_dbg.drawn++;
 #ifdef DEBUG_UI
                     if(selected && g_dbg.insp_wire)glPolygonMode(GL_FRONT_AND_BACK,GL_FILL);
 #endif
@@ -9593,8 +9606,7 @@ int main(int argc, char **argv) {
                Depth-tested (occluded by nearer body) but no depth write; nudged
                slightly toward the camera so it sits over its own lens. */
             if (!player_hidden && g_dbg.show_lights && (tail_on || headlights_on)) {
-                glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-                glDepthMask(GL_FALSE);
+                rhi_cmd_bind_pipeline(cpipe.halo);
                 rp.p->uUnlit = 1.0f; rp.p->uUseTex = 0.0f; rp.p->uSoft = 1.0f;
                 for (int b=0;b<4;b++){ if (bloomc[b][3]<0.5f || (b<2?!headlights_on:!tail_on)) continue;
                     float lx=bloomc[b][0], ly=bloomc[b][1], lz=bloomc[b][2];
@@ -9646,7 +9658,7 @@ int main(int argc, char **argv) {
                     if (b<2) ug2_vec3(rp.p->uColor, 0.90f*gain, 0.82f*gain, 0.55f*gain); /* front */
                     else     ug2_vec3(rp.p->uColor, 0.90f*gain, 0.08f*gain, 0.05f*gain); /* rear */
                     rp.p->uAlpha = 0.55f*facing*facing * (b < 2 ? 1.0f : 1.0f + 0.35f*nitro_fx);
-                    draw_gpumesh(&quad); g_dbg.drawn++;
+                    render_draw_gpumesh(&quad); g_dbg.drawn++;
                 }
                 rp.p->uAlpha = 1.0f; rp.p->uSoft = 0.0f; rp.p->uUnlit = 0.0f;
                 ug2_copy(rp.p->uMVP, MVPc, 16);
@@ -9760,7 +9772,9 @@ int main(int argc, char **argv) {
                         render_wheel_mesh(&rp,&wheelgm[i],rimtex,rimmode);
                     }
                 } else for(int k=0;k<4;k++) {
-                    ug2_copy(rp.p->uMVP, wmvp[k], 16);render_model(&rp,wheelWorld[k]);draw_gpumesh(&wheelmesh);
+                    ug2_copy(rp.p->uMVP, wmvp[k], 16);render_model(&rp,wheelWorld[k]);
+                    rhi_cmd_bind_pipeline(cpipe.opaque[RHI_CULL_NONE]);
+                    render_draw_gpumesh(&wheelmesh);
                 }
                 g_dbg.drawn += 4 * (geo ? nwheelgm : 1);
                 rp.p->uRimTint = 0.0f;   /* rim paint is rim-only */
@@ -9785,8 +9799,7 @@ int main(int argc, char **argv) {
             float rt[3]={ld[1],-ld[0],0}; float rl=sqrtf(rt[0]*rt[0]+rt[1]*rt[1]); if(rl<1e-4f)rl=1;
             rt[0]/=rl; rt[1]/=rl;
             float up[3]={rt[1]*ld[2], -rt[0]*ld[2], rt[0]*ld[1]-rt[1]*ld[0]};
-            glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-            glDepthMask(GL_FALSE);   /* over its own lens, but still occluded */
+            rhi_cmd_bind_pipeline(cpipe.halo);   /* over its own lens, but still occluded */
             rp.p->uUnlit = 1.0f; rp.p->uUseTex = 0.0f; rp.p->uSoft = 1.0f;
             for (int c=0; c<draw_nai; c++) {
                 if((!ai_actor_present(c,ai_race,nai,traffic_routes)) || !render_ais[c].render_visible)continue;
@@ -9827,7 +9840,7 @@ int main(int argc, char **argv) {
                     if(b<2)ug2_vec3(rp.p->uColor, .90f, .82f, .55f);
                     else ug2_vec3(rp.p->uColor, .90f, .08f, .05f);
                     rp.p->uAlpha = (b<2?.55f:.70f)*facing*facing;
-                    draw_gpumesh(&quad);
+                    render_draw_gpumesh(&quad);
                     g_dbg.drawn++;
                 }
             }

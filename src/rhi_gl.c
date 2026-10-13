@@ -914,6 +914,10 @@ void rhi_cmd_draw_indexed(uint32_t index_count, uint32_t first_index) {
     int bound_stream = -1;
     for (uint32_t i = 0; i < d->vertex.attrib_count; i++) {
         const RhiVertexAttrib *a = &d->vertex.attribs[i];
+        if (!g_cmd.vertex[a->stream].id) {   /* no buffer: the attribute's current value */
+            glDisableVertexAttribArray(a->location);
+            continue;
+        }
         if ((int)a->stream != bound_stream) {
             glBindBuffer(GL_ARRAY_BUFFER, rhi_gl_buffer_name(g_cmd.vertex[a->stream]));
             bound_stream = (int)a->stream;

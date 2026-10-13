@@ -345,6 +345,8 @@ RhiPipeline rhi_pipeline_create(const RhiPipelineDesc *desc);
  * index buffers and textures bound last, and the shader's parameter blocks as
  * they are at that moment. */
 void rhi_cmd_bind_pipeline(RhiPipeline pipeline);
+/* A stream bound to {0} leaves its attributes without an array: the shader
+ * reads (0, 0, 0, 1) unless the backend's default value was changed. */
 void rhi_cmd_bind_vertex_buffer(uint32_t stream, RhiBuffer buffer, uint32_t offset);
 void rhi_cmd_bind_index_buffer(RhiBuffer buffer);           /* 16-bit indices */
 /* Texture for shader sampler unit `slot`, sampled with the texture's sampler. */

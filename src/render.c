@@ -1509,6 +1509,58 @@ void render_world_pipelines(const RProg *r, UG2WorldPipelines *p) {
     p->add = rhi_pipeline_create(&d);
 }
 
+/* ---- car pipelines ----
+ * GpuMesh streams: 0 = position + uv (20 B), 1 = normal (12 B), 2 = optional
+ * RGBA8 prelight. The attribute order (colour first) is the order draw_gpumesh
+ * sets them up in. All car passes test depth with LEQUAL. */
+static RhiPipelineDesc car_pipeline(const RProg *r, RhiCullMode cull, int depth_write,
+                                    int blend, RhiBlendFactor dst) {
+    RhiPipelineDesc d;
+    rhi_pipeline_desc_init(&d);
+    d.shader = r->shader;
+    d.vertex.attribs[0] = (RhiVertexAttrib){ 3, 2, 0,  RHI_VERTEX_UNORM8X4 };
+    d.vertex.attribs[1] = (RhiVertexAttrib){ 0, 0, 0,  RHI_VERTEX_FLOAT3 };
+    d.vertex.attribs[2] = (RhiVertexAttrib){ 1, 0, 12, RHI_VERTEX_FLOAT2 };
+    d.vertex.attribs[3] = (RhiVertexAttrib){ 2, 1, 0,  RHI_VERTEX_FLOAT3 };
+    d.vertex.attrib_count = 4;
+    d.vertex.stride[0] = 5 * sizeof(float);
+    d.vertex.stride[1] = 3 * sizeof(float);
+    d.vertex.stride[2] = 4;
+    d.cull = cull;
+    d.depth_test = 1;
+    d.depth_compare = RHI_COMPARE_LESS_EQUAL;
+    d.depth_write = (uint8_t)depth_write;
+    d.blend = (uint8_t)blend;
+    if (blend) {
+        d.src_rgb = d.src_alpha = RHI_BLEND_SRC_ALPHA;
+        d.dst_rgb = d.dst_alpha = dst;
+    }
+    return d;
+}
+
+void render_car_pipelines(const RProg *r, UG2CarPipelines *p) {
+    RhiPipelineDesc d;
+    for (int c = RHI_CULL_NONE; c <= RHI_CULL_FRONT; c++) {
+        d = car_pipeline(r, (RhiCullMode)c, 1, 0, RHI_BLEND_ZERO);
+        p->opaque[c] = rhi_pipeline_create(&d);
+    }
+    d = car_pipeline(r, RHI_CULL_NONE, 0, 1, RHI_BLEND_ONE_MINUS_SRC_ALPHA);
+    p->glass = rhi_pipeline_create(&d);
+    d = car_pipeline(r, RHI_CULL_NONE, 1, 1, RHI_BLEND_ONE_MINUS_SRC_ALPHA);
+    p->glass_depth = rhi_pipeline_create(&d);
+    d = car_pipeline(r, RHI_CULL_NONE, 0, 1, RHI_BLEND_ONE);
+    p->halo = rhi_pipeline_create(&d);
+}
+
+/* draw_gpumesh through the bound car pipeline. */
+void render_draw_gpumesh(const GpuMesh *g) {
+    rhi_cmd_bind_vertex_buffer(0, g->vbo, 0);
+    rhi_cmd_bind_vertex_buffer(1, g->nbo, 0);
+    rhi_cmd_bind_vertex_buffer(2, g->cbo, 0);
+    rhi_cmd_bind_index_buffer(g->ibo);
+    rhi_cmd_draw_indexed((uint32_t)g->nidx, 0);
+}
+
 /* A world batch through the bound world pipeline. */
 void render_draw_batch(const N2Batch *b) {
     rhi_cmd_bind_vertex_buffer(0, b->vbo, 0);
