@@ -5,13 +5,13 @@
  *
  * Also the single home of the GL headers: desktop legacy GL 2.1 + GLSL 120, or
  * OpenGL ES 2.0 + GLSL 100 with -DN2_GLES — every module includes GL via here
- * (through gl_state.h, which also routes state-setting calls through the
+ * (through rhi_gl_state.h, which also routes state-setting calls through the
  * CPU-side tracker so helpers can save/restore without querying GL). */
 #ifndef OPENUG2_RENDER_H
 #define OPENUG2_RENDER_H
 
 #include <SDL.h>
-#include "gl_state.h"   /* GL headers + CPU state tracker (no glGet* readback) */
+#include "rhi_gl_state.h"   /* GL headers + CPU state tracker (no glGet* readback) */
 
 #include "nfsu2.h"
 

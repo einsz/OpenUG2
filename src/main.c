@@ -28,6 +28,7 @@
 #include "nfsu2.h"
 #include "car_mod.h"
 #include "render.h"
+#include "rhi.h"
 #include "physics.h"
 #include "ai.h"
 #include "audio.h"
@@ -3677,57 +3678,46 @@ int main(int argc, char **argv) {
                        g_engine.gin.accel_sweep.rpm_min, g_engine.gin.accel_sweep.rpm_max);
     else if (nloops) printf("engine bank: CAR_%02d for %s (%d loops incl idle)\n",
                             engbank, carname, nloops);
-#ifdef N2_GLES
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
-#endif
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
-    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
-    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    if (rhi_prepare_window(RHI_BACKEND_DEFAULT) != RHI_OK) {
+        fprintf(stderr, "render backend: not available in this build\n"); return 1;
+    }
     /* Hidden, fixed-size capture windows avoid the desktop's visible-window
        size clamp (notably macOS), using the same production GL draw path. */
     const int capture_window = shot || raudit || resident_route_audit;
     SDL_Window *win = SDL_CreateWindow("OpenUG2",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, render_width, render_height,
-        SDL_WINDOW_OPENGL | (capture_window ? SDL_WINDOW_HIDDEN : SDL_WINDOW_RESIZABLE));
+        rhi_window_flags(RHI_BACKEND_DEFAULT) |
+        (capture_window ? SDL_WINDOW_HIDDEN : SDL_WINDOW_RESIZABLE));
     if (!win) { fprintf(stderr,"window: %s\n",SDL_GetError()); return 1; }
-    SDL_GLContext ctx = SDL_GL_CreateContext(win);
-    if (!ctx) { fprintf(stderr, "GL ctx: %s\n", SDL_GetError()); return 1; }
-    /* Every capture reads tightly packed RGB, including odd-width windows. */
-    glPixelStorei(GL_PACK_ALIGNMENT,1);
-    { int dw,dh; GLint limit[2];
-      SDL_GL_GetDrawableSize(win,&dw,&dh);
-      glGetIntegerv(GL_MAX_VIEWPORT_DIMS,limit);
+    /* The device also sets tightly packed readback rows (odd-width captures)
+       and the swap interval: audits pace explicitly, so no vsync for them. */
+    { RhiDeviceDesc dev = { RHI_BACKEND_DEFAULT,
+                            (shot || ai_drive_audit) ? 0u : (uint32_t)RHI_DEVICE_VSYNC, win };
+      if (rhi_device_create(&dev) != RHI_OK) return 1; }
+    const RhiCaps *caps = rhi_caps();
+    { int32_t dw,dh; const int32_t *limit = caps->max_viewport;
+      rhi_drawable_size(&dw,&dh);
       printf("render size: requested %dx%d, drawable %dx%d (%s)\n",
              render_width,render_height,dw,dh,capture_window ? "capture" : "interactive");
       if (capture_window && (dw!=render_width || dh!=render_height ||
                              dw>limit[0] || dh>limit[1])) {
           fprintf(stderr,"Cannot capture the requested resolution on this display/GL backend\n");
-          SDL_GL_DeleteContext(ctx); SDL_DestroyWindow(win); SDL_Quit();
+          rhi_device_destroy(); SDL_DestroyWindow(win); SDL_Quit();
           return 1;
       }
     }
     SDL_GameController *controller = NULL;
     for (int i = 0; i < SDL_NumJoysticks() && !controller; i++)
         if (SDL_IsGameController(i)) controller = SDL_GameControllerOpen(i);
-    SDL_GL_SetSwapInterval((shot || ai_drive_audit) ? 0 : 1); /* audits pace explicitly */
     if (perf_csv) pf_open(perf_csv);
-    /* Detect S3TC so car/rim TPK textures can upload their DXT blocks directly
-       (glCompressedTexImage2D) instead of the CPU-decoded RGBA. Legacy GL 2.1
-       and GLES2 both return a valid GL_EXTENSIONS string here. */
-    { const char *ext = (const char *)glGetString(GL_EXTENSIONS);
-      g_tex_s3tc = ext && (strstr(ext, "GL_EXT_texture_compression_s3tc") ||
-                           strstr(ext, "texture_compression_dxt1")); }
+    /* S3TC lets car/rim TPK textures upload their DXT blocks directly
+       (glCompressedTexImage2D) instead of the CPU-decoded RGBA. */
+    g_tex_s3tc = caps->tex_bc1;
     printf("texture path: %s\n", g_tex_s3tc ? "S3TC direct (glCompressedTexImage2D)"
                                             : "CPU DXT decode (no s3tc extension)");
-    /* Texture detail. Detected the same way as S3TC, from the same extension
-       string, before any texture is uploaded so the first upload already gets
-       the requested filter. */
-    { const char *ext = (const char *)glGetString(GL_EXTENSIONS);
-      if (ext && strstr(ext, "GL_EXT_texture_filter_anisotropic")) {
-          GLfloat mx = 1.0f; glGetFloatv(0x84FF, &mx);
-          g_tex_aniso_max = mx > 1.0f ? (int)mx : 1;
-      }
+    /* Texture detail, set before any texture is uploaded so the first upload
+       already gets the requested filter. */
+    { g_tex_aniso_max = caps->max_anisotropy > 1.0f ? (int)caps->max_anisotropy : 1;
       float want = g_dbg.tex_detail;
       if (want > (float)g_tex_aniso_max) want = (float)g_tex_aniso_max;
       if (want < 1.0f) want = 1.0f;
@@ -3739,7 +3729,7 @@ int main(int argc, char **argv) {
     if (tex_override_dir && !tex_override_off)
         tex_override_init(tex_override_dir, tex_override_budget);
 #ifdef DEBUG_UI
-    dbgui_init(win, ctx);
+    dbgui_init(win, SDL_GL_GetCurrentContext());
 #endif
 
     RProg rp = render_program();
@@ -4291,7 +4281,7 @@ int main(int argc, char **argv) {
             memset(&world.neighborhood, 0, sizeof world.neighborhood);
             world_city_free(&world.city);
             world_texture_cache_clear();
-            SDL_GL_DeleteContext(ctx); SDL_DestroyWindow(win); SDL_Quit();
+            rhi_device_destroy(); SDL_DestroyWindow(win); SDL_Quit();
             return 0;
         }
     } else {
@@ -6297,7 +6287,7 @@ int main(int argc, char **argv) {
                require the ImGui panel, which plain builds do not have. */
             else if (hud && e.type == SDL_MOUSEBUTTONDOWN &&
                      e.button.button == SDL_BUTTON_LEFT) {
-                int mw = 1, mh = 1; SDL_GL_GetDrawableSize(win, &mw, &mh);
+                int32_t mw = 1, mh = 1; rhi_drawable_size(&mw, &mh);
                 int ww = 1, wh = 1; SDL_GetWindowSize(win, &ww, &wh);
                 /* event coords are in window points; the drawable may be
                    larger on a HiDPI display, and NDC is what the HUD uses. */
@@ -8471,7 +8461,9 @@ int main(int argc, char **argv) {
 
 
 
-        int W, H; SDL_GL_GetDrawableSize(win, &W, &H);
+        RhiFrameInfo frame;
+        rhi_frame_begin(&frame);
+        int W = frame.width, H = frame.height;
         glViewport(0, 0, W, H);
         /* the sky is cleared to the fog colour: distant geometry dissolves
            into exactly what the horizon shows */
@@ -10539,8 +10531,7 @@ int main(int argc, char **argv) {
                 for (int j = 0; j < ntmap; j++) if (tmapkey[j] == smkey) tid = tmaptex[j];
                 if (tid) {
                     glBindTexture(GL_TEXTURE_2D, tid);
-                    float amax = 1.0f;
-                    glGetFloatv(0x84FF /*GL_MAX_TEXTURE_MAX_ANISOTROPY*/, &amax);
+                    float amax = caps->max_anisotropy;
                     if (v == 0) { glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
                                                   GL_LINEAR_MIPMAP_LINEAR);
                                   glTexParameterf(GL_TEXTURE_2D, 0x84FE, 1.0f); }
@@ -11239,13 +11230,13 @@ int main(int argc, char **argv) {
         }
 #ifdef OPENUG2_MENU
         if (frontend_open && frontend_draw) {
-            int fw, fh;
-            SDL_GL_GetDrawableSize(win, &fw, &fh);
+            int32_t fw, fh;
+            rhi_drawable_size(&fw, &fh);
             fed_draw(frontend_draw, &frontend, fw, fh);
         }
 #endif
         pf_mark(PF_POST_DRAW); pf_gpu(pf_frame,-1);
-        SDL_GL_SwapWindow(win);
+        rhi_frame_end();
         pf_mark(PF_SWAP);
         if (pf_csv) {
             int pf_vis=0;
@@ -11340,6 +11331,6 @@ int main(int argc, char **argv) {
     free_headlight_shadows(&headlight_shadows);
     clear_car_vinyl();
     tex_override_shutdown();   /* frees the index only; no-op when off */
-    SDL_GL_DeleteContext(ctx); SDL_DestroyWindow(win); SDL_Quit();
+    rhi_device_destroy(); SDL_DestroyWindow(win); SDL_Quit();
     return final_status;
 }
