@@ -76,7 +76,8 @@ follow ownership into `world.c`, `physics.c`, `render.c`, `audio.c` or
 
 | file | owns | must not become |
 |---|---|---|
-| `src/main.c` | SDL/GL setup, orchestration, input, state transitions, camera, diagnostics | a second parser or physics engine |
+| `src/main.c` | SDL/GL setup, orchestration, input, state transitions, camera glue, diagnostics | a second parser or physics engine |
+| `src/camera.c/.h` | gameplay camera maths: views, per-car GLOBALB record, smoothers, shake, projection ([CAMERA.md](CAMERA.md)) | GL, SDL or world-query code |
 | `src/nfsu2.h` | clean-room asset parsing, codecs, scene/path types, car profile extraction | renderer or world-state owner |
 | `src/world.c/.h` | region lifetime, scene assembly, dedup, textures, nav/events, ground/contact queries | UI or car integrator |
 | `src/render.c/.h` | GPU upload, batching, shader programs, matrices, PNG/font helpers | asset-format authority |
@@ -816,7 +817,9 @@ Each frame executes zero or more shared player/AI/contact/race-timer ticks.
 Catch-up is bounded to eight ticks; excess time from long stalls is discarded.
 Fractional time remains for the next frame. Car/track/race preparation resets
 that accumulator to avoid replaying loading time. Wheel spin, skid/smoke effects
-and landing shake advance with simulation; camera easing uses elapsed time.
+and landing shake advance with simulation. The gameplay camera ([CAMERA.md](CAMERA.md))
+steps its smoothers once per tick; the legacy chase spring (menu, orbit, `--shot-yaw`)
+still eases by elapsed time.
 Drag key presses survive zero-tick frames and are consumed once. Frame-driven
 capture/audit modes keep one deterministic tick per output frame.
 `make ground-motion-test` checks identical driving at 10/30/60/120/144/240 FPS.
