@@ -122,4 +122,3 @@ static void runtime_test_glyph_folder(const char *root) {
     ug_texlib_free(&lib);
 }
 static void run_folder_tests(void){RUN(test_folder_index_vectors);RUN(test_folder_cases);RUN(test_folder_rejections);}
-
