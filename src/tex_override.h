@@ -56,13 +56,13 @@
    g_tex_s3tc is set. budget_mib <= 0 selects the default (1536 MiB).
    Returns the number of indexed override files (0 = disabled). */
 int    tex_override_init(const char *dir, int budget_mib);
-/* Try the override for `key`. `pack` may be NULL. Returns a new bound GL
-   texture (GL_REPEAT, trilinear, aniso, tracked) or 0 = use the original. */
-GLuint tex_override_upload(uint32_t key, const char *pack, const N2Tex *orig);
+/* Try the override for `key`. `pack` may be NULL. Returns a new bound
+   texture (GL_REPEAT, trilinear, aniso, tracked) or {0} = use the original. */
+RhiTexture tex_override_upload(uint32_t key, const char *pack, const N2Tex *orig);
 /* One "TEXOVR stats" line: indexed / used / skipped / budget-reduced files
    and resident MiB. Prints nothing when disabled. */
 void   tex_override_stats(void);
-/* Free the index. GL texture names stay with the callers that own them. */
+/* Free the index. Textures stay with the callers that own them. */
 void   tex_override_shutdown(void);
 
 #endif

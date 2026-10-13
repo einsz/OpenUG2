@@ -37,11 +37,11 @@ int render_world_glows(const RProg *r,const N2Batch *batches,int count,
     for(int i=0;i<count;i++) {
         const N2Batch *b=&batches[i];
         if(b->unresolved)continue; /* no texture-backed flare mask available */
-        glUniform1f(r->uUnlit,b->tex?0:1);
-        glUniform1f(r->uUseTex,b->tex?1:0);
-        glUniform1f(r->uEmissiveTex,b->tex?1:0);
-        glUniform3f(r->uColor,1,b->tex?1:.85f,b->tex?1:.5f);
-        glBindTexture(GL_TEXTURE_2D,b->tex);
+        glUniform1f(r->uUnlit,b->tex.id?0:1);
+        glUniform1f(r->uUseTex,b->tex.id?1:0);
+        glUniform1f(r->uEmissiveTex,b->tex.id?1:0);
+        glUniform3f(r->uColor,1,b->tex.id?1:.85f,b->tex.id?1:.5f);
+        glBindTexture(GL_TEXTURE_2D,rhi_gl_texture_name(b->tex));
         draw_batch(b);draws++;
     }
     glUniform3fv(r->uFogColor,1,fog);
@@ -50,7 +50,7 @@ int render_world_glows(const RProg *r,const N2Batch *batches,int count,
     return draws;
 }
 
-int render_district_lights(const RProg *r, GpuMesh *quad, GLuint texture,
+int render_district_lights(const RProg *r, GpuMesh *quad, RhiTexture texture,
                            const N2LightSrc *lights, int nlights,
                            const float cam[3], const float look[3],
                            const float MVP[16], float viewdist,
@@ -89,7 +89,7 @@ int render_district_lights(const RProg *r, GpuMesh *quad, GLuint texture,
     /* Additive emission fades toward zero, not fog RGB: black sprite edges
        must add nothing even at long distance. The sky path is unaffected. */
     glUniform3f(rp.uFogColor,0.0f,0.0f,0.0f);
-    glBindTexture(GL_TEXTURE_2D, texture);
+    glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(texture));
     float maxd2 = viewdist * viewdist;
     for (int i = 0; i < nlights; i++) {
         const N2LightSrc *light = &lights[i];
@@ -246,7 +246,7 @@ int render_road_reflections(const RProg *r,RoadReflections *s,
     int draws=0;
     for(int i=0;i<count;i++) {
         const N2Batch *b=&batches[i];if(!road_reflection_receiver(b,cam))continue;
-        glBindTexture(GL_TEXTURE_2D,b->tex);
+        glBindTexture(GL_TEXTURE_2D,rhi_gl_texture_name(b->tex));
         glUniform1f(r->uAlphaTest,b->drawmode==N2_DRAW_CUTOUT?1:0);
         draw_batch(b);draws++;
     }
@@ -461,9 +461,9 @@ int render_car_environment(const RProg *r,CarEnvironment *s,const N2Batch *world
     mat_persp(1.570796327f,1,.15f,30000,p);mat_mul(p,view,matrix);
     glUniformMatrix4fv(cr->uMVP,1,GL_FALSE,matrix);
     glUniform1f(cr->uEmissiveTex,1);glUniform1f(cr->uFogDensity,0);glDepthMask(GL_FALSE);
-    for(int i=0;i<nsky;i++)if(sky[i].tex) {
+    for(int i=0;i<nsky;i++)if(sky[i].tex.id) {
         glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
-        glUniform1f(cr->uUseTex,1);glBindTexture(GL_TEXTURE_2D,sky[i].tex);draw_batch(sky+i);draws++;
+        glUniform1f(cr->uUseTex,1);glBindTexture(GL_TEXTURE_2D,rhi_gl_texture_name(sky[i].tex));draw_batch(sky+i);draws++;
     }
     glDepthMask(GL_TRUE);glDisable(GL_BLEND);glUniform1f(cr->uEmissiveTex,0);
     glUniform1f(cr->uFogDensity,fog);
@@ -472,12 +472,12 @@ int render_car_environment(const RProg *r,CarEnvironment *s,const N2Batch *world
     for(int i=0;i<count;i++) {
         const N2Batch *b=world+i;
         if(b->unresolved || b->drawmode==N2_DRAW_BLEND || !render_batch_in_view(b,matrix))continue;
-        glUniform1f(cr->uUseTex,b->tex?1:0);glUniform3f(cr->uColor,.28f,.29f,.31f);
+        glUniform1f(cr->uUseTex,b->tex.id?1:0);glUniform3f(cr->uColor,.28f,.29f,.31f);
         glUniform1f(cr->uAlphaTest,b->drawmode==N2_DRAW_CUTOUT?1:0);
         glUniform1f(cr->uTextureAlpha,b->drawmode==N2_DRAW_ADD?1:0);
         if(b->drawmode==N2_DRAW_ADD){glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE);glDepthMask(GL_FALSE);}
         else {glDisable(GL_BLEND);glDepthMask(GL_TRUE);}
-        glBindTexture(GL_TEXTURE_2D,b->tex);draw_batch(b);draws++;
+        glBindTexture(GL_TEXTURE_2D,rhi_gl_texture_name(b->tex));draw_batch(b);draws++;
     }
     if(++s->face==6){s->face=0;s->front=1-s->front;s->ready=1;memcpy(s->published,s->origin,sizeof s->published);}
 restore:
@@ -1060,7 +1060,7 @@ static GLuint compile(GLenum type, const char *src) {
  * ponytail: fixed 512px world-only maps; add vehicle casters when their renderer
  * supports receiving world-space lights. Alpha-blended surfaces do not cast. */
 void free_headlight_shadows(HeadlightShadows *s) {
-    glDeleteTextures(2,s->texture);glDeleteTextures(1,&s->white);
+    glDeleteTextures(2,s->texture);rhi_texture_destroy(s->white);
     glDeleteRenderbuffers(1,&s->depth);glDeleteFramebuffers(1,&s->fbo);
     if(s->program)glDeleteProgram(s->program);
     memset(s,0,sizeof *s);
@@ -1100,7 +1100,7 @@ static int headlight_shadow_init(HeadlightShadows *s) {
     glRenderbufferStorage(GL_RENDERBUFFER,GL_DEPTH_COMPONENT16,512,512);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER,GL_DEPTH_ATTACHMENT,GL_RENDERBUFFER,s->depth);
     glFramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_TEXTURE_2D,s->texture[0],0);
-    return s->white && glCheckFramebufferStatus(GL_FRAMEBUFFER)==GL_FRAMEBUFFER_COMPLETE;
+    return s->white.id && glCheckFramebufferStatus(GL_FRAMEBUFFER)==GL_FRAMEBUFFER_COMPLETE;
 }
 
 int render_batch_in_view(const N2Batch *b,const float m[16]) {
@@ -1167,8 +1167,8 @@ int render_headlight_shadows(const RProg *r,HeadlightShadows *s,const N2Batch *b
             const N2Batch *b=batches+i;
             if(b->drawmode!=N2_DRAW_OPAQUE && b->drawmode!=N2_DRAW_CUTOUT)continue;
             if(!render_batch_in_view(b,matrices[h]))continue;
-            glBindTexture(GL_TEXTURE_2D,b->tex?b->tex:s->white);
-            glUniform1f(s->cutout,b->tex && b->drawmode==N2_DRAW_CUTOUT?1.0f:0.0f);
+            glBindTexture(GL_TEXTURE_2D,rhi_gl_texture_name(b->tex.id?b->tex:s->white));
+            glUniform1f(s->cutout,b->tex.id && b->drawmode==N2_DRAW_CUTOUT?1.0f:0.0f);
             draw_batch(b);draws++;
         }
     }
@@ -1217,7 +1217,7 @@ void render_headlights(const RProg *r, const float model[16], const float anchor
     glUniform1f(r->uHeadShadow,0.0f); /* maps must be refreshed for this pose */
 }
 
-void render_tail_lamp(const RProg *r,GLuint texture,int running,int braking,
+void render_tail_lamp(const RProg *r,RhiTexture texture,int running,int braking,
                       int boost,float gain) {
     int on=running || braking,hot=braking || boost;
     float level=on?fmaxf(gain,0.0f):0.0f;
@@ -1227,8 +1227,8 @@ void render_tail_lamp(const RProg *r,GLuint texture,int running,int braking,
                             (hot?.16f:.05f)*level,(hot?.10f:.04f)*level);
     glUniform1f(r->uSpec,.26f);glUniform1f(r->uEnv,.16f);
     glUniform1f(r->uGloss,20.0f);glUniform1f(r->uClearcoat,0.0f);
-    glUniform1f(r->uDecal,0.0f);glUniform1f(r->uUseTex,texture?1.0f:0.0f);
-    if(texture)glBindTexture(GL_TEXTURE_2D,texture);
+    glUniform1f(r->uDecal,0.0f);glUniform1f(r->uUseTex,texture.id?1.0f:0.0f);
+    if(texture.id)glBindTexture(GL_TEXTURE_2D,rhi_gl_texture_name(texture));
 }
 
 void render_model(const RProg *r,const float model[16]) {
@@ -1384,14 +1384,18 @@ GpuMesh *upload_scene(N2Scene *s) {
 
 /* ---- static-world batching ---- */
 
-typedef struct { uint64_t key; int idx; unsigned char group; } BSortEnt;
+/* key holds the GL texture name so the batch order stays as it was; tex is
+ * the handle the batch keeps. */
+typedef struct { uint64_t key; int idx; unsigned char group; RhiTexture tex; } BSortEnt;
 static int bsort_cmp(const void *a, const void *b) {
     const BSortEnt *aa = (const BSortEnt *)a, *bb = (const BSortEnt *)b;
     if (aa->key != bb->key) return aa->key < bb->key ? -1 : 1;
     return aa->group < bb->group ? -1 : aa->group > bb->group ? 1 : 0;
 }
 static int btex_cmp(const void *a, const void *b) {   /* final texture order */
-    GLuint ta = ((const N2Batch *)a)->tex, tb = ((const N2Batch *)b)->tex;
+    /* GL names, not handles: keeps the order (and so the image) unchanged. */
+    GLuint ta = rhi_gl_texture_name(((const N2Batch *)a)->tex),
+           tb = rhi_gl_texture_name(((const N2Batch *)b)->tex);
     return ta < tb ? -1 : ta > tb ? 1 : 0;
 }
 
@@ -1412,12 +1416,12 @@ typedef char n2_batchvertex_layout_check[
  * upload_world_batches partitioned it -- this runs inside batch_emit, so the
  * (ent, i0, i1) run IS the production run; nothing is re-sorted or re-derived. */
 static void batch_members_report(const N2Scene *s, const BSortEnt *ent, int i0, int i1,
-                                 int bidx, GLuint tex, const N2Batch *bref) {
+                                 int bidx, RhiTexture tex, const N2Batch *bref) {
     (void)bref;
     printf("MILESTONE: 79\n");
     printf("batch index   %d\n", bidx);
     printf("texkey        %08x   gl_tex %u   nmesh %d\n",
-           s->meshes[ent[i0].idx].texkey, (unsigned)tex, i1 - i0);
+           s->meshes[ent[i0].idx].texkey, (unsigned)rhi_gl_texture_name(tex), i1 - i0);
     float mn[3] = {1e30f,1e30f,1e30f}, mx[3] = {-1e30f,-1e30f,-1e30f};
     for (int k = i0; k < i1; k++) {
         const N2Mesh *m = &s->meshes[ent[k].idx];
@@ -1546,7 +1550,7 @@ static int batch_mesh_vertices(const N2Mesh *m,BatchedVertex *out) {
 
 /* merge meshes [i0,i1) of the sort array into one uploaded batch */
 static int batch_emit(const N2Scene *s, const BSortEnt *ent, int i0, int i1,
-                       GLuint tex, N2Batch *b, int bidx, const char *audit,
+                       RhiTexture tex, N2Batch *b, int bidx, const char *audit,
                        const unsigned char *mtexmode) {
     int nv = 0, ni = 0;
     for (int k = i0; k < i1; k++) {
@@ -1604,7 +1608,7 @@ static int batch_emit(const N2Scene *s, const BSortEnt *ent, int i0, int i1,
        wholly unresolved and NOT ONE mixes the two kinds, so this changes no
        shipped frame -- it removes the dependence on which member happened to
        sort first, which is what `texkey` reported. */
-    b->unresolved = (unsigned char)(!tex && named == i1 - i0);
+    b->unresolved = (unsigned char)(!tex.id && named == i1 - i0);
     for (int c = 0; c < 3; c++) { b->bbox_min[c] = mn[c]; b->bbox_max[c] = mx[c]; }
     free(bv); free(bi);
     return 1;
@@ -1629,8 +1633,8 @@ void upload_world_batches_cancel(WorldBatchUpload **slot) {
 }
 
 WorldBatchUpload *upload_world_batches_begin(const N2Scene *s,
-                          const float (*mbb)[4], const GLuint *mtex,
-                          GLuint texTerr, const char *audit,
+                          const float (*mbb)[4], const RhiTexture *mtex,
+                          RhiTexture texTerr, const char *audit,
                           const unsigned char *mtexmode) {
     if (!s || s->count < 0 || (s->count && (!s->meshes || !mbb || !mtex)))
         return NULL;
@@ -1663,12 +1667,12 @@ WorldBatchUpload *upload_world_batches_begin(const N2Scene *s,
     for (int i = 0; i < n; i++) {
         const N2Mesh *mesh = &s->meshes[i];
         if (mesh->cat == N2_SKY || mesh->cat == N2_GLOW || mesh->cat == N2_COLLISION) continue;
-        GLuint tex = mtex[i];
-        if (!tex && mesh->cat == N2_TERRAIN) tex = texTerr;   /* fallback baked in */
+        RhiTexture tex = mtex[i];
+        if (!tex.id && mesh->cat == N2_TERRAIN) tex = texTerr;   /* fallback baked in */
         float cx = (mbb[i][0]+mbb[i][2])*0.5f, cy = (mbb[i][1]+mbb[i][3])*0.5f;
         uint64_t cell = (uint64_t)(uint32_t)((int)((cy-y0)/BATCH_CELL)*4096
                                            + (int)((cx-x0)/BATCH_CELL));
-        ent[m].key = cell << 32 | tex; ent[m].idx = i;
+        ent[m].key = cell << 32 | rhi_gl_texture_name(tex); ent[m].idx = i; ent[m].tex = tex;
         int mode = mtexmode ? mtexmode[i] : N2_DRAW_OPAQUE;
         /* Keep wettable roads separate even when walls share their texture. */
         ent[m].group = (unsigned char)n2_world_batch_material_group(
@@ -1697,7 +1701,7 @@ int upload_world_batches_step(WorldBatchUpload **slot, int max_batches,
                ent[i].group == ent[i0].group &&
                verts + s->meshes[ent[i].idx].nverts <= BATCH_MAXVERTS)
             verts += s->meshes[ent[i++].idx].nverts;
-        if (!batch_emit(s, ent, i0, i, (GLuint)ent[i0].key,
+        if (!batch_emit(s, ent, i0, i, ent[i0].tex,
                         &bat[j->count], j->count, audit, j->modes)) {
             upload_world_batches_cancel(slot); return -1;
         }
@@ -1732,7 +1736,7 @@ int upload_world_batches_step(WorldBatchUpload **slot, int max_batches,
 }
 
 int upload_world_batches(const N2Scene *s, const float (*mbb)[4],
-                         const GLuint *mtex, GLuint texTerr, N2Batch **out,
+                         const RhiTexture *mtex, RhiTexture texTerr, N2Batch **out,
                          const char *audit, int *meshbatch,
                          const unsigned char *mtexmode) {
     WorldBatchUpload *j = upload_world_batches_begin(s, mbb, mtex, texTerr,
@@ -1747,7 +1751,7 @@ int upload_world_batches(const N2Scene *s, const float (*mbb)[4],
 /* Same merge as above but for exactly one category, grouped by texture only
  * (no spatial grid — a city has a handful of skybox/neon meshes, not tens of
  * thousands, so there's nothing for a cell split to buy here). */
-int upload_cat_batches(const N2Scene *s, int cat, const GLuint *mtex, N2Batch **out,
+int upload_cat_batches(const N2Scene *s, int cat, const RhiTexture *mtex, N2Batch **out,
                        const unsigned char *mtexmode) {
     int n = s->count;
     BSortEnt *ent = (BSortEnt *)malloc((size_t)(n ? n : 1) * sizeof *ent);
@@ -1755,7 +1759,7 @@ int upload_cat_batches(const N2Scene *s, int cat, const GLuint *mtex, N2Batch **
     int m = 0;
     for (int i = 0; i < n; i++)
         if (s->meshes[i].cat == cat) {
-            ent[m].key = mtex[i]; ent[m].idx = i;
+            ent[m].key = rhi_gl_texture_name(mtex[i]); ent[m].idx = i; ent[m].tex = mtex[i];
             int mode = mtexmode ? mtexmode[i] : N2_DRAW_OPAQUE;
             ent[m].group = (unsigned char)n2_world_batch_material_group(
                 &s->meshes[i], mode);
@@ -1777,7 +1781,7 @@ int upload_cat_batches(const N2Scene *s, int cat, const GLuint *mtex, N2Batch **
                 if (!grown) goto fail;
                 bat = grown;
             }
-            if (!batch_emit(s, ent, i0, i, (GLuint)ent[i0].key,
+            if (!batch_emit(s, ent, i0, i, ent[i0].tex,
                             &bat[nb], nb, NULL, mtexmode)) goto fail;
             nb++;
             i0 = i; verts = 0;
@@ -1880,7 +1884,7 @@ GpuMesh make_wheel(float R, float halfW) {
  * (centre 0.5,0.5, ring at uv-radius 0.5), so paint by relative radius —
  * bright hub disc, spoked metal mid, dark rubber edge. The tread quads
  * sample the outer ring = rubber. */
-GLuint make_wheel_tex(void) {
+RhiTexture make_wheel_tex(void) {
     enum { S = 64 };
     static unsigned char px[S*S*3];
     for (int y = 0; y < S; y++) for (int x = 0; x < S; x++) {
@@ -1896,11 +1900,11 @@ GLuint make_wheel_tex(void) {
         o[0] = v; o[1] = v; o[2] = (unsigned char)(v + v/16);        /* cool metal */
     }
     N2Tex t = { S, S, px, NULL, NULL, 0, 0, 0, 0,0,0,0 };
-    GLuint id = upload_tex(&t);
+    RhiTexture id = upload_tex(&t);
     /* radial, single-sample cap texture (no tiling intended) — clamp so a
        filter footprint near u/v=0 or 1 can't wrap and bleed in colour from
        the opposite edge, same reasoning as the car atlas/vinyl clamps. */
-    glBindTexture(GL_TEXTURE_2D, id);
+    glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(id));
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     return id;
@@ -1937,7 +1941,7 @@ void draw_gpumesh(GpuMesh *g) {
     glDrawElements(GL_TRIANGLES, g->nidx, GL_UNSIGNED_SHORT, 0);
 }
 
-void render_wheel_mesh(const RProg *r, GpuMesh *mesh, GLuint texture, int mode) {
+void render_wheel_mesh(const RProg *r, GpuMesh *mesh, RhiTexture texture, int mode) {
     const GLint loc[]={r->uUseTex,r->uAlphaTest,r->uTextureAlpha,r->uAlpha,r->uDecal,
                        r->uRimTint,r->uSpec,r->uEnv,r->uClearcoat,r->uVColor};
     float saved[10];for(int i=0;i<10;i++)gls_get_uniformfv(r->prog,loc[i],saved+i,1);
@@ -1948,7 +1952,7 @@ void render_wheel_mesh(const RProg *r, GpuMesh *mesh, GLuint texture, int mode) 
     GLboolean blend=gls_is_enabled(GL_BLEND),depth=gls_is_enabled(GL_DEPTH_TEST),mask;
     gls_get_booleanv(GL_DEPTH_WRITEMASK,&mask);
     unsigned char amode = mesh->draw_mode ? mesh->draw_mode : (unsigned char)mode;
-    int cut=texture && amode==N2_DRAW_CUTOUT, translucent=texture && amode==N2_DRAW_BLEND;
+    int cut=texture.id && amode==N2_DRAW_CUTOUT, translucent=texture.id && amode==N2_DRAW_BLEND;
     /* The wheel INTERIOR slice is the inboard barrel/backing. Its atlas
        rectangle also contains transparent texels from the tread strip, so
        alpha discard breaks the generated round backing into black facets.
@@ -1957,13 +1961,13 @@ void render_wheel_mesh(const RProg *r, GpuMesh *mesh, GLuint texture, int mode) 
     /* Prelit traffic wheels use a cutout quad for the visible wheel face. */
     if (mesh->car_material == N2_MAT_INTERIOR && !mesh->cbo.id) cut = 0;
     glUniform1f(r->uVColor,mesh->cbo.id?2.0f:0.0f);
-    glBindTexture(GL_TEXTURE_2D,texture);
-    glUniform1f(r->uUseTex,texture?1.0f:0.0f);
+    glBindTexture(GL_TEXTURE_2D,rhi_gl_texture_name(texture));
+    glUniform1f(r->uUseTex,texture.id?1.0f:0.0f);
     glUniform1f(r->uAlphaTest,cut?1.0f:0.0f);
     glUniform1f(r->uTextureAlpha,translucent?1.0f:0.0f);
     glUniform1f(r->uAlpha,1.0f);glUniform1f(r->uDecal,0.0f);
     uint32_t material=mesh->car_material;
-    if (!texture || (material!=N2_MAT_MAGSILVER && material!=N2_MAT_MAGCHROME))
+    if (!texture.id || (material!=N2_MAT_MAGSILVER && material!=N2_MAT_MAGCHROME))
         glUniform1f(r->uRimTint,0.0f);
     if (material==N2_MAT_RUBBER || material==N2_MAT_INTERIOR || material==N2_MAT_DULLPLASTIC) {
         glUniform1f(r->uSpec,0.0f);glUniform1f(r->uEnv,0.0f);
@@ -2022,33 +2026,22 @@ int render_car_glass_order(const N2Scene *scene,const float mvp[16],int *order) 
     n2_sort_back_to_front(order,n,depth);return n;
 }
 
-/* S3TC format enums + capability flag. glext.h / SDL_opengl.h define these on
-   desktop; guard so the -DN2_GLES build (where the flag stays 0 unless the GPU
-   advertises the extension) still compiles. */
-#ifndef GL_COMPRESSED_RGBA_S3TC_DXT1_EXT
-#  define GL_COMPRESSED_RGBA_S3TC_DXT1_EXT 0x83F1
-#endif
-#ifndef GL_COMPRESSED_RGBA_S3TC_DXT3_EXT
-#  define GL_COMPRESSED_RGBA_S3TC_DXT3_EXT 0x83F2
-#endif
-#ifndef GL_COMPRESSED_RGBA_S3TC_DXT5_EXT
-#  define GL_COMPRESSED_RGBA_S3TC_DXT5_EXT 0x83F3
-#endif
+/* S3TC capability flag (rhi_caps()->tex_bc1..3; the formats live in rhi_gl.c). */
 int g_tex_s3tc = 0;
 int   g_tex_aniso_max = 1;
 float g_tex_aniso     = 1.0f;
 #define GL_TEXTURE_MAX_ANISOTROPY_EXT_    0x84FE
 
 /* Every texture this renderer owns, so a detail change can re-apply to all of
- * them. Ids are recorded on upload and validated with glIsTexture before use --
- * residents and the world cache delete textures behind our back, and setting a
- * parameter on a deleted name is a GL error, not a no-op. */
-static GLuint *g_tex_all; static int g_tex_all_n, g_tex_all_cap;
-static void tex_track(GLuint id) {
-    if (!id) return;
+ * them. Handles are recorded on upload and checked with rhi_texture_is_live
+ * before use -- residents and the world cache destroy textures behind our back,
+ * and setting a parameter on a deleted name is a GL error, not a no-op. */
+static RhiTexture *g_tex_all; static int g_tex_all_n, g_tex_all_cap;
+static void tex_track(RhiTexture id) {
+    if (!id.id) return;
     if (g_tex_all_n == g_tex_all_cap) {
         int cap = g_tex_all_cap ? g_tex_all_cap * 2 : 256;
-        GLuint *t = (GLuint *)realloc(g_tex_all, (size_t)cap * sizeof *t);
+        RhiTexture *t = (RhiTexture *)realloc(g_tex_all, (size_t)cap * sizeof *t);
         if (!t) return;                       /* out of memory: just don't track it */
         g_tex_all = t; g_tex_all_cap = cap;
     }
@@ -2068,9 +2061,9 @@ void render_texture_detail(float aniso) {
     GLint bound = 0; gls_get_integerv(GL_TEXTURE_BINDING_2D, &bound);
     int live = 0;
     for (int i = 0; i < g_tex_all_n; i++) {
-        if (!glIsTexture(g_tex_all[i])) continue;      /* freed since upload */
+        if (!rhi_texture_is_live(g_tex_all[i])) continue;   /* freed since upload */
         g_tex_all[live++] = g_tex_all[i];
-        glBindTexture(GL_TEXTURE_2D, g_tex_all[i]);
+        glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(g_tex_all[i]));
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT_, g_tex_aniso);
     }
     g_tex_all_n = live;                                 /* compact away dead ids */
@@ -2078,27 +2071,27 @@ void render_texture_detail(float aniso) {
 }
 
 /* tex_override.c: aniso + tracking for an override it has just bound. */
-void render_tex_finish_bound(GLuint id) { tex_apply_aniso(); tex_track(id); }
+void render_tex_finish_bound(RhiTexture id) { tex_apply_aniso(); tex_track(id); }
 
 /* Keyed siblings of the two uploaders: try a user HD override first (only when
    --tex-overrides indexed one for this key), else the unchanged original path.
    The caller keeps `t` for draw mode, alpha policy and measurements. */
-GLuint upload_tex_keyed(uint32_t key, const char *pack, const N2Tex *t) {
-    GLuint id = tex_override_upload(key, pack, t);
-    return id ? id : upload_tex(t);
+RhiTexture upload_tex_keyed(uint32_t key, const char *pack, const N2Tex *t) {
+    RhiTexture id = tex_override_upload(key, pack, t);
+    return id.id ? id : upload_tex(t);
 }
-GLuint upload_tpk_keyed(uint32_t key, const char *pack, const N2Tex *t) {
-    GLuint id = tex_override_upload(key, pack, t);
-    return id ? id : upload_tpk_texture_to_gpu(t);
+RhiTexture upload_tpk_keyed(uint32_t key, const char *pack, const N2Tex *t) {
+    RhiTexture id = tex_override_upload(key, pack, t);
+    return id.id ? id : upload_tpk_texture_to_gpu(t);
 }
 
-GLuint upload_tpk_texture_to_gpu(const N2Tex *t) {
+RhiTexture upload_tpk_texture_to_gpu(const N2Tex *t) {
     if (g_tex_s3tc && t->dxtfmt && t->dxt && t->dxtlen > 0) {
-        GLenum fmt = (t->dxtfmt == 3) ? GL_COMPRESSED_RGBA_S3TC_DXT3_EXT
-                   : (t->dxtfmt == 5) ? GL_COMPRESSED_RGBA_S3TC_DXT5_EXT
-                                      : GL_COMPRESSED_RGBA_S3TC_DXT1_EXT;
+        RhiFormat fmt = (t->dxtfmt == 3) ? RHI_FORMAT_BC2
+                      : (t->dxtfmt == 5) ? RHI_FORMAT_BC3 : RHI_FORMAT_BC1;
         int bpb = (t->dxtfmt == 1) ? 8 : 16;   /* S3TC block bytes (DXT3/DXT5 = 16) */
-        GLuint id = 0; glGenTextures(1, &id); glBindTexture(GL_TEXTURE_2D, id);
+        RhiTexture id = rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D, fmt, t->w, t->h});
+        if (!id.id) return id;
         /* Replay every complete mip level in the blob (level 0 = base .. 1x1).
            Per-level block count matches n2_mipbytes2 exactly so the offsets line
            up. Only whole levels are uploaded; a chain that reaches 1x1 is a
@@ -2110,7 +2103,7 @@ GLuint upload_tpk_texture_to_gpu(const N2Tex *t) {
             int bw = lw < 4 ? 1 : lw/4, bh = lh < 4 ? 1 : lh/4;
             int sz = bw * bh * bpb;
             if (off + sz > t->dxtlen) break;
-            glCompressedTexImage2D(GL_TEXTURE_2D, level, fmt, lw, lh, 0, sz, t->dxt + off);
+            rhi_texture_upload(id, 0, level, t->dxt + off, (size_t)sz);
             off += sz; level++;
             if (lw == 1 && lh == 1) { complete = 1; break; }
             if (lw > 1) lw /= 2; if (lh > 1) lh /= 2;
@@ -2126,20 +2119,22 @@ GLuint upload_tpk_texture_to_gpu(const N2Tex *t) {
     return upload_tex(t);   /* portable fallback: CPU-decoded RGBA + mipmaps */
 }
 
-GLuint upload_tex(const N2Tex *t) {
-    GLuint id = 0; glGenTextures(1, &id); glBindTexture(GL_TEXTURE_2D, id);
+RhiTexture upload_tex(const N2Tex *t) {
+    RhiTexture id = rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D,
+        t->alpha ? RHI_FORMAT_RGBA8 : RHI_FORMAT_RGB8, t->w, t->h});
+    if (!id.id) return id;
     if (t->alpha) {   /* interleave the decal-mask plane -> RGBA */
         unsigned char *px = (unsigned char *)malloc((size_t)t->w * t->h * 4);
-        if (!px) { glDeleteTextures(1, &id); return 0; }
+        if (!px) { rhi_texture_destroy(id); return (RhiTexture){0}; }
         for (long p = 0; p < (long)t->w * t->h; p++) {
             px[p*4]=t->rgb[p*3]; px[p*4+1]=t->rgb[p*3+1];
             px[p*4+2]=t->rgb[p*3+2]; px[p*4+3]=t->alpha[p];
         }
-        glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,t->w,t->h,0,GL_RGBA,GL_UNSIGNED_BYTE,px);
+        rhi_texture_upload(id, 0, 0, px, 0);
         free(px);
     } else
-        glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,t->w,t->h,0,GL_RGB,GL_UNSIGNED_BYTE,t->rgb);
-    glGenerateMipmap(GL_TEXTURE_2D);
+        rhi_texture_upload(id, 0, 0, t->rgb, 0);
+    rhi_texture_generate_mips(id);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR_MIPMAP_LINEAR);

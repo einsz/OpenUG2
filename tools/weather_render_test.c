@@ -182,7 +182,7 @@ static void car_render_test(const RProg *r) {
     /* Six colored enclosing walls prove actual scene capture, all cube faces,
        complete publication, resizing, moving origin and Low disabling it. */
     N2Batch *batches=NULL;int count=0;N2Mesh walls[6]={{0}};
-    float positions[6][20];GLuint textures[6];float bounds[6][4];
+    float positions[6][20];RhiTexture textures[6];float bounds[6][4];
     for(int face=0;face<6;face++) {
         int axis=face/2,sign=face%2?-1:1;
         for(int v=0;v<4;v++) {
@@ -196,7 +196,7 @@ static void car_render_test(const RProg *r) {
         bounds[face][0]=bounds[face][1]=-3;bounds[face][2]=bounds[face][3]=3;
     }
     scene.meshes=walls;scene.count=6;
-    count=upload_world_batches(&scene,bounds,textures,0,&batches,NULL,NULL,NULL);
+    count=upload_world_batches(&scene,bounds,textures,(RhiTexture){0},&batches,NULL,NULL,NULL);
     CarEnvironment env={0};float origin[]={0,0,0};
     glUniform1f(r->uAmbient,1);glUniform1f(r->uDiffuse,0);glUniform1f(r->uFogDensity,0);
     for(int face=0;face<6;face++) {
@@ -226,7 +226,7 @@ static void car_render_test(const RProg *r) {
     assert(!render_car_environment(r,&env,batches,count,NULL,0,origin,0));
     float ready;glGetUniformfv(r->prog,r->uEnvReady,&ready);assert(ready==0);
     GLuint cube=env.cube[0];free_car_environment(&env);assert(!glIsTexture(cube));
-    render_batch_array_free(&batches,&count);glDeleteTextures(6,textures);
+    render_batch_array_free(&batches,&count);for(int i=0;i<6;i++)rhi_texture_destroy(textures[i]);
     glActiveTexture(GL_TEXTURE0);glUniform1f(r->uEnvReady,0);
     glUniformMatrix4fv(r->uMVP,1,GL_FALSE,clip);glUniform1f(r->uAmbient,.5f);glUniform1f(r->uDiffuse,.5f);
     glClearColor(0,0,0,0);assert(glGetError()==GL_NO_ERROR);
@@ -240,8 +240,8 @@ static void reflection_test(const RProg *r) {
     for(int i=0;i<2;i++){meshes[i].verts=i?wall:ground;meshes[i].idx=indices;meshes[i].nverts=4;meshes[i].nidx=6;meshes[i].cat=i?N2_OTHER:N2_ROAD;}
     N2Scene scene={0};scene.meshes=meshes;scene.count=2;
     float bounds[2][4]={{-10,0,10,20},{-3,8,3,8}};
-    GLuint tex[2]={0,0};N2Batch *batches=NULL;int map[2];
-    int count=upload_world_batches(&scene,bounds,tex,0,&batches,NULL,map,NULL);
+    RhiTexture tex[2]={{0},{0}};N2Batch *batches=NULL;int map[2];
+    int count=upload_world_batches(&scene,bounds,tex,(RhiTexture){0},&batches,NULL,map,NULL);
     assert(count==2);
     float cam[]={0,-4,3},look[]={0,1,-.15f},p[16],v[16],mvp[16];
     mat_persp(1.1f,1,.1f,60,p);mat_lookat(cam,look,v);mat_mul(p,v,mvp);
@@ -379,8 +379,8 @@ int main(void) {
     meshes[0].cat=N2_ROAD;meshes[1].cat=N2_OTHER;
     N2Scene scene={0};scene.meshes=meshes;scene.count=2;
     float bounds[2][4]={{-100,-100,100,100},{-100,-100,100,100}};
-    GLuint textures[2]={0,0};N2Batch *batches=NULL;int mapping[2];
-    int count=upload_world_batches(&scene,bounds,textures,0,&batches,NULL,mapping,NULL);
+    RhiTexture textures[2]={{0},{0}};N2Batch *batches=NULL;int mapping[2];
+    int count=upload_world_batches(&scene,bounds,textures,(RhiTexture){0},&batches,NULL,mapping,NULL);
     assert(count==2 && mapping[0]!=mapping[1]);
     assert(batches[mapping[0]].wettable && !batches[mapping[1]].wettable);
     render_batch_array_free(&batches,&count);

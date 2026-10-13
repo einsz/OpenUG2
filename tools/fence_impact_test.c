@@ -64,7 +64,7 @@ int main(int argc,char **argv) {
     N2Batch *batches=NULL;int count=0,map[2];BatchedVertex before[8],after[8];
     int panel_batch=-1,other_batch=-1;
     if(gpu) {
-        GLuint textures[2]={0};count=upload_world_batches(&scene,bounds,textures,0,&batches,NULL,map,NULL);assert(count==2);
+        RhiTexture textures[2]={{0}};count=upload_world_batches(&scene,bounds,textures,(RhiTexture){0},&batches,NULL,map,NULL);assert(count==2);
         /* upload returns count; the scene deliberately separates ROAD and OTHER. */
         assert(batches);panel_batch=map[1];other_batch=map[0];
         assert(panel_batch!=other_batch && batches[panel_batch].nprops==1);
@@ -109,7 +109,7 @@ int main(int argc,char **argv) {
     assert(vel[0]==.02f && meshes[1].prop_broken);
     if(gpu) {
         render_batch_array_free(&batches,&count);
-        GLuint textures[2]={0};count=upload_world_batches(&scene,bounds,textures,0,&batches,NULL,map,NULL);assert(count==2);
+        RhiTexture textures[2]={{0}};count=upload_world_batches(&scene,bounds,textures,(RhiTexture){0},&batches,NULL,map,NULL);assert(count==2);
         assert(render_world_prop_updates(&scene,batches,count,world_prop_update_mesh)>0);
         glBindBuffer(GL_ARRAY_BUFFER,rhi_gl_buffer_name(batches[map[1]].vbo));glGetBufferSubData(GL_ARRAY_BUFFER,0,sizeof after[0]*4,after);
         for(int v=0;v<4;v++)assert(!memcmp(after[v].pos,panel+5*v,12));

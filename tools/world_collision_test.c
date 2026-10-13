@@ -231,8 +231,8 @@ int main(void) {
     assert(contact(s.meshes+3,16.1f,6)&&!contact(s.meshes+4,16.1f,6));
     assert(contact(s.meshes+5,30.1f,6)&&!contact(s.meshes+5,30.1f,9));
     assert(contact(s.meshes+6,40.1f,6)&&s.meshes[6].cat==N2_COLLISION);
-    N2Scene invisible={s.meshes+6,1,1};float bounds[][4]={{40,-4,40,4}};GLuint textures[]={0};
-    WorldBatchUpload *upload=upload_world_batches_begin(&invisible,bounds,textures,0,NULL,NULL);
+    N2Scene invisible={s.meshes+6,1,1};float bounds[][4]={{40,-4,40,4}};RhiTexture textures[]={{0}};
+    WorldBatchUpload *upload=upload_world_batches_begin(&invisible,bounds,textures,(RhiTexture){0},NULL,NULL);
     N2Batch *batches=NULL;int nbatch=0;assert(upload);
     assert(upload_world_batches_step(&upload,1,&batches,&nbatch,NULL)==1&&!upload&&nbatch==0);
     free(batches);

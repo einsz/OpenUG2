@@ -150,6 +150,46 @@ RhiResult rhi_buffer_replace(RhiBuffer buf, size_t size, const void *data);
 /* Releases the buffer; {0} is ignored. The handle becomes invalid. */
 void      rhi_buffer_destroy(RhiBuffer buf);
 
+/* ------------------------------------------------------------------------------ */
+/* Textures                                                                       */
+/* ------------------------------------------------------------------------------ */
+/* Opaque handle like RhiBuffer: slot index + generation, id 0 = no texture. */
+typedef struct RhiTexture { uint32_t id; } RhiTexture;
+
+typedef enum RhiTextureType {
+    RHI_TEXTURE_2D   = 0,
+    RHI_TEXTURE_CUBE = 1   /* six square faces, +X -X +Y -Y +Z -Z */
+} RhiTextureType;
+
+typedef enum RhiFormat {
+    RHI_FORMAT_RGB8  = 1,  /* upload convenience; a backend may store RGBA8 */
+    RHI_FORMAT_RGBA8 = 2,
+    RHI_FORMAT_BC1   = 3,  /* S3TC DXT1, caps.tex_bc1 */
+    RHI_FORMAT_BC2   = 4,  /* S3TC DXT3, caps.tex_bc2 */
+    RHI_FORMAT_BC3   = 5   /* S3TC DXT5, caps.tex_bc3 */
+} RhiFormat;
+
+typedef struct RhiTextureDesc {
+    RhiTextureType type;
+    RhiFormat      format;
+    int32_t        width, height;   /* level 0; equal for CUBE */
+} RhiTextureDesc;
+
+/* Creates a texture without contents. Returns {0} on failure (logged). */
+RhiTexture rhi_texture_create(const RhiTextureDesc *desc);
+/* Sets the contents of one mip level (face 0..5 for CUBE, 0 for 2D). Level n
+ * is max(1, width >> n) x max(1, height >> n). data == NULL leaves an
+ * uncompressed level allocated with undefined contents (render targets);
+ * compressed levels need data and its size in bytes. */
+RhiResult  rhi_texture_upload(RhiTexture tex, int32_t face, int32_t level,
+                              const void *data, size_t size);
+/* Fills levels 1.. from level 0 (RGB8/RGBA8 2D textures). */
+RhiResult  rhi_texture_generate_mips(RhiTexture tex);
+/* Releases the texture; {0} is ignored. The handle becomes invalid. */
+void       rhi_texture_destroy(RhiTexture tex);
+/* 1 while the handle refers to a texture that has not been destroyed. */
+int        rhi_texture_is_live(RhiTexture tex);
+
 #ifdef __cplusplus
 }
 #endif

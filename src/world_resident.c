@@ -108,12 +108,12 @@ void world_resident_resources_free(WorldResidentResources *resources) {
     /* World textures belong to the process-wide key cache in world.c and are
        shared with every other resident: this array only borrows them. The
        grass upload is this build's own, so it is still released here. */
-    if (resources->terrain_texture) {
+    if (resources->terrain_texture.id) {
         int shared = 0;
         for (int i = 0; i < resources->texture_count; i++)
             if (resources->textures &&
-                resources->textures[i] == resources->terrain_texture) shared = 1;
-        if (!shared) glDeleteTextures(1, &resources->terrain_texture);
+                resources->textures[i].id == resources->terrain_texture.id) shared = 1;
+        if (!shared) rhi_texture_destroy(resources->terrain_texture);
     }
     render_batch_array_free(&resources->ordinary, &resources->ordinary_count);
     render_batch_array_free(&resources->sky, &resources->sky_count);
@@ -137,7 +137,7 @@ static int resident_vista_batches(WorldResidentResources *resources,
                                   const WorldNeighborhood *neighborhood) {
     for (int i = 0; i < neighborhood->vista.count; i++) {
         N2Scene one = { &neighborhood->vista.meshes[i], 1, 1 };
-        GLuint texture = 0;
+        RhiTexture texture = {0};
         for (int j = 0; j < resources->texture_count; j++)
             if (resources->texture_keys[j] == one.meshes[0].texkey) {
                 texture = resources->textures[j];
@@ -190,11 +190,11 @@ static int resident_resources_step(WorldResidentResources *resources,
         while (glGetError() != GL_NO_ERROR) {}
         resources->texture_keys = (uint32_t *)calloc(
             (size_t)texture_cap, sizeof *resources->texture_keys);
-        resources->textures = (GLuint *)calloc(
+        resources->textures = (RhiTexture *)calloc(
             (size_t)texture_cap, sizeof *resources->textures);
         resources->texture_modes = (unsigned char *)calloc(
             (size_t)texture_cap, sizeof *resources->texture_modes);
-        resources->mesh_textures = (GLuint *)calloc(
+        resources->mesh_textures = (RhiTexture *)calloc(
             (size_t)mesh_count, sizeof *resources->mesh_textures);
         resources->mesh_modes = (unsigned char *)calloc(
             (size_t)mesh_count, sizeof *resources->mesh_modes);
@@ -225,7 +225,7 @@ static int resident_resources_step(WorldResidentResources *resources,
         }
         resources->texture_count = resources->texture_binding.count;
         for (int i = 0; i < resources->texture_count; i++)
-            if (!resources->textures[i]) goto fail;
+            if (!resources->textures[i].id) goto fail;
 
         for (int i = 0; i < mesh_count; i++) {
             resources->mesh_batch[i] = -1;

@@ -8,6 +8,7 @@
  */
 #include "hud_baseline.h"
 #include "hud_asset.h"
+#include "rhi_gl.h"   /* GL names behind texture handles for the draw code */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -124,10 +125,10 @@ void hud_baseline_place_fit(int policy, int width, int height, float anchor_x, f
 
 /* --------------------------------------------------------------- resources */
 
-/* One art slot. `key` is the TPK record hash; `tex` is 0 when it did not load,
+/* One art slot. `key` is the TPK record hash; `tex` is {0} when it did not load,
  * which every draw site must tolerate. */
 typedef struct HudArc HudArc;
-typedef struct { const char *name; uint32_t key; GLuint tex; int w, h;
+typedef struct { const char *name; uint32_t key; RhiTexture tex; int w, h;
                  unsigned char rejected; struct {
                      int ok; float cx, cy, r, a0, a1;
                  } arc; } HudArt;
@@ -177,7 +178,7 @@ static const char *HUD_PACKS[] = {
 enum { HUD_NPACK = (int)(sizeof HUD_PACKS / sizeof HUD_PACKS[0]) };
 
 static void hud_baseline_art_define(HudBaseline *h, int slot, const char *name, uint32_t key) {
-    h->art[slot].name = name; h->art[slot].key = key; h->art[slot].tex = 0;
+    h->art[slot].name = name; h->art[slot].key = key; h->art[slot].tex = (RhiTexture){0};
 }
 
 /* Least-squares circle through the arc's opaque texels (Kasa fit), plus the
@@ -259,10 +260,10 @@ static void hud_baseline_measure_arc(const N2Tex *t, struct HudArc *out) {
 /* Upload one decoded record with HUD-appropriate sampling. Clamping matters:
    these are sprites on a transparent field, and REPEAT bleeds the opposite
    edge into the border of every rotated element. */
-static GLuint hud_baseline_upload(const N2Tex *t) {
-    GLuint id = upload_tpk_texture_to_gpu(t);
-    if (!id) return 0;
-    glBindTexture(GL_TEXTURE_2D, id);
+static RhiTexture hud_baseline_upload(const N2Tex *t) {
+    RhiTexture id = upload_tpk_texture_to_gpu(t);
+    if (!id.id) return id;
+    glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(id));
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -314,7 +315,7 @@ HudBaseline *hud_baseline_init(const char *dataroot) {
         if (!d) continue;
         N2Tpk tpk = n2_tpk_open(d, len);
         for (int a = 0; a < ART_COUNT; a++) {
-            if (h->art[a].tex) continue;             /* an earlier pack had it */
+            if (h->art[a].tex.id) continue;             /* an earlier pack had it */
             N2Tex t;
             if (!n2_tpk_decode(d, len, tpk, h->art[a].key, &t)) continue;
             /* A record can decode to garbage -- ARROW_MARKERA in InGameCommon
@@ -345,7 +346,7 @@ HudBaseline *hud_baseline_init(const char *dataroot) {
         free(d);
     }
     for (int a = 0; a < ART_COUNT; a++)
-        if (!h->art[a].tex) {
+        if (!h->art[a].tex.id) {
             size_t used = strlen(h->missing);
             snprintf(h->missing + used, sizeof h->missing - used,
                      "%s%s%s", used ? " " : "", h->art[a].name,
@@ -370,7 +371,7 @@ void hud_baseline_free(HudBaseline **hp) {
     if (!hp || !*hp) return;
     HudBaseline *h = *hp;
     for (int a = 0; a < ART_COUNT; a++)
-        if (h->art[a].tex) glDeleteTextures(1, &h->art[a].tex);
+        rhi_texture_destroy(h->art[a].tex);
     free(h);
     *hp = NULL;
 }
@@ -417,15 +418,15 @@ static void hud_baseline_xform(float asp, float w, float h, float cx, float cy,
  * through it is a flat filled rectangle. uEmissiveTex is the textured unlit
  * path -- t.rgb * uColor with alpha t.a * uAlpha -- which is exactly an
  * alpha-blended HUD sprite tinted by uColor. */
-static void hud_baseline_blit(const HudDC *dc, GLuint tex, float w, float h,
+static void hud_baseline_blit(const HudDC *dc, RhiTexture tex, float w, float h,
                      float cx, float cy, float rot,
                      float r, float g, float b, float a) {
     if (a <= 0.0f) return;
     float M[16];
     hud_baseline_xform(dc->asp, w, h, cx, cy, rot, M);
     glUniformMatrix4fv(dc->rp->uMVP, 1, GL_FALSE, M);
-    if (tex) {
-        glBindTexture(GL_TEXTURE_2D, tex);
+    if (tex.id) {
+        glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(tex));
         glUniform1f(dc->rp->uUseTex, 1.0f);
         glUniform1f(dc->rp->uEmissiveTex, 1.0f);
         glUniform1f(dc->rp->uUnlit, 0.0f);
@@ -506,7 +507,7 @@ static void hud_baseline_draw_cluster(HudBaseline *h, const HudDC *dc, const Hud
         if (f0 > h->needle_rpm) break;
         float a = hud_baseline_arc_angle(arc, f0, 181.0f, 29.0f), rr = arc_r * 0.80f;
         int hot = f0 > 0.82f;
-        hud_baseline_blit(dc, 0, arc_r * 0.10f, arc_r * 0.10f,
+        hud_baseline_blit(dc, (RhiTexture){0}, arc_r * 0.10f, arc_r * 0.10f,
                  pivx + cosf(a) * rr / dc->asp, pivy + sinf(a) * rr, a,
                  hot ? 1.0f : 0.35f, hot ? 0.18f : 0.82f, hot ? 0.12f : 1.0f, 0.90f);
     }
@@ -516,10 +517,10 @@ static void hud_baseline_draw_cluster(HudBaseline *h, const HudDC *dc, const Hud
        drawn. It is the only part of the dial that is not retail art. */
     {   float a = hud_baseline_arc_angle(arc, h->needle_rpm, 181.0f, 29.0f);
         float len = arc_r * 0.86f;
-        hud_baseline_blit(dc, 0, len, arc_r * 0.048f,
+        hud_baseline_blit(dc, (RhiTexture){0}, len, arc_r * 0.048f,
                  pivx + cosf(a) * len * 0.5f / dc->asp,
                  pivy + sinf(a) * len * 0.5f, a, 0.95f, 0.16f, 0.12f, 0.95f);
-        hud_baseline_blit(dc, 0, arc_r * 0.15f, arc_r * 0.15f, pivx, pivy, 0.0f,
+        hud_baseline_blit(dc, (RhiTexture){0}, arc_r * 0.15f, arc_r * 0.15f, pivx, pivy, 0.0f,
                  0.10f, 0.10f, 0.12f, 0.95f);
     }
 
@@ -663,7 +664,7 @@ static void hud_baseline_draw_minimap(HudBaseline *h, const HudDC *dc, const Hud
             float px, py; int in;
             MAP_PT(s->nav_xy[i*2], s->nav_xy[i*2+1], px, py, in);
             if (!in) continue;
-            hud_baseline_blit(dc, 0, 0.012f, 0.012f, px, py, 0.0f,
+            hud_baseline_blit(dc, (RhiTexture){0}, 0.012f, 0.012f, px, py, 0.0f,
                      0.40f, 0.46f, 0.55f, 0.85f);
             drawn++;
         }
@@ -703,7 +704,7 @@ static void hud_baseline_draw_minimap(HudBaseline *h, const HudDC *dc, const Hud
             float dx = (bx - ax) * dc->asp, dy = by - ay;
             float len = sqrtf(dx*dx + dy*dy);
             if (len < 1e-5f) continue;
-            hud_baseline_blit(dc, 0, len, 0.020f, (ax+bx)*0.5f, (ay+by)*0.5f,
+            hud_baseline_blit(dc, (RhiTexture){0}, len, 0.020f, (ax+bx)*0.5f, (ay+by)*0.5f,
                      atan2f(dy, dx), 0.30f, 0.80f, 1.0f, 0.95f);
         }
     }
@@ -774,7 +775,7 @@ static void hud_baseline_draw_nav_arrow(HudBaseline *h, const HudDC *dc, const H
        CCW-positive, so the arrow angle passes straight through: negating it
        here points the arrow at the mirror image of every turn. */
     float rot = h->arrow_angle;
-    if (h->art[ART_ARROW].tex) {
+    if (h->art[ART_ARROW].tex.id) {
         /* the sprite points up at rot 0; a right turn must lean right */
         hud_baseline_blit(dc, h->art[ART_ARROW].tex, 0.13f, 0.26f, ax, ay, rot,
                  0.30f, 0.62f, 1.0f, 0.95f);
@@ -791,11 +792,11 @@ static void hud_baseline_draw_nav_arrow(HudBaseline *h, const HudDC *dc, const H
             float c = cosf((float)side * SPREAD), sn = sinf((float)side * SPREAD);
             float lx = -fx * c - -fy * sn, ly = -fx * sn + -fy * c;
             float mx = tipx + lx * L * 0.5f / dc->asp, my = tipy + ly * L * 0.5f;
-            hud_baseline_blit(dc, 0, L, T, mx, my, atan2f(ly, lx),
+            hud_baseline_blit(dc, (RhiTexture){0}, L, T, mx, my, atan2f(ly, lx),
                      0.30f, 0.62f, 1.0f, 0.95f);
         }
         /* shaft, so the glyph reads as an arrow rather than a bare V */
-        hud_baseline_blit(dc, 0, L * 0.95f, T * 0.82f,
+        hud_baseline_blit(dc, (RhiTexture){0}, L * 0.95f, T * 0.82f,
                  ax - fx * L * 0.10f / dc->asp, ay - fy * L * 0.10f,
                  atan2f(fy, fx), 0.30f, 0.62f, 1.0f, 0.95f);
     }
