@@ -93,7 +93,6 @@ tools/capture_vehicle_shots.sh
 /cleanroom/analysis/
 
 # Local clean-room process records and runtime glyph exports
-/cleanroom/**/*.md
-/cleanroom/controller-glyphs/
+/cleanroom/
 /src/ugui/DESIGN*.md
 /src/ugui/HANDOFF.md
