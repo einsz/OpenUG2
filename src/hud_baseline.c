@@ -420,19 +420,19 @@ static void hud_baseline_blit(const HudDC *dc, RhiTexture tex, float w, float h,
     if (a <= 0.0f) return;
     float M[16];
     hud_baseline_xform(dc->asp, w, h, cx, cy, rot, M);
-    glUniformMatrix4fv(dc->rp->uMVP, 1, GL_FALSE, M);
+    ug2_copy(dc->rp->p->uMVP, M, 16);
     if (tex.id) {
         glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(tex));
-        glUniform1f(dc->rp->uUseTex, 1.0f);
-        glUniform1f(dc->rp->uEmissiveTex, 1.0f);
-        glUniform1f(dc->rp->uUnlit, 0.0f);
+        dc->rp->p->uUseTex = 1.0f;
+        dc->rp->p->uEmissiveTex = 1.0f;
+        dc->rp->p->uUnlit = 0.0f;
     } else {
-        glUniform1f(dc->rp->uUseTex, 0.0f);
-        glUniform1f(dc->rp->uEmissiveTex, 0.0f);
-        glUniform1f(dc->rp->uUnlit, 1.0f);
+        dc->rp->p->uUseTex = 0.0f;
+        dc->rp->p->uEmissiveTex = 0.0f;
+        dc->rp->p->uUnlit = 1.0f;
     }
-    glUniform3f(dc->rp->uColor, r, g, b);
-    glUniform1f(dc->rp->uAlpha, a);
+    ug2_vec3(dc->rp->p->uColor, r, g, b);
+    dc->rp->p->uAlpha = a;
     draw_gpumesh(dc->quad);
 }
 
@@ -442,13 +442,13 @@ static void hud_baseline_blit(const HudDC *dc, RhiTexture tex, float w, float h,
 static void hud_baseline_label(const HudDC *dc, const char *s, float cx, float cy,
                       float size, float r, float g, float b, float a) {
     float py = size / 5.0f, px = py / dc->asp;
-    glUniform1f(dc->rp->uUseTex, 0.0f);
-    glUniform1f(dc->rp->uEmissiveTex, 0.0f);
-    glUniform1f(dc->rp->uUnlit, 1.0f);
-    glUniform3f(dc->rp->uColor, r, g, b);
-    glUniform1f(dc->rp->uAlpha, a);
+    dc->rp->p->uUseTex = 0.0f;
+    dc->rp->p->uEmissiveTex = 0.0f;
+    dc->rp->p->uUnlit = 1.0f;
+    ug2_vec3(dc->rp->p->uColor, r, g, b);
+    dc->rp->p->uAlpha = a;
     /* draw_text takes a TOP-LEFT origin; centre the run on (cx,cy). */
-    draw_text(dc->quad, dc->rp->uMVP, s,
+    draw_text(dc->quad, dc->rp, s,
               cx - (float)strlen(s) * 2.0f * px, cy + 2.5f * py, px, py);
 }
 
@@ -885,20 +885,19 @@ void hud_baseline_draw(HudBaseline *h, const RProg *rp, GpuMesh *quad,
     glDepthMask(GL_FALSE);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glUniform1f(rp->uUnlit, 1.0f);
-    glUniform1f(rp->uVColor, 0.0f);
+    rp->p->uUnlit = 1.0f;
+    rp->p->uVColor = 0.0f;
     /* both unlit branches mix toward uFogColor; a HUD quad's vPos is meaningless
        so the only safe fog for it is none. Restored below. */
-    GLfloat fog_density = 0.0f;
-    glGetUniformfv(rp->prog, rp->uFogDensity, &fog_density);
-    glUniform1f(rp->uFogDensity, 0.0f);
-    glUniform1f(rp->uAlpha, 1.0f);
-    glUniform1f(rp->uDecal, 0.0f);
-    glUniform1f(rp->uAlphaTest, 0.0f);
-    glUniform1f(rp->uTextureAlpha, 1.0f);   /* HUD art is alpha-blended sprites */
-    glUniform1f(rp->uEmissiveTex, 0.0f);
-    glUniform1f(rp->uVista, 0.0f);
-    glUniform3f(rp->uEmissive, 0.0f, 0.0f, 0.0f);
+    float fog_density = rp->p->uFogDensity;
+    rp->p->uFogDensity = 0.0f;
+    rp->p->uAlpha = 1.0f;
+    rp->p->uDecal = 0.0f;
+    rp->p->uAlphaTest = 0.0f;
+    rp->p->uTextureAlpha = 1.0f;   /* HUD art is alpha-blended sprites */
+    rp->p->uEmissiveTex = 0.0f;
+    rp->p->uVista = 0.0f;
+    ug2_vec3(rp->p->uEmissive, 0.0f, 0.0f, 0.0f);
 
     if (s.racing) {
         hud_baseline_draw_minimap(h, &dc, &s);
@@ -922,13 +921,13 @@ void hud_baseline_draw(HudBaseline *h, const RProg *rp, GpuMesh *quad,
     }
 
     /* --- restore --- */
-    glUniform1f(rp->uUseTex, 0.0f);
-    glUniform1f(rp->uUnlit, 0.0f);
-    glUniform1f(rp->uEmissiveTex, 0.0f);
-    glUniform1f(rp->uAlpha, 1.0f);
-    glUniform1f(rp->uTextureAlpha, 0.0f);
-    glUniform1f(rp->uFogDensity, fog_density);
-    glUniform3f(rp->uColor, 1.0f, 1.0f, 1.0f);
+    rp->p->uUseTex = 0.0f;
+    rp->p->uUnlit = 0.0f;
+    rp->p->uEmissiveTex = 0.0f;
+    rp->p->uAlpha = 1.0f;
+    rp->p->uTextureAlpha = 0.0f;
+    rp->p->uFogDensity = fog_density;
+    ug2_vec3(rp->p->uColor, 1.0f, 1.0f, 1.0f);
     glDepthMask(depth_mask);
     if (depth_on) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
     if (blend_on) glEnable(GL_BLEND); else glDisable(GL_BLEND);

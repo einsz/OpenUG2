@@ -20,11 +20,11 @@ int main(void) {
     assert(w);SDL_GLContext ctx=SDL_GL_CreateContext(w);assert(ctx);
     RProg r=render_program();GpuMesh q=make_quad();
     float m[16]={2,0,0,0,0,2,0,0,0,0,1,0,-1,-1,0,1};
-    glUniformMatrix4fv(r.uMVP,1,GL_FALSE,m);
-    glUniform1f(r.uFogDensity,0);glUniform1f(r.uAmbient,1.0f/1.35f);
-    glUniform1f(r.uDiffuse,0);glUniform1f(r.uSpec,0);glUniform1f(r.uEnv,0);
-    glUniform1f(r.uClearcoat,0);glUniform1f(r.uRimTint,0);
-    glUniform3f(r.uColor,0,1,0);glUniform3f(r.uCamPos,0,0,3);
+    ug2_copy(r.p->uMVP, m, 16);
+    r.p->uFogDensity = 0;r.p->uAmbient = 1.0f/1.35f;
+    r.p->uDiffuse = 0;r.p->uSpec = 0;r.p->uEnv = 0;
+    r.p->uClearcoat = 0;r.p->uRimTint = 0;
+    ug2_vec3(r.p->uColor, 0, 1, 0);ug2_vec3(r.p->uCamPos, 0, 0, 3);
     unsigned char pixels[]={255,0,0,0, 255,0,0,127, 255,0,0,128, 255,0,0,255};
     RhiTexture wtex=rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D,RHI_FORMAT_RGBA8,4,1});
     rhi_texture_upload(wtex,0,0,pixels,0);GLuint tex=rhi_gl_texture_name(wtex);
@@ -42,8 +42,8 @@ int main(void) {
         else {glDisable(GL_DEPTH_TEST);glDepthMask(GL_FALSE);glEnable(GL_BLEND);}
         glBlendFuncSeparate(GL_ONE,GL_ZERO,GL_ZERO,GL_ONE);
         glBindTexture(GL_TEXTURE_2D,tex);
-        glUniform1f(r.uUseTex,.25f);glUniform1f(r.uAlpha,.4f);glUniform1f(r.uDecal,.8f);
-        glUniform1f(r.uAlphaTest,.75f);glUniform1f(r.uTextureAlpha,.5f);
+        r.p->uUseTex = .25f;r.p->uAlpha = .4f;r.p->uDecal = .8f;
+        r.p->uAlphaTest = .75f;r.p->uTextureAlpha = .5f;
         render_wheel_mesh(&r,&q,missing?(RhiTexture){0}:wtex,missing?N2_DRAW_CUTOUT:mode);
         unsigned char a[4],b[4],c[4],below[4];float za,zc;
         glReadPixels(4,16,1,1,GL_RGBA,GL_UNSIGNED_BYTE,a);
@@ -71,20 +71,20 @@ int main(void) {
         glGetIntegerv(GL_BLEND_SRC_ALPHA,&v);assert(v==GL_ZERO);
         glGetIntegerv(GL_BLEND_DST_ALPHA,&v);assert(v==GL_ONE);
         glGetIntegerv(GL_TEXTURE_BINDING_2D,&v);assert((GLuint)v==tex);
-        float f;glGetUniformfv(r.prog,r.uUseTex,&f);assert(f==.25f);
-        glGetUniformfv(r.prog,r.uAlpha,&f);assert(f==.4f);
-        glGetUniformfv(r.prog,r.uDecal,&f);assert(f==.8f);
-        glGetUniformfv(r.prog,r.uAlphaTest,&f);assert(f==.75f);
-        glGetUniformfv(r.prog,r.uTextureAlpha,&f);assert(f==.5f);
+        float f;ug2_copy(&f, &r.p->uUseTex, 1);assert(f==.25f);
+        ug2_copy(&f, &r.p->uAlpha, 1);assert(f==.4f);
+        ug2_copy(&f, &r.p->uDecal, 1);assert(f==.8f);
+        ug2_copy(&f, &r.p->uAlphaTest, 1);assert(f==.75f);
+        ug2_copy(&f, &r.p->uTextureAlpha, 1);assert(f==.5f);
         assert(glGetError()==GL_NO_ERROR);
     }
     /* Scene contract: opaque opponents first, then blended player wheels.
        Draw an actual farther green surface, not just a prefilled depth buffer. */
     glDepthMask(GL_TRUE);glClearDepth(1);glClearColor(0,0,1,1);
     glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
-    m[14]=.5f;glUniformMatrix4fv(r.uMVP,1,GL_FALSE,m);
+    m[14]=.5f;ug2_copy(r.p->uMVP, m, 16);
     render_wheel_mesh(&r,&q,(RhiTexture){0},N2_DRAW_OPAQUE);
-    m[14]=0;glUniformMatrix4fv(r.uMVP,1,GL_FALSE,m);
+    m[14]=0;ug2_copy(r.p->uMVP, m, 16);
     render_wheel_mesh(&r,&q,wtex,N2_DRAW_BLEND);
     unsigned char overlap[4];
     glReadPixels(4,16,1,1,GL_RGBA,GL_UNSIGNED_BYTE,overlap);
@@ -102,14 +102,14 @@ int main(void) {
     for(int i=0;i<4;i++)pixels[i*4]=pixels[i*4+1]=pixels[i*4+2]=32;
     glBindTexture(GL_TEXTURE_2D,tex);
     glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,4,1,0,GL_RGBA,GL_UNSIGNED_BYTE,pixels);
-    glUniform1f(r.uAmbient,.42f);glUniform3f(r.uLight,0,0,-1);
+    r.p->uAmbient = .42f;ug2_vec3(r.p->uLight, 0, 0, -1);
     for(int mode=N2_DRAW_CUTOUT;mode<=N2_DRAW_BLEND;mode++)
     for(int material=0;material<7;material++) {
         unsigned char raw[4]={0};q.car_material=materials[material];
         for(int paint=0;paint<2;paint++) {
             glDepthMask(GL_TRUE);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
-            glUniform1f(r.uRimTint,(float)paint);glUniform1f(r.uSpec,.85f);
-            glUniform1f(r.uEnv,.25f);glUniform1f(r.uClearcoat,.4f);
+            r.p->uRimTint = (float)paint;r.p->uSpec = .85f;
+            r.p->uEnv = .25f;r.p->uClearcoat = .4f;
             render_wheel_mesh(&r,&q,wtex,mode);
             unsigned char sample[4],corner[4];
             glReadPixels(28,16,1,1,GL_RGBA,GL_UNSIGNED_BYTE,sample);
@@ -123,9 +123,9 @@ int main(void) {
             else if(material==3 || material==4)assert(sample[1]>sample[0]+10);
             else assert(!memcmp(raw,sample,3)); /* no tint, including unknowns */
             if(material<3)assert(sample[0]<25 && sample[1]<25 && sample[2]<25);
-            const GLint loc[]={r.uRimTint,r.uSpec,r.uEnv,r.uClearcoat};
+            const float got[]={r.p->uRimTint,r.p->uSpec,r.p->uEnv,r.p->uClearcoat};
             const float expected[]={(float)paint,.85f,.25f,.4f};
-            for(int i=0;i<4;i++){float value;glGetUniformfv(r.prog,loc[i],&value);assert(value==expected[i]);}
+            for(int i=0;i<4;i++)assert(got[i]==expected[i]);
         }
     }
     /* Traffic INTERIOR is a textured wheel-face quad, not the generated
@@ -133,14 +133,14 @@ int main(void) {
     unsigned char colors[16];memset(colors,255,sizeof colors);
     q.cbo=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX,RHI_UPDATE_STATIC,sizeof colors,colors});
     q.car_material=N2_MAT_INTERIOR;
-    glUniform1f(r.uVColor,.25f);
+    r.p->uVColor = .25f;
     glDepthMask(GL_TRUE);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
     render_wheel_mesh(&r,&q,wtex,N2_DRAW_CUTOUT);
     unsigned char corner[4],face[4];
     glReadPixels(4,16,1,1,GL_RGBA,GL_UNSIGNED_BYTE,corner);
     glReadPixels(28,16,1,1,GL_RGBA,GL_UNSIGNED_BYTE,face);
     assert(corner[0]<5 && corner[2]>245 && face[2]<25);
-    float vcolor;glGetUniformfv(r.prog,r.uVColor,&vcolor);assert(vcolor==.25f);
+    float vcolor;ug2_copy(&vcolor, &r.p->uVColor, 1);assert(vcolor==.25f);
     rhi_buffer_destroy(q.cbo);q.cbo=(RhiBuffer){0};
     assert(glGetError()==GL_NO_ERROR);
     rhi_texture_destroy(wtex);rhi_buffer_destroy(q.vbo);rhi_buffer_destroy(q.nbo);rhi_buffer_destroy(q.ibo);
