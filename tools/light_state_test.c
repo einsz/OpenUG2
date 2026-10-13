@@ -175,7 +175,7 @@ int main(void) {
         assert(glGetError()==GL_NO_ERROR);
     }
     rhi_buffer_destroy(batch.vbo);rhi_buffer_destroy(batch.ibo);
-    glDeleteTextures(2,tex); glDeleteProgram(r.prog);
+    glDeleteTextures(2,tex); rhi_shader_destroy(r.shader);
     rhi_buffer_destroy(quad.vbo); rhi_buffer_destroy(quad.nbo); rhi_buffer_destroy(quad.ibo);
     SDL_GL_DeleteContext(ctx); SDL_DestroyWindow(win); SDL_Quit();
     puts("light_state_test: PASS (vehicle footprints, soft shadow coverage, state isolation, depth occlusion, distance culling, additive fog, world-glow transform isolation)");

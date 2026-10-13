@@ -22,6 +22,11 @@ GLuint rhi_gl_buffer_name(RhiBuffer buf);
  * bound on the active texture unit, as the direct GL code did. */
 GLuint rhi_gl_texture_name(RhiTexture tex);
 
+/* GL program object behind a shader; 0 for {0} or a destroyed handle. Until
+ * parameter blocks and pipelines are part of rhi.h, draw code looks up uniform
+ * locations and calls glUseProgram on it. */
+GLuint rhi_gl_shader_program(RhiShader shader);
+
 #ifdef __cplusplus
 }
 #endif

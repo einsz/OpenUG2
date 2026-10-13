@@ -84,7 +84,8 @@ typedef struct {
 
 /* the one shader program + its uniform handles */
 typedef struct {
-    GLuint prog;
+    RhiShader shader;
+    GLuint prog;   /* GL program behind shader, until param blocks/pipelines */
     GLint uMVP, uModel, uUseTex, uColor, uUnlit, uAlpha, uSoft, uSpec, uAmbient, uDiffuse,
           uLight,   /* sun direction in world space */
           uVColor,  /* 0..1 strength of per-vertex prelight (world geometry only) */
@@ -126,7 +127,8 @@ typedef struct {
 } RProg;
 
 typedef struct {
-    GLuint fbo, depth, texture[2], program;
+    GLuint fbo, depth, texture[2], program;   /* program: GL name of shader */
+    RhiShader shader;
     RhiTexture white;   /* 1x1 for untextured casters */
     GLint mvp, cutout, range;
     int failed;
@@ -226,6 +228,13 @@ void mat_lookat(const float *eye, const float *fwd, float *m);   /* up = world +
  * allowed), as supplied by mat_car and the wheel/brake hub transforms. */
 void render_model(const RProg *r,const float model[16]);
 RProg    render_program(void);          /* compile+link the shader, fetch uniforms */
+/* Build a shader from embedded source bodies (make: generated_shaders.h), each
+   prefixed with a header (GLSL_VS_HEADER / GLSL_FS_HEADER, or ""). Attribute i
+   is attributes[i]. Returns {0} on failure. */
+RhiShader render_shader_create(const char *label,
+                               const char *vs_header, const unsigned char *vs, unsigned vs_len,
+                               const char *fs_header, const unsigned char *fs, unsigned fs_len,
+                               const char *const *attributes, uint32_t count);
 GpuMesh *upload_scene(N2Scene *s);      /* VBO/NBO/IBO per mesh, normals computed */
 void free_scene_gpu(GpuMesh *gm, int count);
 GpuMesh  make_wheel(float R, float halfW);  /* procedural tyre (see render.c) */

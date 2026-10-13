@@ -34,8 +34,8 @@ void render_world_map(const WorldMeshBatch *batches, uint32_t n,
 /* Free the batch's GL objects and zero it. */
 void destroy_world_mesh_batch(WorldMeshBatch *b);
 
-/* Compile world_debug_120.vert/.frag into a linked program (0 on failure).
+/* Compile world_debug_120.vert/.frag into a shader ({0} on failure).
    Binds a_Position/a_Normal/a_UV0/a_Color to locations 0..3. */
-GLuint world_debug_program_load(const char *vert_path, const char *frag_path);
+RhiShader world_debug_shader_load(const char *vert_path, const char *frag_path);
 
 #endif /* OPENUG2_WORLD_MESH_H */

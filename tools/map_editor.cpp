@@ -2897,7 +2897,7 @@ int main(int argc, char **argv) {
     rhi_buffer_destroy(e.quad.ibo);
     rhi_buffer_destroy(e.quad.nbo);
     rhi_buffer_destroy(e.quad.cbo);
-    glDeleteProgram(e.shader.prog);
+    rhi_shader_destroy(e.shader.shader);
     ImGui_ImplOpenGL2_Shutdown();
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();

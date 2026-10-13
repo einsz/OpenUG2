@@ -98,35 +98,30 @@ static char *wm_read_text(const char *path) {
     s[n] = 0; fclose(f);
     return s;
 }
-static GLuint wm_compile(GLenum type, const char *src, GLint len) {
-    GLuint s = glCreateShader(type);
-#ifdef N2_GLES
-    /* GLSL ES 1.00 variant of the same source: drop the "#version 120" line
-       (ES has no 1.20) and put the ES precision prologue in front. */
+/* Final text for one stage. Desktop: the 1.20 source as is. GLES: the GLSL ES
+   1.00 variant of the same source -- drop the "#version 120" line (ES has no
+   1.20) and put the ES precision prologue in front. len < 0 = NUL-terminated. */
+static char *wm_text(GLenum type, const char *src, GLint len) {
     if (len < 0) len = (GLint)strlen(src);
+    const char *header = "";
+#ifdef N2_GLES
     if (len >= 8 && !strncmp(src, "#version", 8)) {
         const char *nl = memchr(src, '\n', (size_t)len);
         GLint skip = nl ? (GLint)(nl - src) + 1 : len;
         src += skip; len -= skip;
     }
-    const char *parts[2] = { type == GL_VERTEX_SHADER ? GLSL_VS_HEADER : GLSL_FS_HEADER, src };
-    const GLint lens[2] = { -1, len };
-    glShaderSource(s, 2, parts, lens);
+    header = type == GL_VERTEX_SHADER ? GLSL_VS_HEADER : GLSL_FS_HEADER;
 #else
-    const GLint *lp = (len < 0) ? NULL : &len;   /* len < 0 = NUL-terminated */
-    glShaderSource(s, 1, &src, lp);
+    (void)type;
 #endif
-    glCompileShader(s);
-    GLint ok = 0; glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
-    if (!ok) {
-        char log[1024]; glGetShaderInfoLog(s, (GLsizei)sizeof log, NULL, log);
-        fprintf(stderr, "world_debug shader compile: %s\n", log);
-        glDeleteShader(s); return 0;
-    }
-    return s;
+    size_t n = strlen(header);
+    char *t = (char *)malloc(n + (size_t)len + 1);
+    if (!t) return NULL;
+    memcpy(t, header, n); memcpy(t + n, src, (size_t)len); t[n + (size_t)len] = 0;
+    return t;
 }
 
-GLuint world_debug_program_load(const char *vert_path, const char *frag_path) {
+RhiShader world_debug_shader_load(const char *vert_path, const char *frag_path) {
     /* Prefer on-disk files (live-editable during dev); fall back per-shader to
        the make-embedded source (generated_world_debug_shaders.h, xxd byte
        arrays -- not NUL-terminated, so pass their *_len) so the binary works
@@ -143,24 +138,13 @@ GLuint world_debug_program_load(const char *vert_path, const char *frag_path) {
            flen = (GLint)src_world_debug_120_frag_len;
            fprintf(stderr, "world_debug: %s not found, using embedded fragment shader\n", frag_path); }
 
-    GLuint v = wm_compile(GL_VERTEX_SHADER, vsrc, vlen);
-    GLuint f = wm_compile(GL_FRAGMENT_SHADER, fsrc, flen);
+    static const char *const attributes[] = { "a_Position", "a_Normal", "a_UV0", "a_Color" };
+    char *vtext = wm_text(GL_VERTEX_SHADER, vsrc, vlen);
+    char *ftext = wm_text(GL_FRAGMENT_SHADER, fsrc, flen);
     free(vfile); free(ffile);
-    if (!v || !f) return 0;
-
-    GLuint p = glCreateProgram();
-    glAttachShader(p, v); glAttachShader(p, f);
-    glBindAttribLocation(p, 0, "a_Position");
-    glBindAttribLocation(p, 1, "a_Normal");
-    glBindAttribLocation(p, 2, "a_UV0");
-    glBindAttribLocation(p, 3, "a_Color");
-    glLinkProgram(p);
-    GLint ok = 0; glGetProgramiv(p, GL_LINK_STATUS, &ok);
-    if (!ok) {
-        char log[1024]; glGetProgramInfoLog(p, (GLsizei)sizeof log, NULL, log);
-        fprintf(stderr, "world_debug link: %s\n", log);
-        glDeleteProgram(p); p = 0;
-    }
-    glDeleteShader(v); glDeleteShader(f);
-    return p;
+    RhiShader shader = {0};
+    if (vtext && ftext)
+        shader = rhi_shader_create(&(RhiShaderDesc){ vtext, ftext, attributes, 4, "world_debug" });
+    free(vtext); free(ftext);
+    return shader;
 }

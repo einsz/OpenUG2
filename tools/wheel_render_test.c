@@ -144,6 +144,6 @@ int main(void) {
     rhi_buffer_destroy(q.cbo);q.cbo=(RhiBuffer){0};
     assert(glGetError()==GL_NO_ERROR);
     rhi_texture_destroy(wtex);rhi_buffer_destroy(q.vbo);rhi_buffer_destroy(q.nbo);rhi_buffer_destroy(q.ibo);
-    glDeleteProgram(r.prog);SDL_GL_DeleteContext(ctx);SDL_DestroyWindow(w);SDL_Quit();
+    rhi_shader_destroy(r.shader);SDL_GL_DeleteContext(ctx);SDL_DestroyWindow(w);SDL_Quit();
     puts("wheel_render_test: PASS (alpha, depth, state, sorting, overlap, wheel material paint/sheen isolation)");
 }
