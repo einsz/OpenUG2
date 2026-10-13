@@ -91,3 +91,9 @@ tools/capture_vehicle_shots.sh
 
 # Clean-room analyst workspace (never commit)
 /cleanroom/analysis/
+
+# Local clean-room process records and runtime glyph exports
+/cleanroom/**/*.md
+/cleanroom/controller-glyphs/
+/src/ugui/DESIGN*.md
+/src/ugui/HANDOFF.md
