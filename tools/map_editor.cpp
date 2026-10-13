@@ -4,6 +4,7 @@ extern "C" {
 #include "ai.h"
 #include "resource.h"
 #include "world.h"
+#include "rhi_gl.h"
 }
 #include "backends/imgui_impl_opengl2.h"
 #include "backends/imgui_impl_sdl2.h"
@@ -66,7 +67,8 @@ struct Editor {
     N2Batch *batches = nullptr, *glows = nullptr, *sky = nullptr;
     int nbatch = 0, nglow = 0, nsky = 0;
     RProg shader{};
-    GLuint wallvbo = 0, flare = 0;
+    RhiBuffer wallvbo{};
+    GLuint flare = 0;
     GpuMesh quad{};
     char root[1024] = "../TRACKS", file[1024] = "map-edits.ug2map", filter[128] = "";
     char tracks[128][64]{};
@@ -1221,7 +1223,7 @@ struct Editor {
                         auto r = array.first[b].props[n];
                         if (std::find(o.meshes.begin(),o.meshes.end(),r.mesh)==o.meshes.end()) continue;
                         BatchedVertex v{};
-                        glBindBuffer(GL_ARRAY_BUFFER,array.first[b].vbo);
+                        glBindBuffer(GL_ARRAY_BUFFER,rhi_gl_buffer_name(array.first[b].vbo));
                         glGetBufferSubData(GL_ARRAY_BUFFER,long(r.vertex)*sizeof v,sizeof v,&v);
                         Point expected = point(meshes[r.mesh].verts), actual = point(v.pos);
                         if (dot(sub(expected,actual),sub(expected,actual))>.000001f) return false;
@@ -1232,13 +1234,13 @@ struct Editor {
         gizmo_mode = 0; grid_snap = true; grid_step = 1; ground_snap = false;
         start = screen(add(pivot,mul(axis(0),length*.65f)));
         if (gizmo_hit(start)!=0 || !begin_gizmo(0,start)) return fail("move handle cannot be picked");
-        N2Batch *live = batches; GLuint vbo = batches[0].vbo;
+        N2Batch *live = batches; uint32_t vbo = batches[0].vbo.id;
         Uint64 clock = SDL_GetPerformanceCounter();
         for (int n = 1; n <= 100; n++)
             update_gizmo(screen(add(pivot,mul(axis(0),length*.65f+3.2f*n/100))));
         double ms = 1000.0*(SDL_GetPerformanceCounter()-clock)/SDL_GetPerformanceFrequency();
         if (!drag.active || std::fabs(item()->pos.x-snap(pivot.x+3.2f,1))>.002f ||
-            item()->pos.y!=pivot.y || item()->pos.z!=pivot.z || batches!=live || batches[0].vbo!=vbo ||
+            item()->pos.y!=pivot.y || item()->pos.z!=pivot.z || batches!=live || batches[0].vbo.id!=vbo ||
             !gpu_matches()) return fail("live/grid update or unchanged map buffers");
         finish_gizmo(false);
         Document moved = doc;
@@ -2890,14 +2892,11 @@ int main(int argc, char **argv) {
         SDL_GL_SwapWindow(win);
     }
     e.release();
-    if (e.wallvbo)
-        glDeleteBuffers(1, &e.wallvbo);
-    glDeleteBuffers(1, &e.quad.vbo);
-    glDeleteBuffers(1, &e.quad.ibo);
-    if (e.quad.nbo)
-        glDeleteBuffers(1, &e.quad.nbo);
-    if (e.quad.cbo)
-        glDeleteBuffers(1, &e.quad.cbo);
+    rhi_buffer_destroy(e.wallvbo);
+    rhi_buffer_destroy(e.quad.vbo);
+    rhi_buffer_destroy(e.quad.ibo);
+    rhi_buffer_destroy(e.quad.nbo);
+    rhi_buffer_destroy(e.quad.cbo);
     glDeleteProgram(e.shader.prog);
     ImGui_ImplOpenGL2_Shutdown();
     ImGui_ImplSDL2_Shutdown();

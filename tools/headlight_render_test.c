@@ -1,5 +1,6 @@
 /* Real GL shader regression, no retail assets. Run: make headlight-render-test. */
 #include "render.h"
+#include "rhi_gl.h"
 #include <assert.h>
 #include <stdio.h>
 
@@ -12,10 +13,10 @@ static void wall(N2Batch *b,float x,float ymin) {
     const float pos[4][3]={{x,ymin,0},{x,3,0},{x,3,3},{x,ymin,3}};
     const uint16_t idx[]={0,1,2,0,2,3};
     for(int i=0;i<4;i++)memcpy(v[i].pos,pos[i],sizeof pos[i]);
-    if(!b->vbo)glGenBuffers(1,&b->vbo);
-    if(!b->ibo)glGenBuffers(1,&b->ibo);
-    glBindBuffer(GL_ARRAY_BUFFER,b->vbo);glBufferData(GL_ARRAY_BUFFER,sizeof v,v,GL_STATIC_DRAW);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,b->ibo);glBufferData(GL_ELEMENT_ARRAY_BUFFER,sizeof idx,idx,GL_STATIC_DRAW);
+    if(!b->vbo.id)b->vbo=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX,RHI_UPDATE_STATIC,sizeof v,v});
+    else rhi_buffer_replace(b->vbo,sizeof v,v);
+    if(!b->ibo.id)b->ibo=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_INDEX,RHI_UPDATE_STATIC,sizeof idx,idx});
+    else rhi_buffer_replace(b->ibo,sizeof idx,idx);
     b->index_count=6;
     b->bbox_min[0]=b->bbox_max[0]=x;b->bbox_min[1]=ymin;b->bbox_max[1]=3;
     b->bbox_min[2]=0;b->bbox_max[2]=3;
@@ -124,7 +125,7 @@ static void tail_lamp_test(const RProg *r) {
         printf("tail lens textured=%d off=%d running=%d brake-day=%d brake-night=%d\n",
                tex,red[tex][0],red[tex][1],red[tex][2],red[tex][3]);
     }
-    glDeleteBuffers(1,&quad.vbo);glDeleteBuffers(1,&quad.nbo);glDeleteBuffers(1,&quad.ibo);
+    rhi_buffer_destroy(quad.vbo);rhi_buffer_destroy(quad.nbo);rhi_buffer_destroy(quad.ibo);
     glDeleteTextures(1,&texture);glUniform3f(r->uEmissive,0,0,0);
     puts("PASS: rear lamps retain texture detail; day/night brakes, running lights and nitro response");
 }
@@ -166,7 +167,7 @@ int main(void) {
     for(int authored=1;authored>=0;authored--) {
         normal_mesh.authored_normals=(unsigned char)authored;
         GpuMesh *gpu=upload_scene(&normal_scene);assert(gpu);
-        float uploaded[9];glBindBuffer(GL_ARRAY_BUFFER,gpu[0].nbo);
+        float uploaded[9];glBindBuffer(GL_ARRAY_BUFFER,rhi_gl_buffer_name(gpu[0].nbo));
         glGetBufferSubData(GL_ARRAY_BUFFER,0,sizeof uploaded,uploaded);
         assert(fabsf(uploaded[0]-(authored?.6f:0))<1e-6f && uploaded[1]==0);
         assert(fabsf(uploaded[2]-(authored?.8f:1))<1e-6f);
@@ -230,7 +231,7 @@ int main(void) {
     /* The road also casts: a surface must not shadow itself. */
     BatchedVertex surface[4]={0};
     for(int v=0;v<4;v++)memcpy(surface[v].pos,verts+v*5,3*sizeof(float));
-    glBindBuffer(GL_ARRAY_BUFFER,blocker.vbo);glBufferData(GL_ARRAY_BUFFER,sizeof surface,surface,GL_STATIC_DRAW);
+    rhi_buffer_replace(blocker.vbo,sizeof surface,surface);
     blocker.bbox_min[0]=0;blocker.bbox_max[0]=100;
     blocker.bbox_min[1]=-20;blocker.bbox_max[1]=20;blocker.bbox_max[2]=0;
     caster_count=1;
@@ -238,7 +239,7 @@ int main(void) {
     assert(sample(&r,road,model,1,1,64)==high_far);
     shadow_enabled=0;
     glDeleteTextures(1,&blocker.tex);glBindTexture(GL_TEXTURE_2D,texture);
-    glDeleteBuffers(1,&blocker.vbo);glDeleteBuffers(1,&blocker.ibo);
+    rhi_buffer_destroy(blocker.vbo);rhi_buffer_destroy(blocker.ibo);
     printf("PASS: world shadows blocked=%d single lamp=%d clear=%d; cutouts, culling, refresh and GL state\n",blocked,one_lamp,low);
     free_scene_gpu(road,1);
     /* Underside above lamp height: low-beam cutoff must reject it. */

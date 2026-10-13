@@ -6,6 +6,7 @@
 #include "world.h"
 #include "world_resident.h"
 #include "physics.h"
+#include "rhi_gl.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -111,23 +112,19 @@ static void test_resident_resource_cleanup(void) {
            resources.obstacle_z && resources.obstacle_src);
 
     glGenTextures(2, resources.textures);
-    glGenBuffers(1, &resources.ordinary[0].vbo);
-    glGenBuffers(1, &resources.ordinary[0].ibo);
-    glGenBuffers(1, &resources.ordinary[1].vbo);
-    glGenBuffers(1, &resources.ordinary[1].ibo);
     for (int i = 0; i < 2; i++) {
         unsigned char pixel[4] = {255, 255, 255, 255};
         glBindTexture(GL_TEXTURE_2D, resources.textures[i]);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0,
                      GL_RGBA, GL_UNSIGNED_BYTE, pixel);
-        glBindBuffer(GL_ARRAY_BUFFER, resources.ordinary[i].vbo);
-        glBufferData(GL_ARRAY_BUFFER, 4, pixel, GL_STATIC_DRAW);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, resources.ordinary[i].ibo);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, 4, pixel, GL_STATIC_DRAW);
+        resources.ordinary[i].vbo = rhi_buffer_create(
+            &(RhiBufferDesc){RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, 4, pixel});
+        resources.ordinary[i].ibo = rhi_buffer_create(
+            &(RhiBufferDesc){RHI_BUFFER_INDEX, RHI_UPDATE_STATIC, 4, pixel});
     }
     GLuint texture0 = resources.textures[0], texture1 = resources.textures[1];
-    GLuint vbo0 = resources.ordinary[0].vbo;
-    GLuint ibo0 = resources.ordinary[0].ibo;
+    GLuint vbo0 = rhi_gl_buffer_name(resources.ordinary[0].vbo);
+    GLuint ibo0 = rhi_gl_buffer_name(resources.ordinary[0].ibo);
     assert(glIsTexture(texture0) && glIsBuffer(vbo0) && glIsBuffer(ibo0));
 
     world_resident_resources_free(&resources);
@@ -179,8 +176,8 @@ static GLuint test_resident_resource_build(const char *region_path) {
     assert(world_resident_resources_build(&resources, &neighborhood, NULL));
     assert(resources.texture_count == 1 && resources.textures[0]);
     assert(resources.mesh_count == 1 && resources.mesh_textures[0]);
-    assert(resources.ordinary_count > 0 && resources.ordinary[0].vbo &&
-           resources.ordinary[0].ibo);
+    assert(resources.ordinary_count > 0 && resources.ordinary[0].vbo.id &&
+           resources.ordinary[0].ibo.id);
     assert(!neighborhood.rgn[0].data);
     GLuint bound = resources.textures[0];
     world_resident_resources_free(&resources);
@@ -232,7 +229,7 @@ static void test_sliced_collision(void) {
         assert(!world_resident_finish_step(r,1,1,0,1,NULL));
         assert(r->resources.collision_mesh==32);
         if (leave==2) {
-            GLuint buffer=r->resources.ordinary[0].vbo;
+            GLuint buffer=rhi_gl_buffer_name(r->resources.ordinary[0].vbo);
             assert(glIsBuffer(buffer)); world_resident_resources_free(&r->resources);
             assert(!glIsBuffer(buffer) && !r->resources.obstacles);
             continue;
@@ -328,7 +325,8 @@ static void test_sliced_resident_textures(const char *path) {
     world_texture_cache_clear();assert(!glIsTexture(first));
 }
 
-static void assert_same_buffer(GLenum target, GLuint a, GLuint b) {
+static void assert_same_buffer(GLenum target, RhiBuffer ha, RhiBuffer hb) {
+    GLuint a=rhi_gl_buffer_name(ha),b=rhi_gl_buffer_name(hb);
     GLint na=0,nb=0;
     glBindBuffer(target,a);glGetBufferParameteriv(target,GL_BUFFER_SIZE,&na);
     glBindBuffer(target,b);glGetBufferParameteriv(target,GL_BUFFER_SIZE,&nb);
@@ -372,7 +370,7 @@ static void test_sliced_batches(void) {
     for(int i=0;i<nd;i++) {
         assert_same_buffer(GL_ARRAY_BUFFER,direct[i].vbo,sliced[i].vbo);
         assert_same_buffer(GL_ELEMENT_ARRAY_BUFFER,direct[i].ibo,sliced[i].ibo);
-        N2Batch a=direct[i],b=sliced[i];a.vbo=a.ibo=b.vbo=b.ibo=0;
+        N2Batch a=direct[i],b=sliced[i];a.vbo=a.ibo=b.vbo=b.ibo=(RhiBuffer){0};
         assert(!memcmp(&a,&b,sizeof a));
     }
     render_batch_array_free(&direct,&nd);render_batch_array_free(&sliced,&count);
@@ -467,10 +465,10 @@ static void test_sliced_u16_limit(void) {
     assert(upload_world_batches_step(&job,1,&out,&count,map)==1);
     assert(count==2 && map[0]==map[1] && map[2]!=map[0]);
     GLint bytes=0;uint16_t packed[6];
-    glBindBuffer(GL_ARRAY_BUFFER,out[map[0]].vbo);
+    glBindBuffer(GL_ARRAY_BUFFER,rhi_gl_buffer_name(out[map[0]].vbo));
     glGetBufferParameteriv(GL_ARRAY_BUFFER,GL_BUFFER_SIZE,&bytes);
     assert(bytes==65535*(int)sizeof(BatchedVertex));
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,out[map[0]].ibo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,rhi_gl_buffer_name(out[map[0]].ibo));
     glGetBufferSubData(GL_ELEMENT_ARRAY_BUFFER,0,sizeof packed,packed);
     assert(packed[2]==39999 && packed[3]==40000 && packed[5]==65534);
     render_batch_array_free(&out,&count);
@@ -486,10 +484,11 @@ static void test_incremental_retirement(void) {
         r->world.scene.meshes=calloc(2,sizeof *r->world.scene.meshes);
         r->world.vista.meshes=calloc(1,sizeof *r->world.vista.meshes);
         assert(r->resources.ordinary && r->world.scene.meshes && r->world.vista.meshes);
-        GLuint ids[2];glGenBuffers(2,ids);
+        GLuint ids[2]={0,0};
         for(int i=0;i<2;i++) {
-            glBindBuffer(GL_ARRAY_BUFFER,ids[i]);glBufferData(GL_ARRAY_BUFFER,4,ids,GL_STATIC_DRAW);
-            r->resources.ordinary[i].vbo=ids[i];
+            r->resources.ordinary[i].vbo=rhi_buffer_create(
+                &(RhiBufferDesc){RHI_BUFFER_VERTEX,RHI_UPDATE_STATIC,4,ids});
+            ids[i]=rhi_gl_buffer_name(r->resources.ordinary[i].vbo);
             r->world.scene.meshes[i].verts=malloc(4);
             r->world.scene.meshes[i].idx=malloc(2);
             r->world.scene.meshes[i].vcol=malloc(4);

@@ -1,5 +1,6 @@
 /* world_mesh.c — see world_mesh.h. Pure C99, GL 2.1, no VAO. */
 #include "world_mesh.h"
+#include "rhi_gl.h"   /* GL names behind buffer handles for the draw code */
 #include "generated_world_debug_shaders.h"   /* make-embedded shader byte arrays */
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,17 +17,10 @@ WorldMeshBatch upload_world_mesh_to_gpu(const BatchedVertex *verts, uint32_t vco
     snprintf(b.section_name, sizeof b.section_name, "%s", section_name ? section_name : "");
     if (!verts || !indices || !vcount || !icount) return b;   /* vbo stays 0 -> skipped */
 
-    glGenBuffers(1, &b.vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, b.vbo);
-    glBufferData(GL_ARRAY_BUFFER,
-                 (GLsizeiptr)vcount * (GLsizeiptr)sizeof(BatchedVertex),
-                 verts, GL_STATIC_DRAW);
-
-    glGenBuffers(1, &b.ibo);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, b.ibo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-                 (GLsizeiptr)icount * (GLsizeiptr)sizeof(uint16_t),
-                 indices, GL_STATIC_DRAW);
+    b.vbo = rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC,
+                                                (size_t)vcount * sizeof(BatchedVertex), verts});
+    b.ibo = rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_INDEX, RHI_UPDATE_STATIC,
+                                                (size_t)icount * sizeof(uint16_t), indices});
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
@@ -57,9 +51,9 @@ void render_world_map(const WorldMeshBatch *batches, uint32_t n,
 
     for (uint32_t k = 0; k < n; k++) {
         const WorldMeshBatch *b = &batches[k];
-        if (!b->vbo || !b->index_count) continue;   /* skip empty/disabled sections */
+        if (!b->vbo.id || !b->index_count) continue;   /* skip empty/disabled sections */
 
-        glBindBuffer(GL_ARRAY_BUFFER, b->vbo);
+        glBindBuffer(GL_ARRAY_BUFFER, rhi_gl_buffer_name(b->vbo));
         if (aPos >= 0) { glEnableVertexAttribArray((GLuint)aPos);
             glVertexAttribPointer((GLuint)aPos, 3, GL_FLOAT, GL_FALSE, stride,
                                   (const void *)offsetof(BatchedVertex, pos)); }
@@ -73,7 +67,7 @@ void render_world_map(const WorldMeshBatch *batches, uint32_t n,
             glVertexAttribPointer((GLuint)aCol, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride,
                                   (const void *)offsetof(BatchedVertex, col)); }
 
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, b->ibo);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, rhi_gl_buffer_name(b->ibo));
         glDrawElements(GL_TRIANGLES, (GLsizei)b->index_count, GL_UNSIGNED_SHORT, 0);
     }
 
@@ -86,8 +80,8 @@ void render_world_map(const WorldMeshBatch *batches, uint32_t n,
 
 void destroy_world_mesh_batch(WorldMeshBatch *b) {
     if (!b) return;
-    if (b->ibo) glDeleteBuffers(1, &b->ibo);
-    if (b->vbo) glDeleteBuffers(1, &b->vbo);
+    rhi_buffer_destroy(b->ibo);
+    rhi_buffer_destroy(b->vbo);
     /* b->vao intentionally not deleted: never created on GL 2.1 core */
     memset(b, 0, sizeof *b);
 }

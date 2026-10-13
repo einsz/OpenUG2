@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "render.h"
+#include "rhi_gl.h"
 
 static RainVertex drops[RAIN_MAX_DROPS*6],again[RAIN_MAX_DROPS*6];
 static float verts[]={-100,-100,0,0,0, 100,-100,0,1,0,
@@ -60,10 +61,9 @@ static void geometry(void) {
 static void pixel(const RProg *r,GpuMesh *quad,float wet,float normal_z,unsigned char out[4]) {
     glClear(GL_COLOR_BUFFER_BIT);
     glUniform1f(r->uWetness,wet);
-    glBindBuffer(GL_ARRAY_BUFFER,quad->nbo);
     float normals[12];
     for(int i=0;i<4;i++){normals[i*3]=sqrtf(1-normal_z*normal_z);normals[i*3+1]=0;normals[i*3+2]=normal_z;}
-    glBufferData(GL_ARRAY_BUFFER,sizeof normals,normals,GL_STATIC_DRAW);
+    rhi_buffer_replace(quad->nbo,sizeof normals,normals);
     draw_gpumesh(quad);
     glReadPixels(32,32,1,1,GL_RGBA,GL_UNSIGNED_BYTE,out);
 }
@@ -171,12 +171,12 @@ static void car_render_test(const RProg *r) {
     glReadPixels(48,48,1,1,GL_RGBA,GL_UNSIGNED_BYTE,outside);
     assert(inside[0]>=130 && inside[0]<=135 && outside[0]==255); /* single darkening, true triangle silhouette */
     assert(!glIsEnabled(GL_STENCIL_TEST) && !glIsEnabled(GL_BLEND));
-    GLuint caster=shadow.body;
+    GLuint caster=rhi_gl_buffer_name(shadow.body);
     mesh.nidx=3;GpuMesh *replacement=upload_scene(&scene);
     glClear(GL_COLOR_BUFFER_BIT|GL_STENCIL_BUFFER_BIT);
     assert(render_car_shadow(r,&shadow,&scene,replacement,-1,NULL,NULL,identity,wheels,clip,ground,up,2)==1);
-    assert(shadow.body_key==replacement[0].vbo && shadow.body_count==3);
-    caster=shadow.body;free_car_shadow(&shadow);assert(!glIsBuffer(caster));
+    assert(shadow.body_key==replacement[0].vbo.id && shadow.body_count==3);
+    caster=rhi_gl_buffer_name(shadow.body);free_car_shadow(&shadow);assert(!glIsBuffer(caster));
     free_scene_gpu(replacement,1);free_scene_gpu(gpu,1);
 
     /* Six colored enclosing walls prove actual scene capture, all cube faces,
@@ -219,7 +219,7 @@ static void car_render_test(const RProg *r) {
     glUniform1f(r->uEnvReady,0);glClear(GL_COLOR_BUFFER_BIT);draw_gpumesh(&panel);
     glReadPixels(32,32,1,1,GL_RGBA,GL_UNSIGNED_BYTE,fallback);
     assert(reflected[2]>fallback[2]+20 && reflected[2]>reflected[0]+20);
-    glUniform1f(r->uEnv,0);glDeleteBuffers(1,&panel.vbo);glDeleteBuffers(1,&panel.nbo);glDeleteBuffers(1,&panel.ibo);
+    glUniform1f(r->uEnv,0);rhi_buffer_destroy(panel.vbo);rhi_buffer_destroy(panel.nbo);rhi_buffer_destroy(panel.ibo);
     origin[0]=.5f;
     assert(render_car_environment(r,&env,batches,count,NULL,0,origin,2)>0);
     assert(env.size==128 && !env.ready && env.origin[0]==.5f);
@@ -337,7 +337,7 @@ static void collision_wall_render_test(const RProg *r) {
     const float faces[]={-.8f,-.8f,0,.8f,-.8f,0,0,.8f,0},color[]={.1f,.85f,1};
     const float identity[]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
     const float clip[]={2,0,0,0,0,2,0,0,0,0,1,0,-1,-1,0,1};
-    GLuint vbo=0;unsigned char pixels[64*64*4];
+    RhiBuffer vbo={0};unsigned char pixels[64*64*4];
     for(int through=0;through<2;through++) {
         glViewport(0,0,64,64);glClearColor(0,0,0,0);glClearDepth(0);
         glDepthMask(GL_TRUE);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
@@ -361,7 +361,7 @@ static void collision_wall_render_test(const RProg *r) {
         assert(glGetError()==GL_NO_ERROR);
     }
     assert(!render_collision_walls(r,&vbo,faces,0,color,identity,1));
-    glDeleteBuffers(1,&vbo);glClearDepth(1);
+    rhi_buffer_destroy(vbo);glClearDepth(1);
     puts("collision drawing: depth/through views, visible faces/edges and preserved GL state PASS");
 }
 
@@ -414,7 +414,7 @@ int main(void) {
     paint_shine_test(&r,&quad);
     wet_patch_test(&r,&quad);
 
-    GLuint rain=0;float cam[]={0,-5,3},look[]={0,1,-.1f},p[16],v[16],mvp[16];
+    RhiBuffer rain={0};float cam[]={0,-5,3},look[]={0,1,-.1f},p[16],v[16],mvp[16];
     mat_persp(1.4f,1,.1f,60,p);mat_lookat(cam,look,v);mat_mul(p,v,mvp);
     unsigned char image[64*64*4],visible[64*64*4];int lit=0;
     for(int blocked=0;blocked<2;blocked++) {
@@ -437,7 +437,7 @@ int main(void) {
     }
     assert(lit>10);
     assert(!render_rain(&r,&rain,2,0,2,1));
-    glDeleteBuffers(1,&rain);glDeleteBuffers(1,&quad.vbo);glDeleteBuffers(1,&quad.nbo);glDeleteBuffers(1,&quad.ibo);
+    rhi_buffer_destroy(rain);rhi_buffer_destroy(quad.vbo);rhi_buffer_destroy(quad.nbo);rhi_buffer_destroy(quad.ibo);
     reflection_test(&r);
     car_render_test(&r);
     collision_wall_render_test(&r);

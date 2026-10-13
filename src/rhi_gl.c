@@ -3,8 +3,10 @@
  * of this backend; the context is created through it so it starts from the GL
  * defaults. */
 #include "rhi.h"
+#include "rhi_gl.h"
 #include "rhi_gl_state.h"   /* GL headers; SDL_GL_*Context go through the tracker */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #ifdef N2_GLES
@@ -113,4 +115,131 @@ RhiResult rhi_frame_end(void) {
     SDL_GL_SwapWindow(g_rhi.window);
     g_rhi.frame_index++;
     return RHI_OK;
+}
+
+/* ------------------------------------------------------------------------------ */
+/* Buffers                                                                        */
+/* ------------------------------------------------------------------------------ */
+/* Handle id = generation << 24 | (slot + 1). The table is independent of the
+ * device so code that creates its own GL context (tests) can use buffers too.
+ * Binding goes through the state tracker macros like any other GL caller. */
+#define RHI_GL_SLOT_BITS 24u
+#define RHI_GL_SLOT_MASK ((1u << RHI_GL_SLOT_BITS) - 1u)
+
+typedef struct {
+    GLuint   name;     /* 0 = free slot */
+    GLenum   target;   /* GL_ARRAY_BUFFER / GL_ELEMENT_ARRAY_BUFFER */
+    GLenum   hint;     /* GL_STATIC_DRAW / GL_STREAM_DRAW */
+    uint8_t  generation;
+    size_t   size;
+} RhiGlBuffer;
+
+static struct {
+    RhiGlBuffer *slots;
+    uint32_t     count, capacity;
+    uint32_t    *free_list;
+    uint32_t     free_count;
+    unsigned     stale_logged;
+} g_buffers;
+
+static RhiGlBuffer *buffer_lookup(RhiBuffer buf, const char *what) {
+    uint32_t slot = (buf.id & RHI_GL_SLOT_MASK);
+    if (!buf.id) return NULL;
+    if (slot && slot <= g_buffers.count) {
+        RhiGlBuffer *b = &g_buffers.slots[slot - 1];
+        if (b->name && b->generation == (uint8_t)(buf.id >> RHI_GL_SLOT_BITS)) return b;
+    }
+    if (g_buffers.stale_logged < 8) {
+        g_buffers.stale_logged++;
+        fprintf(stderr, "rhi: %s: stale or invalid buffer handle 0x%08x\n",
+                what, (unsigned)buf.id);
+    }
+    return NULL;
+}
+
+static int buffer_size_ok(size_t size) {
+    return size <= (size_t)(((uint64_t)1 << (sizeof(GLsizeiptr) * 8 - 1)) - 1);
+}
+
+GLuint rhi_gl_buffer_name(RhiBuffer buf) {
+    const RhiGlBuffer *b = buffer_lookup(buf, "bind");
+    return b ? b->name : 0;
+}
+
+static uint32_t buffer_slot_alloc(void) {
+    if (g_buffers.free_count) return g_buffers.free_list[--g_buffers.free_count];
+    if (g_buffers.count == g_buffers.capacity) {
+        uint32_t cap = g_buffers.capacity ? g_buffers.capacity * 2u : 256u;
+        if (cap > RHI_GL_SLOT_MASK) return 0;
+        RhiGlBuffer *slots = (RhiGlBuffer *)realloc(g_buffers.slots, cap * sizeof *slots);
+        if (!slots) return 0;
+        g_buffers.slots = slots;
+        uint32_t *list = (uint32_t *)realloc(g_buffers.free_list, cap * sizeof *list);
+        if (!list) return 0;
+        g_buffers.free_list = list;
+        g_buffers.capacity = cap;
+    }
+    memset(&g_buffers.slots[g_buffers.count], 0, sizeof g_buffers.slots[0]);
+    return ++g_buffers.count;
+}
+
+RhiBuffer rhi_buffer_create(const RhiBufferDesc *desc) {
+    RhiBuffer out = {0};
+    if (!desc || (desc->usage != RHI_BUFFER_VERTEX && desc->usage != RHI_BUFFER_INDEX) ||
+        (desc->update != RHI_UPDATE_STATIC && desc->update != RHI_UPDATE_STREAM) ||
+        !buffer_size_ok(desc->size)) {
+        fprintf(stderr, "rhi: buffer_create: invalid description\n");
+        return out;
+    }
+    uint32_t slot = buffer_slot_alloc();
+    if (!slot) { fprintf(stderr, "rhi: buffer_create: out of handles\n"); return out; }
+    RhiGlBuffer *b = &g_buffers.slots[slot - 1];
+    GLuint name = 0;
+    glGenBuffers(1, &name);
+    if (!name) {
+        g_buffers.free_list[g_buffers.free_count++] = slot;
+        fprintf(stderr, "rhi: buffer_create: glGenBuffers failed\n");
+        return out;
+    }
+    b->name = name;
+    b->target = desc->usage == RHI_BUFFER_INDEX ? GL_ELEMENT_ARRAY_BUFFER : GL_ARRAY_BUFFER;
+    b->hint = desc->update == RHI_UPDATE_STREAM ? GL_STREAM_DRAW : GL_STATIC_DRAW;
+    b->size = 0;
+    out.id = ((uint32_t)b->generation << RHI_GL_SLOT_BITS) | slot;
+    /* A STREAM buffer without a size gets its storage from the first replace. */
+    if (desc->update == RHI_UPDATE_STATIC || desc->size || desc->data) {
+        glBindBuffer(b->target, name);
+        glBufferData(b->target, (GLsizeiptr)desc->size, desc->data, b->hint);
+        b->size = desc->size;
+    }
+    return out;
+}
+
+RhiResult rhi_buffer_update(RhiBuffer buf, size_t offset, size_t size, const void *data) {
+    RhiGlBuffer *b = buffer_lookup(buf, "buffer_update");
+    if (!b || !data || offset > b->size || size > b->size - offset) return RHI_ERR_INVALID;
+    glBindBuffer(b->target, b->name);
+    glBufferSubData(b->target, (GLintptr)offset, (GLsizeiptr)size, data);
+    return RHI_OK;
+}
+
+RhiResult rhi_buffer_replace(RhiBuffer buf, size_t size, const void *data) {
+    RhiGlBuffer *b = buffer_lookup(buf, "buffer_replace");
+    if (!b || !buffer_size_ok(size)) return RHI_ERR_INVALID;
+    glBindBuffer(b->target, b->name);
+    glBufferData(b->target, (GLsizeiptr)size, data, b->hint);
+    b->size = size;
+    return RHI_OK;
+}
+
+void rhi_buffer_destroy(RhiBuffer buf) {
+    RhiGlBuffer *b = buffer_lookup(buf, "buffer_destroy");
+    if (!b) return;
+    glDeleteBuffers(1, &b->name);
+    b->name = 0;
+    b->size = 0;
+    /* Retire the slot before its generation wraps and revives stale handles. */
+    if (b->generation == UINT8_MAX) return;
+    b->generation++;
+    g_buffers.free_list[g_buffers.free_count++] = buf.id & RHI_GL_SLOT_MASK;
 }

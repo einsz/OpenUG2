@@ -7,10 +7,10 @@
  *     names.
  *   - Single thread, one device per process.
  *
- * This first step covers device/context lifetime, capabilities and the frame
- * begin/end. Buffers, textures, samplers, shaders, pipelines, passes, draws and
- * readback are added by later steps; until then the game still issues GL calls
- * for them directly. Backend: rhi_gl.c (desktop GL 2.1 or OpenGL ES 2.0, chosen
+ * Covered so far: device/context lifetime, capabilities, the frame begin/end and
+ * vertex/index buffers. Textures, samplers, shaders, pipelines, passes, draws
+ * and readback are added by later steps; until then the game still issues GL
+ * calls for them directly. Backend: rhi_gl.c (desktop GL 2.1 or OpenGL ES 2.0, chosen
  * at build time). */
 #ifndef RHI_H
 #define RHI_H
@@ -93,6 +93,45 @@ typedef struct RhiFrameInfo {
 RhiResult rhi_frame_begin(RhiFrameInfo *out);
 /* Ends the frame and presents it (GL: SDL_GL_SwapWindow). */
 RhiResult rhi_frame_end(void);
+
+/* ------------------------------------------------------------------------------ */
+/* Buffers                                                                        */
+/* ------------------------------------------------------------------------------ */
+/* Opaque handle: slot index + generation, id 0 = no buffer. A destroyed handle
+ * is detected (and logged) instead of reaching the GPU API. */
+typedef struct RhiBuffer { uint32_t id; } RhiBuffer;
+
+typedef enum RhiBufferUsage {
+    RHI_BUFFER_VERTEX = 1u << 0,
+    RHI_BUFFER_INDEX  = 1u << 1   /* 16-bit indices */
+} RhiBufferUsage;
+
+typedef enum RhiBufferUpdate {
+    RHI_UPDATE_STATIC = 0,  /* written at creation; rare partial updates between
+                               draws (rhi_buffer_update) */
+    RHI_UPDATE_STREAM = 1   /* contents replaced every frame with
+                               rhi_buffer_replace; draws issued before a replace
+                               keep using the old contents */
+} RhiBufferUpdate;
+
+typedef struct RhiBufferDesc {
+    uint32_t        usage;  /* RhiBufferUsage: exactly one bit */
+    RhiBufferUpdate update;
+    size_t          size;   /* bytes; STREAM may be 0 = no storage until the first
+                               rhi_buffer_replace */
+    const void     *data;   /* size bytes, or NULL = undefined contents */
+} RhiBufferDesc;
+
+/* Returns {0} on failure (logged to stderr). */
+RhiBuffer rhi_buffer_create(const RhiBufferDesc *desc);
+/* Writes size bytes at offset into the existing storage; the range must lie
+ * inside the buffer. */
+RhiResult rhi_buffer_update(RhiBuffer buf, size_t offset, size_t size, const void *data);
+/* Gives the buffer fresh storage of size bytes (data may be NULL = undefined
+ * contents). Earlier draws are unaffected (GL: buffer orphaning). */
+RhiResult rhi_buffer_replace(RhiBuffer buf, size_t size, const void *data);
+/* Releases the buffer; {0} is ignored. The handle becomes invalid. */
+void      rhi_buffer_destroy(RhiBuffer buf);
 
 #ifdef __cplusplus
 }

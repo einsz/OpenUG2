@@ -4,6 +4,7 @@
 #include <math.h>
 #include <stdio.h>
 #include "render.h"
+#include "rhi_gl.h"
 
 static void eq_uniform(const RProg *r, GLint loc, const float *want, int n) {
     float got[16]; glGetUniformfv(r->prog, loc, got);
@@ -153,10 +154,8 @@ int main(void) {
         memset(bv[i].col,255,4);
     }
     N2Batch batch={.index_count=6,.tex=tex[0]};
-    glGenBuffers(1,&batch.vbo);glBindBuffer(GL_ARRAY_BUFFER,batch.vbo);
-    glBufferData(GL_ARRAY_BUFFER,sizeof bv,bv,GL_STATIC_DRAW);
-    glGenBuffers(1,&batch.ibo);glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,batch.ibo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER,sizeof bi,bi,GL_STATIC_DRAW);
+    batch.vbo=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX,RHI_UPDATE_STATIC,sizeof bv,bv});
+    batch.ibo=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_INDEX,RHI_UPDATE_STATIC,sizeof bi,bi});
     float identity[16],wrong[16];mat_trans(0,0,0,identity);mat_trans(100,100,100,wrong);
     for(int mode=0;mode<4;mode++) {
         unsigned char px[]={mode==2?0:128,0,0,255};
@@ -174,9 +173,9 @@ int main(void) {
         else assert(out[0]==0 && out[1]==0 && out[2]==0);
         assert(glGetError()==GL_NO_ERROR);
     }
-    glDeleteBuffers(1,&batch.vbo);glDeleteBuffers(1,&batch.ibo);
+    rhi_buffer_destroy(batch.vbo);rhi_buffer_destroy(batch.ibo);
     glDeleteTextures(2,tex); glDeleteProgram(r.prog);
-    glDeleteBuffers(1,&quad.vbo); glDeleteBuffers(1,&quad.nbo); glDeleteBuffers(1,&quad.ibo);
+    rhi_buffer_destroy(quad.vbo); rhi_buffer_destroy(quad.nbo); rhi_buffer_destroy(quad.ibo);
     SDL_GL_DeleteContext(ctx); SDL_DestroyWindow(win); SDL_Quit();
     puts("light_state_test: PASS (vehicle footprints, soft shadow coverage, state isolation, depth occlusion, distance culling, additive fog, world-glow transform isolation)");
     return 0;

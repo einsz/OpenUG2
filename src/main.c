@@ -272,7 +272,7 @@ static int load_rim_style(const unsigned char *wldata, long wllen,
     gm = upload_scene(lib);
     if (!gm || glGetError() != GL_NO_ERROR) goto failed;
     for (int i = 0; i < n; i++)
-        if (!gm[i].vbo || !gm[i].nbo || !gm[i].ibo) goto failed;
+        if (!gm[i].vbo.id || !gm[i].nbo.id || !gm[i].ibo.id) goto failed;
     {
         rimtex = upload_tpk_keyed(tk, "WHEELS", &rt);
         rimmode=n2_tex_mode(&rt);
@@ -804,7 +804,7 @@ static int prepare_body_kit(BodyKitCandidate *kit,
     kit->gpu=upload_scene(&kit->scene);
     if(!kit->gpu || glGetError()!=GL_NO_ERROR)goto failed;
     for(int i=0;i<kit->scene.count;i++) {
-        if(!kit->gpu[i].vbo || !kit->gpu[i].nbo || !kit->gpu[i].ibo)goto failed;
+        if(!kit->gpu[i].vbo.id || !kit->gpu[i].nbo.id || !kit->gpu[i].ibo.id)goto failed;
         uint32_t tk=kit->scene.meshes[i].texkey;int seen=!tk;
         for(int j=0;j<ncached;j++)if(cached[j]==tk)seen=1;
         for(int j=0;j<kit->ntextures;j++)if(kit->keys[j]==tk)seen=1;
@@ -1222,7 +1222,7 @@ done:
     { float dx=p[0]-q[0], dy=p[1]-q[1], dz=p[2]-q[2]; return dx*dx+dy*dy+dz*dz; }
 }
 
-static void collision_debug_draw(const RProg *r,GLuint *vbo,const N2Scene *scene,
+static void collision_debug_draw(const RProg *r,RhiBuffer *vbo,const N2Scene *scene,
         const float (*bounds)[4],const int *sources,int nobst,const float centre[3],
         const float player[3],const float mvp[16]) {
     memset(g_dbg.wall_faces,0,sizeof g_dbg.wall_faces);g_dbg.wall_truncated=0;
@@ -3734,8 +3734,8 @@ int main(int argc, char **argv) {
 
     RProg rp = render_program();
     HeadlightShadows headlight_shadows = {0};
-    GLuint rain_vbo = 0;
-    GLuint wall_debug_vbo = 0;
+    RhiBuffer rain_vbo = {0};
+    RhiBuffer wall_debug_vbo = {0};
     RoadReflections road_reflections = {0};
     CarEnvironment car_environment={0};
     CarShadow player_shadow={0},opponent_shadow={0};
@@ -6570,9 +6570,9 @@ int main(int argc, char **argv) {
                         }
                         /* The procedural tyre follows the newly measured radius. */
                         if (have_wheel) {
-                            glDeleteBuffers(1, &wheelmesh.vbo);
-                            glDeleteBuffers(1, &wheelmesh.nbo);
-                            glDeleteBuffers(1, &wheelmesh.ibo);
+                            rhi_buffer_destroy(wheelmesh.vbo);
+                            rhi_buffer_destroy(wheelmesh.nbo);
+                            rhi_buffer_destroy(wheelmesh.ibo);
                             wheelmesh = make_wheel(carprof.wheel_r,
                                                    fmaxf(0.04f, 0.5f*carprof.wheel_w));
                         }
@@ -9517,7 +9517,7 @@ int main(int argc, char **argv) {
                            draw_scene->meshes[i].tierid!=draw_scene->meshes[draw_stock_wheel].tierid)continue;
                         GLuint tex=0;int mode=N2_DRAW_OPAQUE;
                         for(int j=0;j<draw_nmap;j++)if(draw_mapkey[j]==draw_gpu[i].texkey){tex=draw_maptex[j];mode=draw_mapmode[j];break;}
-                        if(draw_gpu[i].cbo)glUniform3f(uColor,1,1,1);
+                        if(draw_gpu[i].cbo.id)glUniform3f(uColor,1,1,1);
                         else glUniform3f(uColor,.05f,.05f,.06f);
                         for(int w=0;w<4;w++){float MW[16];mat_mul(AIWheelMVP,aiWheelT[w],MW);
                             glUniformMatrix4fv(uMVP,1,GL_FALSE,MW);render_model(&rp,aiWheelWorld[w]);
@@ -9527,7 +9527,7 @@ int main(int argc, char **argv) {
                         glUniform1f(uUseTex,1.0f);glBindTexture(GL_TEXTURE_2D,texWheel);
                         for(int w=0;w<4;w++){float MW[16];mat_mul(AIWheelMVP,aiWheelT[w],MW);
                             glUniformMatrix4fv(uMVP,1,GL_FALSE,MW);render_model(&rp,aiWheelWorld[w]);
-                            draw_gpumesh(draw_wheelmesh->vbo?draw_wheelmesh:&wheelmesh);
+                            draw_gpumesh(draw_wheelmesh->vbo.id?draw_wheelmesh:&wheelmesh);
                             g_dbg.drawn++;}
                     }
                 }
@@ -9686,7 +9686,7 @@ int main(int argc, char **argv) {
                         glUniform1f(uUseTex,stex?1.0f:0.0f);
                         glUniform1f(rp.uEnv,inner?0.0f:0.25f);
                         glUniform1f(uSpec,inner?0.04f:0.5f);
-                        if(cgm[i].cbo)glUniform3f(uColor,1,1,1);
+                        if(cgm[i].cbo.id)glUniform3f(uColor,1,1,1);
                         else glUniform3f(uColor,0.05f,0.05f,0.06f);
                         if(stex) glBindTexture(GL_TEXTURE_2D,stex);
                         for(int k=0;k<4;k++){float MW[16];mat_mul(MVPwheel,wheelT[k],MW);
@@ -11265,16 +11265,16 @@ int main(int argc, char **argv) {
 #endif
     hud_free(&hud);        /* releases its textures; safe when never created */
     free_scene_gpu(wheelgm, nwheelgm);
-    if(opponent_wheelmesh.vbo) {
-        glDeleteBuffers(1,&opponent_wheelmesh.vbo);
-        glDeleteBuffers(1,&opponent_wheelmesh.nbo);
-        glDeleteBuffers(1,&opponent_wheelmesh.ibo);
+    if(opponent_wheelmesh.vbo.id) {
+        rhi_buffer_destroy(opponent_wheelmesh.vbo);
+        rhi_buffer_destroy(opponent_wheelmesh.nbo);
+        rhi_buffer_destroy(opponent_wheelmesh.ibo);
     }
     for(int k=0;k<N_ROAM_VISUALS;k++) {
-        if(traffic_wheelmesh[k].vbo) {
-            glDeleteBuffers(1,&traffic_wheelmesh[k].vbo);
-            glDeleteBuffers(1,&traffic_wheelmesh[k].nbo);
-            glDeleteBuffers(1,&traffic_wheelmesh[k].ibo);
+        if(traffic_wheelmesh[k].vbo.id) {
+            rhi_buffer_destroy(traffic_wheelmesh[k].vbo);
+            rhi_buffer_destroy(traffic_wheelmesh[k].nbo);
+            rhi_buffer_destroy(traffic_wheelmesh[k].ibo);
         }
         car_switch_release(&traffic[k]);
     }
@@ -11326,8 +11326,8 @@ int main(int argc, char **argv) {
     free_road_reflections(&road_reflections);
     free_car_environment(&car_environment);
     free_car_shadow(&player_shadow);free_car_shadow(&opponent_shadow);
-    if(rain_vbo)glDeleteBuffers(1,&rain_vbo);
-    if(wall_debug_vbo)glDeleteBuffers(1,&wall_debug_vbo);
+    rhi_buffer_destroy(rain_vbo);
+    rhi_buffer_destroy(wall_debug_vbo);
     free_headlight_shadows(&headlight_shadows);
     clear_car_vinyl();
     tex_override_shutdown();   /* frees the index only; no-op when off */

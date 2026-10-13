@@ -12,6 +12,7 @@
 
 #include <SDL.h>
 #include "rhi_gl_state.h"   /* GL headers + CPU state tracker (no glGet* readback) */
+#include "rhi.h"
 
 #include "nfsu2.h"
 
@@ -30,7 +31,7 @@
 
 /* per-mesh GPU buffers + computed normals */
 typedef struct {
-    GLuint vbo, nbo, cbo, ibo;
+    RhiBuffer vbo, nbo, cbo, ibo;
     int nidx, cat, trim;
     uint32_t texkey, car_material;
     unsigned char draw_mode;  /* Optional override; zero uses the caller's mode. */
@@ -49,8 +50,8 @@ typedef struct {
 typedef struct { int mesh,vertex;unsigned revision; } PropBatchRange;
 
 typedef struct {
-    GLuint vbo;               /* unified interleaved VBO */
-    GLuint ibo;               /* consolidated u16 IBO (<= 65535 verts/batch) */
+    RhiBuffer vbo;            /* unified interleaved VBO */
+    RhiBuffer ibo;            /* consolidated u16 IBO (<= 65535 verts/batch) */
     int index_count;
     uint32_t texkey;          /* first member mesh's TPK key -- DIAGNOSTIC ONLY.
                              Do not gate drawing on it: a batch's members can
@@ -164,7 +165,7 @@ int render_car_environment(const RProg *r,CarEnvironment *s,const N2Batch *world
                            const N2Batch *sky,int nsky,const float pos[3],int quality);
 void free_car_environment(CarEnvironment *s);
 
-typedef struct { GLuint body, wheel, body_key, wheel_key; int body_count, wheel_count; } CarShadow;
+typedef struct { RhiBuffer body, wheel; uint32_t body_key, wheel_key; int body_count, wheel_count; } CarShadow;
 /* Caller clears the frame stencil and binds r. Leaves ordinary opaque state;
  * next draw establishes its material/model/attributes. Stencil prevents
  * overlapping caster triangles from darkening the same pixel twice. */
@@ -193,11 +194,11 @@ int render_batch_in_view(const N2Batch *b,const float mvp[16]);
 typedef struct { float pos[3], uv[2], fade; } RainVertex;
 int render_rain_exposed(const N2Scene *scene,const float (*bounds)[4],const float cam[3]);
 int render_rain_vertices(float time,float intensity,int quality,float aspect,RainVertex *out);
-int render_rain(const RProg *r,GLuint *vbo,float time,float intensity,int quality,float aspect);
+int render_rain(const RProg *r,RhiBuffer *vbo,float time,float intensity,int quality,float aspect);
 
 /* Diagnostic triangle fill + edges; caller supplies XYZ triples and owns vbo. */
 #define WALL_DEBUG_MAX_FACES 4096
-int render_collision_walls(const RProg *r,GLuint *vbo,const float *faces,int count,
+int render_collision_walls(const RProg *r,RhiBuffer *vbo,const float *faces,int count,
                           const float color[3],const float mvp[16],int through);
 
 /* world-space sun direction (night scene key light) */
