@@ -21,6 +21,25 @@ static RhiTexture test_texture(void) {
     assert(t.id && rhi_texture_upload(t, 0, 0, pixel, 0) == RHI_OK);
     return t;
 }
+/* A dead handle must stay dead after the generation field reaches its limit. */
+static void test_texture_generation_retirement(void) {
+    const unsigned char pixel[4] = {255, 255, 255, 255};
+    RhiTexture stale = test_texture();
+    rhi_texture_destroy(stale);
+    for (int i = 0; i < 255; i++) {
+        RhiTexture current = test_texture();
+        rhi_texture_destroy(current);
+    }
+    RhiTexture live = test_texture();
+    GLuint name = rhi_gl_texture_name(live);
+    assert(!rhi_texture_is_live(stale) && !rhi_gl_texture_name(stale));
+    assert(rhi_texture_upload(stale, 0, 0, pixel, 0) == RHI_ERR_INVALID);
+    assert(rhi_texture_generate_mips(stale) == RHI_ERR_INVALID);
+    rhi_texture_destroy(stale);
+    assert(rhi_texture_is_live(live) && rhi_gl_texture_name(live) == name && glIsTexture(name));
+    rhi_texture_destroy(live);
+    assert(glGetError() == GL_NO_ERROR);
+}
 static void u32(unsigned char *p, uint32_t n) {
     for (int i=0;i<4;i++) p[i]=(unsigned char)(n>>(i*8));
 }
@@ -571,6 +590,7 @@ int main(void) {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION,1);
     SDL_Window *win=SDL_CreateWindow("world-texture-test",0,0,32,32,SDL_WINDOW_OPENGL|SDL_WINDOW_HIDDEN);
     assert(win);SDL_GLContext ctx=SDL_GL_CreateContext(win);assert(ctx);
+    test_texture_generation_retirement();
     test_noise_rejects_only_mis_decodes();
     test_resident_resource_cleanup();
     test_sliced_batches();

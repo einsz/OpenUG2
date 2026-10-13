@@ -131,8 +131,12 @@ RhiResult rhi_read_pixels(int32_t x, int32_t y, int32_t w, int32_t h,
     size_t bpp = format == RHI_READ_RGB8 ? 3 : format == RHI_READ_RGBA8 ? 4 : 0;
     if (!g_rhi.in_frame || !dst || !bpp || w <= 0 || h <= 0 || x < 0 || y < 0 ||
         w > g_rhi.frame_w - x || h > g_rhi.frame_h - y) return RHI_ERR_INVALID;
-    if (!stride) stride = (size_t)w * bpp;
-    else if (stride < (size_t)w * bpp) return RHI_ERR_INVALID;
+    size_t limit = (size_t)PTRDIFF_MAX;
+    if ((size_t)w > limit / 4 / (size_t)h) return RHI_ERR_INVALID;
+    size_t row_bytes = (size_t)w * bpp;
+    if (!stride) stride = row_bytes;
+    if (stride < row_bytes || (size_t)(h - 1) > (limit - row_bytes) / stride)
+        return RHI_ERR_INVALID;
     unsigned char *rgba = malloc((size_t)w * h * 4);
     if (!rgba) return RHI_ERR_INVALID;
     glReadPixels(x, g_rhi.frame_h - y - h, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
@@ -269,6 +273,8 @@ void rhi_buffer_destroy(RhiBuffer buf) {
     glDeleteBuffers(1, &b->name);
     b->name = 0;
     b->size = 0;
+    /* Retire the slot before its generation wraps and revives stale handles. */
+    if (b->generation == UINT8_MAX) return;
     b->generation++;
     g_buffers.free_list[g_buffers.free_count++] = buf.id & RHI_GL_SLOT_MASK;
 }
@@ -412,6 +418,8 @@ void rhi_texture_destroy(RhiTexture tex) {
     if (!t) return;
     glDeleteTextures(1, &t->name);
     t->name = 0;
+    /* Retire the slot before its generation can alias an old handle. */
+    if (t->generation == UINT8_MAX) return;
     t->generation++;
     g_textures.free_list[g_textures.free_count++] = tex.id & RHI_GL_SLOT_MASK;
 }

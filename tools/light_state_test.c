@@ -154,7 +154,7 @@ int main(void) {
         bv[i].pos[0]=(i==1||i==2)?1:-1;bv[i].pos[1]=i>=2?1:-1;
         memset(bv[i].col,255,4);
     }
-    N2Batch batch={.index_count=6,.tex=tex[0]};
+    N2Batch batch={.index_count=6,.tex=light_tex};
     batch.vbo=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX,RHI_UPDATE_STATIC,sizeof bv,bv});
     batch.ibo=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_INDEX,RHI_UPDATE_STATIC,sizeof bi,bi});
     float identity[16],wrong[16];mat_trans(0,0,0,identity);mat_trans(100,100,100,wrong);
@@ -175,7 +175,7 @@ int main(void) {
         assert(glGetError()==GL_NO_ERROR);
     }
     rhi_buffer_destroy(batch.vbo);rhi_buffer_destroy(batch.ibo);
-    glDeleteTextures(2,tex); glDeleteProgram(r.prog);
+    rhi_texture_destroy(light_tex); glDeleteTextures(1,tex+1); glDeleteProgram(r.prog);
     rhi_buffer_destroy(quad.vbo); rhi_buffer_destroy(quad.nbo); rhi_buffer_destroy(quad.ibo);
     SDL_GL_DeleteContext(ctx); SDL_DestroyWindow(win); SDL_Quit();
     puts("light_state_test: PASS (vehicle footprints, soft shadow coverage, state isolation, depth occlusion, distance culling, additive fog, world-glow transform isolation)");

@@ -374,3 +374,10 @@ hud-asset-probe: build/hud_asset_probe
 build/hud_asset_probe: src/tex_override.c tools/hud_asset_probe.c src/hud.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/hud.h src/hud_asset.h src/hud_texture.h src/hud_baseline.h src/render.h src/nfsu2.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/hud_asset_probe.c src/hud.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c -o build/hud_asset_probe $(SDL_LIBS) $(GL_LIBS) -lz -lm
+
+# RHI readback contract: coordinates, row layout, bounds and arithmetic overflow.
+rhi-readback-test: tools/rhi_readback_test.c src/rhi_gl.c src/rhi_gl_state.c src/rhi.h src/rhi_gl.h src/rhi_gl_state.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/rhi_readback_test.c src/rhi_gl.c src/rhi_gl_state.c -o build/rhi_readback_test $(SDL_LIBS) $(GL_LIBS) -lm
+	./build/rhi_readback_test
+.PHONY: rhi-readback-test
