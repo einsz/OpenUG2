@@ -180,7 +180,7 @@ void render_wet_lights(const RProg *r,const N2LightSrc *lights,int count,
 
 void free_road_reflections(RoadReflections *s) {
     if(!s)return;
-    glDeleteTextures(1,&s->color);glDeleteTextures(1,&s->depth);
+    rhi_texture_destroy(s->color);rhi_texture_destroy(s->depth);
     memset(s,0,sizeof *s);
 }
 
@@ -212,22 +212,24 @@ int render_road_reflections(const RProg *r,RoadReflections *s,
     if(viewport[2]<=0 || viewport[3]<=0)return 0;
     const GLenum units[]={GL_TEXTURE0,GL_TEXTURE3,GL_TEXTURE4};
     for(int i=0;i<3;i++){glActiveTexture(units[i]);gls_get_integerv(GL_TEXTURE_BINDING_2D,&bindings[i]);}
-    GLuint *textures[]={&s->color,&s->depth};
-    int resize=s->width!=viewport[2] || s->height!=viewport[3];
-    for(int i=0;i<2;i++) {
-        glActiveTexture(units[i+1]);
-        if(!*textures[i])glGenTextures(1,textures[i]);
-        glBindTexture(GL_TEXTURE_2D,*textures[i]);
-        if(resize) {
-            glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,i?GL_NEAREST:GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,i?GL_NEAREST:GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
-            glCopyTexImage2D(GL_TEXTURE_2D,0,i?GL_DEPTH_COMPONENT:GL_RGBA,
-                             viewport[0],viewport[1],viewport[2],viewport[3],0);
-        } else glCopyTexSubImage2D(GL_TEXTURE_2D,0,0,0,viewport[0],viewport[1],viewport[2],viewport[3]);
+    /* Copies of the frame drawn so far: colour (linear) on unit 3, depth
+       (nearest, the main target's precision) on unit 4. */
+    RhiTexture *textures[]={&s->color,&s->depth};
+    int ok=1;
+    /* create both before binding either: creating binds on the active unit */
+    for(int i=0;i<2 && ok;i++) if(!textures[i]->id) {
+        *textures[i]=rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D,
+            i?RHI_FORMAT_DEPTH:RHI_FORMAT_RGBA8,viewport[2],viewport[3],
+            RHI_TEXTURE_SAMPLED|RHI_TEXTURE_COPY_DST});
+        RhiFilter f=i?RHI_FILTER_NEAREST:RHI_FILTER_LINEAR;
+        ok=textures[i]->id && rhi_texture_set_sampler(*textures[i],rhi_sampler_create(
+            &(RhiSamplerDesc){f,f,RHI_MIP_NONE,RHI_WRAP_CLAMP,RHI_WRAP_CLAMP,1.0f}))==RHI_OK;
     }
-    if(glGetError()!=GL_NO_ERROR) {
+    for(int i=0;i<2 && ok;i++) {
+        rhi_cmd_bind_texture(3+(uint32_t)i,*textures[i]);
+        ok=rhi_cmd_copy_main_to_texture(*textures[i],viewport[0],viewport[1],viewport[2],viewport[3])==RHI_OK;
+    }
+    if(!ok) {
         free_road_reflections(s);s->failed=1;
         for(int i=0;i<3;i++){glActiveTexture(units[i]);glBindTexture(GL_TEXTURE_2D,bindings[i]);}
         glActiveTexture(active);return -1;
@@ -241,30 +243,30 @@ int render_road_reflections(const RProg *r,RoadReflections *s,
     ug2_copy(params, r->p->uReflectionParams, 4);
     GLint df,sr,dr,sa,da;GLboolean mask;
     GLboolean depth=gls_is_enabled(GL_DEPTH_TEST),blend=gls_is_enabled(GL_BLEND),cull=gls_is_enabled(GL_CULL_FACE);
-    GLboolean offset=gls_is_enabled(GL_POLYGON_OFFSET_FILL);
+    GLboolean offset=gls_is_enabled(GL_POLYGON_OFFSET_FILL),stencil=gls_is_enabled(GL_STENCIL_TEST);
+    GLboolean color_mask[4];gls_get_booleanv(GL_COLOR_WRITEMASK,color_mask);
     gls_get_integerv(GL_DEPTH_FUNC,&df);gls_get_booleanv(GL_DEPTH_WRITEMASK,&mask);
     gls_get_integerv(GL_BLEND_SRC_RGB,&sr);gls_get_integerv(GL_BLEND_DST_RGB,&dr);
     gls_get_integerv(GL_BLEND_SRC_ALPHA,&sa);gls_get_integerv(GL_BLEND_DST_ALPHA,&da);
-    glEnable(GL_DEPTH_TEST);glDepthFunc(GL_EQUAL);glDepthMask(GL_FALSE);
-    glDisable(GL_CULL_FACE);glDisable(GL_POLYGON_OFFSET_FILL);
-    glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+    rhi_cmd_bind_pipeline(pipelines_of(r)->world.reflect);
     for(int i=0;i<7;i++)*loc[i] = 0;
     r->p->uWetness = wetness;r->p->uRoadReflection = 1;
     ug2_vec4(r->p->uReflectionParams, projection[10], projection[14], quality==1?16:32, 0);
     ug2_copy(r->p->uMVP, mvp, 16);render_model(r,NULL);
-    glActiveTexture(GL_TEXTURE0);
     int draws=0;
     for(int i=0;i<count;i++) {
         const N2Batch *b=&batches[i];if(!road_reflection_receiver(b,cam))continue;
-        glBindTexture(GL_TEXTURE_2D,rhi_gl_texture_name(b->tex));
+        rhi_cmd_bind_texture(0,b->tex);
         r->p->uAlphaTest = b->drawmode==N2_DRAW_CUTOUT?1:0;
-        draw_batch(b);draws++;
+        render_draw_batch(b);draws++;
     }
     for(int i=0;i<9;i++)*loc[i] = saved[i];
     ug2_copy(r->p->uMVP, matrix, 16);ug2_copy(r->p->uModel, model, 16);
     ug2_copy(r->p->uReflectionParams, params, 4);
     glDepthFunc(df);glDepthMask(mask);if(!depth)glDisable(GL_DEPTH_TEST);
     if(!blend)glDisable(GL_BLEND);if(cull)glEnable(GL_CULL_FACE);if(offset)glEnable(GL_POLYGON_OFFSET_FILL);
+    if(stencil)glEnable(GL_STENCIL_TEST);
+    glColorMask(color_mask[0],color_mask[1],color_mask[2],color_mask[3]);
     glBlendFuncSeparate(sr,dr,sa,da);
     for(int i=0;i<3;i++){glActiveTexture(units[i]);glBindTexture(GL_TEXTURE_2D,bindings[i]);}
     glActiveTexture(active);
@@ -1547,6 +1549,9 @@ void render_world_pipelines(const RProg *r, UG2WorldPipelines *p) {
     p->opaque = rhi_pipeline_create(&d);
     d = world_pipeline(r, 0, 1, RHI_BLEND_ONE);
     p->add = rhi_pipeline_create(&d);
+    d = world_pipeline(r, 0, 1, RHI_BLEND_ONE_MINUS_SRC_ALPHA);
+    d.depth_compare = RHI_COMPARE_EQUAL;   /* exactly the road surfaces already drawn */
+    p->reflect = rhi_pipeline_create(&d);
 }
 
 /* ---- car pipelines ----

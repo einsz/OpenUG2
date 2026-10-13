@@ -112,7 +112,7 @@ void render_headlights(const RProg *r, const float model[16], const float anchor
 void render_tail_lamp(const RProg *r,RhiTexture texture,int running,int braking,
                       int boost,float gain);
 
-typedef struct { GLuint color, depth; int width, height, failed; } RoadReflections;
+typedef struct { RhiTexture color, depth; int width, height, failed; } RoadReflections;   /* frame copies */
 /* Copy the current world color/depth before rain/HUD, then reflect visible
  * geometry onto wet roads. 0 = disabled/no receivers, -1 = unavailable.
  * Restores pass state and texture bindings; next draw establishes mesh inputs. */
@@ -289,6 +289,7 @@ typedef struct {
                 opaque,     /* depth write, no blend */
                 blend,      /* authored BLEND batches: alpha blend, no depth write */
                 add,        /* authored ADD batches: src alpha + one, no depth write */
+                reflect,    /* wet-road reflections: depth EQUAL, alpha blend, no write */
                 overlay;    /* restored-geometry diagnostic: = sky_dome */
 } UG2WorldPipelines;
 void render_world_pipelines(const RProg *r, UG2WorldPipelines *p);

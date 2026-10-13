@@ -315,6 +315,7 @@ typedef struct {
     int32_t   width, height;
     uint8_t   generation;
     RhiSampler sampler;
+    int32_t   copied_w, copied_h;   /* level 0 allocated by a copy, 0 = not yet */
     GLint     wrap_s, wrap_t, min_filter, mag_filter;   /* parameters GL has now */
     float     anisotropy;
 } RhiGlTexture;
@@ -380,10 +381,12 @@ RhiTexture rhi_texture_create(const RhiTextureDesc *desc) {
     RhiTexture out = {0};
     int depth = desc && desc->format == RHI_FORMAT_D16;
     if (!desc || (desc->type != RHI_TEXTURE_2D && desc->type != RHI_TEXTURE_CUBE) ||
-        desc->format < RHI_FORMAT_RGB8 || desc->format > RHI_FORMAT_D16 ||
+        desc->format < RHI_FORMAT_RGB8 || desc->format > RHI_FORMAT_DEPTH ||
         desc->width <= 0 || desc->height <= 0 || !desc->usage ||
         (desc->usage & ~(uint32_t)(RHI_TEXTURE_SAMPLED | RHI_TEXTURE_COLOR_TARGET |
-                                   RHI_TEXTURE_DEPTH_TARGET)) ||
+                                   RHI_TEXTURE_DEPTH_TARGET | RHI_TEXTURE_COPY_DST)) ||
+        (desc->format == RHI_FORMAT_DEPTH &&
+         (desc->type != RHI_TEXTURE_2D || desc->usage != (RHI_TEXTURE_SAMPLED | RHI_TEXTURE_COPY_DST))) ||
         (depth && (desc->type != RHI_TEXTURE_2D || desc->usage != RHI_TEXTURE_DEPTH_TARGET)) ||
         (!depth && (desc->usage & RHI_TEXTURE_DEPTH_TARGET)) ||
         (desc->type == RHI_TEXTURE_CUBE && desc->width != desc->height)) {
@@ -429,7 +432,8 @@ RhiResult rhi_texture_upload(RhiTexture tex, int32_t face, int32_t level,
                              const void *data, size_t size) {
     RhiGlTexture *t = texture_lookup(tex, "texture_upload");
     int faces = t && t->target == GL_TEXTURE_CUBE_MAP ? 6 : 1;
-    if (!t || t->target == GL_RENDERBUFFER || face < 0 || face >= faces || level < 0 || level > 30)
+    if (!t || t->target == GL_RENDERBUFFER || t->format == RHI_FORMAT_DEPTH ||
+        face < 0 || face >= faces || level < 0 || level > 30)
         return RHI_ERR_INVALID;
     GLsizei w = t->width >> level, h = t->height >> level;
     if (w < 1) w = 1;
@@ -961,6 +965,7 @@ void rhi_cmd_bind_pipeline(RhiPipeline pipeline) {
     GLboolean want_cm[4] = { (d->color_write & 1) ? GL_TRUE : GL_FALSE, (d->color_write & 2) ? GL_TRUE : GL_FALSE,
                              (d->color_write & 4) ? GL_TRUE : GL_FALSE, (d->color_write & 8) ? GL_TRUE : GL_FALSE };
     if (memcmp(cm, want_cm, sizeof cm)) glColorMask(want_cm[0], want_cm[1], want_cm[2], want_cm[3]);
+    set_cap(GL_POLYGON_OFFSET_FILL, 0);   /* no depth bias in pipelines yet */
     /* Stencil functions are not tracked: set whenever the test is on, left as
        they are when it is off (like the blend factors). */
     set_cap(GL_STENCIL_TEST, d->stencil_test);
@@ -1178,3 +1183,28 @@ RhiResult rhi_cmd_begin_pass(const RhiPassDesc *desc) {
 }
 
 void rhi_cmd_end_pass(void) { g_in_pass = 0; }
+
+/* ------------------------------------------------------------------------------ */
+/* Copies from the main target                                                    */
+/* ------------------------------------------------------------------------------ */
+/* The texture is bound on the active unit. The first copy (or one of a new
+ * size) allocates level 0 with glCopyTexImage2D, later ones overwrite it. */
+RhiResult rhi_cmd_copy_main_to_texture(RhiTexture texture, int32_t x, int32_t y,
+                                       int32_t w, int32_t h) {
+    RhiGlTexture *t = texture_lookup(texture, "copy_main_to_texture");
+    if (!t || t->target != GL_TEXTURE_2D || !(t->usage & RHI_TEXTURE_COPY_DST) || g_in_pass ||
+        (t->format != RHI_FORMAT_RGBA8 && t->format != RHI_FORMAT_DEPTH) ||
+        x < 0 || y < 0 || w <= 0 || h <= 0 || w > INT_MAX - x || h > INT_MAX - y ||
+        (g_rhi.in_frame && (w > g_rhi.frame_w - x || h > g_rhi.frame_h - y))) return RHI_ERR_INVALID;
+#ifdef N2_GLES
+    if (t->format == RHI_FORMAT_DEPTH) return RHI_ERR_UNSUPPORTED;   /* ES2 cannot copy depth */
+#endif
+    glBindTexture(GL_TEXTURE_2D, t->name);
+    if (t->copied_w != w || t->copied_h != h) {
+        glCopyTexImage2D(GL_TEXTURE_2D, 0, t->format == RHI_FORMAT_DEPTH ? GL_DEPTH_COMPONENT : GL_RGBA,
+                         x, y, w, h, 0);
+        t->copied_w = w; t->copied_h = h;
+        t->width = w; t->height = h;
+    } else glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, x, y, w, h);
+    return glGetError() == GL_NO_ERROR ? RHI_OK : RHI_ERR_UNSUPPORTED;
+}
