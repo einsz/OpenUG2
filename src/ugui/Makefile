@@ -18,6 +18,10 @@ CFLAGS   += -Wno-unused-function
 # strtok_r / usleep style POSIX bits used by the test tools
 override CFLAGS += -D_DEFAULT_SOURCE
 
+IMAGE_CFLAGS := $(shell pkg-config --cflags libpng libcrypto)
+IMAGE_LIBS := $(shell pkg-config --libs libpng libcrypto)
+CFLAGS += $(IMAGE_CFLAGS)
+
 SDL_CFLAGS := $(shell sdl2-config --cflags 2>/dev/null)
 SDL_LIBS   := $(shell sdl2-config --libs   2>/dev/null)
 
@@ -30,11 +34,11 @@ else
 endif
 
 BUILD   := ../../build/ugui
-VECTORS ?= ../../cleanroom/spec/test-vectors
+VECTORS ?= ../../tools/ugui_vectors
 
 # GL-free core + widgets
 CORE := ugui_util.c ugui_anim.c ugui_strtab.c ugui_fng.c ugui_canvas.c \
-        ugui_controller.c ugui_codec.c ugui_bundle.c ugui_tex.c ugui_ffont.c ugui_assets.c \
+        ugui_controller.c ugui_glyph_folder.c ugui_codec.c ugui_bundle.c ugui_tex.c ugui_ffont.c ugui_assets.c \
         ugui_font.c ugui_text.c ugui_glyph.c ugui_kit.c ugui_ui.c \
         ugui_w_basic.c ugui_w_list.c ugui_w_entry.c ugui_w_dialog.c \
         ugui_hintbar.c ugui_scene.c
@@ -52,15 +56,15 @@ $(BUILD):
 test: $(BUILD)/ugui_test
 	python3 ../../tools/ugui_vector_check.py $(BUILD)/ugui_test $(VECTORS)
 
-$(BUILD)/ugui_test: ../../tools/ugui_test.c ../../tools/ugui_test_more.inc ../../tools/ugui_test_assets.inc ../../tools/ugui_test_amend3.inc ../../tools/ugui_test_amend4.inc $(CORE) $(APP) $(HDRS) | $(BUILD)
-	$(CC) $(CFLAGS) -DUG_VECTOR_DIR='"$(VECTORS)"' -I. -I../../tools ../../tools/ugui_test.c $(CORE) $(APP) -o $@ -lm
+$(BUILD)/ugui_test: $(wildcard ../../tools/ugui_test*.inc) ../../tools/ugui_test.c ../../tools/ugui_test_more.inc ../../tools/ugui_test_assets.inc ../../tools/ugui_test_amend3.inc ../../tools/ugui_test_amend4.inc $(CORE) $(APP) $(HDRS) | $(BUILD)
+	$(CC) $(CFLAGS) -DUG_VECTOR_DIR='"$(VECTORS)"' -I. -I../../tools ../../tools/ugui_test.c $(CORE) $(APP) -o $@ $(IMAGE_LIBS) -lm
 
 # ---- SDL2 + OpenGL demo ----
 demo: $(BUILD)/ugui_demo
 	@echo "Run:  $(BUILD)/ugui_demo [--data GAME_DIR] [--size W H]   (mouse only: hover, click, wheel, drag, right-click = Back)"
 
 $(BUILD)/ugui_demo: ../../tools/ugui_demo.c $(CORE) ugui_gl.c ../gl_state.c $(APP) $(HDRS) | $(BUILD)
-	$(CC) $(CFLAGS) -I. -I../../tools $(SDL_CFLAGS) ../../tools/ugui_demo.c $(CORE) ugui_gl.c ../gl_state.c $(APP) -o $@ $(SDL_LIBS) $(GL_LIBS) -lm
+	$(CC) $(CFLAGS) -I. -I../../tools $(SDL_CFLAGS) ../../tools/ugui_demo.c $(CORE) ugui_gl.c ../gl_state.c $(APP) -o $@ $(SDL_LIBS) $(GL_LIBS) $(IMAGE_LIBS) -lm
 
 run: demo
 	$(BUILD)/ugui_demo $(if $(DATA),--data "$(DATA)")

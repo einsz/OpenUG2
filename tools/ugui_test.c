@@ -1,7 +1,7 @@
 /* ugui_test.c -- GL-free tests for the ugui widget library.
  *
  * Section A drives the library with the synthetic vectors in
- * cleanroom/spec/test-vectors (hash, track evaluation, string table, package
+ * tools/ugui_vectors (hash, track evaluation, string table, package
  * parse). Later sections test text layout, canvas, widgets, focus and hints.
  *
  * Usage: ugui_test [vector_dir]   (default: UG_VECTOR_DIR from the Makefile)
@@ -16,7 +16,7 @@
 #include <string.h>
 
 #ifndef UG_VECTOR_DIR
-#define UG_VECTOR_DIR "../../cleanroom/spec/test-vectors"
+#define UG_VECTOR_DIR "tools/ugui_vectors"
 #endif
 
 static int g_checks, g_fails;
@@ -479,6 +479,8 @@ static void test_package_vs_json(void) {
 #include "ugui_test_amend5.inc"
 #include "ugui_test_amend6_xbox.inc"
 #include "ugui_test_amend6_demo.inc"
+#include "ugui_test_amend8.inc"
+#include "ugui_test_folder.inc"
 
 int main(int argc, char **argv) {
     if (argc > 1) g_vec_dir = argv[1];
@@ -496,6 +498,9 @@ int main(int argc, char **argv) {
     run_amend5_tests();
     run_amend6_xbox_tests();
     run_amend6_demo_tests();
+    run_amend8_tests();
+    run_folder_tests();
+    if(argc==4&&!strcmp(argv[2],"--test-glyph-folder"))runtime_test_glyph_folder(argv[3]);
     printf("%d checks, %d failures\n", g_checks, g_fails);
     return g_fails ? 1 : 0;
 }

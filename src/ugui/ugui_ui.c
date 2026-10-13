@@ -274,7 +274,7 @@ int ug_screen_pointer(UgScreen *s, UgCtx *c, const UgPtr *p) {
     }
     UgWidget *hit = hit_widget(s, p->x, p->y);
     if (!hit) return 0;
-    if (((p->type == UG_PT_MOVE && UG_TUNE_HOVER_FOCUS) || p->type == UG_PT_DOWN) && ug_widget_focusable(hit))
+    if (((p->type == UG_PT_MOVE && UG_TUNE_HOVER_FOCUS && !(hit->flags & UG_W_NOHOVERFOCUS)) || p->type == UG_PT_DOWN) && ug_widget_focusable(hit))
         ug_screen_focus_widget(s, c, hit);
     if (hit->flags & UG_W_DISABLED) return 0;
     int r = hit->vt && hit->vt->pointer ? hit->vt->pointer(hit, c, p) : 0;

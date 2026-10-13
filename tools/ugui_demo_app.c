@@ -406,12 +406,14 @@ static void bg_glyphs(UgScreen *s, UgCtx *c, UgCanvas *cv) {
         char status[80];snprintf(status,sizeof status,"%s glyphs available: %d / %d",p->family==UG_CONTROLLER_PS2?"PS2":"Xbox",loaded,n);
         ug_kit_text(c,cv,status,-280,-171,0.5f,UG_TEXT_DARK,UG_J_VCENTER);
         for(int i=0;i<n;i++) {
-            float x=-240+(i%5)*120,y=-134+(i/5)*52;
+            int cols=p->family==UG_CONTROLLER_XBOX?8:5;
+            float x=p->family==UG_CONTROLLER_XBOX?-262+(i%cols)*75:-240+(i%cols)*120;
+            float y=-134+(i/cols)*(p->family==UG_CONTROLLER_XBOX?48:52);
             int tex=ug_controller_family_icon_texture(p,p->family,i);
             if(tex)ug_cv_image_rect(cv,R(x,y,32,32),tex,UG_WHITE);
             static const char *xb[23]={"Black","D-pad up","Start","Left stick","Left stick L/R","White","Right trigger","Left trigger","Back","D-pad","A","B","X","Y","D-pad up/down","D-pad down","D-pad left","Right stick up","Left stick up","Right stick down","D-pad L/R","Right stick","D-pad right"};
-            const char *label=p->family==UG_CONTROLLER_XBOX?xb[i]:ug_controller_family_icon_name(p->family,i)+4;
-            ug_kit_text(c,cv,label,x,y+24,0.5f,UG_TEXT_DARK,UG_J_CENTER|UG_J_VCENTER);
+            const char *label=p->family==UG_CONTROLLER_XBOX?(i<23?xb[i]:ug_controller_family_icon_name(p->family,i)):ug_controller_family_icon_name(p->family,i)+4;
+            ug_kit_text(c,cv,label,x,y+24,p->family==UG_CONTROLLER_XBOX?0.34f:0.5f,UG_TEXT_DARK,UG_J_CENTER|UG_J_VCENTER);
         }
     }
     ug_kit_text(c,cv,"F2 selects family",0,170,0.5f,UG_TEXT_DARK,UG_J_CENTER|UG_J_VCENTER);
@@ -641,7 +643,7 @@ static void build_pages(DemoApp *a) {
 
 void demo_init(DemoApp *a, const char *vectors_dir) {
     memset(a, 0, sizeof *a);
-    snprintf(a->vectors_dir, sizeof a->vectors_dir, "%s", vectors_dir ? vectors_dir : "cleanroom/spec/test-vectors");
+    snprintf(a->vectors_dir, sizeof a->vectors_dir, "%s", vectors_dir ? vectors_dir : "tools/ugui_vectors");
     ug_ui_init(&a->ui);
     ug_controller_init(&a->controller); ug_glyph_set_controller(&a->controller);
     ug_strtab_init(&a->strings);

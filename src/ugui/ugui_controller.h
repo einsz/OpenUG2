@@ -4,6 +4,10 @@
 #include "ugui_tex.h"
 typedef enum { UG_VIS_OK, UG_VIS_UNAVAILABLE, UG_VIS_UNBOUND } UgVisualStatus;
 typedef enum { UG_CONTROLLER_PS2, UG_CONTROLLER_XBOX, UG_CONTROLLER_PC } UgControllerFamily;
+typedef enum { UG_FOLDER_OK, UG_FOLDER_ABSENT, UG_FOLDER_MISSING, UG_FOLDER_UNREADABLE,
+    UG_FOLDER_ESCAPE, UG_FOLDER_HASH, UG_FOLDER_PNG, UG_FOLDER_UNSUPPORTED,
+    UG_FOLDER_DIMENSIONS, UG_FOLDER_RGBA, UG_FOLDER_LIMIT, UG_FOLDER_INDEX } UgGlyphFolderStatus;
+typedef struct { UgControllerFamily family; uint32_t key; int texture; UgGlyphFolderStatus status; } UgGlyphFolderRecord;
 typedef struct { char token[40]; uint32_t key; UgControllerFamily family; } UgControllerBinding;
 typedef struct {
     UgControllerFamily family;
@@ -11,8 +15,11 @@ typedef struct {
     int available, icons[19];
     UgControllerBinding binding[32]; int nbindings;
     char source[512], status[160];
-    int xbox_available, xbox_icons[23];
+    int xbox_available, xbox_icons[47];
     char xbox_source[512];
+    int folder_active, folder_index_failed; size_t folder_count;
+    UgGlyphFolderRecord folder_records[66];
+    char folder_source[512];
 } UgController;
 void ug_controller_init(UgController *p);
 UgVisualStatus ug_controller_select(UgController *p, UgControllerFamily family);

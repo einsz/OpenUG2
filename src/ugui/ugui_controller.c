@@ -13,12 +13,14 @@ const char *ug_controller_icon_name(int i){return i>=0&&i<19?names[i]:NULL;}
 uint32_t ug_controller_icon_key(int i){return i>=0&&i<19?keys[i]:0;}
 static const char *xbox_names[23]={"black button","direction pad up","start","left stick","left stick left/right","white button","right trigger","left trigger","back","direction pad","A","B","X","Y","direction pad up/down","direction pad down","direction pad left","right stick up","left stick up","right stick down","direction pad left/right","right stick","direction pad right"};
 static const uint32_t xbox_keys[23]={0x09b6db77,0x0e7b631c,0x285718ed,0x3c5c25bc,0x3fd3b7a3,0x4b47bc3b,0x523452d0,0x68fdf2fd,0x85104670,0x85119eb8,0x8522e0a0,0x8522e0a1,0x8522e0b7,0x8522e0b8,0x8a3f71d3,0x9ad74eef,0x9adb8542,0xad32efd4,0xc3fc9001,0xc5a4e9a7,0xd0be1b1f,0xf2c274cf,0xf6baf515};
-int ug_controller_family_icon_count(UgControllerFamily f){return f==UG_CONTROLLER_PS2?19:f==UG_CONTROLLER_XBOX?23:0;}
+static const uint32_t localized_keys[24]={0x1c4bc1c4u,0x1e9510b6u,0x2fffeef1u,0x3909c9a6u,0x40496c1eu,0x495346d3u,0x7b118611u,0x8ba30e18u,0x91139ff0u,0x9579b4a5u,0x9a1d7aa5u,0xbcc1c032u,0xc891edddu,0xc8ef539cu,0xcc3d4ff5u,0xd19bc892u,0xd2296cc8u,0xd5472aaau,0xdb33477du,0xdc86cd22u,0xe590a7d7u,0xeb5476c4u,0xf45e5179u,0xf74d0529u};
+static const char *localized_names[24]={"french 1c4bc1c4","french 1e9510b6","italian 2fffeef1","swedish 3909c9a6","italian 40496c1e","swedish 495346d3","french 7b118611","french 8ba30e18","italian 91139ff0","french 9579b4a5","swedish 9a1d7aa5","french bcc1c032","italian c891eddd","french c8ef539c","italian cc3d4ff5","swedish d19bc892","italian d2296cc8","swedish d5472aaa","swedish db33477d","italian dc86cd22","swedish e590a7d7","italian eb5476c4","swedish f45e5179","french f74d0529"};
+int ug_controller_family_icon_count(UgControllerFamily f){return f==UG_CONTROLLER_PS2?19:f==UG_CONTROLLER_XBOX?47:0;}
 const char *ug_controller_family_icon_name(UgControllerFamily f,int i){
-    return i>=0&&i<ug_controller_family_icon_count(f)?(f==UG_CONTROLLER_PS2?names[i]:xbox_names[i]):NULL;
+    return i>=0&&i<ug_controller_family_icon_count(f)?(f==UG_CONTROLLER_PS2?names[i]:i<23?xbox_names[i]:localized_names[i-23]):NULL;
 }
 uint32_t ug_controller_family_icon_key(UgControllerFamily f,int i){
-    return i>=0&&i<ug_controller_family_icon_count(f)?(f==UG_CONTROLLER_PS2?keys[i]:xbox_keys[i]):0;
+    return i>=0&&i<ug_controller_family_icon_count(f)?(f==UG_CONTROLLER_PS2?keys[i]:i<23?xbox_keys[i]:localized_keys[i-23]):0;
 }
 int ug_controller_family_icon_texture(const UgController *p,UgControllerFamily f,int i){
     if(!p||i<0||i>=ug_controller_family_icon_count(f))return 0;
@@ -28,24 +30,37 @@ int ug_controller_family_available(const UgController *p,UgControllerFamily f){
     return p&&(f==UG_CONTROLLER_PC||(f==UG_CONTROLLER_PS2&&p->available)||(f==UG_CONTROLLER_XBOX&&p->xbox_available));
 }
 void ug_controller_init(UgController *p){memset(p,0,sizeof *p);ug_controller_select(p,UG_CONTROLLER_PC);}
+/* SPEC 7.3 defines these alternate spellings of the same action. This
+ * normalizes an explicit D binding; it never infers a resource key. */
+static const char *binding_token(const char *token){
+    if(!token)return NULL;
+    if(!strncmp(token,"JOY_EVENT_FENG_",15))token+=15;
+    return !strcmp(token,"SELECT")?"ACCEPT":token;
+}
 UgVisualStatus ug_controller_select(UgController *p,UgControllerFamily f){
     p->family=f;int available=ug_controller_family_available(p,f);
     if(f==UG_CONTROLLER_PC)snprintf(p->status,sizeof p->status,"PC text-only pills; original shared UI resources required");
     else snprintf(p->status,sizeof p->status,"%s %s",f==UG_CONTROLLER_XBOX?"Xbox":"PS2",available?"original icons available; action map is demo configuration":f==UG_CONTROLLER_XBOX?"source unavailable (provide --xbox-iso)":"source unavailable (provide --ps2-iso)");
+    if(f!=UG_CONTROLLER_PC&&p->folder_active){
+        int loaded=0,total=0;for(size_t i=0;i<p->folder_count;i++)if(p->folder_records[i].family==f){total++;if(p->folder_records[i].texture)loaded++;}
+        snprintf(p->status,sizeof p->status,"%s TEST-ONLY PNG folder: %d / %d available%s",f==UG_CONTROLLER_XBOX?"Xbox":"PS2",loaded,total,p->folder_index_failed?"; index configuration failure":!loaded?"; source unavailable":"; explicit demo mappings");
+    }
     return available?UG_VIS_OK:UG_VIS_UNAVAILABLE;
 }
 UgVisualStatus ug_controller_bind(UgController *p,const char *token,uint32_t key){
+    token=binding_token(token);
     if(!p||!token||!*token||strlen(token)>=40)return UG_VIS_UNBOUND;
     /* Legacy callers can configure PS2 keys while PC is active. Console
      * callers bind only a key belonging to their explicitly selected family. */
     UgControllerFamily f=p->family==UG_CONTROLLER_PC?UG_CONTROLLER_PS2:p->family;
     int found=0;for(int i=0;i<ug_controller_family_icon_count(f);i++)if(ug_controller_family_icon_key(f,i)==key)found=1;
-    if(!found)return UG_VIS_UNAVAILABLE;
-    for(int i=0;i<p->nbindings;i++)if(p->binding[i].family==f&&!strcmp(p->binding[i].token,token)){p->binding[i].key=key;return UG_VIS_OK;}
+
+    for(int i=0;i<p->nbindings;i++)if(p->binding[i].family==f&&!strcmp(p->binding[i].token,token)){p->binding[i].key=key;return found?UG_VIS_OK:UG_VIS_UNAVAILABLE;}
     if(p->nbindings>=32)return UG_VIS_UNBOUND;
-    UgControllerBinding *b=&p->binding[p->nbindings++];snprintf(b->token,sizeof b->token,"%s",token);b->key=key;b->family=f;return UG_VIS_OK;
+    UgControllerBinding *b=&p->binding[p->nbindings++];snprintf(b->token,sizeof b->token,"%s",token);b->key=key;b->family=f;return found?UG_VIS_OK:UG_VIS_UNAVAILABLE;
 }
 UgVisualStatus ug_controller_token(const UgController *p,const char *token,int *tex){
+    token=binding_token(token);
     if(tex)*tex=0;
     if(!p||!token)return UG_VIS_UNBOUND;
     uint32_t key=0;int configured=0;

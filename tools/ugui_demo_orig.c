@@ -621,8 +621,10 @@ static int vw_pointer(UgWidget *w, UgCtx *c, const UgPtr *p) {
         int hit = bind_hit_item(v, p->x, p->y);
         if (p->type == UG_PT_WHEEL) return bind_step(v, c, p->wheel > 0 ? -1 : 1);
         if (p->type == UG_PT_MOVE) {
-            if (hit >= 0 && hit != b->sel && fabsf(p->x - b->last_px) > 0.5f) bind_select(v, c, hit);
-            b->last_px = p->x;
+            /* Item buttons are application-bound horizontal-list entries.
+             * Do not fall through to generic scene hover focus for their
+             * item/arrow/track region (20.10 H1). Other controls keep hover. */
+            if (hit >= 0 || ug_rect_hit((UgRect){-297,-190,594,90},p->x,p->y)) return 1;
         } else if (p->type == UG_PT_DOWN && p->button == 1) {
             if (b->sel > 0 && ug_rect_hit(UG_RECT_C(-UG_R_ARROW_CX, UG_R_ARROW_CY, 34, 34), p->x, p->y)) return bind_step(v, c, -1);
             if (b->sel < b->n - 1 && ug_rect_hit(UG_RECT_C(UG_R_ARROW_CX, UG_R_ARROW_CY, 34, 34), p->x, p->y)) return bind_step(v, c, +1);

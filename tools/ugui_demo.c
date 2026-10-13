@@ -1,3 +1,4 @@
+#include "ugui_glyph_folder.h"
 /* ugui_demo.c -- SDL2 + OpenGL demo window for the ugui widget library.
  *
  * Everything is operable with the mouse alone:
@@ -111,6 +112,74 @@ static void step(Env *e, int frames, int shot_every) {
         /* the last frame of a step stays in the back buffer so a screenshot reads it */
         if (i + 1 < frames || !e->check) SDL_GL_SwapWindow(e->win);
     }
+}
+
+/* Amendment 8 final-frame glyph oracle. Compare the actual fully composited
+ * framebuffer with the same canvas omitting only the checked texture. This
+ * detects invisible/covered glyphs despite successful resource status. No
+ * original pixels are exported separately or used as golden artwork. */
+static int glyph_frame_ink(Env *e,int texture,const char *context,uint32_t key,const char *capture) {
+    const UgCanvas *cv=&e->app.ui.cv;size_t bytes=(size_t)e->w*e->h*3;
+    uint8_t *full=malloc(bytes),*without=malloc(bytes);
+    UgCanvas reduced=*cv;reduced.n=0;reduced.v=malloc((size_t)cv->n*sizeof *cv->v);
+    if(!full||!without||!reduced.v){free(full);free(without);free(reduced.v);return 0;}
+    glPixelStorei(GL_PACK_ALIGNMENT,1);glReadPixels(0,0,e->w,e->h,GL_RGB,GL_UNSIGNED_BYTE,full);
+    for(int i=0;i<cv->n;i++)if(cv->v[i].tex!=texture)reduced.v[reduced.n++]=cv->v[i];
+    glDisable(GL_SCISSOR_TEST);glClear(GL_COLOR_BUFFER_BIT);ug_gl_render(e->ugl,&reduced,e->w,e->h);
+    glReadPixels(0,0,e->w,e->h,GL_RGB,GL_UNSIGNED_BYTE,without);
+    int x0=e->w,y0=e->h,x1=-1,y1=-1;size_t count=0;
+    for(int y=0;y<e->h;y++)for(int x=0;x<e->w;x++){
+        size_t at=((size_t)y*e->w+x)*3;int changed=0;
+        for(int ch=0;ch<3;ch++)if(abs((int)full[at+ch]-(int)without[at+ch])>1)changed=1;
+        if(changed){int top=e->h-1-y;if(x<x0)x0=x;if(x>x1)x1=x;if(top<y0)y0=top;if(top>y1)y1=top;count++;}
+    }
+    glDisable(GL_SCISSOR_TEST);glClear(GL_COLOR_BUFFER_BIT);ug_gl_render(e->ugl,cv,e->w,e->h);
+    e->gl_errors+=ug_gl_errors("gui final-frame glyph check");
+    printf("gui glyph provenance: family=%s key=%08x source_kind=%s source=%s\n",e->app.controller.family==UG_CONTROLLER_PS2?"PS2":"Xbox",key,e->app.controller.folder_active?"TEST-ONLY PNG folder":"ISO",texture>0&&texture<=e->app.assets.tex.n?e->app.assets.tex.t[texture-1].source:"unavailable");
+    printf("gui ink: %dx%d family=%s context=%s key=%08x pixels=%zu bounds=%d,%d..%d,%d capture=%s status=%s\n",
+        e->w,e->h,e->app.controller.family==UG_CONTROLLER_PS2?"PS2":"Xbox",context,key,count,x0,y0,x1,y1,capture,count?"visible":"FAIL invisible");
+    free(full);free(without);free(reduced.v);return count>0;
+}
+
+static int run_gui_check(Env *e) {
+    DemoApp *a=&e->app;int failed=0;
+    printf("gui source kind: %s\n",a->controller.folder_active?"TEST-ONLY PNG folder; does not pass final ISO acceptance":"ISO; final console acceptance requires each family ISO");
+    step(e,90,0);while(a->ui.sp>1){ug_ui_action(&a->ui,UG_A_BACK);step(e,90,0);}
+    const UgControllerFamily families[]={UG_CONTROLLER_PC,UG_CONTROLLER_PS2,UG_CONTROLLER_XBOX,UG_CONTROLLER_PC};
+    for(int f=0;f<4;f++) {
+        UgControllerFamily family=families[f];demo_select_controller(a,family);
+        demo_open_page(a,DP_GLYPHS);step(e,90,0);
+        char shot[64];snprintf(shot,sizeof shot,"gui_gallery_%d_%d",family,f);
+        if(!save_shot(e,shot))failed++;
+        printf("gui profile: family=%d mode=%d status=%s capture=%s\n",family,a->ui.hints.mode,a->controller.status,shot);
+        if(family==UG_CONTROLLER_PC){if(a->ui.hints.mode!=UG_HINTS_PC)failed++;}
+        else if(!ug_controller_family_available(&a->controller,family)) {
+            printf("gui resources: %s unavailable; resource-backed acceptance NOT PASSED\n",family==UG_CONTROLLER_PS2?"PS2":"Xbox");failed++;
+        } else {
+            int n=ug_controller_family_icon_count(family);
+            for(int i=0;i<n;i++){
+                int tex=ug_controller_family_icon_texture(&a->controller,family,i);
+                if(!tex){printf("gui gallery: family=%d key=%08x status=missing/unsupported\n",family,ug_controller_family_icon_key(family,i));continue;}
+                if(!glyph_frame_ink(e,tex,"gallery",ug_controller_family_icon_key(family,i),shot))failed++;
+            }
+            /* Explicit test-only D maps, never asserted as retail bindings. */
+            const uint32_t keys[2]={family==UG_CONTROLLER_PS2?0xe795717du:0x8522e0a0u,family==UG_CONTROLLER_PS2?0xd9a22505u:0x8522e0a1u};
+            const char *tokens[2]={"ACCEPT","CANCEL"};
+            for(int i=0;i<2;i++)ug_controller_bind(&a->controller,tokens[i],keys[i]);
+            ug_ui_action(&a->ui,UG_A_BACK);step(e,90,0);
+            demo_open_page(a,DP_CARS);step(e,90,0);
+            snprintf(shot,sizeof shot,"gui_strip_%d",family);if(!save_shot(e,shot))failed++;
+            for(int i=0;i<2;i++){
+                int tex=0;UgVisualStatus status=ug_controller_token(&a->controller,tokens[i],&tex);
+                printf("gui mapping: family=%d action=%s key=%08x status=%d (explicit D test map)\n",family,tokens[i],keys[i],status);
+                if(status==UG_VIS_OK&&!glyph_frame_ink(e,tex,tokens[i],keys[i],shot))failed++;
+                else if(status!=UG_VIS_OK)failed++;
+            }
+        }
+        ug_ui_action(&a->ui,UG_A_BACK);step(e,90,0);
+    }
+    printf("gui %scheck: %d failures, %d GL errors; captures require native-size inspection%s\n",a->controller.folder_active?"TEST-ONLY folder ":"ISO ",failed,e->gl_errors,a->controller.folder_active?"; not final ISO acceptance":"");
+    return e->gl_errors?2:failed?1:0;
 }
 
 static void click_at(Env *e, UgRect r) {
@@ -368,10 +437,10 @@ static int run_check(Env *e) {
 }
 
 int main(int argc, char **argv) {
-    int w = 960, h = 720, check = 0, max_frames = -1, page = -1, list = 0, pillbox = 0, demo_only=0;
-    const char *dump = NULL, *xbox_iso=NULL, *ps2_iso=NULL, *family="pc", *capture=NULL;
+    int w = 960, h = 720, check = 0, max_frames = -1, page = -1, list = 0, pillbox = 0, demo_only=0,gui_check=0;
+    const char *dump = NULL, *xbox_iso=NULL, *ps2_iso=NULL, *family="pc", *capture=NULL, *test_glyph_folder=NULL;
     const char *bindings[32];int nbindings=0, audit=0, diagnostics=0;
-    const char *vectors = "cleanroom/spec/test-vectors";
+    const char *vectors = "tools/ugui_vectors";
     const char *shots = NULL, *data = NULL, *lang = NULL, *screen = NULL;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--size") && i + 2 < argc) { w = atoi(argv[++i]); h = atoi(argv[++i]); }
@@ -381,11 +450,14 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--page") && i + 1 < argc) page = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--check")) check = 1;
         else if(!strcmp(argv[i],"--demo-check")){check=1;demo_only=1;}
+        else if(!strcmp(argv[i],"--gui-check")){check=1;gui_check=1;}
         else if (!strcmp(argv[i], "--pillbox")) { check = 1; pillbox = 1; }
         else if (!strcmp(argv[i], "--data") && i + 1 < argc) data = argv[++i];
         else if (!strcmp(argv[i], "--lang") && i + 1 < argc) lang = argv[++i];
         else if (!strcmp(argv[i], "--screen") && i + 1 < argc) screen = argv[++i];
         else if(!strcmp(argv[i],"--diagnostics"))diagnostics=1;
+        else if(!strcmp(argv[i],"--glyph-folder")){fprintf(stderr,"PNG folder loading requires explicit test-only enablement: --test-glyph-folder DIR\n");return 1;}
+        else if(!strcmp(argv[i],"--test-glyph-folder")&&i+1<argc)test_glyph_folder=argv[++i];
         else if(!strcmp(argv[i],"--xbox-iso")&&i+1<argc)xbox_iso=argv[++i];
         else if (!strcmp(argv[i], "--ps2-iso") && i+1<argc) ps2_iso=argv[++i];
         else if (!strcmp(argv[i], "--controller") && i+1<argc) family=argv[++i];
@@ -396,8 +468,8 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--dump") && i + 1 < argc) dump = argv[++i];
         else {
             fprintf(stderr, "usage: %s [--data DIR] [--lang NAME] [--size W H] [--vectors DIR] [--page N] [--screen FILE.fng]\n"
-                            "          [--list] [--check|--demo-check] [--shots DIR] [--frames N] [--capture NAME]\n"
-                            "          [--ps2-iso FILE] [--xbox-iso FILE] [--diagnostics] [--controller pc|ps2|xbox] [--bind TOKEN=ICON_NAME] [--audit]\n", argv[0]);
+                            "          [--list] [--check|--demo-check|--gui-check] [--shots DIR] [--frames N] [--capture NAME]\n"
+                            "          [--ps2-iso FILE] [--xbox-iso FILE] [--test-glyph-folder DIR (testing only; never final ISO acceptance)] [--diagnostics] [--controller pc|ps2|xbox] [--bind TOKEN=ICON_NAME] [--audit]\n", argv[0]);
             return 1;
         }
     }
@@ -517,13 +589,25 @@ int main(int argc, char **argv) {
     e->app.diagnostics=diagnostics;
     if(xbox_iso)ug_controller_load_xbox(&e->app.controller,&e->app.assets.tex,xbox_iso);
     if(ps2_iso)ug_controller_load_ps2(&e->app.controller,&e->app.assets.tex,ps2_iso);
+    if(test_glyph_folder){
+        fprintf(stderr,"controller PNG folder: TEST-ONLY runtime source; final controller sources use --ps2-iso/--xbox-iso\n");
+        ug_controller_load_folder(&e->app.controller,&e->app.assets.tex,test_glyph_folder);
+        UgController *p=&e->app.controller;
+        for(size_t i=0;i<p->folder_count;i++)fprintf(stderr,"test glyph folder: family=%s key=%08x status=%s\n",p->folder_records[i].family==UG_CONTROLLER_PS2?"ps2":"xbox",p->folder_records[i].key,ug_glyph_folder_status(p->folder_records[i].status));
+        if(p->folder_index_failed)fprintf(stderr,"test glyph folder: index configuration failure\n");
+    }
     demo_select_controller(&e->app,!strcmp(family,"pc")?UG_CONTROLLER_PC:!strcmp(family,"xbox")?UG_CONTROLLER_XBOX:UG_CONTROLLER_PS2);
     fprintf(stderr,"controller: %s\n",e->app.controller.status);
     for(int i=0;i<nbindings;i++) {
         char token[40];const char *eq=strchr(bindings[i],'=');size_t n=eq?(size_t)(eq-bindings[i]):0;
         if(!eq||n==0||n>=sizeof token){fprintf(stderr,"invalid --bind, expected TOKEN=ICON_NAME\n");return 1;}
         memcpy(token,bindings[i],n);token[n]=0;
-        UgVisualStatus status=ug_controller_bind(&e->app.controller,token,(eq[1]=='0'&&eq[2]=='x')?(uint32_t)strtoul(eq+1,NULL,16):ug_hash_upper(eq+1));
+        const char *value=eq+1;uint32_t key;
+        if((value[0]=='0'&&(value[1]=='x'||value[1]=='X'))||(strlen(value)==8&&strspn(value,"0123456789abcdefABCDEF")==8)){
+            char *end=NULL;unsigned long parsed=strtoul(value,&end,16);
+            if(!*value||*end||parsed>UINT32_MAX){fprintf(stderr,"invalid --bind numeric resource key\n");return 1;}key=(uint32_t)parsed;
+        }else key=ug_hash_upper(value);
+        UgVisualStatus status=ug_controller_bind(&e->app.controller,token,key);
         fprintf(stderr,"demo binding: %s -> %s (%s; unobserved retail mapping)\n",token,eq+1,status==UG_VIS_OK?"configured":"unavailable");
     }
     if(audit) {
@@ -546,7 +630,8 @@ int main(int argc, char **argv) {
     }
 
     int rc = 0;
-    if(capture) { step(e,max_frames>0?max_frames:120,0);int shot_ok=save_shot(e,capture);rc=e->gl_errors?2:shot_ok?0:1;
+    if(gui_check) {rc=run_gui_check(e);
+    } else if(capture) { step(e,max_frames>0?max_frames:120,0);int shot_ok=save_shot(e,capture);rc=e->gl_errors?2:shot_ok?0:1;
     } else if (pillbox) {
         rc = run_pillbox_check(e);
     } else if (check) {

@@ -175,11 +175,8 @@ static int icons_pointer(UgWidget *w, UgCtx *c, const UgPtr *p) {
     if (r == 2) { icons_set_sel(s, c, ni, ni > s->sel ? 1 : -1); return 1; }
     if (r == 1) return 1;
     if (p->type == UG_PT_MOVE) {
-        int i = icon_hit(s, p->x, p->y);
-        if (i >= 0 && i != s->sel && (fabsf(p->x - s->last_px) > 0.5f)) {
-            icons_set_sel(s, c, i, i < s->sel ? -1 : 1);
-        }
-        s->last_px = p->x;
+        /* Hover never navigates, including after content moves underneath it.
+         * A captured thumb drag above remains deliberate input (20.10 H1). */
         return 0;
     }
     if (p->type == UG_PT_DOWN && p->button == 1) {
@@ -276,7 +273,7 @@ static const UgWidgetVT ICONS_VT = {icons_update, icons_action, icons_pointer, i
 void ug_icons_init(UgIconScroller *s, int id, const char *title) {
     memset(s, 0, sizeof *s);
     ug_widget_init(&s->w, &ICONS_VT, "icons", id, UG_RECT_C(0, -146, 594, 152));      /* 562 + the 16-wide strips: x -297..297 */
-    s->w.flags |= UG_W_CAPTURE;
+    s->w.flags |= UG_W_CAPTURE | UG_W_NOHOVERFOCUS;
     snprintf(s->title, sizeof s->title, "%s", title);
     ug_scroller_init(&s->sb, UG_RECT_C(0, (UG_R_TRACK_Y0 + UG_R_TRACK_Y1) * 0.5f, UG_R_BAND_X1 - UG_R_BAND_X0, UG_R_TRACK_Y1 - UG_R_TRACK_Y0), 0, 0);
     s->sb.has_range = 1; s->sb.lo = UG_R_THUMB_X0; s->sb.hi = UG_R_THUMB_X0 + UG_R_THUMB_SPAN;   /* 6.4 thumb formula */
@@ -924,6 +921,7 @@ void ug_carselect_init(UgCarSelect *s, int id, const UgCar *cars, int n,
                        const char *const *cats, int ncats) {
     memset(s, 0, sizeof *s);
     ug_widget_init(&s->w, &CS_VT, "carselect", id, (UgRect){-300, -232, 600, 432});
+    s->w.flags |= UG_W_NOHOVERFOCUS;
     s->cars = cars; s->ncars = n;
     /* PC filter arrows at (95, -208) and (268, -208), caption centred x 185 */
     float fl = UG_R_CAR_FILTER_ARROW_L, fr = UG_R_CAR_FILTER_ARROW_R;

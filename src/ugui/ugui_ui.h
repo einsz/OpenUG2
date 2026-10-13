@@ -135,6 +135,7 @@ typedef struct UgWidgetVT {
 #define UG_W_NOREACH     0x04u   /* not reachable by directional movement */
 #define UG_W_NOFOCUS     0x08u   /* never takes focus (decor) */
 #define UG_W_CAPTURE     0x10u   /* wants move/up events after a press */
+#define UG_W_NOHOVERFOCUS 0x20u /* horizontal lists retain deliberate focus (20.10) */
 
 struct UgWidget {
     const UgWidgetVT *vt;

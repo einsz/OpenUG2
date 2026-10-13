@@ -503,15 +503,15 @@ static void test_icon_scroller(void) {
     p = P(UG_PT_DOWN, 270, -132.5f, 1, 0);                 /* right arrow badge = one step */
     s.w.vt->pointer(&s.w, &c, &p);
     CHECK(s.sel == 4);
-    /* hover selects only when the pointer actually moves */
+    /* Amendment 8: moving/idle hover never selects horizontal-list items. */
     s.sel = 2; s.pos = 2;
     ug_icons_select(&s, 2);
     p = P(UG_PT_MOVE, 160, -134, 0, 0);
     s.last_px = 0;
     s.w.vt->pointer(&s.w, &c, &p);
-    CHECK(s.sel == 3);
+    CHECK(s.sel == 2);
     s.w.vt->pointer(&s.w, &c, &p);
-    CHECK(s.sel == 3);
+    CHECK(s.sel == 2);
     /* thumb drag on the scroller: the thumb sits at the 6.4 formula */
     p = P(UG_PT_DOWN, ug_scroller_thumb_pos(&s.sb), -171, 1, 0);
     CHECK(s.w.vt->pointer(&s.w, &c, &p) && s.sb.dragging);

@@ -358,14 +358,15 @@ map-editor-collision-test: tools/map_editor_collision_test.cpp tools/map_editor_
 UGUI_SRC := $(filter-out src/ugui/ugui_gl.c,$(wildcard src/ugui/*.c))
 UGUI_HDR := $(wildcard src/ugui/*.h) tools/ugui_demo_app.h
 UGUI_APP := tools/ugui_demo_app.c tools/ugui_demo_orig.c
-UGUI_FLAGS := -std=c99 -D_POSIX_C_SOURCE=200809L -Isrc/ugui
+UGUI_FLAGS := -std=c99 -D_POSIX_C_SOURCE=200809L -Isrc/ugui $(shell pkg-config --cflags libpng libcrypto)
+UGUI_IMAGE_LIBS := $(shell pkg-config --libs libpng libcrypto)
 build/ugui_test: tools/ugui_test.c $(wildcard tools/ugui_test*.inc) $(UGUI_APP) $(UGUI_SRC) $(UGUI_HDR)
 	@mkdir -p build
-	$(CC) $(CFLAGS) $(UGUI_FLAGS) tools/ugui_test.c $(UGUI_APP) $(UGUI_SRC) -o $@ -lm
+	$(CC) $(CFLAGS) $(UGUI_FLAGS) tools/ugui_test.c $(UGUI_APP) $(UGUI_SRC) -o $@ $(UGUI_IMAGE_LIBS) -lm
 ugui-test: build/ugui_test
-	env -u UGUI_DATA -u NFSU2_DATA python3 tools/ugui_vector_check.py build/ugui_test cleanroom/spec/test-vectors
+	env -u UGUI_DATA -u NFSU2_DATA python3 tools/ugui_vector_check.py build/ugui_test tools/ugui_vectors
 build/ugui_demo: tools/ugui_demo.c $(UGUI_APP) $(UGUI_SRC) src/ugui/ugui_gl.c src/gl_state.c src/gl_state.h $(UGUI_HDR)
 	@mkdir -p build
-	$(CC) $(CFLAGS) $(UGUI_FLAGS) $(SDL_CFLAGS) tools/ugui_demo.c $(UGUI_APP) $(UGUI_SRC) src/ugui/ugui_gl.c src/gl_state.c -o $@ $(SDL_LIBS) $(GL_LIBS) -lm
+	$(CC) $(CFLAGS) $(UGUI_FLAGS) $(SDL_CFLAGS) tools/ugui_demo.c $(UGUI_APP) $(UGUI_SRC) src/ugui/ugui_gl.c src/gl_state.c -o $@ $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lm
 ugui-demo: build/ugui_demo
 .PHONY: ugui-test ugui-demo

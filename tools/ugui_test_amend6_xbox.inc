@@ -90,7 +90,7 @@ static void test_xdvdfs_vectors(void){
 static void test_xbox_pack_and_iso(void){
     size_t n,rec,desc;uint8_t *b=x6_pack(1,&n,&rec,&desc);CHECK(b!=NULL);if(!b)return;
     UgController p;UgTexLib lib;ug_controller_init(&p);ug_texlib_init(&lib);
-    CHECK(ug_controller_family_icon_count(UG_CONTROLLER_PS2)==19);CHECK(ug_controller_family_icon_count(UG_CONTROLLER_XBOX)==23);CHECK(!ug_controller_family_icon_count(UG_CONTROLLER_PC));
+    CHECK(ug_controller_family_icon_count(UG_CONTROLLER_PS2)==19);CHECK(ug_controller_family_icon_count(UG_CONTROLLER_XBOX)==47);CHECK(!ug_controller_family_icon_count(UG_CONTROLLER_PC));
     CHECK(!strcmp(ug_controller_family_icon_name(UG_CONTROLLER_XBOX,10),"A"));CHECK(ug_controller_family_icon_key(UG_CONTROLLER_XBOX,22)==0xf6baf515u);
     CHECK(ug_controller_load_xbox_pack(&p,&lib,b,n));CHECK(lib.n==1);CHECK(ug_controller_select(&p,UG_CONTROLLER_XBOX)==UG_VIS_OK);
     CHECK(ug_controller_family_icon_texture(&p,UG_CONTROLLER_XBOX,0)==1);CHECK(!ug_controller_family_icon_texture(&p,UG_CONTROLLER_XBOX,1));CHECK(!ug_controller_family_icon_texture(&p,UG_CONTROLLER_PS2,0));
