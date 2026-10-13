@@ -18,6 +18,7 @@
 typedef struct { uint32_t shader; UG2WorldPipelines world; UG2CarPipelines car;
                  UG2EffectPipelines effect; UG2OverlayPipelines overlay; } ShaderPipelines;
 static const ShaderPipelines *pipelines_of(const RProg *r);
+static RhiPipelineDesc world_pipeline_desc(RhiShader shader);   /* below */
 
 #if defined(__APPLE__) && !defined(N2_GLES)
 /* Bind/Delete Framebuffers/Renderbuffers go through rhi_gl_state.c, which maps
@@ -743,41 +744,48 @@ RhiShader render_shader_create(const char *label,
 /* Colour maps plus a depth renderbuffer work without depth-texture extensions.
  * ponytail: fixed 512px world-only maps; add vehicle casters when their renderer
  * supports receiving world-space lights. Alpha-blended surfaces do not cast. */
+/* Parameters of src/shaders/headlight_shadow.* (std140 order). */
+struct HeadlightShadowParams { float uMVP[16]; float uCutout, uRange; };
+static const RhiParamField headlight_shadow_fields[] = {
+    {"uMVP", RHI_PARAM_MAT4, offsetof(HeadlightShadowParams, uMVP), 1},
+    {"uCutout", RHI_PARAM_FLOAT, offsetof(HeadlightShadowParams, uCutout), 1},
+    {"uRange", RHI_PARAM_FLOAT, offsetof(HeadlightShadowParams, uRange), 1},
+};
+static const RhiParamLayout headlight_shadow_layout = {
+    headlight_shadow_fields, 3, (uint32_t)sizeof(HeadlightShadowParams), "HeadlightShadowParams"
+};
+
 void free_headlight_shadows(HeadlightShadows *s) {
-    glDeleteTextures(2,s->texture);rhi_texture_destroy(s->white);
-    glDeleteRenderbuffers(1,&s->depth);glDeleteFramebuffers(1,&s->fbo);
+    for(int h=0;h<2;h++)rhi_texture_destroy(s->map[h]);
+    rhi_texture_destroy(s->depth);rhi_texture_destroy(s->white);
     rhi_shader_destroy(s->shader);
     memset(s,0,sizeof *s);
 }
-
 static int headlight_shadow_init(HeadlightShadows *s) {
     static const char *const attributes[] = { "aPos", "aUV" };
+    static const RhiParamLayout *const blocks[] = { &headlight_shadow_layout };
     s->shader=render_shader_create("headlight shadow",
         GLSL_VS_HEADER, src_shaders_headlight_shadow_vert, src_shaders_headlight_shadow_vert_len,
         GLSL_FS_HEADER, src_shaders_headlight_shadow_frag, src_shaders_headlight_shadow_frag_len,
-        attributes, 2, NULL, 0);
-    s->program=rhi_gl_shader_program(s->shader);if(!s->program)return 0;
-    s->mvp=glGetUniformLocation(s->program,"uMVP");
-    s->cutout=glGetUniformLocation(s->program,"uCutout");
-    s->range=glGetUniformLocation(s->program,"uRange");
-    glGenTextures(2,s->texture);
+        attributes, 2, blocks, 1);
+    s->params=(HeadlightShadowParams *)rhi_shader_params(s->shader,0);
+    if(!s->params)return 0;
+    const RhiSampler nearest=rhi_sampler_create(&(RhiSamplerDesc){RHI_FILTER_NEAREST,RHI_FILTER_NEAREST,
+        RHI_MIP_NONE,RHI_WRAP_CLAMP,RHI_WRAP_CLAMP,1.0f});
     for(int h=0;h<2;h++) {
-        glBindTexture(GL_TEXTURE_2D,s->texture[h]);
-        glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,512,512,0,GL_RGBA,GL_UNSIGNED_BYTE,NULL);
-        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
+        s->map[h]=rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D,RHI_FORMAT_RGBA8,512,512,
+            RHI_TEXTURE_SAMPLED|RHI_TEXTURE_COLOR_TARGET});
+        if(!s->map[h].id || rhi_texture_upload(s->map[h],0,0,NULL,0)!=RHI_OK ||
+           rhi_texture_set_sampler(s->map[h],nearest)!=RHI_OK)return 0;
     }
     unsigned char white[]={255,255,255};N2Tex tex={.w=1,.h=1,.rgb=white};s->white=upload_tex(&tex);
-    glGenFramebuffers(1,&s->fbo);glBindFramebuffer(GL_FRAMEBUFFER,s->fbo);
-    glGenRenderbuffers(1,&s->depth);glBindRenderbuffer(GL_RENDERBUFFER,s->depth);
-    glRenderbufferStorage(GL_RENDERBUFFER,GL_DEPTH_COMPONENT16,512,512);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER,GL_DEPTH_ATTACHMENT,GL_RENDERBUFFER,s->depth);
-    glFramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_TEXTURE_2D,s->texture[0],0);
-    return s->white.id && glCheckFramebufferStatus(GL_FRAMEBUFFER)==GL_FRAMEBUFFER_COMPLETE;
+    s->depth=rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D,RHI_FORMAT_D16,512,512,RHI_TEXTURE_DEPTH_TARGET});
+    /* casters: BatchedVertex, depth test LESS with write, no blend, two-sided */
+    RhiPipelineDesc d=world_pipeline_desc(s->shader);
+    d.depth_compare=RHI_COMPARE_LESS;
+    s->pipeline=rhi_pipeline_create(&d);
+    return s->white.id && s->depth.id && s->pipeline.id;
 }
-
 int render_batch_in_view(const N2Batch *b,const float m[16]) {
     for(int axis=0;axis<3;axis++)for(int sign=-1;sign<=1;sign+=2) {
         float plane[4];for(int a=0;a<4;a++)plane[a]=m[a*4+3]+sign*m[a*4+axis];
@@ -809,21 +817,14 @@ int render_headlight_shadows(const RProg *r,HeadlightShadows *s,const N2Batch *b
     gls_get_floatv(GL_COLOR_CLEAR_VALUE,clear);gls_get_booleanv(GL_COLOR_WRITEMASK,mask);
     gls_get_booleanv(GL_DEPTH_WRITEMASK,&depthmask);gls_get_floatv(GL_DEPTH_CLEAR_VALUE,&clear_depth);
     int draws=0;float matrices[2][16];
-    if(!s->fbo && !headlight_shadow_init(s)) {
+    if(!s->shader.id && !headlight_shadow_init(s)) {
         free_headlight_shadows(s);s->failed=1;
         fprintf(stderr,"Headlight shadows unavailable; retaining unshadowed beams.\n");
         draws=-1;goto restore;
     }
-    glBindFramebuffer(GL_FRAMEBUFFER,s->fbo);glViewport(0,0,512,512);
-    glEnable(GL_DEPTH_TEST);glDepthFunc(GL_LESS);glDepthMask(GL_TRUE);
-    glDisable(GL_BLEND);glDisable(GL_CULL_FACE);glDisable(GL_SCISSOR_TEST);glDisable(GL_DITHER);
-#ifdef N2_GLES
-    glClearDepthf(1.0f);
-#else
-    glClearDepth(1.0);
-#endif
-    glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);glClearColor(1,1,1,1);
-    glUseProgram(s->program);glUniform1f(s->range,shape[3]);
+    glDisable(GL_DITHER);   /* GL: exact packed distances */
+    rhi_cmd_bind_pipeline(s->pipeline);
+    s->params->uRange=shape[3];
     for(int h=0;h<2;h++) {
         float dir[3],vertical[3],view[16]={0},projection[16];
         for(int a=0;a<3;a++){dir[a]=forward[a]-up[a]*shape[2];vertical[a]=up[a]+forward[a]*shape[2];}
@@ -834,18 +835,25 @@ int render_headlight_shadows(const RProg *r,HeadlightShadows *s,const N2Batch *b
         }
         mat_persp(2*atanf(shape[1]*1.15f),shape[0]/shape[1],.05f,shape[3],projection);
         mat_mul(projection,view,matrices[h]);
-        glFramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_TEXTURE_2D,s->texture[h],0);
-        glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
-        if(pos[h][3]<.5f)continue;
-        glUniformMatrix4fv(s->mvp,1,GL_FALSE,matrices[h]);
-        for(int i=0;i<count;i++) {
-            const N2Batch *b=batches+i;
-            if(b->drawmode!=N2_DRAW_OPAQUE && b->drawmode!=N2_DRAW_CUTOUT)continue;
-            if(!render_batch_in_view(b,matrices[h]))continue;
-            glBindTexture(GL_TEXTURE_2D,rhi_gl_texture_name(b->tex.id?b->tex:s->white));
-            glUniform1f(s->cutout,b->tex.id && b->drawmode==N2_DRAW_CUTOUT?1.0f:0.0f);
-            draw_batch(b);draws++;
+        /* far = white, depth 1 */
+        if(rhi_cmd_begin_pass(&(RhiPassDesc){{s->map[h],0},{s->depth,0},RHI_LOAD_CLEAR,RHI_LOAD_CLEAR,
+                                             {1,1,1,1},1.0f})!=RHI_OK) {
+            free_headlight_shadows(s);s->failed=1;
+            fprintf(stderr,"Headlight shadows unavailable; retaining unshadowed beams.\n");
+            draws=-1;goto restore;
         }
+        if(pos[h][3]>=.5f) {
+            ug2_copy(s->params->uMVP,matrices[h],16);
+            for(int i=0;i<count;i++) {
+                const N2Batch *b=batches+i;
+                if(b->drawmode!=N2_DRAW_OPAQUE && b->drawmode!=N2_DRAW_CUTOUT)continue;
+                if(!render_batch_in_view(b,matrices[h]))continue;
+                rhi_cmd_bind_texture(0,b->tex.id?b->tex:s->white);
+                s->params->uCutout=b->tex.id && b->drawmode==N2_DRAW_CUTOUT?1.0f:0.0f;
+                render_draw_batch(b);draws++;
+            }
+        }
+        rhi_cmd_end_pass();
     }
 restore:
     glBindFramebuffer(GL_FRAMEBUFFER,(GLuint)fbo);glBindRenderbuffer(GL_RENDERBUFFER,(GLuint)rb);
@@ -866,7 +874,7 @@ restore:
     if(draws>=0) {
         ug2_copy(r->p->uHeadShadowMVP[0], matrices[0], 16*2);
         /* Units 1 and 2 are reserved for the two maps; ordinary textures use 0. */
-        for(int h=0;h<2;h++){glActiveTexture(GL_TEXTURE1+h);glBindTexture(GL_TEXTURE_2D,s->texture[h]);}
+        for(int h=0;h<2;h++)rhi_cmd_bind_texture(1+h,s->map[h]);
         r->p->uHeadShadowMap[0] = 1;r->p->uHeadShadowMap[1] = 2;
         r->p->uHeadShadow = 1.0f;
     }
@@ -1464,11 +1472,11 @@ int render_world_prop_updates(const N2Scene *scene,N2Batch *batches,int count,
 /* ---- world pipelines (sky, vista, world passes) ----
  * BatchedVertex: pos @0, uv @12, normal @20, RGBA8 prelight @32, stride 36.
  * All world passes test depth with LEQUAL and never cull. */
-static RhiPipelineDesc world_pipeline(const RProg *r, int depth_write, int blend,
-                                      RhiBlendFactor dst) {
+/* BatchedVertex over `shader`, depth test LEQUAL with write, no blend, two-sided. */
+static RhiPipelineDesc world_pipeline_desc(RhiShader shader) {
     RhiPipelineDesc d;
     rhi_pipeline_desc_init(&d);
-    d.shader = r->shader;
+    d.shader = shader;
     d.vertex.attribs[0] = (RhiVertexAttrib){ 0, 0, 0,  RHI_VERTEX_FLOAT3 };
     d.vertex.attribs[1] = (RhiVertexAttrib){ 1, 0, 12, RHI_VERTEX_FLOAT2 };
     d.vertex.attribs[2] = (RhiVertexAttrib){ 2, 0, 20, RHI_VERTEX_FLOAT3 };
@@ -1477,6 +1485,12 @@ static RhiPipelineDesc world_pipeline(const RProg *r, int depth_write, int blend
     d.vertex.stride[0] = sizeof(BatchedVertex);
     d.depth_test = 1;
     d.depth_compare = RHI_COMPARE_LESS_EQUAL;
+    return d;
+}
+
+static RhiPipelineDesc world_pipeline(const RProg *r, int depth_write, int blend,
+                                      RhiBlendFactor dst) {
+    RhiPipelineDesc d = world_pipeline_desc(r->shader);
     d.depth_write = (uint8_t)depth_write;
     d.blend = (uint8_t)blend;
     if (blend) {
@@ -1909,7 +1923,7 @@ RhiTexture upload_tpk_texture_to_gpu(const N2Tex *t) {
         RhiFormat fmt = (t->dxtfmt == 3) ? RHI_FORMAT_BC2
                       : (t->dxtfmt == 5) ? RHI_FORMAT_BC3 : RHI_FORMAT_BC1;
         int bpb = (t->dxtfmt == 1) ? 8 : 16;   /* S3TC block bytes (DXT3/DXT5 = 16) */
-        RhiTexture id = rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D, fmt, t->w, t->h});
+        RhiTexture id = rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D, fmt, t->w, t->h, RHI_TEXTURE_SAMPLED});
         if (!id.id) return id;
         /* Replay every complete mip level in the blob (level 0 = base .. 1x1).
            Per-level block count matches n2_mipbytes2 exactly so the offsets line
@@ -1936,7 +1950,7 @@ RhiTexture upload_tpk_texture_to_gpu(const N2Tex *t) {
 
 RhiTexture upload_tex(const N2Tex *t) {
     RhiTexture id = rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D,
-        t->alpha ? RHI_FORMAT_RGBA8 : RHI_FORMAT_RGB8, t->w, t->h});
+        t->alpha ? RHI_FORMAT_RGBA8 : RHI_FORMAT_RGB8, t->w, t->h, RHI_TEXTURE_SAMPLED});
     if (!id.id) return id;
     if (t->alpha) {   /* interleave the decal-mask plane -> RGBA */
         unsigned char *px = (unsigned char *)malloc((size_t)t->w * t->h * 4);

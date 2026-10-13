@@ -166,16 +166,26 @@ typedef enum RhiFormat {
     RHI_FORMAT_RGBA8 = 2,
     RHI_FORMAT_BC1   = 3,  /* S3TC DXT1, caps.tex_bc1 */
     RHI_FORMAT_BC2   = 4,  /* S3TC DXT3, caps.tex_bc2 */
-    RHI_FORMAT_BC3   = 5   /* S3TC DXT5, caps.tex_bc3 */
+    RHI_FORMAT_BC3   = 5,  /* S3TC DXT5, caps.tex_bc3 */
+    RHI_FORMAT_D16   = 6   /* 16-bit depth; render target only for now */
 } RhiFormat;
+
+typedef enum RhiTextureUsage {
+    RHI_TEXTURE_SAMPLED      = 1u << 0,
+    RHI_TEXTURE_COLOR_TARGET = 1u << 1,   /* colour attachment of a pass */
+    RHI_TEXTURE_DEPTH_TARGET = 1u << 2    /* depth attachment of a pass */
+} RhiTextureUsage;
 
 typedef struct RhiTextureDesc {
     RhiTextureType type;
     RhiFormat      format;
     int32_t        width, height;   /* level 0; equal for CUBE */
+    uint32_t       usage;           /* RhiTextureUsage bits */
 } RhiTextureDesc;
 
-/* Creates a texture without contents. Returns {0} on failure (logged). */
+/* Creates a texture without contents. Returns {0} on failure (logged). A D16
+ * texture must be DEPTH_TARGET and not SAMPLED (GL: a renderbuffer); it is not
+ * uploaded to. */
 RhiTexture rhi_texture_create(const RhiTextureDesc *desc);
 /* Sets the contents of one mip level (face 0..5 for CUBE, 0 for 2D). Level n
  * is max(1, width >> n) x max(1, height >> n). data == NULL leaves an
@@ -364,6 +374,35 @@ void rhi_cmd_bind_index_buffer(RhiBuffer buffer);           /* 16-bit indices */
 void rhi_cmd_bind_texture(uint32_t slot, RhiTexture texture);
 void rhi_cmd_draw_indexed(uint32_t index_count, uint32_t first_index);
 void rhi_cmd_draw(uint32_t vertex_count, uint32_t first_vertex);   /* no index buffer */
+
+/* ------------------------------------------------------------------------------ */
+/* Passes                                                                         */
+/* ------------------------------------------------------------------------------ */
+typedef enum RhiLoadOp {
+    RHI_LOAD_KEEP = 0,    /* previous contents */
+    RHI_LOAD_CLEAR = 1    /* clear to the pass's clear value */
+} RhiLoadOp;
+
+typedef struct RhiAttachment {
+    RhiTexture texture;   /* {0} = none */
+    int32_t    face;      /* cube face 0..5, 0 for 2D */
+} RhiAttachment;
+
+/* Rendering into textures. Viewport becomes the attachment size and the
+ * scissor test is off. Passes do not nest; the main target is not a pass yet.
+ * GL: clearing writes all colour channels / depth regardless of the last
+ * pipeline's write masks. */
+typedef struct RhiPassDesc {
+    RhiAttachment color;          /* RGBA8 COLOR_TARGET texture */
+    RhiAttachment depth;          /* D16 DEPTH_TARGET texture, or none */
+    RhiLoadOp     color_load, depth_load;
+    float         clear_color[4];
+    float         clear_depth;
+} RhiPassDesc;
+
+/* RHI_ERR_UNSUPPORTED if the attachments cannot be rendered to together. */
+RhiResult rhi_cmd_begin_pass(const RhiPassDesc *desc);
+void      rhi_cmd_end_pass(void);
 
 #ifdef __cplusplus
 }

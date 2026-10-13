@@ -17,7 +17,7 @@ static const uint32_t KEY = 0x12345678u;
 /* A real 1x1 texture for fixtures that only need distinct texture handles. */
 static RhiTexture test_texture(void) {
     const unsigned char pixel[4] = {255, 255, 255, 255};
-    RhiTexture t = rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D, RHI_FORMAT_RGBA8, 1, 1});
+    RhiTexture t = rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D, RHI_FORMAT_RGBA8, 1, 1, RHI_TEXTURE_SAMPLED});
     assert(t.id && rhi_texture_upload(t, 0, 0, pixel, 0) == RHI_OK);
     return t;
 }

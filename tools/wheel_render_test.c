@@ -26,7 +26,7 @@ int main(void) {
     r.p->uClearcoat = 0;r.p->uRimTint = 0;
     ug2_vec3(r.p->uColor, 0, 1, 0);ug2_vec3(r.p->uCamPos, 0, 0, 3);
     unsigned char pixels[]={255,0,0,0, 255,0,0,127, 255,0,0,128, 255,0,0,255};
-    RhiTexture wtex=rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D,RHI_FORMAT_RGBA8,4,1});
+    RhiTexture wtex=rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D,RHI_FORMAT_RGBA8,4,1, RHI_TEXTURE_SAMPLED});
     rhi_texture_upload(wtex,0,0,pixels,0);GLuint tex=rhi_gl_texture_name(wtex);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);

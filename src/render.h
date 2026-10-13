@@ -90,11 +90,14 @@ typedef struct {
     UG2Params *p;    /* the shader's parameters; the next draw uses what is here */
 } RProg;
 
+typedef struct HeadlightShadowParams HeadlightShadowParams;
 typedef struct {
-    GLuint fbo, depth, texture[2], program;   /* program: GL name of shader */
+    RhiTexture map[2];   /* 512x512 RGBA8 colour targets: distance packed into RG */
+    RhiTexture depth;    /* shared D16 depth target */
+    RhiTexture white;    /* 1x1 for untextured casters */
     RhiShader shader;
-    RhiTexture white;   /* 1x1 for untextured casters */
-    GLint mvp, cutout, range;
+    RhiPipeline pipeline;
+    HeadlightShadowParams *params;
     int failed;
 } HeadlightShadows;
 /* Returns caster draws, or -1 if offscreen rendering is unavailable. */
