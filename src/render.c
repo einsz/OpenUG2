@@ -15,7 +15,8 @@
 
 /* The world and car pipelines of a shader, for helpers that only get the
  * RProg (pipelines_of, below). */
-typedef struct { uint32_t shader; UG2WorldPipelines world; UG2CarPipelines car; } ShaderPipelines;
+typedef struct { uint32_t shader; UG2WorldPipelines world; UG2CarPipelines car;
+                 UG2EffectPipelines effect; } ShaderPipelines;
 static const ShaderPipelines *pipelines_of(const RProg *r);
 
 #if defined(__APPLE__) && !defined(N2_GLES)
@@ -359,22 +360,17 @@ int render_car_shadow(const RProg *r,CarShadow *s,const N2Scene *car,const GpuMe
     mat_mul(mvp,projection,projected);
     int draws=0;
     GLboolean cull=gls_is_enabled(GL_CULL_FACE);
-    glDisable(GL_CULL_FACE);glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
-    glDepthMask(GL_FALSE);glEnable(GL_STENCIL_TEST);glStencilMask(0xff);
-    glStencilFunc(GL_EQUAL,0,0xff);glStencilOp(GL_KEEP,GL_KEEP,GL_INCR);
+    rhi_cmd_bind_pipeline(pipelines_of(r)->effect.car_shadow);
     r->p->uUnlit = 1;r->p->uSoft = 0;r->p->uUseTex = 0;
     ug2_vec3(r->p->uColor, 0, 0, 0);r->p->uAlpha = .48f;
-    glEnableVertexAttribArray(0);
-    for(int a=1;a<4;a++)glDisableVertexAttribArray(a);
     /* Body and wheel coverage share the stencil reference for this actor. */
     for(int part=0;part<5;part++) {
-        GLuint buffer=rhi_gl_buffer_name(part?s->wheel:s->body);int n=part?s->wheel_count:s->body_count;
-        if(!buffer || !n)continue;
+        RhiBuffer buffer=part?s->wheel:s->body;int n=part?s->wheel_count:s->body_count;
+        if(!buffer.id || !n)continue;
         float matrix[16];mat_mul(projected,part?wheels[part-1]:model,matrix);
         ug2_copy(r->p->uMVP, matrix, 16);
-        glBindBuffer(GL_ARRAY_BUFFER,buffer);glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,0,0);
-        rhi_gl_flush_params();
-        glDrawArrays(GL_TRIANGLES,0,n);draws++;
+        rhi_cmd_bind_vertex_buffer(0,buffer,0);
+        rhi_cmd_draw((uint32_t)n,0);draws++;
     }
     glDisable(GL_STENCIL_TEST);glDepthMask(GL_TRUE);glDisable(GL_BLEND);
     r->p->uUnlit = 0;r->p->uAlpha = 1;
@@ -567,22 +563,19 @@ int render_rain(const RProg *r,RhiBuffer *vbo,float time,float intensity,int qua
     gls_get_booleanv(GL_DEPTH_WRITEMASK,&mask);
     gls_get_integerv(GL_BLEND_SRC_RGB,&sr);gls_get_integerv(GL_BLEND_DST_RGB,&dr);
     gls_get_integerv(GL_BLEND_SRC_ALPHA,&sa);gls_get_integerv(GL_BLEND_DST_ALPHA,&da);
-    glDisable(GL_DEPTH_TEST);glDepthMask(GL_FALSE);glDisable(GL_CULL_FACE);
-    glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+    rhi_cmd_bind_pipeline(pipelines_of(r)->effect.rain);
     r->p->uUnlit = 1;r->p->uEmissiveTex = 0;r->p->uUseTex = 0;
     r->p->uVista = 0;r->p->uUVCheck = 0;
     r->p->uSoft = 3;r->p->uAlpha = .8f*fminf(intensity,1);
     const float identity[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
     ug2_copy(r->p->uMVP, identity, 16);
     rhi_buffer_replace(*vbo,(size_t)n*sizeof *vertices,vertices);
-    glEnableVertexAttribArray(0);glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,sizeof(RainVertex),(void*)0);
-    glEnableVertexAttribArray(1);glVertexAttribPointer(1,2,GL_FLOAT,GL_FALSE,sizeof(RainVertex),(void*)12);
-    glEnableVertexAttribArray(3);glVertexAttribPointer(3,1,GL_FLOAT,GL_FALSE,sizeof(RainVertex),(void*)20);
-    /* No normal input is consumed by the unlit rain branch. Disable it so a
-       preceding small mesh buffer cannot be indexed beyond its allocation. */
-    glDisableVertexAttribArray(2);glVertexAttrib3f(2,0,0,1);
-    rhi_gl_flush_params();
-    glDrawArrays(GL_TRIANGLES,0,n);
+    /* No normal input is consumed by the unlit rain branch: the layout leaves
+       it without an array, so a preceding small mesh buffer cannot be indexed
+       beyond its allocation. GL: its current value is set explicitly. */
+    glVertexAttrib3f(2,0,0,1);
+    rhi_cmd_bind_vertex_buffer(0,*vbo,0);
+    rhi_cmd_draw((uint32_t)n,0);
     for(int i=0;i<7;i++)*loc[i] = saved[i];
     ug2_copy(r->p->uMVP, matrix, 16);
     glDepthMask(mask);if(depth)glEnable(GL_DEPTH_TEST);
@@ -610,19 +603,16 @@ int render_collision_walls(const RProg *r,RhiBuffer *vbo,const float *faces,int 
     gls_get_booleanv(GL_DEPTH_WRITEMASK,&mask);
     gls_get_integerv(GL_BLEND_SRC_RGB,&sr);gls_get_integerv(GL_BLEND_DST_RGB,&dr);
     gls_get_integerv(GL_BLEND_SRC_ALPHA,&sa);gls_get_integerv(GL_BLEND_DST_ALPHA,&da);
-    if(through)glDisable(GL_DEPTH_TEST);else glEnable(GL_DEPTH_TEST);
-    glDepthMask(GL_FALSE);glDisable(GL_CULL_FACE);glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+    const UG2EffectPipelines *ep = &pipelines_of(r)->effect;
     r->p->uUnlit = 1;r->p->uEmissiveTex = 0;r->p->uUseTex = 0;
     r->p->uSoft = 0;r->p->uVista = 0;r->p->uUVCheck = 0;
     ug2_copy(r->p->uColor, color, 3);ug2_copy(r->p->uMVP, mvp, 16);
     rhi_buffer_replace(*vbo,(size_t)count*27*sizeof(float),NULL);
     rhi_buffer_update(*vbo,0,(size_t)count*9*sizeof(float),faces);
     rhi_buffer_update(*vbo,(size_t)count*9*sizeof(float),(size_t)count*18*sizeof(float),edges);
-    glEnableVertexAttribArray(0);glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,0,0);
-    for(int a=1;a<4;a++)glDisableVertexAttribArray(a);
-    r->p->uAlpha = .10f;rhi_gl_flush_params();glDrawArrays(GL_TRIANGLES,0,count*3);
-    r->p->uAlpha = .85f;rhi_gl_flush_params();glDrawArrays(GL_LINES,count*3,count*6);
+    rhi_cmd_bind_vertex_buffer(0,*vbo,0);
+    r->p->uAlpha = .10f;rhi_cmd_bind_pipeline(ep->walls[!through][0]);rhi_cmd_draw((uint32_t)count*3,0);
+    r->p->uAlpha = .85f;rhi_cmd_bind_pipeline(ep->walls[!through][1]);rhi_cmd_draw((uint32_t)count*6,(uint32_t)count*3);
     for(int i=0;i<7;i++)*loc[i] = saved[i];
     ug2_copy(r->p->uMVP, matrix, 16);ug2_copy(r->p->uColor, old_color, 3);
     glDepthMask(mask);if(depth)glEnable(GL_DEPTH_TEST);else glDisable(GL_DEPTH_TEST);
@@ -1554,6 +1544,49 @@ void render_car_pipelines(const RProg *r, UG2CarPipelines *p) {
     p->halo = rhi_pipeline_create(&d);
 }
 
+/* ---- effect pipelines ----
+ * Car shadow and collision walls: position only (attribute 0, 12 B). Rain:
+ * RainVertex (position, uv, fade). All blend with alpha and never cull or
+ * write depth; the shadow and the walls test depth with LEQUAL. */
+static RhiPipelineDesc effect_pipeline(const RProg *r, int depth_test, RhiPrimitive primitive) {
+    RhiPipelineDesc d;
+    rhi_pipeline_desc_init(&d);
+    d.shader = r->shader;
+    d.vertex.attribs[0] = (RhiVertexAttrib){ 0, 0, 0, RHI_VERTEX_FLOAT3 };
+    d.vertex.attrib_count = 1;
+    d.vertex.stride[0] = 3 * sizeof(float);
+    d.primitive = primitive;
+    d.depth_test = (uint8_t)depth_test;
+    d.depth_compare = RHI_COMPARE_LESS_EQUAL;
+    d.depth_write = 0;
+    d.blend = 1;
+    d.src_rgb = d.src_alpha = RHI_BLEND_SRC_ALPHA;
+    d.dst_rgb = d.dst_alpha = RHI_BLEND_ONE_MINUS_SRC_ALPHA;
+    return d;
+}
+
+void render_effect_pipelines(const RProg *r, UG2EffectPipelines *p) {
+    RhiPipelineDesc d = effect_pipeline(r, 1, RHI_PRIMITIVE_TRIANGLES);
+    /* each pixel of an actor's shadow is darkened once: draw where the
+       stencil is still 0 and count it up */
+    d.stencil_test = 1;
+    d.stencil_compare = RHI_COMPARE_EQUAL;
+    d.stencil_ref = 0;
+    d.stencil_pass = RHI_STENCIL_INCR;
+    p->car_shadow = rhi_pipeline_create(&d);
+    for (int depth = 0; depth < 2; depth++)
+        for (int lines = 0; lines < 2; lines++) {
+            d = effect_pipeline(r, depth, lines ? RHI_PRIMITIVE_LINES : RHI_PRIMITIVE_TRIANGLES);
+            p->walls[depth][lines] = rhi_pipeline_create(&d);
+        }
+    d = effect_pipeline(r, 0, RHI_PRIMITIVE_TRIANGLES);
+    d.vertex.attribs[1] = (RhiVertexAttrib){ 1, 0, 12, RHI_VERTEX_FLOAT2 };
+    d.vertex.attribs[2] = (RhiVertexAttrib){ 3, 0, 20, RHI_VERTEX_FLOAT1 };
+    d.vertex.attrib_count = 3;
+    d.vertex.stride[0] = sizeof(RainVertex);
+    p->rain = rhi_pipeline_create(&d);
+}
+
 /* Two shaders use helpers (main view and environment capture). */
 static const ShaderPipelines *pipelines_of(const RProg *r) {
     static ShaderPipelines cache[4];
@@ -1564,6 +1597,7 @@ static const ShaderPipelines *pipelines_of(const RProg *r) {
     cache[slot].shader = r->shader.id;
     render_world_pipelines(r, &cache[slot].world);
     render_car_pipelines(r, &cache[slot].car);
+    render_effect_pipelines(r, &cache[slot].effect);
     return &cache[slot];
 }
 

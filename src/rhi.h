@@ -289,7 +289,8 @@ void     *rhi_shader_params(RhiShader shader, uint32_t block);
 
 typedef enum RhiVertexFormat {
     RHI_VERTEX_FLOAT2 = 1, RHI_VERTEX_FLOAT3, RHI_VERTEX_FLOAT4,
-    RHI_VERTEX_UNORM8X4      /* 4 bytes read as 0..1 */
+    RHI_VERTEX_UNORM8X4,     /* 4 bytes read as 0..1 */
+    RHI_VERTEX_FLOAT1
 } RhiVertexFormat;
 
 typedef struct RhiVertexAttrib {
@@ -311,6 +312,10 @@ typedef enum RhiCompare {
     RHI_COMPARE_NEVER = 0, RHI_COMPARE_LESS, RHI_COMPARE_EQUAL, RHI_COMPARE_LESS_EQUAL,
     RHI_COMPARE_GREATER, RHI_COMPARE_NOT_EQUAL, RHI_COMPARE_GREATER_EQUAL, RHI_COMPARE_ALWAYS
 } RhiCompare;
+typedef enum RhiStencilOp {
+    RHI_STENCIL_KEEP = 0, RHI_STENCIL_ZERO, RHI_STENCIL_REPLACE, RHI_STENCIL_INCR,
+    RHI_STENCIL_DECR, RHI_STENCIL_INVERT
+} RhiStencilOp;
 typedef enum RhiBlendFactor {
     RHI_BLEND_ZERO = 0, RHI_BLEND_ONE, RHI_BLEND_SRC_ALPHA, RHI_BLEND_ONE_MINUS_SRC_ALPHA,
     RHI_BLEND_DST_ALPHA, RHI_BLEND_ONE_MINUS_DST_ALPHA, RHI_BLEND_SRC_COLOR,
@@ -319,8 +324,9 @@ typedef enum RhiBlendFactor {
 
 /* Everything a draw needs besides its buffers, textures and parameters.
  * Viewport and scissor are not part of it. Blending is "add" (src*f + dst*f).
- * Not covered yet: stencil and depth bias (the passes that use them still set
- * GL state directly). */
+ * The same stencil state applies to both faces. Not covered yet: depth bias.
+ * Shader attributes that are not in the vertex layout read their default
+ * value (no array). */
 typedef struct RhiPipelineDesc {
     RhiShader       shader;
     RhiVertexLayout vertex;
@@ -331,12 +337,17 @@ typedef struct RhiPipelineDesc {
     uint8_t         blend;
     RhiBlendFactor  src_rgb, dst_rgb, src_alpha, dst_alpha;
     uint8_t         color_write;   /* bits 0..3 = R, G, B, A */
+    uint8_t         stencil_test;
+    RhiCompare      stencil_compare;
+    uint8_t         stencil_ref, stencil_read_mask, stencil_write_mask;
+    RhiStencilOp    stencil_fail, stencil_depth_fail, stencil_pass;
 } RhiPipelineDesc;
 
 typedef struct RhiPipeline { uint32_t id; } RhiPipeline;
 
 /* GL's initial state: no depth test, LESS, depth write on, no blend (ONE,
- * ZERO), no culling, all colour channels written, triangles. */
+ * ZERO), no culling, all colour channels written, triangles, no stencil test
+ * (ALWAYS, ref 0, masks 0xff, KEEP). */
 void        rhi_pipeline_desc_init(RhiPipelineDesc *desc);
 /* Created by value: equal descriptions give the same handle. {0} on failure. */
 RhiPipeline rhi_pipeline_create(const RhiPipelineDesc *desc);
@@ -352,6 +363,7 @@ void rhi_cmd_bind_index_buffer(RhiBuffer buffer);           /* 16-bit indices */
 /* Texture for shader sampler unit `slot`, sampled with the texture's sampler. */
 void rhi_cmd_bind_texture(uint32_t slot, RhiTexture texture);
 void rhi_cmd_draw_indexed(uint32_t index_count, uint32_t first_index);
+void rhi_cmd_draw(uint32_t vertex_count, uint32_t first_vertex);   /* no index buffer */
 
 #ifdef __cplusplus
 }
