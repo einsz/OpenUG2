@@ -3,7 +3,7 @@
  * Backends: SDL2 + legacy OpenGL2 (matches the app's 2.1/compat GL context). */
 #include <cstdio>
 #include <SDL.h>
-#include "gl_state.h"   /* GL headers + CPU state tracker (no glGet* readback) */
+#include "rhi_gl_state.h"   /* GL headers + CPU state tracker (no glGet* readback) */
 #include "imgui.h"
 #include "backends/imgui_impl_sdl2.h"
 #include "backends/imgui_impl_opengl2.h"

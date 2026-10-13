@@ -1,7 +1,7 @@
-/* gl_state.c — see gl_state.h. The shims record, then make the identical GL
+/* rhi_gl_state.c — see rhi_gl_state.h. The shims record, then make the identical GL
  * call; the getters answer from the record. */
 #define GLS_IMPLEMENTATION
-#include "gl_state.h"
+#include "rhi_gl_state.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
