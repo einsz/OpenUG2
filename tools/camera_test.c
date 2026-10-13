@@ -588,7 +588,7 @@ static int block_all(void *ctx, const float *eye, const float *lo, const float *
 }
 static void test_behaviour(void) {
     float up[3] = {0, 0, 1};
-    CamCarFrame car; cam_car_axes(0, up, &car);
+    CamCarFrame car = {0}; cam_car_axes(0, up, &car);
     CamCarData d; cam_car_data_default(&d);
 
     /* Event set-up and drift permission. */
