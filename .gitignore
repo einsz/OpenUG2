@@ -88,3 +88,6 @@ tools/capture_vehicle_shots.sh
 *.shops.txt.tmp.*
 *.districts.txt.tmp.*
 *.edits.txt.tmp.*
+
+# Clean-room analyst workspace (never commit)
+/cleanroom/analysis/
