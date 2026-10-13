@@ -1,0 +1,255 @@
+{
+  "provenance": "Independently authored synthetic cases for SPEC.md 'Runtime capture amendments, capture set 1'. No original images, measurements tables or data samples are included. Confidence labels name the amendment item; inferred/provisional cases test the spec's labeled policies, not retail equivalence.",
+  "cases": [
+    {
+      "name": "fit-1920x1080",
+      "confidence": "observed (C1-1)",
+      "input": {
+        "viewport": [
+          1920,
+          1080
+        ],
+        "logical_points": [
+          [
+            0,
+            0
+          ],
+          [
+            -320,
+            -240
+          ],
+          [
+            320,
+            240
+          ]
+        ]
+      },
+      "expected": {
+        "scale": 2.25,
+        "screen_points": [
+          [
+            960,
+            540
+          ],
+          [
+            240,
+            0
+          ],
+          [
+            1680,
+            1080
+          ]
+        ]
+      }
+    },
+    {
+      "name": "glyph-right-justify",
+      "confidence": "observed-consistent policy (C1-2)",
+      "input": {
+        "anchor": [
+          100,
+          50
+        ],
+        "justification": 2,
+        "size": 0.5,
+        "glyphs": [
+          {
+            "advance": 20,
+            "bearing_x": 4,
+            "top_offset": 10,
+            "width": 24,
+            "height": 40
+          }
+        ]
+      },
+      "expected": {
+        "quads": [
+          {
+            "x0": 92,
+            "x1": 104,
+            "y0": 55,
+            "y1": 75
+          }
+        ]
+      }
+    },
+    {
+      "name": "gear-colour-setting",
+      "confidence": "gear 1 observed; setting provisional (C1-3)",
+      "input": {
+        "gear": 1,
+        "authored_gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_colour_setting_rgb": [
+          255,
+          128,
+          64
+        ],
+        "authored_speed_rgb": [
+          192,
+          192,
+          192
+        ]
+      },
+      "expected": {
+        "gear_text": "1",
+        "gear_rgb": [
+          255,
+          128,
+          64
+        ],
+        "speed_rgb": [
+          192,
+          192,
+          192
+        ]
+      }
+    },
+    {
+      "name": "north-heading-0",
+      "confidence": "existing provisional convention (C1-10)",
+      "input": {
+        "map_center": [
+          0,
+          0
+        ],
+        "north_pivot_offset": 72,
+        "heading_radians": 0
+      },
+      "expected": {
+        "north_center": [
+          0,
+          -72
+        ],
+        "planar_rotation_degrees": 0
+      }
+    },
+    {
+      "name": "north-heading-90",
+      "confidence": "existing provisional convention (C1-10)",
+      "input": {
+        "map_center": [
+          0,
+          0
+        ],
+        "north_pivot_offset": 72,
+        "heading_radians": 1.5707963267948966
+      },
+      "expected": {
+        "north_center": [
+          -72,
+          0
+        ],
+        "planar_rotation_degrees": -90
+      },
+      "note": "Tip points screen-left; positive planar rotation is screen-clockwise in the y-down frame."
+    },
+    {
+      "name": "bank-zero",
+      "confidence": "observed (C1-8); assumes bank targets resolved",
+      "input": {
+        "career": true,
+        "balance": 0,
+        "suppressed": false
+      },
+      "expected": {
+        "value_text": "0",
+        "label_text": "Bank:",
+        "label_visible": true,
+        "backing_visible": true,
+        "value_visible": true,
+        "sibling_texts_visible": false
+      }
+    },
+    {
+      "name": "bank-off",
+      "confidence": "existing cash contract plus C1-8",
+      "input": {
+        "career": false,
+        "balance": 0,
+        "suppressed": false
+      },
+      "expected": {
+        "label_visible": false,
+        "backing_visible": false,
+        "value_visible": false
+      }
+    },
+    {
+      "name": "bank-suppressed",
+      "confidence": "existing cash contract plus C1-8",
+      "input": {
+        "career": true,
+        "balance": 1234,
+        "suppressed": true
+      },
+      "expected": {
+        "label_visible": false,
+        "backing_visible": false,
+        "value_visible": false
+      }
+    },
+    {
+      "name": "redline-inferred-optin",
+      "confidence": "inferred, opt-in setting only (C1-5)",
+      "cases": [
+        {
+          "input": {
+            "setting_enabled": false,
+            "scale_rpm": 9500,
+            "redline_rpm": 7600
+          },
+          "expected": {
+            "visible": false
+          }
+        },
+        {
+          "input": {
+            "setting_enabled": true,
+            "scale_rpm": 9500
+          },
+          "expected": {
+            "visible": false
+          }
+        },
+        {
+          "input": {
+            "setting_enabled": true,
+            "scale_rpm": 9500,
+            "redline_rpm": 7600
+          },
+          "expected": {
+            "visible": true,
+            "start_dial_angle_degrees": 188.0,
+            "end": "authored artwork trailing end"
+          }
+        },
+        {
+          "input": {
+            "setting_enabled": true,
+            "scale_rpm": 9500,
+            "redline_rpm": 9500
+          },
+          "expected": {
+            "visible": false
+          }
+        },
+        {
+          "input": {
+            "setting_enabled": true,
+            "scale_rpm": 7500,
+            "redline_rpm": -100
+          },
+          "expected": {
+            "visible": true,
+            "start_dial_angle_degrees": 0.0,
+            "end": "authored artwork trailing end"
+          }
+        }
+      ]
+    }
+  ]
+}

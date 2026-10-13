@@ -1,0 +1,343 @@
+{
+  "provenance": "Independently authored synthetic cases for SPEC.md 'Runtime capture amendments, capture set 5'. Values are computed from the spec's stated rules (alpha = floor(raw) mod 256 / 255, linear keys), not copied from any recording or asset. Tolerances: alpha 0.05, size 1.5 V, rotation 1 degree; avoid sampling within 2 units of 340 and 548.3. No original images or data samples are included. Gear cases amended by capture set 6: input drive_engaged is withdrawn and replaced by gear_change_in_progress (value sense inverted where it was present); gear-disengaged-shift renamed gear-shift-gear6; gear-fallback-gear3-standstill now expects the authored tint. Other gear cases keep their expectations.",
+  "cases": [
+    {
+      "name": "gear-shift-gear6",
+      "confidence": "(amended by capture set 6) gear 6 orange observed once; shift cause is user-reported testimony; provisional",
+      "input": {
+        "authored_gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_colour_setting_rgb": [
+          255,
+          128,
+          64
+        ],
+        "authored_alpha": 200,
+        "gear": 6,
+        "speed_mps": 30,
+        "gear_change_in_progress": true
+      },
+      "expected": {
+        "gear_rgb": [
+          255,
+          128,
+          64
+        ],
+        "gear_alpha": 200
+      }
+    },
+    {
+      "name": "gear-engaged-moving",
+      "confidence": "(amended by capture set 6) observed grey gear 2 moving; input renamed, value inverted (no shift in progress)",
+      "input": {
+        "authored_gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_colour_setting_rgb": [
+          255,
+          128,
+          64
+        ],
+        "authored_alpha": 200,
+        "gear": 2,
+        "speed_mps": 27,
+        "gear_change_in_progress": false
+      },
+      "expected": {
+        "gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_alpha": 200
+      }
+    },
+    {
+      "name": "gear-fallback-standstill",
+      "confidence": "(amended by capture set 6) observed gear 1 standstill; fallback provisional",
+      "input": {
+        "authored_gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_colour_setting_rgb": [
+          255,
+          128,
+          64
+        ],
+        "authored_alpha": 200,
+        "gear": 1,
+        "speed_mps": 0,
+        "gear_change_in_progress": "absent (host supplies no input)"
+      },
+      "expected": {
+        "gear_rgb": [
+          255,
+          128,
+          64
+        ],
+        "gear_alpha": 200
+      }
+    },
+    {
+      "name": "gear-fallback-moving",
+      "confidence": "(amended by capture set 6) observed grey moving; fallback provisional",
+      "input": {
+        "authored_gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_colour_setting_rgb": [
+          255,
+          128,
+          64
+        ],
+        "authored_alpha": 200,
+        "gear": 1,
+        "speed_mps": 10,
+        "gear_change_in_progress": "absent (host supplies no input)"
+      },
+      "expected": {
+        "gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_alpha": 200
+      }
+    },
+    {
+      "name": "gear-fallback-gear3-standstill",
+      "confidence": "(amended by capture set 6) EXPECTATION CHANGED from orange to authored: gears 2+ at standstill are unknown, authored tint unless shifting",
+      "input": {
+        "authored_gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_colour_setting_rgb": [
+          255,
+          128,
+          64
+        ],
+        "authored_alpha": 200,
+        "gear": 3,
+        "speed_mps": 0,
+        "gear_change_in_progress": "absent (host supplies no input)"
+      },
+      "expected": {
+        "gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_alpha": 200
+      }
+    },
+    {
+      "name": "gear-neutral-authored",
+      "confidence": "(amended by capture set 6) provisional; N unobserved",
+      "input": {
+        "authored_gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_colour_setting_rgb": [
+          255,
+          128,
+          64
+        ],
+        "authored_alpha": 200,
+        "gear": "neutral",
+        "speed_mps": 0,
+        "gear_change_in_progress": "absent (host supplies no input)"
+      },
+      "expected": {
+        "gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_alpha": 200
+      }
+    },
+    {
+      "name": "gear-reverse-disengaged-authored",
+      "confidence": "(amended by capture set 6) provisional; R unobserved; input renamed, shift in progress true, still authored",
+      "input": {
+        "authored_gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_colour_setting_rgb": [
+          255,
+          128,
+          64
+        ],
+        "authored_alpha": 200,
+        "gear": "reverse",
+        "speed_mps": 0,
+        "gear_change_in_progress": true
+      },
+      "expected": {
+        "gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_alpha": 200
+      }
+    },
+    {
+      "name": "glow-pre",
+      "confidence": "inferred, opt-in (E3)",
+      "input": {
+        "t_units": 50
+      },
+      "expected": {
+        "alpha": 0,
+        "size_v": null,
+        "rotation_deg_ccw": null,
+        "hidden": true
+      }
+    },
+    {
+      "name": "glow-rise",
+      "confidence": "inferred, opt-in (E3)",
+      "input": {
+        "t_units": 220
+      },
+      "expected": {
+        "alpha": 0.498039,
+        "size_v": [
+          64,
+          32
+        ],
+        "rotation_deg_ccw": 0
+      }
+    },
+    {
+      "name": "glow-big",
+      "confidence": "inferred, opt-in (E3)",
+      "input": {
+        "t_units": 410
+      },
+      "expected": {
+        "alpha": 0.956863,
+        "size_v": [
+          74,
+          42
+        ],
+        "rotation_deg_ccw": 2
+      }
+    },
+    {
+      "name": "glow-shrink",
+      "confidence": "inferred, opt-in (E3)",
+      "input": {
+        "t_units": 470
+      },
+      "expected": {
+        "alpha": 0.956863,
+        "size_v": [
+          69,
+          37
+        ],
+        "rotation_deg_ccw": 1
+      }
+    },
+    {
+      "name": "glow-dim",
+      "confidence": "inferred, opt-in (E3)",
+      "input": {
+        "t_units": 514
+      },
+      "expected": {
+        "alpha": 0.478431,
+        "size_v": [
+          64,
+          32
+        ],
+        "rotation_deg_ccw": 0
+      }
+    },
+    {
+      "name": "glow-rebright",
+      "confidence": "inferred, opt-in (E3)",
+      "input": {
+        "t_units": 550
+      },
+      "expected": {
+        "alpha": 0.980392,
+        "size_v": [
+          64,
+          32
+        ],
+        "rotation_deg_ccw": 0
+      }
+    },
+    {
+      "name": "glow-tail",
+      "confidence": "inferred, opt-in (E3)",
+      "input": {
+        "t_units": 600
+      },
+      "expected": {
+        "alpha": 0.278431,
+        "size_v": [
+          64,
+          32
+        ],
+        "rotation_deg_ccw": 0
+      }
+    },
+    {
+      "name": "glow-end",
+      "confidence": "inferred, opt-in (E3)",
+      "input": {
+        "t_units": 800
+      },
+      "expected": {
+        "alpha": 0,
+        "size_v": null,
+        "rotation_deg_ccw": null,
+        "hidden": true
+      }
+    },
+    {
+      "name": "glow-timescale",
+      "confidence": "inferred setting, fitted default (E3)",
+      "input": {
+        "ms_per_unit": 0.82,
+        "ms_since_event": 336
+      },
+      "expected": {
+        "equivalent_t_units": 409.76,
+        "same_as": "glow-big"
+      }
+    },
+    {
+      "name": "nos-level-three-quarters",
+      "confidence": "inferred opt-in (C3-4 as noted by E4)",
+      "input": {
+        "setting_enabled": true,
+        "nos_installed": true,
+        "level": 0.75,
+        "a0": 91,
+        "a1": 239
+      },
+      "expected": {
+        "coloured_layer_max_dial_angle": 202
+      }
+    }
+  ]
+}

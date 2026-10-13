@@ -76,7 +76,8 @@ follow ownership into `world.c`, `physics.c`, `render.c`, `audio.c` or
 
 | file | owns | must not become |
 |---|---|---|
-| `src/main.c` | SDL/GL setup, orchestration, input, state transitions, camera, diagnostics | a second parser or physics engine |
+| `src/main.c` | SDL/GL setup, orchestration, input, state transitions, camera glue, diagnostics | a second parser or physics engine |
+| `src/camera.c/.h` | gameplay camera maths: views, per-car GLOBALB record, smoothers, shake, projection ([CAMERA.md](CAMERA.md)) | GL, SDL or world-query code |
 | `src/nfsu2.h` | clean-room asset parsing, codecs, scene/path types, car profile extraction | renderer or world-state owner |
 | `src/world.c/.h` | region lifetime, scene assembly, dedup, textures, nav/events, ground/contact queries | UI or car integrator |
 | `src/render.c/.h` | GPU upload, batching, shader programs, matrices, PNG/font helpers | asset-format authority |
@@ -816,7 +817,9 @@ Each frame executes zero or more shared player/AI/contact/race-timer ticks.
 Catch-up is bounded to eight ticks; excess time from long stalls is discarded.
 Fractional time remains for the next frame. Car/track/race preparation resets
 that accumulator to avoid replaying loading time. Wheel spin, skid/smoke effects
-and landing shake advance with simulation; camera easing uses elapsed time.
+and landing shake advance with simulation. The gameplay camera ([CAMERA.md](CAMERA.md))
+steps its smoothers once per tick; the legacy chase spring (menu, orbit, `--shot-yaw`)
+still eases by elapsed time.
 Drag key presses survive zero-tick frames and are consumed once. Frame-driven
 capture/audit modes keep one deterministic tick per output frame.
 `make ground-motion-test` checks identical driving at 10/30/60/120/144/240 FPS.
@@ -1108,7 +1111,7 @@ Prefer the narrowest diagnostic that observes the production path:
 | vinyl catalogue | `./build/vinyl_census DATAROOT CAR --all`, or `--vinyl list` |
 | texture detail (anisotropy) | `--texture-detail N`, or the live slider in *Lighting & Environment* |
 | texture rejection census | `--tex-audit` (one `TEXFAIL` line per discarded texture, with the owning mesh) |
-| player HUD | `--hud` (dial/minimap/nav/status), `--hud-preview` (labelled sample values), `--hud-dest X,Y` (headless destination) |
+| player HUD | `--hud` (dial/minimap/nav/status), `--hud-preview` (labelled sample values), `--hud-dest X,Y` (headless destination), `--hud-fit wide\|4:3` (widescreen fitment, default `wide`) |
 | wrong picture on a mesh | `OPENUG2_SLOT_PROBE=<object name>` prints each submesh's texture slot and whether the bundle supplies it; `make texkey-probe && ./build/texkey_probe DATAROOT TRACK KEYHEX` then says what that key actually is (set `N2_PROBE_DIR` to dump the pixels) |
 | panorama classification | `--vista-census` (add `0` to list every object, not just the giants), `--lod-census`, `tools/impostor_atlas_census.py` |
 
@@ -1561,6 +1564,25 @@ to the next node **along the solved route**, never the straight line to the
 target, and an unreachable destination leaves the route empty so nothing is
 drawn. `make hud-test` covers the angle wrap, the map round-trip, aspect
 invariance, the sprint/lap rule, money visibility and the art gate.
+
+### Widescreen fitment (`--hud-fit`)
+
+`--hud-fit wide|4:3` selects how the HUD is fitted to the window. This is an
+OpenUG2 project policy, not original behaviour; the centred 4:3 fit remains the
+reference for any comparison with the original captures. `wide` is the default.
+Both policies scale uniformly by `s = min(W/640, H/480)` and never stretch.
+Under `4:3` the whole 640x480 frame is centred and nothing moves. Under `wide`,
+when `W/H > 4/3`, each top-level element group of the authored package (the
+minimap, gauge cluster, Bank and top-left widget groups) is moved as a whole,
+with all its descendants, by the extra logical half-width
+`D = (W/H*480 - 640)/2`: groups whose composed bounds are centred left of
+-640/6 move left by `D`, those right of +640/6 move right by `D`, the rest stay
+put. At 4:3 and narrower the two policies are identical. Engine-drawn items
+(the race minimap, drag/race readouts, status) apply the same rule to their own
+centres, and the minimap click picking inverts the final placement under both
+policies. Details, spec trace and the decisions behind them are in
+[HUD_WIDESCREEN.md](HUD_WIDESCREEN.md). `make hud-test` and `make
+hud-spec-test` (the `wide-policy.json` vectors) cover it.
 
 ### Fitted parts
 

@@ -1,0 +1,450 @@
+{
+  "provenance": "Independently authored synthetic cases for SPEC.md 'Runtime capture amendments, capture set 6'. Expected values follow from the spec's stated rule, not from any recording or asset. Confidence per case states whether the underlying state was observed, user-reported or provisional. No original images or data samples are included.",
+  "cases": [
+    {
+      "name": "gear-idle-gear1-noinput",
+      "confidence": "observed (several stills and two recordings) plus user-reported idle orange",
+      "input": {
+        "authored_gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_colour_setting_rgb": [
+          255,
+          128,
+          64
+        ],
+        "authored_alpha": 200,
+        "gear": 1,
+        "gear_change_in_progress": "absent (host supplies no input)",
+        "speed_mps": 0,
+        "standstill_threshold_mps": 0.5
+      },
+      "expected": {
+        "gear_rgb": [
+          255,
+          128,
+          64
+        ],
+        "gear_alpha": 200
+      }
+    },
+    {
+      "name": "gear-idle-gear1-false",
+      "confidence": "observed",
+      "input": {
+        "authored_gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_colour_setting_rgb": [
+          255,
+          128,
+          64
+        ],
+        "authored_alpha": 200,
+        "gear": 1,
+        "gear_change_in_progress": false,
+        "speed_mps": 0,
+        "standstill_threshold_mps": 0.5
+      },
+      "expected": {
+        "gear_rgb": [
+          255,
+          128,
+          64
+        ],
+        "gear_alpha": 200
+      }
+    },
+    {
+      "name": "gear-gear1-moving",
+      "confidence": "provisional; moving gear 1 unobserved",
+      "input": {
+        "authored_gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_colour_setting_rgb": [
+          255,
+          128,
+          64
+        ],
+        "authored_alpha": 200,
+        "gear": 1,
+        "gear_change_in_progress": false,
+        "speed_mps": 10,
+        "standstill_threshold_mps": 0.5
+      },
+      "expected": {
+        "gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_alpha": 200
+      }
+    },
+    {
+      "name": "gear-gear1-threshold-edge",
+      "confidence": "provisional; strict comparison (Q7 interim), threshold value guessed",
+      "input": {
+        "authored_gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_colour_setting_rgb": [
+          255,
+          128,
+          64
+        ],
+        "authored_alpha": 200,
+        "gear": 1,
+        "gear_change_in_progress": "absent (host supplies no input)",
+        "speed_mps": 0.5,
+        "standstill_threshold_mps": 0.5
+      },
+      "expected": {
+        "gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_alpha": 200
+      }
+    },
+    {
+      "name": "gear-gear1-reverse-speed",
+      "confidence": "provisional; magnitude of speed used",
+      "input": {
+        "authored_gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_colour_setting_rgb": [
+          255,
+          128,
+          64
+        ],
+        "authored_alpha": 200,
+        "gear": 1,
+        "gear_change_in_progress": "absent (host supplies no input)",
+        "speed_mps": -0.3,
+        "standstill_threshold_mps": 0.5
+      },
+      "expected": {
+        "gear_rgb": [
+          255,
+          128,
+          64
+        ],
+        "gear_alpha": 200
+      }
+    },
+    {
+      "name": "gear-gear1-nan-speed",
+      "confidence": "provisional; Q7 interim",
+      "input": {
+        "authored_gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_colour_setting_rgb": [
+          255,
+          128,
+          64
+        ],
+        "authored_alpha": 200,
+        "gear": 1,
+        "gear_change_in_progress": "absent (host supplies no input)",
+        "speed_mps": "NaN",
+        "standstill_threshold_mps": 0.5
+      },
+      "expected": {
+        "gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_alpha": 200
+      }
+    },
+    {
+      "name": "gear-gear1-nonpositive-threshold",
+      "confidence": "provisional; Q7 interim",
+      "input": {
+        "authored_gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_colour_setting_rgb": [
+          255,
+          128,
+          64
+        ],
+        "authored_alpha": 200,
+        "gear": 1,
+        "gear_change_in_progress": "absent (host supplies no input)",
+        "speed_mps": 0,
+        "standstill_threshold_mps": 0
+      },
+      "expected": {
+        "gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_alpha": 200
+      }
+    },
+    {
+      "name": "gear-shift-gear6",
+      "confidence": "gear 6 orange observed once; shift cause user-reported and ambiguous; provisional",
+      "input": {
+        "authored_gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_colour_setting_rgb": [
+          255,
+          128,
+          64
+        ],
+        "authored_alpha": 200,
+        "gear": 6,
+        "gear_change_in_progress": true,
+        "speed_mps": 30,
+        "standstill_threshold_mps": 0.5
+      },
+      "expected": {
+        "gear_rgb": [
+          255,
+          128,
+          64
+        ],
+        "gear_alpha": 200
+      }
+    },
+    {
+      "name": "gear-shift-gear2-moving",
+      "confidence": "user-reported only (no frame shows a shift); provisional",
+      "input": {
+        "authored_gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_colour_setting_rgb": [
+          255,
+          128,
+          64
+        ],
+        "authored_alpha": 200,
+        "gear": 2,
+        "gear_change_in_progress": true,
+        "speed_mps": 15,
+        "standstill_threshold_mps": 0.5
+      },
+      "expected": {
+        "gear_rgb": [
+          255,
+          128,
+          64
+        ],
+        "gear_alpha": 200
+      }
+    },
+    {
+      "name": "gear-drive-gear2",
+      "confidence": "observed (still, gear 2 at 60 MPH)",
+      "input": {
+        "authored_gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_colour_setting_rgb": [
+          255,
+          128,
+          64
+        ],
+        "authored_alpha": 200,
+        "gear": 2,
+        "gear_change_in_progress": false,
+        "speed_mps": 27,
+        "standstill_threshold_mps": 0.5
+      },
+      "expected": {
+        "gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_alpha": 200
+      }
+    },
+    {
+      "name": "gear-gear3-standstill",
+      "confidence": "unknown; authored tint provisional",
+      "input": {
+        "authored_gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_colour_setting_rgb": [
+          255,
+          128,
+          64
+        ],
+        "authored_alpha": 200,
+        "gear": 3,
+        "gear_change_in_progress": "absent (host supplies no input)",
+        "speed_mps": 0,
+        "standstill_threshold_mps": 0.5
+      },
+      "expected": {
+        "gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_alpha": 200
+      }
+    },
+    {
+      "name": "gear-invalid-input",
+      "confidence": "provisional; non-boolean means not in progress",
+      "input": {
+        "authored_gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_colour_setting_rgb": [
+          255,
+          128,
+          64
+        ],
+        "authored_alpha": 200,
+        "gear": 2,
+        "gear_change_in_progress": "yes",
+        "speed_mps": 10,
+        "standstill_threshold_mps": 0.5
+      },
+      "expected": {
+        "gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_alpha": 200
+      }
+    },
+    {
+      "name": "gear-neutral-standstill-shift",
+      "confidence": "provisional; N unobserved",
+      "input": {
+        "authored_gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_colour_setting_rgb": [
+          255,
+          128,
+          64
+        ],
+        "authored_alpha": 200,
+        "gear": "neutral",
+        "gear_change_in_progress": true,
+        "speed_mps": 0,
+        "standstill_threshold_mps": 0.5
+      },
+      "expected": {
+        "gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_alpha": 200
+      }
+    },
+    {
+      "name": "gear-reverse-standstill-shift",
+      "confidence": "provisional; R unobserved",
+      "input": {
+        "authored_gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_colour_setting_rgb": [
+          255,
+          128,
+          64
+        ],
+        "authored_alpha": 200,
+        "gear": "reverse",
+        "gear_change_in_progress": true,
+        "speed_mps": 0,
+        "standstill_threshold_mps": 0.5
+      },
+      "expected": {
+        "gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_alpha": 200
+      }
+    },
+    {
+      "name": "gear-shift-end-immediate",
+      "confidence": "provisional; no fade (no transition captured)",
+      "input": {
+        "authored_gear_rgb": [
+          192,
+          192,
+          192
+        ],
+        "gear_colour_setting_rgb": [
+          255,
+          128,
+          64
+        ],
+        "authored_alpha": 200,
+        "gear": 2,
+        "speed_mps": 20,
+        "standstill_threshold_mps": 0.5,
+        "gear_change_in_progress_by_frame": [
+          true,
+          false
+        ]
+      },
+      "expected": {
+        "gear_rgb_by_frame": [
+          [
+            255,
+            128,
+            64
+          ],
+          [
+            192,
+            192,
+            192
+          ]
+        ],
+        "gear_alpha": 200
+      }
+    }
+  ]
+}

@@ -29,8 +29,8 @@ else
 endif
 
 # engine modules: orchestrator + Renderer/Physics/AI/Audio/Resources/World
-SRC  := src/main.c src/render.c src/physics.c src/ai.c src/audio.c src/resource.c src/world.c src/world_instance.c src/world_resident.c src/world_mesh.c src/hud.c src/gl_state.c src/tex_override.c
-HDRS := src/world_collision_rules.h src/world_collision.h src/race_log.h src/race.h src/traffic_heatmap.h src/asset_chunks.h src/car_config.h src/car_mod.h src/nfsu2.h src/render.h src/physics.h src/ai.h src/audio.h src/resource.h src/debug.h src/world.h src/world_instance.h src/world_resident.h src/world_mesh.h src/world_capture_policy.h src/world_group_reader.h src/world_scenery.h src/ground_motion.h src/hud.h src/gl_state.h src/tex_override.h
+SRC  := src/main.c src/render.c src/physics.c src/ai.c src/audio.c src/resource.c src/world.c src/world_instance.c src/world_resident.c src/world_mesh.c src/hud.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/gl_state.c src/camera.c src/tex_override.c
+HDRS := src/world_collision_rules.h src/world_collision.h src/race_log.h src/race.h src/traffic_heatmap.h src/asset_chunks.h src/car_config.h src/car_mod.h src/nfsu2.h src/render.h src/physics.h src/ai.h src/audio.h src/resource.h src/debug.h src/world.h src/world_instance.h src/world_resident.h src/world_mesh.h src/world_capture_policy.h src/world_group_reader.h src/world_scenery.h src/ground_motion.h src/hud.h src/hud_asset.h src/hud_texture.h src/hud_baseline.h src/hud_host.h src/gl_state.h src/camera.h src/tex_override.h
 
 .DEFAULT_GOAL := nfsu2   # keep `make` building the binary, not the generated header
 
@@ -83,6 +83,16 @@ build/%.dbg.o: src/%.c $(HDRS) $(GEN)
 debug: $(DBG_OBJ) $(IMGUI_OBJ)
 	$(CXX) -O2 $(DBG_OBJ) $(IMGUI_OBJ) -o nfsu2 $(SDL_LIBS) $(GL_LIBS) -lz -lm
 
+# Gameplay camera vs docs/cleanroom-camera/test-vectors (docs/CAMERA.md). DATA may point
+# at an install to also check the real GLOBALB through the loader (structure only);
+# FULL may name a local full per-car table (tv01 columns) to compare values too.
+camera-test: tools/camera_test.c src/camera.c src/camera.h src/nfsu2.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Isrc tools/camera_test.c src/camera.c -o build/camera_test -lm
+	./build/camera_test docs/cleanroom-camera/test-vectors "$(DATA)" "$(FULL)"
+
+.PHONY: camera-test
+
 world-instance-test: tools/world_instance_test.c src/world_instance.c src/physics.c src/physics.h src/world_instance.h src/world_capture_policy.h src/nfsu2.h src/world_group_reader.h src/world_scenery.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -DWORLD_INSTANCE_TESTING -Isrc tools/world_instance_test.c src/world_instance.c src/physics.c -o build/world_instance_test -lm
@@ -103,9 +113,9 @@ car-material-test: tools/car_material_test.c src/nfsu2.h src/car_config.h src/ca
 
 # HUD maths only: no GL calls are executed, but hud.c still references the GL
 # symbols, so the link needs the same libraries as the engine.
-hud-test: tools/hud_test.c src/hud.c src/hud.h src/render.c src/gl_state.c src/tex_override.c src/render.h src/nfsu2.h
+hud-test: tools/hud_test.c src/hud.c src/hud.h src/hud_host.h src/hud_asset.h src/hud_baseline.h src/hud_texture.h src/audio.h src/render.c src/render.h src/gl_state.c src/tex_override.c src/nfsu2.h
 	@mkdir -p build
-	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/hud_test.c src/hud.c src/render.c src/gl_state.c src/tex_override.c \
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/hud_test.c src/hud.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/render.c src/gl_state.c src/tex_override.c \
 		-o build/hud_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
 	./build/hud_test
 
@@ -353,3 +363,14 @@ map-editor-collision-test: tools/map_editor_collision_test.cpp tools/map_editor_
 	$(CXX) -O2 -std=c++14 -Wall -Wextra tools/map_editor_collision_test.cpp -o build/map_editor_collision_test
 	./build/map_editor_collision_test
 .PHONY: map-editor map-editor-test map-editor-collision-test
+
+# Approved synthetic interoperability vectors, independent of GL and retail data.
+HUD_SPEC ?= docs/cleanroom-hud
+hud-spec-test: hud-asset-probe
+	python3 tools/hud_spec_test.py "$(HUD_SPEC)"
+
+hud-asset-probe: build/hud_asset_probe
+
+build/hud_asset_probe: src/tex_override.c tools/hud_asset_probe.c src/hud.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/render.c src/gl_state.c src/hud.h src/hud_asset.h src/hud_texture.h src/hud_baseline.h src/render.h src/nfsu2.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/hud_asset_probe.c src/hud.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/render.c src/gl_state.c src/tex_override.c -o build/hud_asset_probe $(SDL_LIBS) $(GL_LIBS) -lz -lm
