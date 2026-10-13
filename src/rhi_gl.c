@@ -22,6 +22,8 @@ static struct {
     SDL_GLContext context;
     RhiCaps       caps;
     uint64_t      frame_index;
+    int32_t       frame_w, frame_h;   /* main target size of the open frame */
+    int           in_frame;
 } g_rhi;
 
 static RhiBackend resolve(RhiBackend backend) {
@@ -103,8 +105,11 @@ const RhiCaps *rhi_caps(void) {
 
 RhiResult rhi_frame_begin(RhiFrameInfo *out) {
     if (!g_rhi.context) return RHI_ERR_INVALID;
+    rhi_drawable_size(&g_rhi.frame_w, &g_rhi.frame_h);
+    g_rhi.in_frame = 1;
     if (out) {
-        rhi_drawable_size(&out->width, &out->height);
+        out->width = g_rhi.frame_w;
+        out->height = g_rhi.frame_h;
         out->frame_index = g_rhi.frame_index;
     }
     return RHI_OK;
@@ -114,6 +119,36 @@ RhiResult rhi_frame_end(void) {
     if (!g_rhi.context) return RHI_ERR_INVALID;
     SDL_GL_SwapWindow(g_rhi.window);
     g_rhi.frame_index++;
+    g_rhi.in_frame = 0;
+    return RHI_OK;
+}
+
+/* GL_RGBA + GL_UNSIGNED_BYTE is the one combination GLES2 guarantees, so both
+ * GL flavours read RGBA and convert; GL rows are bottom-up, so they are flipped
+ * here. PACK_ALIGNMENT is 1 (rhi_device_create). */
+RhiResult rhi_read_pixels(int32_t x, int32_t y, int32_t w, int32_t h,
+                          RhiReadFormat format, void *dst, size_t stride) {
+    size_t bpp = format == RHI_READ_RGB8 ? 3 : format == RHI_READ_RGBA8 ? 4 : 0;
+    if (!g_rhi.in_frame || !dst || !bpp || w <= 0 || h <= 0 || x < 0 || y < 0 ||
+        w > g_rhi.frame_w - x || h > g_rhi.frame_h - y) return RHI_ERR_INVALID;
+    size_t limit = (size_t)PTRDIFF_MAX;
+    if ((size_t)w > limit / 4 / (size_t)h) return RHI_ERR_INVALID;
+    size_t row_bytes = (size_t)w * bpp;
+    if (!stride) stride = row_bytes;
+    if (stride < row_bytes || (size_t)(h - 1) > (limit - row_bytes) / stride)
+        return RHI_ERR_INVALID;
+    unsigned char *rgba = malloc((size_t)w * h * 4);
+    if (!rgba) return RHI_ERR_INVALID;
+    glReadPixels(x, g_rhi.frame_h - y - h, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+    for (int32_t row = 0; row < h; row++) {
+        const unsigned char *src = rgba + (size_t)(h - 1 - row) * w * 4;
+        unsigned char *out = (unsigned char *)dst + (size_t)row * stride;
+        if (bpp == 4) { memcpy(out, src, (size_t)w * 4); continue; }
+        for (int32_t i = 0; i < w; i++) {
+            out[i*3] = src[i*4]; out[i*3+1] = src[i*4+1]; out[i*3+2] = src[i*4+2];
+        }
+    }
+    free(rgba);
     return RHI_OK;
 }
 

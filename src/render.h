@@ -330,9 +330,9 @@ float text_width(const char *s, float px);
 /* dev screenshot: rgb is top-left origin, w*h*3 */
 void write_png(const char *path, int w, int h, const unsigned char *rgb);
 
-/* Read the current framebuffer's bottom w*h pixels into rgb (w*h*3, top-left
- * origin, ready for write_png). Reads GL_RGBA, the one format ES2 guarantees,
- * and drops alpha. Returns 0 if the buffer could not be allocated. */
+/* Read the top-left w*h pixels of the current frame into rgb (w*h*3, top-left
+ * origin, ready for write_png) through rhi_read_pixels. Call it between
+ * rhi_frame_begin and rhi_frame_end. Returns 0 on failure. */
 int  render_read_rgb(int w, int h, unsigned char *rgb);
 
 #endif
