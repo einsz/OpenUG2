@@ -13,6 +13,11 @@
 #include "rhi_gl.h"   /* GL names behind buffer handles for the draw code */
 #include "generated_shaders.h"   /* src/shaders/: make-embedded byte arrays */
 
+/* The world and car pipelines of a shader, for helpers that only get the
+ * RProg (pipelines_of, below). */
+typedef struct { uint32_t shader; UG2WorldPipelines world; UG2CarPipelines car; } ShaderPipelines;
+static const ShaderPipelines *pipelines_of(const RProg *r);
+
 #if defined(__APPLE__) && !defined(N2_GLES)
 /* Bind/Delete Framebuffers/Renderbuffers go through rhi_gl_state.c, which maps
    them to the EXT entry points itself. */
@@ -33,8 +38,7 @@ int render_world_glows(const RProg *r,const N2Batch *batches,int count,
     ug2_copy(r->p->uMVP, mvp, 16);
     r->p->uAlpha = 1;r->p->uSoft = 0;
     ug2_vec3(r->p->uFogColor, 0, 0, 0);
-    glEnable(GL_DEPTH_TEST);glDepthMask(GL_FALSE);
-    glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE);
+    rhi_cmd_bind_pipeline(pipelines_of(r)->world.add);   /* additive, depth tested, no write */
     int draws=0;
     for(int i=0;i<count;i++) {
         const N2Batch *b=&batches[i];
@@ -44,7 +48,7 @@ int render_world_glows(const RProg *r,const N2Batch *batches,int count,
         r->p->uEmissiveTex = b->tex.id?1:0;
         ug2_vec3(r->p->uColor, 1, b->tex.id?1:.85f, b->tex.id?1:.5f);
         glBindTexture(GL_TEXTURE_2D,rhi_gl_texture_name(b->tex));
-        draw_batch(b);draws++;
+        render_draw_batch(b);draws++;
     }
     ug2_copy(r->p->uFogColor, fog, 3);
     r->p->uEmissiveTex = 0;r->p->uUnlit = 0;
@@ -83,9 +87,7 @@ int render_district_lights(const RProg *r, GpuMesh *quad, RhiTexture texture,
     rt[0] /= rl; rt[1] /= rl;
     float up[3] = {rt[1]*ld[2], -rt[0]*ld[2],
                    rt[0]*ld[1] - rt[1]*ld[0]};
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-    glDepthMask(GL_FALSE);
+    rhi_cmd_bind_pipeline(pipelines_of(r)->car.halo);   /* additive, depth tested, no write */
     rp.p->uUnlit = 0.0f; rp.p->uEmissiveTex = 1.0f;
     rp.p->uUseTex = 1.0f; rp.p->uSoft = 0.0f;
     /* Additive emission fades toward zero, not fog RGB: black sprite edges
@@ -131,7 +133,7 @@ int render_district_lights(const RProg *r, GpuMesh *quad, RhiTexture texture,
         if (a > 1.0f) a = 1.0f;
         if (a <= 0.002f) continue;
         rp.p->uAlpha = a;
-        draw_gpumesh(quad); draws++;
+        render_draw_gpumesh(quad); draws++;
     }
     for (int i=0; i<5; i++) *scalar_loc[i] = scalars[i];
     ug2_copy(rp.p->uColor, color, 3);
@@ -1552,6 +1554,19 @@ void render_car_pipelines(const RProg *r, UG2CarPipelines *p) {
     p->halo = rhi_pipeline_create(&d);
 }
 
+/* Two shaders use helpers (main view and environment capture). */
+static const ShaderPipelines *pipelines_of(const RProg *r) {
+    static ShaderPipelines cache[4];
+    static int count, next;
+    for (int i = 0; i < count; i++)
+        if (cache[i].shader == r->shader.id) return &cache[i];
+    int slot = count < 4 ? count++ : (next++ & 3);
+    cache[slot].shader = r->shader.id;
+    render_world_pipelines(r, &cache[slot].world);
+    render_car_pipelines(r, &cache[slot].car);
+    return &cache[slot];
+}
+
 /* draw_gpumesh through the bound car pipeline. */
 void render_draw_gpumesh(const GpuMesh *g) {
     rhi_cmd_bind_vertex_buffer(0, g->vbo, 0);
@@ -1708,10 +1723,10 @@ void render_wheel_mesh(const RProg *r, GpuMesh *mesh, RhiTexture texture, int mo
         r->p->uSpec = 0.0f;r->p->uEnv = 0.0f;
         r->p->uClearcoat = 0.0f;
     }
-    glEnable(GL_DEPTH_TEST);glDepthMask(translucent?GL_FALSE:GL_TRUE);
-    if(translucent){glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);}
-    else glDisable(GL_BLEND);
-    draw_gpumesh(mesh);
+    /* two-sided, depth tested; translucent slices blend without depth write */
+    const UG2CarPipelines *cp = &pipelines_of(r)->car;
+    rhi_cmd_bind_pipeline(translucent ? cp->glass : cp->opaque[RHI_CULL_NONE]);
+    render_draw_gpumesh(mesh);
     for(int i=0;i<10;i++)*loc[i] = saved[i];
     glBindTexture(GL_TEXTURE_2D,(GLuint)oldtex);
     glBlendFuncSeparate((GLenum)src,(GLenum)dst,(GLenum)srca,(GLenum)dsta);
