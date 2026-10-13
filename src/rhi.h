@@ -95,6 +95,23 @@ RhiResult rhi_frame_begin(RhiFrameInfo *out);
 RhiResult rhi_frame_end(void);
 
 /* ------------------------------------------------------------------------------ */
+/* Readback                                                                       */
+/* ------------------------------------------------------------------------------ */
+typedef enum RhiReadFormat {
+    RHI_READ_RGB8  = 1,   /* 3 bytes per pixel */
+    RHI_READ_RGBA8 = 2    /* 4 bytes per pixel */
+} RhiReadFormat;
+
+/* Reads a w x h rectangle of the main target into dst, rows top-down. x, y is
+ * the rectangle's top-left corner, measured from the top-left of the target.
+ * stride is the byte distance between rows in dst (0 = w * bytes per pixel).
+ * Only valid between rhi_frame_begin and rhi_frame_end, after the last draw
+ * that should be visible; the rectangle must lie inside the frame. Blocks
+ * until the pixels are available. */
+RhiResult rhi_read_pixels(int32_t x, int32_t y, int32_t w, int32_t h,
+                          RhiReadFormat format, void *dst, size_t stride);
+
+/* ------------------------------------------------------------------------------ */
 /* Buffers                                                                        */
 /* ------------------------------------------------------------------------------ */
 /* Opaque handle: slot index + generation, id 0 = no buffer. A destroyed handle

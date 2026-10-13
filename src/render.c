@@ -1044,18 +1044,7 @@ void write_png(const char *path, int w, int h, const unsigned char *rgb) {
 }
 
 int render_read_rgb(int w, int h, unsigned char *rgb) {
-    unsigned char *rgba = malloc((size_t)w * h * 4);
-    if (!rgba) return 0;
-    glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
-    for (int y = 0; y < h; y++) {   /* GL rows are bottom-up */
-        const unsigned char *src = rgba + (size_t)(h - 1 - y) * w * 4;
-        unsigned char *dst = rgb + (size_t)y * w * 3;
-        for (int x = 0; x < w; x++) {
-            dst[x*3] = src[x*4]; dst[x*3+1] = src[x*4+1]; dst[x*3+2] = src[x*4+2];
-        }
-    }
-    free(rgba);
-    return 1;
+    return rhi_read_pixels(0, 0, w, h, RHI_READ_RGB8, rgb, 0) == RHI_OK;
 }
 
 static GLuint compile(GLenum type, const char *src) {
