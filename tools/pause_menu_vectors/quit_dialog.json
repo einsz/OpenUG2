@@ -1,0 +1,1472 @@
+{
+ "provenance": "Decoded original PC retail data (analyst-only extraction, base SPEC formats) plus evaluated authored colour tracks using base SPEC 3.5 semantics. Text, focus, input, latency and composition cases follow the user decisions of 2026-10-14 (QUESTIONS.md Round 3); cases tagged D are analyst integration defaults. Not original-game captures. No retail payload included.",
+ "coordinates": "centred 640x480 virtual units (x right, y down, origin at screen centre); add (320,240) for SPEC.md top-left coordinates",
+ "colour_order": "RGBA (stored data is B,G,R,A; converted here)",
+ "primary_package": {
+  "input": "GLOBAL/InGameCommon.lzc",
+  "key": "0x191A579C",
+  "lookup_name": "IG_GenericDialog_SMALL.fng",
+  "decoded_bytes": 20144,
+  "sha256": "86ea7ed71ce858fb4ef77d557a33bcd3ce4d03f462a33dc46238d06ed34ebcea",
+  "objects": 67,
+  "resources": 12,
+  "button_objects": 5
+ },
+ "primary_package_also": "byte-identical copy inside GLOBAL/InGameCommon.bun",
+ "alternates": [
+  {
+   "input": "GLOBAL/InGameCommon.lzc",
+   "key": "0xAA469286",
+   "lookup_name": "UI_InGameDialog.fng",
+   "decoded_bytes": 20132,
+   "sha256": "901482eb382daf3205e98b9a47d8f5893328afcbdee038f6eab03dff57885bd8",
+   "objects": 67,
+   "resources": 12,
+   "button_objects": 5
+  },
+  {
+   "input": "GLOBAL/InGameCommon.lzc",
+   "key": "0xA5675EB9",
+   "lookup_name": "IG_GenericDialog_MED.fng",
+   "decoded_bytes": 20140,
+   "sha256": "164b8d1e4646acf5accec358bf6ccec57b2b45239ce9b5dafe208e7ab5e3d523",
+   "objects": 67,
+   "resources": 12,
+   "button_objects": 5
+  },
+  {
+   "input": "GLOBAL/InGameCommon.lzc",
+   "key": "0xE712D82E",
+   "lookup_name": "IG_GenericDialog_LARGE.fng",
+   "decoded_bytes": 18304,
+   "sha256": "91884f2bdc96af3d77b2afbd319732cde4d83ff35a1a12b956607e429bd65f24",
+   "objects": 59,
+   "resources": 12,
+   "button_objects": 5
+  },
+  {
+   "input": "GLOBAL/GLOBALB.LZC.bacc (original form of GlobalB.lzc / GLOBALB.BUN)",
+   "key": "0x6962C0CD",
+   "lookup_name": "GenericDialog_SMALL.fng",
+   "decoded_bytes": 18112,
+   "sha256": "facb945282056c4434bb7ffc66e1ea1c0e981ade10b9f9cf74120fc2aba209de",
+   "objects": 55,
+   "resources": 12,
+   "button_objects": 3
+  }
+ ],
+ "resources": [
+  {
+   "index": 0,
+   "resource_id": "0xE261D0F5",
+   "kind": 0,
+   "filename": "(Untextured Simple Image)",
+   "texture_key": null
+  },
+  {
+   "index": 1,
+   "resource_id": "0x951022EE",
+   "kind": 1,
+   "filename": "U2_Menu_RoundedCorner.tga",
+   "texture_key": "0xD253B8F3"
+  },
+  {
+   "index": 2,
+   "resource_id": "0x4377C01D",
+   "kind": 1,
+   "filename": "U2_Menu_Box.tga",
+   "texture_key": "0xA67C3FE2"
+  },
+  {
+   "index": 3,
+   "resource_id": "0x2B03B15D",
+   "kind": 1,
+   "filename": "U2_Menu_Corner_white.tga",
+   "texture_key": "0xAD749E02"
+  },
+  {
+   "index": 4,
+   "resource_id": "0x671C0EDD",
+   "kind": 1,
+   "filename": "U2_Menu_Box_White.tga",
+   "texture_key": "0x014245E2"
+  },
+  {
+   "index": 5,
+   "resource_id": "0x403F2F61",
+   "kind": 2,
+   "filename": "ConduitMdITC_TT21i.ffn",
+   "texture_key": null
+  },
+  {
+   "index": 6,
+   "resource_id": "0x7C5B1CB7",
+   "kind": 1,
+   "filename": "U2_Save_Icon.tga",
+   "texture_key": "0xC26A8D5C"
+  },
+  {
+   "index": 7,
+   "resource_id": "0x1FC1C0A0",
+   "kind": 1,
+   "filename": "U2_Highlight_box.tga",
+   "texture_key": "0xBE9AB445"
+  },
+  {
+   "index": 8,
+   "resource_id": "0xF5495840",
+   "kind": 1,
+   "filename": "U2_Highlight_Corner.tga",
+   "texture_key": "0xD5873D85"
+  },
+  {
+   "index": 9,
+   "resource_id": "0x91C2BBE1",
+   "kind": 1,
+   "filename": "U2_Menu_Text_Corner.tga",
+   "texture_key": "0xC8C5F8A6"
+  },
+  {
+   "index": 10,
+   "resource_id": "0x4EAB116A",
+   "kind": 1,
+   "filename": "U2_Menu_Box_Layer1.tga",
+   "texture_key": "0x0F6C1FCF"
+  },
+  {
+   "index": 11,
+   "resource_id": "0xEA00E00E",
+   "kind": 1,
+   "filename": "U2_Scroller_Corner.tga",
+   "texture_key": "0x9C7C3C73"
+  }
+ ],
+ "objects": [
+  {
+   "role": "always_on_root_group",
+   "object_hash": "0x0DE769B5",
+   "guid": "0x000E0B39",
+   "parent_guid": "0x00000000",
+   "type": 5,
+   "resource_index": 0,
+   "flags": "0x40000000",
+   "centred_position": [
+    0.0,
+    -30.0
+   ],
+   "size": [
+    1.0,
+    1.0
+   ],
+   "stored_rgba": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "role": "entry_exit_fade_group",
+   "object_hash": "0xFB98DA12",
+   "guid": "0x000DEF6E",
+   "parent_guid": "0x000E0B39",
+   "type": 5,
+   "resource_index": 0,
+   "flags": "0x40000000",
+   "centred_position": [
+    -43.0,
+    -124.0
+   ],
+   "size": [
+    1.0,
+    1.0
+   ],
+   "stored_rgba": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "role": "light_inner_panel_group",
+   "object_hash": "0x371F1C93",
+   "guid": "0x000DEF78",
+   "parent_guid": "0x000DEF6E",
+   "type": 5,
+   "resource_index": 0,
+   "flags": "0x40000000",
+   "centred_position": [
+    0.0,
+    -13.0
+   ],
+   "size": [
+    1.0,
+    1.0
+   ],
+   "stored_rgba": [
+    255,
+    255,
+    255,
+    100
+   ]
+  },
+  {
+   "role": "title_text_hidden",
+   "object_hash": "0x426C7B4D",
+   "guid": "0x000DEF80",
+   "parent_guid": "0x000DEF6E",
+   "type": 2,
+   "resource_index": 5,
+   "flags": "0x40000000",
+   "centred_position": [
+    -258.0,
+    -80.0
+   ],
+   "size": [
+    0.75,
+    0.75
+   ],
+   "stored_rgba": [
+    204,
+    244,
+    138,
+    255
+   ],
+   "justify": 0,
+   "max_width": 0,
+   "leading": 0
+  },
+  {
+   "role": "title_icon_hidden",
+   "object_hash": "0xC26A8D5C",
+   "guid": "0x000DEF81",
+   "parent_guid": "0x000DEF6E",
+   "type": 1,
+   "resource_index": 6,
+   "flags": "0x40000000",
+   "centred_position": [
+    -276.0,
+    -69.0
+   ],
+   "size": [
+    32.0,
+    32.0
+   ],
+   "stored_rgba": [
+    255,
+    255,
+    255,
+    160
+   ]
+  },
+  {
+   "role": "dark_panel_group_b",
+   "object_hash": "0x22561895",
+   "guid": "0x000DF072",
+   "parent_guid": "0x000DEF6E",
+   "type": 5,
+   "resource_index": 0,
+   "flags": "0x40000000",
+   "centred_position": [
+    0.0,
+    -30.0
+   ],
+   "size": [
+    1.0,
+    1.0
+   ],
+   "stored_rgba": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "role": "border_frame_group",
+   "object_hash": "0x52BDEE1D",
+   "guid": "0x000E0AD6",
+   "parent_guid": "0x000DEF6E",
+   "type": 5,
+   "resource_index": 0,
+   "flags": "0x40000000",
+   "centred_position": [
+    0.0,
+    17.0
+   ],
+   "size": [
+    1.0,
+    1.0
+   ],
+   "stored_rgba": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "role": "fullscreen_darkening_quad",
+   "object_hash": "0x014245E2",
+   "guid": "0x000E0ADF",
+   "parent_guid": "0x000DEF6E",
+   "type": 1,
+   "resource_index": 2,
+   "flags": "0x40000000",
+   "centred_position": [
+    0.0,
+    0.0
+   ],
+   "size": [
+    1070.0,
+    650.0
+   ],
+   "stored_rgba": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "role": "dark_panel_group_c",
+   "object_hash": "0x0DE769B5",
+   "guid": "0x000E0B21",
+   "parent_guid": "0x000DEF6E",
+   "type": 5,
+   "resource_index": 0,
+   "flags": "0x40000000",
+   "centred_position": [
+    0.0,
+    -30.0
+   ],
+   "size": [
+    1.0,
+    1.0
+   ],
+   "stored_rgba": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "role": "authoring_text_offscreen",
+   "object_hash": "0xF7206332",
+   "guid": "0x000DF018",
+   "parent_guid": "0x00000000",
+   "type": 2,
+   "resource_index": 5,
+   "flags": "0x40000000",
+   "centred_position": [
+    -114.0,
+    -331.0
+   ],
+   "size": [
+    1.0,
+    1.0
+   ],
+   "stored_rgba": [
+    0,
+    0,
+    255,
+    255
+   ],
+   "justify": 0,
+   "max_width": 0,
+   "leading": 0
+  },
+  {
+   "role": "centre_label_unused",
+   "object_hash": "0xDA473D31",
+   "guid": "0x000DE993",
+   "parent_guid": "0x00000000",
+   "type": 2,
+   "resource_index": 5,
+   "flags": "0x50080000",
+   "centred_position": [
+    5.0,
+    63.0
+   ],
+   "size": [
+    0.75,
+    0.75
+   ],
+   "stored_rgba": [
+    60,
+    60,
+    60,
+    255
+   ],
+   "justify": 1,
+   "max_width": 0,
+   "leading": 0
+  },
+  {
+   "role": "centre_button_unused",
+   "object_hash": "0xB8A7C6CE",
+   "guid": "0x000DE8EC",
+   "parent_guid": "0x00000000",
+   "type": 5,
+   "resource_index": 0,
+   "flags": "0x50080000",
+   "centred_position": [
+    9.0,
+    74.0
+   ],
+   "size": [
+    1.0,
+    1.0
+   ],
+   "stored_rgba": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "role": "left_button_positive",
+   "object_hash": "0xB8A7C6CC",
+   "guid": "0x000DE8CE",
+   "parent_guid": "0x00000000",
+   "type": 5,
+   "resource_index": 0,
+   "flags": "0x50080000",
+   "centred_position": [
+    -151.0,
+    74.0
+   ],
+   "size": [
+    1.0,
+    1.0
+   ],
+   "stored_rgba": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "role": "right_label",
+   "object_hash": "0xDA473D30",
+   "guid": "0x000DE6F0",
+   "parent_guid": "0x00000000",
+   "type": 2,
+   "resource_index": 5,
+   "flags": "0x40080000",
+   "centred_position": [
+    140.0,
+    63.0
+   ],
+   "size": [
+    0.75,
+    0.75
+   ],
+   "stored_rgba": [
+    204,
+    244,
+    138,
+    0
+   ],
+   "justify": 1,
+   "max_width": 0,
+   "leading": 0
+  },
+  {
+   "role": "left_label",
+   "object_hash": "0xDA473D2F",
+   "guid": "0x000DE6E8",
+   "parent_guid": "0x00000000",
+   "type": 2,
+   "resource_index": 5,
+   "flags": "0x50080000",
+   "centred_position": [
+    -158.0,
+    63.0
+   ],
+   "size": [
+    0.75,
+    0.75
+   ],
+   "stored_rgba": [
+    225,
+    225,
+    225,
+    255
+   ],
+   "justify": 1,
+   "max_width": 0,
+   "leading": 0
+  },
+  {
+   "role": "screen_controller_offscreen",
+   "object_hash": "0x47FF4E7C",
+   "guid": "0x000DE076",
+   "parent_guid": "0x00000000",
+   "type": 2,
+   "resource_index": 5,
+   "flags": "0x40000000",
+   "centred_position": [
+    169.0,
+    -366.0
+   ],
+   "size": [
+    1.0,
+    1.0
+   ],
+   "stored_rgba": [
+    255,
+    0,
+    0,
+    255
+   ],
+   "justify": 0,
+   "max_width": 0,
+   "leading": 0
+  },
+  {
+   "role": "authoring_image_offscreen",
+   "object_hash": "0xB62648B1",
+   "guid": "0x000DDFC1",
+   "parent_guid": "0x00000000",
+   "type": 1,
+   "resource_index": 11,
+   "flags": "0x40000000",
+   "centred_position": [
+    -277.0,
+    -333.0
+   ],
+   "size": [
+    8.5,
+    8.5
+   ],
+   "stored_rgba": [
+    255,
+    255,
+    255,
+    100
+   ]
+  },
+  {
+   "role": "authoring_image_offscreen",
+   "object_hash": "0xB62648B1",
+   "guid": "0x000DDFC0",
+   "parent_guid": "0x00000000",
+   "type": 1,
+   "resource_index": 11,
+   "flags": "0x40000000",
+   "centred_position": [
+    295.0,
+    -333.0
+   ],
+   "size": [
+    8.5,
+    8.5
+   ],
+   "stored_rgba": [
+    255,
+    255,
+    255,
+    100
+   ]
+  },
+  {
+   "role": "empty_group",
+   "object_hash": "0xB1B1EAB0",
+   "guid": "0x000DCD32",
+   "parent_guid": "0x00000000",
+   "type": 5,
+   "resource_index": 0,
+   "flags": "0x40000000",
+   "centred_position": [
+    267.239,
+    298.487
+   ],
+   "size": [
+    0.779,
+    1.0
+   ],
+   "stored_rgba": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "role": "right_button_negative",
+   "object_hash": "0xB8A7C6CD",
+   "guid": "0x000DE86A",
+   "parent_guid": "0x00000000",
+   "type": 5,
+   "resource_index": 0,
+   "flags": "0x50080000",
+   "centred_position": [
+    151.0,
+    74.0
+   ],
+   "size": [
+    1.0,
+    1.0
+   ],
+   "stored_rgba": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  {
+   "role": "message_text",
+   "object_hash": "0x1E2640FA",
+   "guid": "0x000DE6D6",
+   "parent_guid": "0x00000000",
+   "type": 2,
+   "resource_index": 5,
+   "flags": "0x40000000",
+   "centred_position": [
+    0.0,
+    1.0
+   ],
+   "size": [
+    0.75,
+    0.75
+   ],
+   "stored_rgba": [
+    255,
+    255,
+    255,
+    255
+   ],
+   "justify": 5,
+   "max_width": 720,
+   "leading": 0
+  }
+ ],
+ "strings": {
+  "PC_NAV_QUIT": {
+   "key": "0x1C101778",
+   "english": "Quit Game"
+  },
+  "PC_NAV_CONFIRM_QUIT": {
+   "key": "0x9DE6B485",
+   "english": "Are you sure you want to quit?"
+  },
+  "CANCEL": {
+   "key": "0x541389E5",
+   "english": "Cancel"
+  },
+  "YES": {
+   "key": "0x0000F770",
+   "english": "Yes"
+  },
+  "NO": {
+   "key": "0x0000061C",
+   "english": "No"
+  },
+  "OK": {
+   "key": "0x00000639",
+   "english": "OK"
+  },
+  "UI_COMMON_YES": {
+   "key": "0x88579775",
+   "english": "Yes"
+  },
+  "UI_COMMON_NO": {
+   "key": "0xBE503981",
+   "english": "No"
+  },
+  "CONFIRM_QUIT_GAME": {
+   "key": "0x30ED2368",
+   "english": "Quit to Main Menu?"
+  },
+  "CONFIRM_CAREER_QUIT_TO_MAIN": {
+   "key": "0x6F4796A6",
+   "english": "Quit to Main Menu?"
+  },
+  "CONFIRM_QUIT_TO_MAIN_LOST_PROGRESS": {
+   "key": "0xE15B558A",
+   "english": "Quit to Main Menu?^All unsaved race progress will be lost."
+  },
+  "UI_CRIB_QUIT_TO_MAIN_MENU": {
+   "key": "0xCB5E3178",
+   "english": "Are you sure you want to quit to the main menu?"
+  },
+  "MU_PAUSE_QUIT_TO_FE": {
+   "key": "0xC7E1420C",
+   "english": "Quit to Main Menu"
+  }
+ },
+ "evaluated_colour_samples": {
+  "fade_group_FADEIN": {
+   "0": [
+    255,
+    255,
+    255,
+    0
+   ],
+   "40": [
+    255,
+    255,
+    255,
+    0
+   ],
+   "110": [
+    255,
+    255,
+    255,
+    128
+   ],
+   "180": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  "fade_group_FADEOUT": {
+   "0": [
+    255,
+    255,
+    255,
+    255
+   ],
+   "50": [
+    255,
+    255,
+    255,
+    128
+   ],
+   "100": [
+    255,
+    255,
+    255,
+    0
+   ],
+   "140": [
+    255,
+    255,
+    255,
+    0
+   ]
+  },
+  "button_left_FADEIN": {
+   "0": [
+    255,
+    255,
+    255,
+    0
+   ],
+   "40": [
+    255,
+    255,
+    255,
+    0
+   ],
+   "180": [
+    255,
+    255,
+    255,
+    80
+   ]
+  },
+  "button_right_FADEIN": {
+   "0": [
+    255,
+    255,
+    255,
+    0
+   ],
+   "40": [
+    255,
+    255,
+    255,
+    0
+   ],
+   "180": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  "button_HIGHLIGHT": [
+   255,
+   255,
+   255,
+   225
+  ],
+  "button_UNHIGHLIGHT": [
+   255,
+   255,
+   255,
+   80
+  ],
+  "label_left_INIT": [
+   225,
+   225,
+   225,
+   255
+  ],
+  "label_left_IDLE": [
+   225,
+   225,
+   225,
+   255
+  ],
+  "label_left_FADEIN": {
+   "0": [
+    225,
+    225,
+    225,
+    0
+   ],
+   "40": [
+    225,
+    225,
+    225,
+    0
+   ],
+   "180": [
+    225,
+    225,
+    225,
+    255
+   ]
+  },
+  "label_right_INIT": {
+   "0": [
+    204,
+    244,
+    138,
+    0
+   ],
+   "40": [
+    204,
+    244,
+    138,
+    0
+   ],
+   "110": [
+    204,
+    244,
+    138,
+    128
+   ],
+   "180": [
+    204,
+    244,
+    138,
+    255
+   ]
+  },
+  "label_right_IDLE": [
+   204,
+   244,
+   138,
+   255
+  ],
+  "label_UNHIGHLIGHT": [
+   192,
+   192,
+   192,
+   255
+  ],
+  "label_HIGHLIGHT_pulse": {
+   "0": [
+    204,
+    244,
+    138,
+    0
+   ],
+   "220": [
+    204,
+    244,
+    138,
+    128
+   ],
+   "440": [
+    204,
+    244,
+    138,
+    255
+   ],
+   "600": [
+    204,
+    244,
+    138,
+    255
+   ],
+   "760": [
+    204,
+    244,
+    138,
+    255
+   ],
+   "980": [
+    204,
+    244,
+    138,
+    128
+   ],
+   "1199": [
+    204,
+    244,
+    138,
+    1
+   ]
+  },
+  "message_FADEIN": {
+   "0": [
+    255,
+    255,
+    255,
+    0
+   ],
+   "40": [
+    255,
+    255,
+    255,
+    0
+   ],
+   "180": [
+    255,
+    255,
+    255,
+    255
+   ]
+  },
+  "label_FADEOUT": {
+   "0": [
+    225,
+    225,
+    225,
+    255
+   ],
+   "50": [
+    225,
+    225,
+    225,
+    128
+   ],
+   "100": [
+    225,
+    225,
+    225,
+    0
+   ]
+  }
+ },
+ "cases": [
+  {
+   "id": "QD-open-rest",
+   "tag": "O data, user decision default focus, I order, D timing",
+   "given": "pause top-level, quit item activated, dialog created at t=0 with initial focus on right button before the entry broadcast",
+   "expect": {
+    "t_ms": 180,
+    "focused": "right_button_negative",
+    "fade_group_alpha": 255,
+    "left_button_alpha": 80,
+    "right_button_alpha": 255,
+    "left_label_rgba": [
+     225,
+     225,
+     225,
+     255
+    ],
+    "right_label_rgba_pulse_phase_180ms": [
+     204,
+     244,
+     138,
+     104
+    ],
+    "title_visible": false,
+    "icon_visible": false,
+    "centre_button_visible": false,
+    "app_event_enter_complete_ms": 180
+   }
+  },
+  {
+   "id": "QD-entry-samples",
+   "tag": "O data, I evaluated",
+   "expect": {
+    "fade_group_alpha": {
+     "0": 0,
+     "40": 0,
+     "110": 128,
+     "180": 255
+    },
+    "message_rgba": {
+     "0": [
+      255,
+      255,
+      255,
+      0
+     ],
+     "40": [
+      255,
+      255,
+      255,
+      0
+     ],
+     "180": [
+      255,
+      255,
+      255,
+      255
+     ]
+    },
+    "right_label_init_if_unfocused": {
+     "0": [
+      204,
+      244,
+      138,
+      0
+     ],
+     "40": [
+      204,
+      244,
+      138,
+      0
+     ],
+     "110": [
+      204,
+      244,
+      138,
+      128
+     ],
+     "180": [
+      204,
+      244,
+      138,
+      255
+     ]
+    },
+    "always_on_dark_panel_alpha_at_0ms": 255
+   }
+  },
+  {
+   "id": "QD-pulse",
+   "tag": "O data",
+   "given": "right button focused, HIGHLIGHT pulse phase t (loops every 1200 ms)",
+   "expect": {
+    "right_label_rgba": {
+     "0": [
+      204,
+      244,
+      138,
+      0
+     ],
+     "220": [
+      204,
+      244,
+      138,
+      128
+     ],
+     "440": [
+      204,
+      244,
+      138,
+      255
+     ],
+     "600": [
+      204,
+      244,
+      138,
+      255
+     ],
+     "760": [
+      204,
+      244,
+      138,
+      255
+     ],
+     "980": [
+      204,
+      244,
+      138,
+      128
+     ],
+     "1199": [
+      204,
+      244,
+      138,
+      1
+     ]
+    }
+   }
+  },
+  {
+   "id": "QD-left",
+   "tag": "O data links, I evaluated",
+   "given": "rest state, right focused; press Left (keyboard Left, its alternate, or controller left)",
+   "expect": {
+    "focused": "left_button_positive",
+    "left_button_alpha": 225,
+    "right_button_alpha": 80,
+    "left_label_rgba_at_change": [
+     204,
+     244,
+     138,
+     0
+    ],
+    "right_label_rgba": [
+     192,
+     192,
+     192,
+     255
+    ],
+    "action": null
+   }
+  },
+  {
+   "id": "QD-left-at-left",
+   "tag": "O no link, I",
+   "given": "left focused; press Left",
+   "expect": {
+    "focused": "left_button_positive",
+    "visual_change": false,
+    "action": null
+   }
+  },
+  {
+   "id": "QD-right-back",
+   "tag": "O data links, I evaluated",
+   "given": "left focused (after QD-left); press Right",
+   "expect": {
+    "focused": "right_button_negative",
+    "right_button_alpha": 225,
+    "left_button_alpha": 80,
+    "right_label_rgba_at_change": [
+     204,
+     244,
+     138,
+     0
+    ],
+    "left_label_rgba": [
+     192,
+     192,
+     192,
+     255
+    ]
+   }
+  },
+  {
+   "id": "QD-right-at-right",
+   "tag": "O no link, I",
+   "given": "right focused; press Right",
+   "expect": {
+    "focused": "right_button_negative",
+    "visual_change": false,
+    "action": null
+   }
+  },
+  {
+   "id": "QD-accept-default",
+   "tag": "User decision 2026-10-14 (default focus right), D keys",
+   "given": "open, no navigation, pointer not moved since opening; press Accept (Enter / keypad Enter / controller accept) at any time, including the first frame after opening",
+   "expect": {
+    "result": "cancel",
+    "quit_invoked": 0,
+    "dialog_exits": true,
+    "pause_still_open": true,
+    "game_paused": true,
+    "pause_resumed": false
+   }
+  },
+  {
+   "id": "QD-accept-left",
+   "tag": "User decision 2026-10-14",
+   "given": "Left then Accept",
+   "expect": {
+    "result": "confirm",
+    "quit_invoked": 1
+   }
+  },
+  {
+   "id": "QD-back",
+   "tag": "O Back forwarded to app; user decision 2026-10-14 cancel",
+   "given": "press Escape or controller Back with either button focused",
+   "expect": {
+    "result": "cancel",
+    "quit_invoked": 0,
+    "pause_still_open": true,
+    "game_paused": true,
+    "pause_resumed": false,
+    "trigger_delivered_to_pause": false
+   }
+  },
+  {
+   "id": "QD-click-left",
+   "tag": "User decision 2026-10-14 (release, press began on it)",
+   "given": "primary press inside left button visible extent [-285.7,53.0,-16.3,94.4], release inside the same extent",
+   "expect": {
+    "result": "confirm",
+    "quit_invoked": 1,
+    "result_on": "release frame"
+   }
+  },
+  {
+   "id": "QD-click-right",
+   "tag": "User decision 2026-10-14",
+   "given": "primary press and release inside right button visible extent [16.3,53.0,285.7,94.4]",
+   "expect": {
+    "result": "cancel",
+    "quit_invoked": 0,
+    "result_on": "release frame"
+   }
+  },
+  {
+   "id": "QD-press-no-result",
+   "tag": "User decision 2026-10-14",
+   "given": "primary press inside either button, button still held",
+   "expect": {
+    "result": null,
+    "quit_invoked": 0
+   }
+  },
+  {
+   "id": "QD-release-elsewhere",
+   "tag": "D",
+   "given": "primary press inside left button, release outside both buttons (or inside the right button)",
+   "expect": {
+    "result": null,
+    "quit_invoked": 0
+   }
+  },
+  {
+   "id": "QD-press-outside-release-inside",
+   "tag": "User decision 2026-10-14 (press must begin on the button)",
+   "given": "primary press outside both buttons, release inside left or right button",
+   "expect": {
+    "result": null,
+    "quit_invoked": 0
+   }
+  },
+  {
+   "id": "QD-click-outside",
+   "tag": "D (base 6.9 G)",
+   "given": "primary click on the panel, message, or the pause screen/scene outside both buttons",
+   "expect": {
+    "result": null,
+    "pause_widgets_affected": false
+   }
+  },
+  {
+   "id": "QD-hover-left",
+   "tag": "User decision 2026-10-14 (hover moves focus), O visuals",
+   "given": "right focused; pointer moves onto left button visible extent",
+   "expect": {
+    "focused": "left_button_positive",
+    "left_button_alpha": 225,
+    "right_button_alpha": 80,
+    "left_label_rgba_at_change": [
+     204,
+     244,
+     138,
+     0
+    ],
+    "right_label_rgba": [
+     192,
+     192,
+     192,
+     255
+    ],
+    "action": null
+   }
+  },
+  {
+   "id": "QD-hover-leave",
+   "tag": "D",
+   "given": "left focused by hover; pointer leaves to the panel or outside",
+   "expect": {
+    "focused": "left_button_positive",
+    "visual_change": false
+   }
+  },
+  {
+   "id": "QD-hover-stationary-open",
+   "tag": "D (protects default focus)",
+   "given": "pointer already resting inside left button extent when the dialog opens and not moved; press Accept",
+   "expect": {
+    "focused": "right_button_negative",
+    "result": "cancel",
+    "quit_invoked": 0
+   }
+  },
+  {
+   "id": "QD-right-mouse",
+   "tag": "User decision 2026-10-14 (cancel); D press timing",
+   "given": "secondary mouse button pressed anywhere, either button focused",
+   "expect": {
+    "result": "cancel",
+    "result_on": "press frame",
+    "quit_invoked": 0,
+    "pause_resumed": false,
+    "paired_release_delivered_to_pause": false
+   }
+  },
+  {
+   "id": "QD-start-ignored",
+   "tag": "D",
+   "given": "controller Start / pause toggle while dialog open",
+   "expect": {
+    "result": null,
+    "pause_resumed": false
+   }
+  },
+  {
+   "id": "QD-exit",
+   "tag": "O data, I evaluated; user decision 2026-10-14 (result not delayed); D removal",
+   "given": "button activated at t=0 (either path); optional exit presentation",
+   "expect": {
+    "fade_group_alpha": {
+     "0": 255,
+     "50": 128,
+     "100": 0
+    },
+    "label_alpha": {
+     "0": 255,
+     "50": 128,
+     "100": 0
+    },
+    "message_alpha_authored": {
+     "0": 0,
+     "50": 128,
+     "100": 255
+    },
+    "always_on_dark_panel_alpha_until_removed": 255,
+    "dialog_removed_by_ms": 100,
+    "authored_exit_complete_ms_not_awaited": 140,
+    "dialog_accepts_input_after_activation": false,
+    "exit_presentation_intercepts_input": false
+   }
+  },
+  {
+   "id": "QD-cancel-latency",
+   "tag": "User decision 2026-10-14",
+   "given": "cancel by any path (Accept on right, Escape/Back, right click, release on right button) at frame f",
+   "expect": {
+    "pause_has_input_from_frame": "f+1 (next input poll after f; no wait for any fade)",
+    "pause_selection_unchanged": true,
+    "pc_pills_drawn_from_frame": "f+1",
+    "game_paused": true,
+    "quit_invoked": 0
+   }
+  },
+  {
+   "id": "QD-confirm-latency",
+   "tag": "User decision 2026-10-14",
+   "given": "confirm by any path (Accept on left, release on left button) at frame f",
+   "expect": {
+    "quit_invoked": 1,
+    "quit_invoked_on_frame": "f",
+    "waits_for_exit_fade": false,
+    "action": "existing host quit-to-main-menu behaviour (outside this spec)"
+   }
+  },
+  {
+   "id": "QD-compose",
+   "tag": "User decision 2026-10-14 + O data",
+   "given": "dialog open over pause, at rest (t>=180 ms)",
+   "expect": {
+    "pause_drawn_beneath": true,
+    "pause_dim_scripts_started": false,
+    "beneath_brightness_factor": 0.4,
+    "tolerance": 0.03,
+    "pc_back_continue_pills_drawn": false,
+    "pause_receives_input": false,
+    "gameplay_simulation_paused": true,
+    "pause_selection_unchanged": true
+   }
+  },
+  {
+   "id": "QD-cancel-return",
+   "tag": "User decision 2026-10-14",
+   "given": "cancel",
+   "expect": {
+    "pause_selection_unchanged": true,
+    "pause_caption_unchanged": true,
+    "pause_marker_unchanged": true,
+    "pause_has_input_after_ms": 0,
+    "pc_pills_restored": true,
+    "game_paused": true
+   }
+  },
+  {
+   "id": "QD-reopen",
+   "tag": "D",
+   "given": "cancel then invoke quit again",
+   "expect": {
+    "fresh_presentation": true,
+    "focused": "right_button_negative",
+    "stale_pulse_phase": false
+   }
+  },
+  {
+   "id": "QD-single-dispatch",
+   "tag": "D",
+   "given": "any confirm gesture, including key auto-repeat or a second click within the exit",
+   "expect": {
+    "quit_invoked": 1,
+    "gameplay_receives_trigger_input": false
+   }
+  },
+  {
+   "id": "QD-text",
+   "tag": "User decision 2026-10-14 (message profile), D labels",
+   "given": "dialog open, English string table",
+   "expect": {
+    "message_key": "0x30ED2368",
+    "message": "Quit to Main Menu?",
+    "message_lines": 1,
+    "left_label_key": "0x0000F770",
+    "left_label": "Yes",
+    "right_label_key": "0x0000061C",
+    "right_label": "No",
+    "lost_progress_variant_0xE15B558A_used": false,
+    "placeholder_text_visible": false
+   }
+  },
+  {
+   "id": "QD-pause-caption",
+   "tag": "User decision 2026-10-14",
+   "given": "pause menu with the quit item centred",
+   "expect": {
+    "caption_key": "0xC7E1420C",
+    "caption": "Quit to Main Menu",
+    "activation_opens": "quit dialog (this document)"
+   }
+  }
+ ],
+ "text_profiles": {
+  "decided": "2026-10-14 user decision: profile A (quit to main menu); see QUIT_DIALOG.md section 4",
+  "A_quit_to_main_menu": {
+   "message_key": "0x30ED2368",
+   "message": "Quit to Main Menu?",
+   "left": "Yes (0x0000F770)",
+   "right": "No (0x0000061C)",
+   "status": "SELECTED. Message: user decision. Labels: D (no data binds labels to this message; nearest data-defined confirm/cancel pair)"
+  },
+  "B_quit_application": {
+   "message_key": "0x9DE6B485",
+   "message": "Are you sure you want to quit?",
+   "left": "Quit Game (0x1C101778)",
+   "right": "Cancel (0x541389E5)",
+   "status": "NOT USED for the pause dialog (R: original frontend quit dialog only)"
+  },
+  "lost_progress_variant": {
+   "message_key": "0xE15B558A",
+   "status": "NOT USED (user decision 2026-10-14)"
+  }
+ },
+ "pause_quit_item_caption": {
+  "key": "0xC7E1420C",
+  "english": "Quit to Main Menu",
+  "status": "user decision 2026-10-14"
+ }
+}

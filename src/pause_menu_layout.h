@@ -56,6 +56,13 @@ static inline int pause_menu_arrow_at(float x,float y) {
         if(x>=box[k][0] && x<=box[k][2] && y>=box[k][1] && y<=box[k][3])return k?1:-1;
     return 0;
 }
+/* Quit confirmation (QUIT_DIALOG Q5.5): visible button extents, left (0) and right (1), as
+ * x0,y0,x1,y1 with inclusive edges. These are the spec's centred values [-285.7,53.0,-16.3,94.4] and
+ * [16.3,53.0,285.7,94.4] plus (320,240). */
+static inline void pause_quit_button_edges(int right,float e[4]) {
+    static const float box[2][4]={{34.3f,293.0f,303.7f,334.4f},{336.3f,293.0f,605.7f,334.4f}};
+    for(int i=0;i<4;i++)e[i]=box[right?1:0][i];
+}
 /* Pause corrections: visible alpha/ink regions, distinct from full quads. */
 static inline UgRect pause_menu_icon_ink(int offset) {
     if(!offset)return (UgRect){293.8f,198.7f,53.8f,54.6f};

@@ -232,13 +232,13 @@ static void behavior_resume(const char *trigger) {
     int sel=p->state.selected;SDL_Event k={0};k.type=SDL_KEYDOWN;k.key.keysym.sym=SDLK_RIGHT;
     pause_menu_event(p,&k,NULL);k.key.keysym.sym=SDLK_RETURN;pause_menu_event(p,&k,NULL);
     pause_menu_pointer(p,320,226,640,480);
-    int accepts=p->state.selected!=sel || p->state.pending!=FE_ACTION_NONE || p->closing;
-    /* overlay: after the input frame it is neither open nor closing, so nothing is drawn */
+    int accepts=p->state.selected!=sel || p->state.pending!=FE_ACTION_NONE || p->quit.open;
+    /* overlay: after the input frame the menu is closed, so nothing is drawn; no exit presentation exists */
     printf("{\"paused_after_processing_frame\":{\"99\":%s,\"100\":%s},\"simulation_advances_from_frame\":%d,"
            "\"gameplay_clock_advances_from_frame\":%d,\"gameplay_input_accepted_from_frame\":%d,\"audio_resumed_from_frame\":%d,"
            "\"triggering_input_forwarded_to_gameplay\":%s,\"overlay_alpha_zero_by_ms_after_input\":%d,"
            "\"menu_accepts_input_after_resume\":%s,\"max_resume_latency_frames\":%d,\"closing_after_input\":%s}\n",
            paused_after[99]?"true":"false",paused_after[100]?"true":"false",sim_from,sim_from,input_from,
            action_frame<0?-1:action_frame+1,trigger_to_gameplay?"true":"false",
-           (paused_after[100] || p->closing)?1000:0,accepts?"true":"false",sim_from-input_frame,p->closing?"true":"false");
+           (paused_after[100] || p->open)?1000:0,accepts?"true":"false",sim_from-input_frame,"false");
 }

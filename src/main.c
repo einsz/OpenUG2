@@ -10855,6 +10855,11 @@ int main(int argc, char **argv) {
                     }
                     pause_menu_draw(pause_menu, W, H);
                     if(!pause_menu_visual_available(pause_menu)) {final_status=1;running=0;continue;}
+                    /* A replay that ends in the quit dialog must show it; never save a capture without it. */
+                    if(pause_menu_quit_dialog_open(pause_menu) && !pause_menu_quit_dialog_visual_available(pause_menu)) {
+                        fprintf(stderr,"pause-shot: %s\n",pause_menu_quit_dialog_status(pause_menu));
+                        final_status=1;running=0;continue;
+                    }
                 }
                 if (ug_gl_errors("pause-shot")) final_status = 1;
             }

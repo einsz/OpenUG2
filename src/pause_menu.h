@@ -15,6 +15,12 @@ const char *pause_menu_caption(const PauseMenu *p);
 /* Resources may be unavailable while state/input remains usable. */
 int pause_menu_visual_available(const PauseMenu *p);
 const char *pause_menu_status(const PauseMenu *p);
+/* Quit confirmation (QUIT_DIALOG.md): the authored dialog, or logic only when its resources are unavailable. */
+int pause_menu_quit_dialog_open(const PauseMenu *p);
+int pause_menu_quit_dialog_visual_available(const PauseMenu *p);
+const char *pause_menu_quit_dialog_status(const PauseMenu *p);
+/* Empty unless the pause quit caption could not come from the string table (QUIT_DIALOG Q4.3). */
+const char *pause_menu_caption_status(const PauseMenu *p);
 FeAction pause_menu_update(PauseMenu *p, float seconds);
 void pause_menu_draw(PauseMenu *p, int width, int height);
 /* Deterministic verification-only UI replay and independent populated authored reference. */

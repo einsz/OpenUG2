@@ -6,6 +6,7 @@
 #include "pause_menu_binding_test.inc"
 #include "pause_menu_authored_test.inc"
 #include "pause_menu_behavior_test.inc"
+#include "pause_menu_quit_test.inc"
 
 static void focused_checks(void) {
     authored_checks();
@@ -20,10 +21,11 @@ static void focused_checks(void) {
     assert(p.state.selected==1 && p.marker_x==596); /* no wrap at the last item either */
     e.key.keysym.sym=SDLK_RETURN;
     pause_menu_event(&p,&e,NULL);
-    assert(p.state.screen==FE_SCREEN_QUIT_CONFIRM && p.state.quit_sel==0);
+    /* QUIT_DIALOG: the authored dialog opens with the negative button focused; Fe's own screen is unused. */
+    assert(p.quit.open && p.quit.focus==1 && p.state.screen==FE_SCREEN_PAUSE && p.open);
     e.key.keysym.sym=SDLK_ESCAPE;
     pause_menu_event(&p,&e,NULL);
-    assert(p.state.screen==FE_SCREEN_PAUSE && p.open);
+    assert(!p.quit.open && p.state.screen==FE_SCREEN_PAUSE && p.open && p.state.selected==1);
     pause_menu_open(&p);
     pause_menu_pointer(&p,540,302,640,480);
     e.key.keysym.sym=SDLK_RETURN;pause_menu_event(&p,&e,NULL);
@@ -38,11 +40,12 @@ static void focused_checks(void) {
     assert(p.state.selected==0 && p.state.pending==FE_ACTION_NONE);
     p.state.selected=1;p.scroll=1;
     pause_menu_pointer(&p,540,302,640,480);
-    assert(p.state.screen==FE_SCREEN_QUIT_CONFIRM && p.open);
-    pause_menu_pointer(&p,104,302,640,480); /* covered top-level Back is inert */
-    assert(p.state.screen==FE_SCREEN_QUIT_CONFIRM);
-    pause_menu_pointer(&p,240,284,640,480);
-    assert(p.state.screen==FE_SCREEN_PAUSE);
+    assert(p.quit.open && p.open);
+    pause_menu_pointer(&p,104,260,640,480); /* clicks outside both buttons never reach the pause screen */
+    pause_menu_pointer(&p,60,228,640,480);  /* nor its navigation arrow */
+    assert(p.quit.open && p.open && p.state.pending==FE_ACTION_NONE && p.state.selected==1);
+    pause_menu_pointer(&p,470,314,640,480); /* the negative button cancels */
+    assert(!p.quit.open && p.open && p.state.screen==FE_SCREEN_PAUSE);
     p.state.entries[1].enabled=0;
     p.state.selected=0;p.scroll=0;
     pause_menu_pointer(&p,479,227,640,480);
@@ -57,7 +60,7 @@ static void focused_checks(void) {
         assert(p.state.selected==0 && p.state.pending==FE_ACTION_NONE);
         p.state.selected=1;p.scroll=1;
         pause_menu_pointer(&p,(float)(t.ox+540*t.scale),(float)(t.oy+302*t.scale),sizes[i][0],sizes[i][1]);
-        assert(p.state.screen==FE_SCREEN_QUIT_CONFIRM);
+        assert(p.quit.open && p.state.screen==FE_SCREEN_PAUSE);
     }
     /* Authored scene-only composition; no independent hand-built fallback. */
     p.state.screen=FE_SCREEN_PAUSE;
@@ -187,6 +190,14 @@ int main(int argc, char **argv) {
     if (!strcmp(argv[1],"behavior-substeps")) { behavior_substeps();return 0; }
     if (!strcmp(argv[1],"behavior-blink")) { behavior_blink(argv[2]);return 0; }
     if (!strcmp(argv[1],"behavior-resume")) { behavior_resume(argv[2]);return 0; }
+    if (!strcmp(argv[1],"quit-static")) { quit_static();return 0; }
+    if (!strcmp(argv[1],"quit-scenario") && argc>3) { quit_scenario(atoi(argv[2]),argv[3]);return 0; }
+    if (!strcmp(argv[1],"quit-presentation") && argc>2) { quit_presentation(argv[2]);return 0; }
+    if (!strcmp(argv[1],"quit-text") && argc>2) { quit_text(atoi(argv[2]));return 0; }
+    if (!strcmp(argv[1],"quit-draw")) { quit_draw();return 0; }
+    if (!strcmp(argv[1],"quit-identities")) { quit_identities();return 0; }
+    if (!strcmp(argv[1],"quit-constants")) { quit_constants();return 0; }
+    if (!strcmp(argv[1],"quit-track") && argc>3) { quit_track(argc,argv);return 0; }
     if (!strcmp(argv[1],"checks")) { focused_checks();return 0; }
     if (!strcmp(argv[1],"correction")) { correction_vector(atoi(argv[2]));return 0; }
     if (!strcmp(argv[1], "geometry")) {

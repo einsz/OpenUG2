@@ -2,6 +2,7 @@
 #include "pause_menu.h"
 #include "pause_menu_layout.h"
 #include "pause_menu_binding.h"
+#include "pause_menu_quit.h"
 #include "ugui/ugui_gl.h"
 #include "ugui/ugui_assets.h"
 #include "ugui/ugui_ui.h"
@@ -24,9 +25,8 @@ struct PauseMenu {
     UgFngPackage package;
     UgScene scene;
     UgCtx ctx;
-    int loaded, compatible, closing;
-    FeAction closing_action;
-    float ui_ms, close_ms, marker_x;
+    int loaded, compatible;
+    float ui_ms, marker_x;
     float scroll;                /* continuous item-row position in item units, BEHAVIOR 1.5 */
     int press_center;            /* primary press began on the centred item, BEHAVIOR 4.1 */
     int blinks_posted;           /* arrow blink messages sent (verification counter) */
@@ -37,6 +37,7 @@ struct PauseMenu {
     int pool[PAUSE_POOL_COUNT], npool;
     int pill_hover, pill_initialized;
     UgAnim pill_pulse,pill_glow;
+    PauseQuitDialog quit;        /* authored quit confirmation, QUIT_DIALOG.md */
     char status[256];
 };
 
@@ -72,10 +73,11 @@ static int pause_scene_open(PauseMenu *p) {
 PauseMenu *pause_menu_create(const char *dataroot) {
     PauseMenu *p=calloc(1,sizeof *p);
     if(!p)return NULL;
-    ug_cv_init(&p->canvas);ug_ctx_init(&p->ctx);
+    ug_cv_init(&p->canvas);ug_ctx_init(&p->ctx);pqd_init(&p->quit);
     p->assets.main_face=-1;
     if(ug_assets_open_ingame(&p->assets,dataroot,NULL,p->status,sizeof p->status)) {
         pause_resolve_art(p);ug_skin_resolve(&p->skin,&p->assets);
+        pqd_load(&p->quit,&p->assets);
         const UgAssetPackage *pk=ug_assets_package_by_key(&p->assets,0x32124083u);
         if(!pk)pk=ug_assets_package(&p->assets,"UI_pause.fng");
         if(pk && ug_fng_parse(pk->data,pk->len,&p->package,p->status,sizeof p->status)) {
@@ -92,14 +94,16 @@ PauseMenu *pause_menu_create(const char *dataroot) {
 void pause_menu_destroy(PauseMenu *p) {
     if(!p)return;
     if(p->loaded)ug_scene_free(&p->scene);
+    pqd_free(&p->quit);
     ug_fng_free(&p->package);ug_gl_destroy(p->gl);ug_cv_free(&p->canvas);
     if(p->pill_initialized){ug_anim_free(&p->pill_pulse);ug_anim_free(&p->pill_glow);}
     ug_assets_close(&p->assets);free(p);
 }
 void pause_menu_open(PauseMenu *p) {
     if(!p)return;
-    fe_pause_init(&p->state);p->open=1;p->closing=0;p->closing_action=FE_ACTION_NONE;
-    p->ui_ms=p->close_ms=0;
+    fe_pause_init(&p->state);p->open=1;
+    if(p->quit.open)pqd_close(&p->quit,PQD_NONE);
+    p->ui_ms=0;
     if(p->pill_initialized){ug_anim_free(&p->pill_pulse);ug_anim_free(&p->pill_glow);}
     ug_anim_init(&p->pill_pulse,UG_WHITE,0,0);ug_anim_init(&p->pill_glow,UG_WHITE,0,0);
     p->pill_initialized=1;p->pill_hover=-1;
@@ -107,10 +111,20 @@ void pause_menu_open(PauseMenu *p) {
     p->scroll=(float)p->state.selected;
     p->original=p->compatible && p->gl && pause_scene_open(p);
     if(p->compatible && !p->original)fprintf(stderr,"pause: %s\n",p->status);
+    p->quit.caption_status[0]=0;
+    if(p->assets.strings.n>0 && !ug_strtab_get(&p->assets.strings,PQD_KEY_CAPTION)) {
+        /* Q4.3: report; the host's own label stays rather than an invented text. */
+        snprintf(p->quit.caption_status,sizeof p->quit.caption_status,"quit caption unavailable: string table lacks the pause quit caption key");
+        fprintf(stderr,"pause: %s\n",p->quit.caption_status);
+    }
 }
 int pause_menu_is_open(const PauseMenu *p){return p && p->open;}
 int pause_menu_visual_available(const PauseMenu *p){return p && p->original;}
 const char *pause_menu_status(const PauseMenu *p){return p?p->status:"pause menu allocation unavailable";}
+int pause_menu_quit_dialog_open(const PauseMenu *p){return p && p->quit.open;}
+int pause_menu_quit_dialog_visual_available(const PauseMenu *p){return p && p->quit.open && p->quit.visual;}
+const char *pause_menu_quit_dialog_status(const PauseMenu *p){return p?p->quit.status:"pause menu allocation unavailable";}
+const char *pause_menu_caption_status(const PauseMenu *p){return p?p->quit.caption_status:"pause menu allocation unavailable";}
 static float pause_marker_target(const PauseMenu *p) {
     int rank=0,n=0;
     for(int i=0;i<p->state.entry_count;i++)if(p->state.entries[i].enabled) {
@@ -143,8 +157,33 @@ static void pause_selection_changed(PauseMenu *p,int before,int direction) {
         pause_bind_apply(p);
     }
 }
+/* QUIT_DIALOG: the quit item opens the authored confirmation instead of Fe's application-made one.
+ * The Back/Continue pills leave input and drawing for as long as it is open (Q7.3). */
+static int pause_selected_is_quit(const Fe *f) {
+    return f->screen==FE_SCREEN_PAUSE && f->selected>=0 && f->selected<f->entry_count &&
+           f->entries[f->selected].enabled && f->entries[f->selected].action==FE_ACTION_QUIT;
+}
+static void pause_pill_clear(PauseMenu *p) {
+    p->pill_hover=-1;
+    if(p->pill_initialized){ug_anim_stop(&p->pill_pulse);ug_anim_stop(&p->pill_glow);}
+}
+static void pause_quit_begin(PauseMenu *p) {
+    p->press_center=0;pause_pill_clear(p);
+    pqd_open(&p->quit,&p->assets,p->original);
+}
+/* Confirm requests the host's existing quit action on the input frame, with no exit to wait for
+ * (Q6.2a, Q7.5). Cancel only closes the dialog: the pause state is untouched and still paused. */
+static void pause_quit_result(PauseMenu *p,PqdResult r) {
+    if(r==PQD_CONFIRM)p->state.pending=FE_ACTION_QUIT;
+}
 static void pause_dispatch(PauseMenu *p,FeInput in) {
-    if(p->closing || p->state.pending!=FE_ACTION_NONE)return;
+    if(p->state.pending!=FE_ACTION_NONE)return;
+    if(p->quit.open) { /* Up/Down never reach the dialog (Q5.4) */
+        if(in==FE_INPUT_CONFIRM)pause_quit_result(p,pqd_key(&p->quit,PQD_KEY_ACCEPT));
+        else if(in==FE_INPUT_BACK)pause_quit_result(p,pqd_key(&p->quit,PQD_KEY_BACK));
+        return;
+    }
+    if(in==FE_INPUT_CONFIRM && pause_selected_is_quit(&p->state)){pause_quit_begin(p);return;}
     if(p->state.screen==FE_SCREEN_PAUSE && (in==FE_INPUT_UP || in==FE_INPUT_DOWN)) {
         int direction=in==FE_INPUT_UP?-1:1,target=pause_step_target(p,direction);
         if(target<0)return; /* end of the row: no change of any kind */
@@ -153,13 +192,20 @@ static void pause_dispatch(PauseMenu *p,FeInput in) {
         return;
     }
     fe_input(&p->state,in);
-    /* Only the quit exit plays the authored exit; resume never waits for it (BEHAVIOR 5). */
-    if(p->loaded && p->state.pending==FE_ACTION_QUIT)ug_scene_post(&p->scene,UG_MSG_REQ_FORWARD,0);
+}
+/* Caption of an entry: resume is fixed; the quit item shows the string-table caption when it exists
+ * (Q4.3); otherwise the host's own label stays. */
+static const char *pause_entry_caption(const UgStrTab *strings,const FeMenuEntry *e) {
+    if(e->action==FE_ACTION_RESUME)return "Return to Explore Mode";
+    if(e->action==FE_ACTION_QUIT) {
+        const char *t=strings?ug_strtab_get(strings,PQD_KEY_CAPTION):NULL;
+        if(t)return t;
+    }
+    return e->label;
 }
 const char *pause_menu_caption(const PauseMenu *p) {
     if(!p || p->state.selected<0 || p->state.selected>=p->state.entry_count)return "";
-    const FeMenuEntry *e=&p->state.entries[p->state.selected];
-    return e->action==FE_ACTION_RESUME?"Return to Explore Mode":e->label;
+    return pause_entry_caption(&p->assets.strings,&p->state.entries[p->state.selected]);
 }
 
 /* Pointer input in top-left virtual units, BEHAVIOR 4. The Back/Continue pills and the quit
@@ -170,15 +216,11 @@ const char *pause_menu_caption(const PauseMenu *p) {
 static int pause_in_center(float x,float y) {return ug_rect_hit(pause_menu_center_hit(),x,y);}
 static void pause_pointer_press(PauseMenu *p,float x,float y) {
     p->press_center=0;
-    if(!pause_menu_is_open(p) || p->state.pending!=FE_ACTION_NONE || p->closing)return;
+    if(!pause_menu_is_open(p) || p->state.pending!=FE_ACTION_NONE)return;
+    if(p->quit.open){pause_quit_result(p,pqd_primary_press(&p->quit,x,y));return;} /* modal (Q5.5) */
     if(x<0 || x>=640 || y<0 || y>=480)return;
     FeInput in=FE_INPUT_NONE;
-    if(p->state.screen==FE_SCREEN_QUIT_CONFIRM) {
-        if(ug_rect_hit((UgRect){170,264,140,40},x,y))p->state.quit_sel=0;
-        else if(ug_rect_hit((UgRect){330,264,140,40},x,y))p->state.quit_sel=1;
-        else return;
-        in=FE_INPUT_CONFIRM;
-    } else if(p->state.screen==FE_SCREEN_PAUSE && pause_menu_arrow_at(x,y)) {
+    if(p->state.screen==FE_SCREEN_PAUSE && pause_menu_arrow_at(x,y)) {
         /* Visibility is judged on the logical selection at this frame (R4.9): pause_dispatch makes a
          * blocked step a no-op, which is exactly the hidden-arrow case. */
         pause_dispatch(p,pause_menu_arrow_at(x,y)<0?FE_INPUT_UP:FE_INPUT_DOWN);
@@ -190,7 +232,9 @@ static void pause_pointer_press(PauseMenu *p,float x,float y) {
 }
 static void pause_pointer_release(PauseMenu *p,float x,float y) {
     int armed=p->press_center;p->press_center=0;
-    if(!armed || !pause_menu_is_open(p) || p->state.pending!=FE_ACTION_NONE || p->closing)return;
+    if(!pause_menu_is_open(p) || p->state.pending!=FE_ACTION_NONE)return;
+    if(p->quit.open){pause_quit_result(p,pqd_primary_release(&p->quit,x,y));return;}
+    if(!armed)return;
     if(p->state.screen==FE_SCREEN_PAUSE && pause_in_center(x,y))pause_dispatch(p,FE_INPUT_CONFIRM);
 }
 /* Complete primary click at a window point (press and release together). */
@@ -204,7 +248,8 @@ void pause_menu_pointer(PauseMenu *p,float px,float py,int w,int h) {
 /* PC pills use the existing shared focus/glow animations (base 5/6.8, pause 3). */
 static void pause_pill_hover(PauseMenu *p,float x,float y) {
     int hover=-1;
-    if(p->state.screen==FE_SCREEN_PAUSE && !p->closing) {
+    if(p->quit.open){pause_quit_result(p,pqd_pointer_move(&p->quit,x,y));return;} /* pills are gone, Q7.3 */
+    if(p->state.screen==FE_SCREEN_PAUSE) {
         if(ug_rect_hit(pause_menu_bounds(PAUSE_BACK),x,y))hover=0;
         else if(ug_rect_hit(pause_menu_bounds(PAUSE_CONTINUE),x,y))hover=1;
     }
@@ -214,8 +259,44 @@ static void pause_pill_hover(PauseMenu *p,float x,float y) {
     else {ug_anim_stop(&p->pill_pulse);ug_anim_stop(&p->pill_glow);}
 }
 
+/* Window events while the quit dialog is open (Q5.4-Q5.5). Everything is consumed: nothing reaches the
+ * pause screen or the game. Only Left/Right, Accept, Back, hover and the two mouse buttons act; Up/Down,
+ * wheel, Start and key auto-repeat do nothing. */
+static void pause_quit_event(PauseMenu *p,const SDL_Event *e,SDL_Window *win) {
+    PqdResult r=PQD_NONE;
+    if(e->type==SDL_KEYDOWN && !e->key.repeat) {
+        switch(e->key.keysym.sym) {
+        case SDLK_LEFT: r=pqd_key(&p->quit,PQD_KEY_LEFT);break;
+        case SDLK_RIGHT: r=pqd_key(&p->quit,PQD_KEY_RIGHT);break;
+        case SDLK_RETURN: case SDLK_KP_ENTER: r=pqd_key(&p->quit,PQD_KEY_ACCEPT);break;
+        case SDLK_ESCAPE: r=pqd_key(&p->quit,PQD_KEY_BACK);break;
+        default:break;
+        }
+    } else if(e->type==SDL_CONTROLLERBUTTONDOWN) {
+        switch(e->cbutton.button) {
+        case SDL_CONTROLLER_BUTTON_DPAD_LEFT: r=pqd_key(&p->quit,PQD_KEY_LEFT);break;
+        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: r=pqd_key(&p->quit,PQD_KEY_RIGHT);break;
+        case SDL_CONTROLLER_BUTTON_A: r=pqd_key(&p->quit,PQD_KEY_ACCEPT);break;
+        case SDL_CONTROLLER_BUTTON_B: case SDL_CONTROLLER_BUTTON_BACK: r=pqd_key(&p->quit,PQD_KEY_BACK);break;
+        default:break;
+        }
+    } else if(e->type==SDL_MOUSEBUTTONDOWN && e->button.button==SDL_BUTTON_RIGHT)r=pqd_secondary_press(&p->quit);
+    else if((e->type==SDL_MOUSEBUTTONDOWN || e->type==SDL_MOUSEBUTTONUP) && e->button.button==SDL_BUTTON_LEFT && win) {
+        int w,h;SDL_GetWindowSize(win,&w,&h);
+        if(w<=0 || h<=0)return;
+        float x,y;pause_menu_to_virtual(pause_menu_transform(w,h),e->button.x,e->button.y,&x,&y);
+        r=e->type==SDL_MOUSEBUTTONDOWN?pqd_primary_press(&p->quit,x,y):pqd_primary_release(&p->quit,x,y);
+    } else if(e->type==SDL_MOUSEMOTION && win) {
+        int w,h;SDL_GetWindowSize(win,&w,&h);
+        if(w<=0 || h<=0)return;
+        float x,y;pause_menu_to_virtual(pause_menu_transform(w,h),e->motion.x,e->motion.y,&x,&y);
+        r=pqd_pointer_move(&p->quit,x,y);
+    }
+    pause_quit_result(p,r);
+}
 void pause_menu_event(PauseMenu *p,const SDL_Event *e,SDL_Window *win) {
-    if(!pause_menu_is_open(p) || p->state.pending!=FE_ACTION_NONE || p->closing)return;
+    if(!pause_menu_is_open(p) || p->state.pending!=FE_ACTION_NONE)return;
+    if(p->quit.open){pause_quit_event(p,e,win);return;}
     FeInput in=FE_INPUT_NONE;
     if(e->type==SDL_KEYDOWN && !e->key.repeat) {
         switch(e->key.keysym.sym) {
@@ -259,50 +340,26 @@ FeAction pause_menu_update(PauseMenu *p,float seconds) {
     p->ui_ms+=ms;p->ctx.time_ms=p->ui_ms;
     ug_anim_update(&p->pill_pulse,ms);ug_anim_update(&p->pill_glow,ms);
     p->scroll=pause_scroll_advance(p->scroll,(float)p->state.selected,ms);
-    int exit_done=0;
+    pqd_update(&p->quit,ms); /* dialog animation runs on UI time while the game stays paused (Q6.5) */
     if(p->loaded) {
         ug_scene_update(&p->scene,ms);
         uint32_t msg;
-        while(ug_scene_poll_app(&p->scene,&msg)) {
+        while(ug_scene_poll_app(&p->scene,&msg))
             if(msg==UG_MSG_ENTER_DONE)ug_scene_refocus(&p->scene);
-            if(msg==UG_MSG_EXIT_DONE)exit_done=1;
-            /* Script events are presentation events. Fe alone dispatches actions. */
-        }
+        /* Script events are presentation events. Fe alone dispatches actions. */
         pause_bind_apply(p);
     }
     fe_update(&p->state,seconds);
     FeAction a=fe_poll_action(&p->state);
-    if(a==FE_ACTION_RESUME) {
-        /* BEHAVIOR 5.3: every resume path unpauses at the input frame. The authored fade-out and
-         * its 320 ms exit-complete event are presentation only; waiting for them (or for the
-         * viewer's 900 ms exit timeout) was the delay. The overlay disappears with the menu. */
-        p->open=0;p->closing=0;p->press_center=0;
-        return a;
+    /* BEHAVIOR 5.3 / QUIT_DIALOG Q7.5: resume and a confirmed quit both leave at the input frame. The
+     * authored fade-outs are presentation only and nothing waits for them or for a timer. */
+    if(a==FE_ACTION_RESUME || a==FE_ACTION_QUIT) {
+        p->open=0;p->press_center=0;
+        if(p->quit.open)pqd_close(&p->quit,PQD_NONE);
     }
-    if(a==FE_ACTION_QUIT) {
-        if(!p->loaded){p->open=0;return a;}
-        p->closing=1;p->closing_action=a;p->close_ms=0;p->press_center=0;
-    } else if(a!=FE_ACTION_NONE)return a;
-    if(p->closing) {
-        p->close_ms+=ms;
-        /* Same supported-scene exit timeout as the independent screen viewer. */
-        if(exit_done || p->close_ms>=UG_TUNE_EXIT_TIMEOUT_MS) {
-            a=p->closing_action;p->closing_action=FE_ACTION_NONE;p->closing=0;p->open=0;
-            return a;
-        }
-    }
-    return FE_ACTION_NONE;
+    return a;
 }
 
-/* Nine-slice the documented native 128x64 focus artwork. Genuine corner texels
- * retain their size while edge texels stretch; no generated border/glow. */
-static void native_frame(UgCanvas *cv,UgRect r,int tex,UgColor tint) {
-    const float u[]={0,.125f,.875f,1},v[]={0,.25f,.75f,1};
-    float xs[]={r.x,r.x+16,r.x+r.w-16,r.x+r.w};
-    float ys[]={r.y,r.y+16,r.y+r.h-16,r.y+r.h};
-    for(int row=0;row<3;row++)for(int col=0;col<3;col++)
-        ug_cv_image(cv,xs[col],ys[row],xs[col+1],ys[row+1],u[col],v[row],u[col+1],v[row+1],tex,tint);
-}
 typedef struct { float x0,y0,x1,y1; int count; const UgFace *face; const uint8_t *pixels; int width,height; } PauseInk;
 static void ink_extent(void *user,const UgQuad *q) {
     PauseInk *b=user;
@@ -440,8 +497,10 @@ static void pause_bind_apply(PauseMenu *p) {
     s->nodes[p->right].app_hidden=!pause_can_step(p,1);
     ug_scene_relayout(s);
 }
+/* Q7.3: the Back/Continue pills are not drawn, hovered or clicked while the quit dialog is open. */
+static int pause_pills_visible(const PauseMenu *p) {return p->state.screen==FE_SCREEN_PAUSE && !p->quit.open;}
 static void pause_draw_pills(PauseMenu *p) {
-    if(!p->bound || p->state.screen!=FE_SCREEN_PAUSE)return;
+    if(!p->bound || !pause_pills_visible(p))return;
     float alpha=p->scene.nodes[p->roles[PAUSE_ROLE_PRESENTATION]].wcolor.a/255.0f;
     for(int k=0;k<2;k++) {
         UgRect r=pause_menu_bounds(k?PAUSE_CONTINUE:PAUSE_BACK);
@@ -452,21 +511,6 @@ static void pause_draw_pills(PauseMenu *p) {
                     ug_color_alpha(k==p->pill_hover?UG_ACCENT:UG_WHITE,alpha),UG_J_CENTER);
     }
 }
-static void pause_draw_quit(PauseMenu *p) {
-    UgCanvas *cv=&p->canvas;
-    if(p->state.screen==FE_SCREEN_QUIT_CONFIRM) {
-        /* Preserve the supported subview and its established Back semantics. */
-        ug_kit_panel(cv,(UgRect){135,165,370,150},0,1);
-        native_frame(cv,(UgRect){135,165,370,150},p->skin.icon_hl,UG_ACCENT);
-        native_text(p,"Quit to desktop?",(UgRect){150,190,340,26},.8f,UG_WHITE,UG_J_CENTER);
-        for(int i=0;i<2;i++) {
-            UgRect r={i?330:170,264,140,40};
-            ug_kit_pill_pc(cv,r,UG_WHITE);
-            if(p->state.quit_sel==i)ug_kit_pill_glow(cv,r,UG_ACCENT);
-            native_text(p,i?"Yes":"No",r,.7f,p->state.quit_sel==i?UG_ACCENT:UG_WHITE,UG_J_CENTER);
-        }
-    }
-}
 static void pause_menu_compose(PauseMenu *p) {
     UgCanvas *cv=&p->canvas;ug_cv_clear(cv);
     if(!p->loaded){cv->visual_status=UG_VIS_UNAVAILABLE;return;}
@@ -475,9 +519,9 @@ static void pause_menu_compose(PauseMenu *p) {
         p->original=0;snprintf(p->status,sizeof p->status,"visible authored resources unavailable");
         ug_cv_clear(cv);cv->visual_status=UG_VIS_UNAVAILABLE;return;
     }
+    pqd_draw(&p->quit,&p->ctx,cv); /* centred coordinates, above the darkened pause screen (Q7.1-Q7.2) */
     ug_cv_translate(cv,-320,-240);
     pause_draw_pills(p);
-    pause_draw_quit(p);
 }
 void pause_menu_draw(PauseMenu *p,int width,int height) {
     if(!pause_menu_is_open(p) || !p->original || width<=0 || height<=0)return;
@@ -515,8 +559,8 @@ int pause_menu_capture_replay(PauseMenu *p,const char *events,float elapsed_ms,i
         if(fields<2 || !isfinite(at) || at<previous || at>elapsed_ms) {free(copy);return 0;}
         pause_capture_advance(p,at-previous);previous=at;
         if(!strcmp(name,"open"))pause_menu_open(p);
-        else if(!strcmp(name,"Right"))pause_dispatch(p,FE_INPUT_DOWN);
-        else if(!strcmp(name,"Left"))pause_dispatch(p,FE_INPUT_UP);
+        else if(!strcmp(name,"Right")){if(p->quit.open)pause_quit_result(p,pqd_key(&p->quit,PQD_KEY_RIGHT));else pause_dispatch(p,FE_INPUT_DOWN);}
+        else if(!strcmp(name,"Left")){if(p->quit.open)pause_quit_result(p,pqd_key(&p->quit,PQD_KEY_LEFT));else pause_dispatch(p,FE_INPUT_UP);}
         else if(!strcmp(name,"Enter") || !strcmp(name,"Continue"))pause_dispatch(p,FE_INPUT_CONFIRM);
         else if(!strcmp(name,"Back") || !strcmp(name,"Escape"))pause_dispatch(p,FE_INPUT_BACK);
         else if(!strcmp(name,"right_click"))pause_dispatch(p,FE_INPUT_BACK);
@@ -531,8 +575,8 @@ int pause_menu_capture_replay(PauseMenu *p,const char *events,float elapsed_ms,i
         pause_capture_tick(p,0);
     }
     free(copy);pause_capture_advance(p,elapsed_ms-previous);
-    fprintf(stderr,"pause capture: elapsed=%.3f ui=%.3f selected=%d marker_x=%.3f open=%d closing=%d actions=%d last_action=%d caption=%s status=%s\n",
-            elapsed_ms,p->ui_ms,p->state.selected,p->marker_x,p->open,p->closing,p->capture_actions,p->capture_last_action,pause_menu_caption(p),p->status);
+    fprintf(stderr,"pause capture: elapsed=%.3f ui=%.3f selected=%d marker_x=%.3f open=%d quit_dialog=%d actions=%d last_action=%d caption=%s status=%s\n",
+            elapsed_ms,p->ui_ms,p->state.selected,p->marker_x,p->open,p->quit.open,p->capture_actions,p->capture_last_action,pause_menu_caption(p),p->status);
     return 1;
 }
 /* Separate reference evaluator. It shares only reviewed data identities, Fe's
@@ -550,8 +594,7 @@ static void pause_reference_apply(PauseMenu *r) {
     int selected=r->state.selected,valid=selected>=0 && selected<r->state.entry_count;
     s->nodes[r->slot].app_hidden=1;
     s->nodes[r->roles[PAUSE_ROLE_HEADING]].text_override="Pause";
-    s->nodes[r->caption].text_override=valid?(r->state.entries[selected].action==FE_ACTION_RESUME?
-        "Return to Explore Mode":r->state.entries[selected].label):"";
+    s->nodes[r->caption].text_override=valid?pause_entry_caption(&r->assets.strings,&r->state.entries[selected]):"";
     const UgFngObject *anchor=s->nodes[r->slot].obj;
     for(int i=0;i<PAUSE_POOL_COUNT;i++) {
         UgNode *n=&s->nodes[r->pool[i]];
@@ -597,8 +640,9 @@ static int pause_reference_open(PauseMenu *r) {
     r->slot=r->roles[PAUSE_ROLE_SLOT];r->caption=r->roles[PAUSE_ROLE_CAPTION];
     r->marker=r->roles[PAUSE_ROLE_MARKER];r->left=r->roles[PAUSE_ROLE_LEFT];r->right=r->roles[PAUSE_ROLE_RIGHT];
     r->npool=PAUSE_POOL_COUNT;r->bound=1;fe_pause_init(&r->state);
-    r->ui_ms=r->close_ms=0;r->marker_x=50;r->scroll=0;r->press_center=0;
-    r->open=1;r->closing=0;r->closing_action=FE_ACTION_NONE;
+    r->ui_ms=0;r->marker_x=50;r->scroll=0;r->press_center=0;
+    pqd_drop_scene(&r->quit);r->quit.open=0;
+    r->open=1;
     ug_scene_update(&r->scene,0);pause_reference_apply(r);return 1;
 }
 static void pause_reference_advance(PauseMenu *r,float milliseconds) {
@@ -609,23 +653,36 @@ static void pause_reference_advance(PauseMenu *r,float milliseconds) {
         r->scroll=pause_scroll_advance(r->scroll,(float)r->state.selected,dt);
         ug_anim_update(&r->pill_pulse,dt);ug_anim_update(&r->pill_glow,dt);
         ug_scene_update(&r->scene,dt);
-        int completed=0;uint32_t msg;
-        while(ug_scene_poll_app(&r->scene,&msg)) {
+        uint32_t msg;
+        while(ug_scene_poll_app(&r->scene,&msg))
             if(msg==UG_MSG_ENTER_DONE)ug_scene_refocus(&r->scene);
-            if(msg==UG_MSG_EXIT_DONE)completed=1;
-        }
         pause_reference_apply(r);
-        if(r->closing) {
-            r->close_ms+=dt;
-            if(completed || r->close_ms>=UG_TUNE_EXIT_TIMEOUT_MS) {
-                r->open=0;r->closing=0;r->capture_actions++;r->capture_last_action=r->closing_action;
-                r->closing_action=FE_ACTION_NONE;
-            }
-        }
+        pqd_update(&r->quit,dt);
     }
+}
+/* The quit dialog is its own specified component (QUIT_DIALOG.md); the reference drives it through the
+ * same state machine as production, while the pause screen underneath stays independently evaluated. */
+static int pause_reference_quit_event(PauseMenu *r,const char *event,float x,float y,int coordinates) {
+    PqdResult res=PQD_NONE;
+    if(!strcmp(event,"Right"))res=pqd_key(&r->quit,PQD_KEY_RIGHT);
+    else if(!strcmp(event,"Left"))res=pqd_key(&r->quit,PQD_KEY_LEFT);
+    else if(!strcmp(event,"Enter") || !strcmp(event,"Continue"))res=pqd_key(&r->quit,PQD_KEY_ACCEPT);
+    else if(!strcmp(event,"Back") || !strcmp(event,"Escape"))res=pqd_key(&r->quit,PQD_KEY_BACK);
+    else if(!strcmp(event,"right_click"))res=pqd_secondary_press(&r->quit);
+    else if(!strcmp(event,"rail_up") || ((!strcmp(event,"rail_down") || !strcmp(event,"rail_move")) && coordinates>=1))return 1;
+    else if(coordinates==2 && !strcmp(event,"hover"))res=pqd_pointer_move(&r->quit,x,y);
+    else if(coordinates==2 && !strcmp(event,"press"))res=pqd_primary_press(&r->quit,x,y);
+    else if(coordinates==2 && !strcmp(event,"release"))res=pqd_primary_release(&r->quit,x,y);
+    else if(coordinates==2 && !strcmp(event,"pointer")) {
+        res=pqd_primary_press(&r->quit,x,y);
+        if(res==PQD_NONE)res=pqd_primary_release(&r->quit,x,y);
+    } else return 0;
+    if(res==PQD_CONFIRM){r->open=0;r->capture_actions++;r->capture_last_action=FE_ACTION_QUIT;} /* immediate */
+    return 1;
 }
 static int pause_reference_event(PauseMenu *r,const char *event,float x,float y,int coordinates) {
     if(!strcmp(event,"open"))return pause_reference_open(r);
+    if(r->open && r->quit.open)return pause_reference_quit_event(r,event,x,y,coordinates);
     FeInput input=FE_INPUT_NONE;int before=r->state.selected,direction=0,click=0;
     if(!strcmp(event,"Right")){input=FE_INPUT_DOWN;direction=1;}
     else if(!strcmp(event,"Left")){input=FE_INPUT_UP;direction=-1;}
@@ -637,7 +694,7 @@ static int pause_reference_event(PauseMenu *r,const char *event,float x,float y,
         click=1;
     } else if(!strcmp(event,"hover") && coordinates==2) {
         int hover=-1;
-        if(r->state.screen==FE_SCREEN_PAUSE && !r->closing) {
+        if(r->state.screen==FE_SCREEN_PAUSE) {
             for(int k=0;k<2;k++)if(ug_rect_hit(pause_menu_bounds(k?PAUSE_CONTINUE:PAUSE_BACK),x,y))hover=k;
         }
         if(hover!=r->pill_hover) {
@@ -647,14 +704,11 @@ static int pause_reference_event(PauseMenu *r,const char *event,float x,float y,
         }
         return 1;
     } else return 0;
-    if(!r->open || r->closing)return 1;
+    if(!r->open)return 1;
     if(click) {
         int press=strcmp(event,"release")!=0,release=strcmp(event,"press")!=0,armed=r->press_center;
         r->press_center=0;
-        if(press && r->state.screen==FE_SCREEN_QUIT_CONFIRM) {
-            if(ug_rect_hit((UgRect){170,264,140,40},x,y)){r->state.quit_sel=0;input=FE_INPUT_CONFIRM;}
-            else if(ug_rect_hit((UgRect){330,264,140,40},x,y)){r->state.quit_sel=1;input=FE_INPUT_CONFIRM;}
-        } else if(press && ug_rect_hit(pause_menu_bounds(PAUSE_BACK),x,y))input=FE_INPUT_BACK;
+        if(press && ug_rect_hit(pause_menu_bounds(PAUSE_BACK),x,y))input=FE_INPUT_BACK;
         else if(press && ug_rect_hit(pause_menu_bounds(PAUSE_CONTINUE),x,y))input=FE_INPUT_CONFIRM;
         else if(press && r->state.screen==FE_SCREEN_PAUSE && pause_menu_arrow_at(x,y)) {
             /* Arrow press steps at press-down (BEHAVIOR 4.7); hidden arrows are inert (4.9). */
@@ -671,6 +725,9 @@ static int pause_reference_event(PauseMenu *r,const char *event,float x,float y,
         int target=pause_reference_step(r,direction);
         if(target<0)return 1; /* no wrap */
         r->state.selected=target;
+    } else if(input==FE_INPUT_CONFIRM && pause_selected_is_quit(&r->state)) {
+        r->press_center=0;r->pill_hover=-1;ug_anim_stop(&r->pill_pulse);ug_anim_stop(&r->pill_glow);
+        pqd_open(&r->quit,&r->assets,1);
     } else fe_input(&r->state,input);
     if(r->state.selected!=before) {
         int enabled=0,rank=0;
@@ -682,9 +739,6 @@ static int pause_reference_event(PauseMenu *r,const char *event,float x,float y,
     FeAction action=fe_poll_action(&r->state);
     if(action==FE_ACTION_RESUME) {
         r->open=0;r->capture_actions++;r->capture_last_action=action; /* immediate */
-    } else if(action==FE_ACTION_QUIT) {
-        ug_scene_post(&r->scene,UG_MSG_REQ_FORWARD,0);
-        r->closing=1;r->closing_action=action;r->close_ms=0;
     } else if(action!=FE_ACTION_NONE){r->capture_actions++;r->capture_last_action=action;}
     if(r->open){pause_reference_apply(r);pause_reference_advance(r,0);}
     return 1;
@@ -693,6 +747,8 @@ int pause_menu_draw_reference(PauseMenu *p,int width,int height,float elapsed_ms
     if(!p || !p->gl || !p->package.nobj || !isfinite(elapsed_ms) || elapsed_ms<0 || width<=0 || height<=0)return 0;
     PauseMenu r={0};r.package=p->package;r.assets=p->assets;r.skin=p->skin;
     memcpy(r.item_tex,p->item_tex,sizeof r.item_tex);ug_ctx_init(&r.ctx);ug_cv_init(&r.canvas);
+    pqd_init(&r.quit);r.quit.have_pkg=p->quit.have_pkg;r.quit.pkg=p->quit.pkg;
+    snprintf(r.quit.load_status,sizeof r.quit.load_status,"%s",p->quit.load_status);
     int ok=pause_reference_open(&r);float last=0;
     char *copy=events?strdup(events):NULL,*save=NULL;
     if(events && !copy)ok=0;
@@ -707,9 +763,13 @@ int pause_menu_draw_reference(PauseMenu *p,int width,int height,float elapsed_ms
         const UgFace *oldface=ug_text_face();const UgSkin *oldskin=ug_kit_skin();UgSkin saved;if(oldskin)saved=*oldskin;
         ug_text_set_face(ug_assets_main_face(&r.assets));ug_kit_set_skin(&r.skin);
         if(r.open) {
-            ug_scene_draw(&r.scene,&r.ctx,&r.canvas);ug_cv_translate(&r.canvas,-320,-240);
-            pause_draw_pills(&r);pause_draw_quit(&r);
+            ug_scene_draw(&r.scene,&r.ctx,&r.canvas);pqd_draw(&r.quit,&r.ctx,&r.canvas);
+            ug_cv_translate(&r.canvas,-320,-240);
+            pause_draw_pills(&r);
             ok=ug_cv_visual_status(&r.canvas)==UG_VIS_OK;
+            if(ok && r.quit.open && !r.quit.visual) {
+                fprintf(stderr,"pause reference: %s\n",r.quit.status);ok=0;
+            }
             if(ok)ug_gl_render_overlay(p->gl,&r.canvas,width,height);
         }
         ug_text_set_face(oldface);ug_kit_set_skin(oldskin?&saved:NULL);
@@ -717,6 +777,7 @@ int pause_menu_draw_reference(PauseMenu *p,int width,int height,float elapsed_ms
                 elapsed_ms,r.ui_ms,r.state.selected,r.marker_x,r.open,r.capture_actions,
                 r.scene.nodes[r.caption].text_override?r.scene.nodes[r.caption].text_override:"");
     }
+    pqd_drop_scene(&r.quit);   /* the package belongs to the production adapter */
     if(r.loaded)ug_scene_free(&r.scene);
     ug_anim_free(&r.pill_pulse);ug_anim_free(&r.pill_glow);ug_cv_free(&r.canvas);
     return ok;
