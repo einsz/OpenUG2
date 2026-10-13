@@ -340,7 +340,7 @@ grip for drifts), hold **right mouse** and drag to orbit the car (press **F** fo
 (racer invitations are not implemented yet), `N` nitro, **`1` developer menu** (the ImGui Master Inspector, in
 `make debug` builds), `F6` cycle rim style
 (once per press), `K` cycle body kit, `Esc` open/resume the pause menu.
-While paused, arrow keys browse Resume / Quit Game and Enter selects; quitting
+While paused, arrow keys (or clicking the on-screen arrows) browse Resume / Quit Game and Enter selects; quitting
 requires confirmation. Controller Start opens/resumes, D-pad browses, A selects
 and B goes back. Gameplay and engine audio stop while the pause menu is open. Cars
 collide and building contact is confirmed against source mesh faces before the

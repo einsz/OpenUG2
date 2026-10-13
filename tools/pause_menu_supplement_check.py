@@ -16,8 +16,8 @@ def equal(a,b):
     return a==b
 
 # BEHAVIOR.md (precedence table) supersedes these motion.json cases: wrap, interpolated marker x,
-# arrow-click stepping, rail pointer selection. tools/pause_menu_behavior_check.py covers their
-# replacements (marker snap, no-wrap, inert pointer input) from behavior.json.
+# rail pointer selection. tools/pause_menu_behavior_check.py covers their replacements (marker snap,
+# no-wrap, inert rail input, press-time arrow-click stepping) from behavior.json.
 SUPERSEDED={'wrapping_first','right_keyboard_motion','rapid_reversal','left_arrow_motion',
             'rail_click_middle','rail_drag_last','resize_during_motion'}
 count=0

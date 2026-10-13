@@ -121,8 +121,8 @@ static void behavior_timeline(int argc,char **argv) {
         }
         for(int i=0;i<nsamples;i++)if(samples[i]==ms){printf("%s\"%d\":",printed++?",":"",ms);beh_sample(&f);}
     }
-    printf("},\"invoked\":[%s],\"invoked_event_indexes\":[%s],\"blinks\":%d,\"signature_changed\":%s,\"open\":%s,\"screen\":%d,\"end_i\":%d}\n",
-           invoked,by_event,f.p.blinks_posted,sig0!=beh_signature(&f.p)?"true":"false",f.p.open?"true":"false",(int)f.p.state.screen,f.p.state.selected);
+    printf("},\"invoked\":[%s],\"invoked_event_indexes\":[%s],\"blinks\":%d,\"last_blink\":\"%s\",\"signature_changed\":%s,\"open\":%s,\"screen\":%d,\"end_i\":%d}\n",
+           invoked,by_event,f.p.blinks_posted,f.p.last_blink_dir<0?"left":f.p.last_blink_dir>0?"right":"none",sig0!=beh_signature(&f.p)?"true":"false",f.p.open?"true":"false",(int)f.p.state.screen,f.p.state.selected);
 }
 
 /* behavior place <d>: placement of an item d slots from the scroll position. */

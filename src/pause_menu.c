@@ -30,6 +30,7 @@ struct PauseMenu {
     float scroll;                /* continuous item-row position in item units, BEHAVIOR 1.5 */
     int press_center;            /* primary press began on the centred item, BEHAVIOR 4.1 */
     int blinks_posted;           /* arrow blink messages sent (verification counter) */
+    int last_blink_dir;          /* direction of the latest blink message, -1/0/+1 (verification) */
     int capture_actions, capture_last_action;
     int slot, caption, marker, left, right;
     int roles[PAUSE_ROLE_COUNT], bound;
@@ -102,7 +103,7 @@ void pause_menu_open(PauseMenu *p) {
     if(p->pill_initialized){ug_anim_free(&p->pill_pulse);ug_anim_free(&p->pill_glow);}
     ug_anim_init(&p->pill_pulse,UG_WHITE,0,0);ug_anim_init(&p->pill_glow,UG_WHITE,0,0);
     p->pill_initialized=1;p->pill_hover=-1;
-    p->marker_x=50;p->press_center=0;p->blinks_posted=0;
+    p->marker_x=50;p->press_center=0;p->blinks_posted=0;p->last_blink_dir=0;
     p->scroll=(float)p->state.selected;
     p->original=p->compatible && p->gl && pause_scene_open(p);
     if(p->compatible && !p->original)fprintf(stderr,"pause: %s\n",p->status);
@@ -137,7 +138,7 @@ static void pause_selection_changed(PauseMenu *p,int before,int direction) {
             /* Package directional events explicitly target the arrow, BINDING 5. */
             ug_scene_post(&p->scene,direction<0?0x9120409Eu:0xB5971BF1u,
                           direction<0?0x000DE06Du:0x000DE087u);
-            p->blinks_posted++;
+            p->blinks_posted++;p->last_blink_dir=direction;
         }
         pause_bind_apply(p);
     }
@@ -162,8 +163,10 @@ const char *pause_menu_caption(const PauseMenu *p) {
 }
 
 /* Pointer input in top-left virtual units, BEHAVIOR 4. The Back/Continue pills and the quit
- * confirmation keep their press-time behaviour. The centred item activates on release, and only
- * when the press began on it. Neighbours, arrows, rail, marker and empty space are inert. */
+ * confirmation keep their press-time behaviour. A press on a visible navigation arrow steps one
+ * item at press-down exactly like Left/Right (R4.7-R4.10); the release has no effect and the press
+ * never arms centred activation. The centred item activates on release, and only when the press
+ * began on it. Neighbours, hidden arrows, rail, marker and empty space are inert (R4.4). */
 static int pause_in_center(float x,float y) {return ug_rect_hit(pause_menu_center_hit(),x,y);}
 static void pause_pointer_press(PauseMenu *p,float x,float y) {
     p->press_center=0;
@@ -175,6 +178,11 @@ static void pause_pointer_press(PauseMenu *p,float x,float y) {
         else if(ug_rect_hit((UgRect){330,264,140,40},x,y))p->state.quit_sel=1;
         else return;
         in=FE_INPUT_CONFIRM;
+    } else if(p->state.screen==FE_SCREEN_PAUSE && pause_menu_arrow_at(x,y)) {
+        /* Visibility is judged on the logical selection at this frame (R4.9): pause_dispatch makes a
+         * blocked step a no-op, which is exactly the hidden-arrow case. */
+        pause_dispatch(p,pause_menu_arrow_at(x,y)<0?FE_INPUT_UP:FE_INPUT_DOWN);
+        return;
     } else if(ug_rect_hit(pause_menu_bounds(PAUSE_BACK),x,y))in=FE_INPUT_BACK;
     else if(ug_rect_hit(pause_menu_bounds(PAUSE_CONTINUE),x,y))in=FE_INPUT_CONFIRM;
     else {p->press_center=p->state.screen==FE_SCREEN_PAUSE && pause_in_center(x,y);return;}
@@ -486,7 +494,8 @@ void pause_menu_draw(PauseMenu *p,int width,int height) {
 /* Verification adapter: advance only UI time, never host scene/camera state.
  * Replay syntax is comma-separated absolute times: 400:Right,480:Continue.
  * pointer (a complete click), press, release and hover take top-left virtual x:y; right_click is
- * the secondary button (Back). rail_down/rail_move/rail_up are accepted but inert (BEHAVIOR 4.4).
+ * the secondary button (Back). A press/pointer on a visible arrow steps (BEHAVIOR 4.7); rail_down/
+ * rail_move/rail_up are accepted but inert (BEHAVIOR 4.4).
  * The normal gameplay adapter never calls these entry points. */
 static void pause_capture_tick(PauseMenu *p,float seconds) {
     FeAction a=pause_menu_update(p,seconds);
@@ -647,7 +656,11 @@ static int pause_reference_event(PauseMenu *r,const char *event,float x,float y,
             else if(ug_rect_hit((UgRect){330,264,140,40},x,y)){r->state.quit_sel=1;input=FE_INPUT_CONFIRM;}
         } else if(press && ug_rect_hit(pause_menu_bounds(PAUSE_BACK),x,y))input=FE_INPUT_BACK;
         else if(press && ug_rect_hit(pause_menu_bounds(PAUSE_CONTINUE),x,y))input=FE_INPUT_CONFIRM;
-        else {
+        else if(press && r->state.screen==FE_SCREEN_PAUSE && pause_menu_arrow_at(x,y)) {
+            /* Arrow press steps at press-down (BEHAVIOR 4.7); hidden arrows are inert (4.9). */
+            int d=pause_menu_arrow_at(x,y);
+            if(pause_reference_step(r,d)>=0){direction=d;input=d<0?FE_INPUT_UP:FE_INPUT_DOWN;}
+        } else {
             if(press && r->state.screen==FE_SCREEN_PAUSE)armed=ug_rect_hit(pause_menu_center_hit(),x,y);
             if(release && armed && r->state.screen==FE_SCREEN_PAUSE && ug_rect_hit(pause_menu_center_hit(),x,y))input=FE_INPUT_CONFIRM;
             else if(!release)r->press_center=armed;

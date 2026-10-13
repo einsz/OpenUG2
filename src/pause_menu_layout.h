@@ -46,6 +46,16 @@ static inline PauseIconPlace pause_icon_place(int k,float s) {
 static inline UgRect pause_menu_center_hit(void) {
     return (UgRect){261.388f,196.204f,118.0f,59.0f};
 }
+/* Navigation-arrow press areas, BEHAVIOR 4.8: the 26x26 authored arrow square about each authored
+ * centre (69.709,227.231) / (579.140,227.231). Edges inclusive; fixed during blink and slide.
+ * Returns -1 for the left arrow, +1 for the right arrow, 0 when (x,y) is on neither. Whether the
+ * arrow is visible is the caller's concern (R4.9). */
+static inline int pause_menu_arrow_at(float x,float y) {
+    static const float box[2][4]={{56.709f,214.231f,82.709f,240.231f},{566.140f,214.231f,592.140f,240.231f}};
+    for(int k=0;k<2;k++)
+        if(x>=box[k][0] && x<=box[k][2] && y>=box[k][1] && y<=box[k][3])return k?1:-1;
+    return 0;
+}
 /* Pause corrections: visible alpha/ink regions, distinct from full quads. */
 static inline UgRect pause_menu_icon_ink(int offset) {
     if(!offset)return (UgRect){293.8f,198.7f,53.8f,54.6f};

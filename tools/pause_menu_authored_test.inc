@@ -14,11 +14,26 @@ static void authored_checks(void) {
     pause_dispatch(&p,FE_INPUT_UP);
     assert(p.state.selected==0 && p.marker_x==50);
     pause_dispatch(&p,FE_INPUT_DOWN);
-    /* BEHAVIOR 4.4: rail, marker and arrow clicks are inert; the centred item needs press and release. */
+    /* BEHAVIOR 4.4: rail and marker clicks are inert; the centred item needs press and release. */
     pause_menu_pointer(&p,323,188.4f,640,480);
-    pause_menu_pointer(&p,60,228,640,480);
-    pause_menu_pointer(&p,580,228,640,480);
     assert(p.state.selected==1 && p.state.pending==FE_ACTION_NONE && p.marker_x==323.0f);
+    /* BEHAVIOR 4.7-4.10: a press on a visible arrow steps one item at press-down, never wraps. */
+    pause_menu_pointer(&p,60,228,640,480);
+    assert(p.state.selected==0 && p.marker_x==50 && p.state.pending==FE_ACTION_NONE);
+    pause_menu_pointer(&p,60,228,640,480); /* left arrow now hidden: inert */
+    assert(p.state.selected==0 && p.marker_x==50 && p.state.pending==FE_ACTION_NONE);
+    pause_menu_pointer(&p,580,228,640,480);
+    assert(p.state.selected==1 && p.marker_x==323.0f && p.state.pending==FE_ACTION_NONE);
+    pause_menu_pointer(&p,580,228,640,480);
+    assert(p.state.selected==2);
+    pause_menu_pointer(&p,580,228,640,480); /* right arrow hidden at the last item */
+    assert(p.state.selected==2 && p.state.pending==FE_ACTION_NONE);
+    pause_menu_pointer(&p,60,228,640,480);
+    assert(p.state.selected==1);
+    assert(pause_menu_arrow_at(566.14f,227.231f)==1 && pause_menu_arrow_at(592.14f,240.231f)==1);
+    assert(pause_menu_arrow_at(565.14f,227.231f)==0 && pause_menu_arrow_at(82.709f,214.231f)==-1);
+    assert(pause_menu_arrow_at(55.709f,227.231f)==0 && pause_menu_arrow_at(69.709f,241.231f)==0);
+    assert(pause_menu_arrow_at(320,226)==0 && pause_menu_arrow_at(323,188.4f)==0);
     pause_menu_pointer(&p,540,302,640,480);
     assert(pause_menu_update(&p,0)==FE_ACTION_RACE_SELECT);
     assert(pause_menu_update(&p,0)==FE_ACTION_NONE);
@@ -29,7 +44,7 @@ static void authored_checks(void) {
     assert(pause_menu_update(&p,0)==FE_ACTION_RESUME);
     pause_menu_open(&p);
     assert(p.ui_ms==0 && p.state.pending==FE_ACTION_NONE);
-    puts("authored integration/moving marker/arrow/rail synthetic checks: PASS");
+    puts("authored integration/moving marker/arrow-click/rail synthetic checks: PASS");
 }
 
 static void authored_sample_fixture(void) {

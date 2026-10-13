@@ -13,6 +13,7 @@ POS = vec["position_tolerance_virtual"]
 SCROLL = vec["scroll_position_tolerance_items"]
 ALPHA_BYTES = vec["alpha_tolerance_bytes"]
 CATALOGUE = "resume,options,quit"
+CAPTIONS = {"resume": "Return to Explore Mode"}
 
 
 def run(*args):
@@ -48,6 +49,92 @@ def sample_times(keys):
 
 def at(res, t):
     return res["samples"][str(t)]
+
+
+def gesture_events(g):
+    """press/release gesture -> ['t:press:x:y', 't:release:x:y']."""
+    (px, py), pt = g["press"]
+    (rx, ry), rt = g["release"]
+    return [f"{pt}:press:{px}:{py}", f"{rt}:release:{rx}:{ry}"]
+
+
+def run_arrow_case(case):
+    """Arrow-click vectors (R4.4 amended, R4.7-R4.10), driven through the real press/release path."""
+    cid, e = case["id"], case.get("expected", {})
+    start = case.get("start_i", 1)
+    cat = ",".join(case.get("catalogue", CATALOGUE.split(",")))
+
+    if cid == "pointer_click_arrow_box_edges":
+        for probe in case["probes"]:
+            x, y = probe["point"]
+            got = timeline(cat, start, f"0:press:{x}:{y},40:release:{x}:{y}", [-1, 0, 300])
+            after = at(got, 300)
+            if probe["steps"] is None:
+                assert after["i"] == start and got["blinks"] == 0 and after["s"] == float(start), probe
+            else:
+                assert after["i"] == start + (1 if probe["steps"] == "right" else -1), probe
+                assert got["blinks"] == 0, probe  # both neighbours of i=1 are end items: hidden wins
+            assert got["invoked"] == [], probe
+        return
+
+    gestures = case.get("gestures") or [case["gesture"]]
+    evs = [events(case["inputs"])] if "inputs" in case else []
+    for g in gestures:
+        evs += gesture_events(g)
+    spec = ",".join(evs)
+    last = max(int(x.split(":")[0]) for x in spec.split(","))
+    times = {-1, 0, last + 5, last + 300}
+    for key in ("expected_scroll_position_s", "marker_center_by_ms", "right_arrow_visible_by_ms", "right_arrow_alpha_from_ms"):
+        if key in e:
+            times |= {int(k) for k in e[key]}
+    times |= {g["press"][1] for g in gestures} | {g["release"][1] for g in gestures}
+    got = timeline(cat, start, spec, sorted(times))
+    final = at(got, last + 300)
+
+    for t, v in e.get("expected_scroll_position_s", {}).items():
+        near(at(got, t)["s"], v, SCROLL, f"{cid} s@{t}")
+    for t, xy in e.get("marker_center_by_ms", {}).items():
+        near_list(at(got, t)["marker"], xy, POS, f"{cid} marker@{t}")
+    for t, v in e.get("right_arrow_visible_by_ms", {}).items():
+        assert at(got, t)["right"] == v, (cid, t)
+    for t0, alpha in e.get("right_arrow_alpha_from_ms", {}).items():
+        for t in times:
+            if t >= int(t0):
+                assert (150 if at(got, t)["right"] else 0) == alpha, (cid, t)
+    assert got["invoked"] == e.get("invoked", []), (cid, got["invoked"])
+    if "paused" in e:
+        assert final["paused"] == e["paused"], cid
+    for key in ("i", "final_i"):
+        if key in e:
+            assert final["i"] == e[key], (cid, final["i"])
+    if "i_after_gesture" in e:
+        ends = [g["release"][1] for g in gestures]
+        assert [at(got, t)["i"] for t in ends] == e["i_after_gesture"], cid
+    if "steps_taken" in e:
+        assert final["i"] - start == e["steps_taken"], cid
+    at_press = at(got, gestures[0]["press"][1])
+    if "caption" in e:
+        # the Resume item displays its authored-role caption, not its catalogue name
+        assert at_press["caption"] == CAPTIONS.get(e["caption"], e["caption"]), cid
+    if "marker_center_at_input_frame" in e:
+        near_list(at_press["marker"], e["marker_center_at_input_frame"], POS, cid + " marker")
+    if "left_arrow_visible" in e:
+        assert at_press["left"] == e["left_arrow_visible"] and at_press["right"] == e["right_arrow_visible"], cid
+    if "slide_started" in e:
+        assert (final["s"] != float(final["i"])) == e["slide_started"], cid
+    if "marker_center" in e:
+        near_list(final["marker"], e["marker_center"], POS, cid)
+    if "blink_started_on" in e:
+        want = e["blink_started_on"]
+        assert got["blinks"] == (0 if want is None else 1) and got["last_blink"] == (want or "none"), (cid, got["blinks"], got["last_blink"])
+    if "blink_started" in e:
+        assert (got["blinks"] > 0) == e["blink_started"], cid
+    if "equivalent_key_input" in e:
+        # identical effect to the Left/Right key at the same frame (R4.7)
+        key = timeline(cat, start, events(e["equivalent_key_input"]), sorted(times))
+        for t in times:
+            assert at(got, t) == at(key, t), (cid, t, at(got, t), at(key, t))
+        assert got["blinks"] == key["blinks"] and got["last_blink"] == key["last_blink"], cid
 
 
 count = 0
@@ -179,6 +266,11 @@ for case in vec["cases"]:
         near(got["s_six_steps"], case["s_by_6_substeps"], SCROLL, "six steps")
         near(got["s_one_step"], got["s_six_steps"], 1e-4, "composition")
 
+    elif cid.startswith("pointer_") and "arrow" in cid and cid not in (
+            "pointer_release_on_arrow_inert", "pointer_click_right_arrow_at_last_inert",
+            "pointer_click_left_arrow_at_first_inert"):
+        run_arrow_case(case)
+
     elif cid.startswith("pointer_"):
         e = case["expected"]
         start = case.get("start_i", 1)
@@ -209,11 +301,13 @@ for case in vec["cases"]:
         if "marker_center" in e:
             near_list(after["marker"], e["marker_center"], POS, cid)
         if "caption" in e:
-            assert after["caption"] == e["caption"]
+            assert after["caption"] == CAPTIONS.get(e["caption"], e["caption"])
         if "paused" in e:
             assert after["paused"] == e["paused"]
         if "arrow_blink_started" in e:
             assert (got["blinks"] > 0) == e["arrow_blink_started"]
+        if "left_arrow_visible" in e:
+            assert after["left"] == e["left_arrow_visible"] and after["right"] == e["right_arrow_visible"], cid
         if "visual_change" in e:
             assert got["signature_changed"] == e["visual_change"]
         if "paused_after_input_frame" in e:  # secondary button
