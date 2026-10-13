@@ -99,6 +99,8 @@ static void test_tex_parameter(GLenum target, GLenum name, GLint value) {
 #define free_scene_gpu test_free_scene_gpu
 #define upload_tpk_texture_to_gpu test_upload_texture
 #define upload_tex test_upload_texture
+#define upload_tpk_keyed(key, name, t) test_upload_texture(t)
+#define upload_tex_keyed(key, name, t) test_upload_texture(t)
 #define glGetError test_gl_error
 #define glDeleteTextures test_delete_textures
 #define glTexParameteri test_tex_parameter
