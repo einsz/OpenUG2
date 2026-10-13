@@ -42,7 +42,7 @@ struct Hud {
 };
 static void diagnostic(Hud*h,const char*s){if(!h)return;if(!strstr(h->missing,s)){size_t n=strlen(h->missing);if(n+strlen(s)+2<sizeof h->missing)snprintf(h->missing+n,sizeof h->missing-n,"%s%s",n?"; ":"",s);fprintf(stderr,"HUD: %s\n",s);}}
 static unsigned char *readfile(const char*root,const char*relative,size_t*n){char path[4096];if(snprintf(path,sizeof path,"%s/%s",root,relative)>=(int)sizeof path)return NULL;FILE*f=fopen(path,"rb");if(!f)return NULL;if(fseek(f,0,SEEK_END)){fclose(f);return NULL;}long z=ftell(f);if(z<0||z>256*1024*1024||fseek(f,0,SEEK_SET)){fclose(f);return NULL;}unsigned char*d=malloc(z?(size_t)z:1);if(!d){fclose(f);return NULL;}if(fread(d,1,(size_t)z,f)!=(size_t)z){free(d);fclose(f);return NULL;}fclose(f);*n=(size_t)z;return d;}
-static RhiTexture upload(N2Tex*t){RhiTexture id=upload_tex(t);if(id.id){glBindTexture(GL_TEXTURE_2D,rhi_gl_texture_name(id));glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);}return id;}
+static RhiTexture upload(N2Tex*t){RhiTexture id=upload_tex(t);render_texture_clamp_linear(id);return id;}
 static void catalog(Pack*p,const unsigned char*d,size_t n,unsigned depth){
  if(depth>HA_DEPTH)return;
  for(size_t at=0;at<n;){if(n-at<8)return;uint32_t type=n2_u32(d+at);size_t z=n2_u32(d+at+4);if(z>n-at-8)return;

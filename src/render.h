@@ -303,14 +303,20 @@ void draw_batch(const N2Batch *b);
 RhiTexture upload_tex(const N2Tex *t);
 /* Upload a decoded TPK texture, preferring a direct glCompressedTexImage2D of
    its raw S3TC blocks when the driver supports the format; falls back to the
-   portable CPU-decoded RGBA path (upload_tex) otherwise. Leaves the texture
-   bound (callers may override wrap/filter after). */
+   portable CPU-decoded RGBA path (upload_tex) otherwise. Both give the texture
+   a REPEAT sampler (trilinear + anisotropy with a full mip chain) and leave it
+   bound. */
 RhiTexture upload_tpk_texture_to_gpu(const N2Tex *t);
 /* Same as upload_tex / upload_tpk_texture_to_gpu, but first try a user HD
    override for `key` (tex_override.h; `pack` = source stem or NULL). With no
    override directory these are exactly the original uploaders. */
 RhiTexture upload_tex_keyed(uint32_t key, const char *pack, const N2Tex *t);
 RhiTexture upload_tpk_keyed(uint32_t key, const char *pack, const N2Tex *t);
+/* Atlases and sprites: keep the texture's filtering but clamp both axes, so a
+   filter footprint at u/v = 0 or 1 cannot wrap in the opposite edge. The
+   _linear variant also samples level 0 only (bilinear), for 2D overlays. */
+void render_texture_clamp(RhiTexture tex);
+void render_texture_clamp_linear(RhiTexture tex);
 /* Anisotropic filtering, the one texture-detail knob this renderer was missing.
  * Trilinear alone samples a square footprint, so any surface seen at a grazing
  * angle -- which is most of a road, a kerb and a car's own flanks -- drops to a

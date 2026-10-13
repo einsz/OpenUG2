@@ -108,6 +108,7 @@ static void test_tex_parameter(GLenum target, GLenum name, GLint value) {
 #define glGetError test_gl_error
 #define rhi_texture_destroy test_destroy_texture
 #define rhi_gl_texture_name test_texture_name
+#define render_texture_clamp(t) ((void)(t))   /* simulated textures have no sampler */
 #define glTexParameteri test_tex_parameter
 #define main openug_application_main
 #include "../src/main.c"

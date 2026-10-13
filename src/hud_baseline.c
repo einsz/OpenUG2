@@ -263,11 +263,7 @@ static void hud_baseline_measure_arc(const N2Tex *t, struct HudArc *out) {
 static RhiTexture hud_baseline_upload(const N2Tex *t) {
     RhiTexture id = upload_tpk_texture_to_gpu(t);
     if (!id.id) return id;
-    glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(id));
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    render_texture_clamp_linear(id);
     return id;
 }
 

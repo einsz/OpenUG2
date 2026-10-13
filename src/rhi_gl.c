@@ -284,12 +284,19 @@ void rhi_buffer_destroy(RhiBuffer buf) {
 #  define GL_COMPRESSED_RGBA_S3TC_DXT5_EXT 0x83F3
 #endif
 
+static const RhiSamplerDesc k_default_sampler = {
+    RHI_FILTER_NEAREST, RHI_FILTER_LINEAR, RHI_MIP_LINEAR, RHI_WRAP_REPEAT, RHI_WRAP_REPEAT, 1.0f
+};
+
 typedef struct {
     GLuint    name;     /* 0 = free slot */
     GLenum    target;   /* GL_TEXTURE_2D / GL_TEXTURE_CUBE_MAP */
     RhiFormat format;
     int32_t   width, height;
     uint8_t   generation;
+    RhiSampler sampler;
+    GLint     wrap_s, wrap_t, min_filter, mag_filter;   /* parameters GL has now */
+    float     anisotropy;
 } RhiGlTexture;
 
 static struct {
@@ -371,6 +378,11 @@ RhiTexture rhi_texture_create(const RhiTextureDesc *desc) {
     t->format = desc->format;
     t->width = desc->width;
     t->height = desc->height;
+    t->sampler = rhi_sampler_create(&k_default_sampler);
+    t->wrap_s = t->wrap_t = GL_REPEAT;               /* GL's initial parameters */
+    t->min_filter = GL_NEAREST_MIPMAP_LINEAR;
+    t->mag_filter = GL_LINEAR;
+    t->anisotropy = 1.0f;
     glBindTexture(t->target, name);
     out.id = ((uint32_t)t->generation << RHI_GL_SLOT_BITS) | slot;
     return out;
@@ -414,4 +426,98 @@ void rhi_texture_destroy(RhiTexture tex) {
     t->name = 0;
     t->generation++;
     g_textures.free_list[g_textures.free_count++] = tex.id & RHI_GL_SLOT_MASK;
+}
+
+/* ------------------------------------------------------------------------------ */
+/* Samplers                                                                       */
+/* ------------------------------------------------------------------------------ */
+/* A short list searched by value; handle id = index + 1. The game uses a
+ * handful of samplers (wrap x filter x anisotropy setting). */
+#define RHI_GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT 0x84FE
+
+static struct {
+    RhiSamplerDesc *descs;
+    uint32_t        count, capacity;
+} g_samplers;
+
+static int sampler_desc_valid(const RhiSamplerDesc *d) {
+    return d && (d->min_filter == RHI_FILTER_NEAREST || d->min_filter == RHI_FILTER_LINEAR) &&
+           (d->mag_filter == RHI_FILTER_NEAREST || d->mag_filter == RHI_FILTER_LINEAR) &&
+           d->mip_filter >= RHI_MIP_NONE && d->mip_filter <= RHI_MIP_LINEAR &&
+           (d->wrap_u == RHI_WRAP_REPEAT || d->wrap_u == RHI_WRAP_CLAMP) &&
+           (d->wrap_v == RHI_WRAP_REPEAT || d->wrap_v == RHI_WRAP_CLAMP) &&
+           d->max_anisotropy >= 1.0f;
+}
+
+RhiSampler rhi_sampler_create(const RhiSamplerDesc *desc) {
+    RhiSampler out = {0};
+    if (!sampler_desc_valid(desc)) {
+        fprintf(stderr, "rhi: sampler_create: invalid description\n");
+        return out;
+    }
+    for (uint32_t i = 0; i < g_samplers.count; i++) {
+        const RhiSamplerDesc *d = &g_samplers.descs[i];
+        if (d->min_filter == desc->min_filter && d->mag_filter == desc->mag_filter &&
+            d->mip_filter == desc->mip_filter && d->wrap_u == desc->wrap_u &&
+            d->wrap_v == desc->wrap_v && d->max_anisotropy == desc->max_anisotropy) {
+            out.id = i + 1;
+            return out;
+        }
+    }
+    if (g_samplers.count == g_samplers.capacity) {
+        uint32_t cap = g_samplers.capacity ? g_samplers.capacity * 2u : 16u;
+        RhiSamplerDesc *descs = (RhiSamplerDesc *)realloc(g_samplers.descs, cap * sizeof *descs);
+        if (!descs) { fprintf(stderr, "rhi: sampler_create: out of memory\n"); return out; }
+        g_samplers.descs = descs;
+        g_samplers.capacity = cap;
+    }
+    g_samplers.descs[g_samplers.count++] = *desc;
+    out.id = g_samplers.count;
+    return out;
+}
+
+const RhiSamplerDesc *rhi_sampler_desc(RhiSampler sampler) {
+    if (!sampler.id || sampler.id > g_samplers.count) return NULL;
+    return &g_samplers.descs[sampler.id - 1];
+}
+
+RhiSampler rhi_texture_sampler(RhiTexture tex) {
+    const RhiGlTexture *t = texture_lookup(tex, "texture_sampler");
+    return t ? t->sampler : (RhiSampler){0};
+}
+
+static GLint gl_min_filter(const RhiSamplerDesc *d) {
+    static const GLint table[2][3] = {
+        { GL_NEAREST, GL_NEAREST_MIPMAP_NEAREST, GL_NEAREST_MIPMAP_LINEAR },
+        { GL_LINEAR,  GL_LINEAR_MIPMAP_NEAREST,  GL_LINEAR_MIPMAP_LINEAR  },
+    };
+    return table[d->min_filter][d->mip_filter];
+}
+
+/* Only parameters that differ from what the texture has are set. Anisotropy
+ * is left alone when the driver has no anisotropic filtering. */
+RhiResult rhi_texture_set_sampler(RhiTexture tex, RhiSampler sampler) {
+    RhiGlTexture *t = texture_lookup(tex, "texture_set_sampler");
+    const RhiSamplerDesc *d = rhi_sampler_desc(sampler);
+    if (!t || !d) return RHI_ERR_INVALID;
+    GLint wrap_s = d->wrap_u == RHI_WRAP_CLAMP ? GL_CLAMP_TO_EDGE : GL_REPEAT;
+    GLint wrap_t = d->wrap_v == RHI_WRAP_CLAMP ? GL_CLAMP_TO_EDGE : GL_REPEAT;
+    GLint min_filter = gl_min_filter(d);
+    GLint mag_filter = d->mag_filter == RHI_FILTER_LINEAR ? GL_LINEAR : GL_NEAREST;
+    float aniso = 1.0f;
+    if (g_rhi.caps.max_anisotropy > 1.0f)
+        aniso = d->max_anisotropy < g_rhi.caps.max_anisotropy ? d->max_anisotropy
+                                                              : g_rhi.caps.max_anisotropy;
+    glBindTexture(t->target, t->name);
+    if (wrap_s != t->wrap_s) glTexParameteri(t->target, GL_TEXTURE_WRAP_S, wrap_s);
+    if (wrap_t != t->wrap_t) glTexParameteri(t->target, GL_TEXTURE_WRAP_T, wrap_t);
+    if (min_filter != t->min_filter) glTexParameteri(t->target, GL_TEXTURE_MIN_FILTER, min_filter);
+    if (mag_filter != t->mag_filter) glTexParameteri(t->target, GL_TEXTURE_MAG_FILTER, mag_filter);
+    if (aniso != t->anisotropy)
+        glTexParameterf(t->target, RHI_GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, aniso);
+    t->wrap_s = wrap_s; t->wrap_t = wrap_t;
+    t->min_filter = min_filter; t->mag_filter = mag_filter;
+    t->anisotropy = aniso;
+    t->sampler = sampler;
+    return RHI_OK;
 }

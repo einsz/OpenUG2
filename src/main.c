@@ -280,8 +280,7 @@ static int load_rim_style(const unsigned char *wldata, long wllen,
         /* rim sheets are atlases with UVs in [0,1]: clamp so REPEAT wrap +
            mip filtering cannot bleed the opposite border in (same reason as
            the car body atlases above). */
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        render_texture_clamp(rimtex);
         long np = (long)rt.w * rt.h;
         for (long p = 0; p < np; p++) { int b = rt.rgb[p*3+2];
             ar += rt.rgb[p*3]; ag += rt.rgb[p*3+1]; ab += b;
@@ -480,8 +479,7 @@ static int prepare_car_switch(CarSwitchCandidate *candidate,
         if (!candidate->textures[slot].id || glGetError() != GL_NO_ERROR) {
             car_switch_release(candidate); return 0;
         }
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        render_texture_clamp(candidate->textures[slot]);
     }
     return 1;
 }
@@ -825,8 +823,7 @@ static int prepare_body_kit(BodyKitCandidate *kit,
         kit->keys[j]=tk;kit->textures[j]=upload_tpk_keyed(tk,NULL,&t);
         kit->alpha[j]=t.alpha!=NULL && t.dxtfmt!=1;
         kit->mode[j]=(char)n2_tex_mode(&t);
-        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
+        render_texture_clamp(kit->textures[j]);
         free(t.rgb);free(t.alpha);free(t.dxt);
         if(!kit->textures[j].id || glGetError()!=GL_NO_ERROR)goto failed;
     }
@@ -2060,8 +2057,7 @@ static int select_car_vinyl(int choice) {
                      "Could not load this vinyl. The current design was kept.");
             return 0;
         }
-        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
+        render_texture_clamp(next);
     }
     rhi_texture_destroy(g_car_vinyl_tex);g_car_vinyl_tex=next;
     g_dbg.vinyl_current=choice;g_dbg.vinyl_status[0]=0;
@@ -4619,8 +4615,7 @@ int main(int argc, char **argv) {
                 nmap++;
                 /* car textures are atlases (UVs in [0,1]): clamp so REPEAT
                    wrap + mip filtering can't bleed the opposite border in. */
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                render_texture_clamp(maptex[nmap - 1]);
                 free(ct.rgb); free(ct.alpha); free(ct.dxt);
             }
         }
@@ -10530,25 +10525,19 @@ int main(int argc, char **argv) {
                 done_v |= 1 << v;
                 RhiTexture tid = {0};
                 for (int j = 0; j < ntmap; j++) if (tmapkey[j] == smkey) tid = tmaptex[j];
-                if (tid.id) {
-                    glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(tid));
+                const RhiSamplerDesc *cur = rhi_sampler_desc(rhi_texture_sampler(tid));
+                if (cur) {
                     float amax = caps->max_anisotropy;
-                    if (v == 0) { glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
-                                                  GL_LINEAR_MIPMAP_LINEAR);
-                                  glTexParameterf(GL_TEXTURE_2D, 0x84FE, 1.0f); }
-                    else if (v == 1) { glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
-                                                       GL_LINEAR);
-                                       glTexParameterf(GL_TEXTURE_2D, 0x84FE, 1.0f); }
-                    else if (v == 2) { glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
-                                                       GL_LINEAR_MIPMAP_LINEAR);
-                                       glTexParameterf(GL_TEXTURE_2D, 0x84FE, amax);
+                    RhiSamplerDesc d = *cur;   /* variant 0/3: trilinear, no anisotropy */
+                    d.mip_filter = RHI_MIP_LINEAR; d.max_anisotropy = 1.0f;
+                    if (v == 1) d.mip_filter = RHI_MIP_NONE;
+                    else if (v == 2) { d.max_anisotropy = amax > 1.0f ? amax : 1.0f;
                                        printf("SM max anisotropy reported: %.1f\n", amax); }
-                    else { printf("SM variant 3 (original TPK mip chain): NOT CAPTURED -- "
-                                  "the world path never retains an encoded chain for this "
-                                  "key (see inventory above); repeating variant 0\n");
-                           glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
-                                           GL_LINEAR_MIPMAP_LINEAR);
-                           glTexParameterf(GL_TEXTURE_2D, 0x84FE, 1.0f); }
+                    else if (v == 3)
+                        printf("SM variant 3 (original TPK mip chain): NOT CAPTURED -- "
+                               "the world path never retains an encoded chain for this "
+                               "key (see inventory above); repeating variant 0\n");
+                    rhi_texture_set_sampler(tid, rhi_sampler_create(&d));
                 }
             }
             /* capture one frame AFTER the state took effect */
@@ -10563,10 +10552,10 @@ int main(int argc, char **argv) {
             if (f == 132) {   /* restore normal sampler state, then stop */
                 RhiTexture tid = {0};
                 for (int j = 0; j < ntmap; j++) if (tmapkey[j] == smkey) tid = tmaptex[j];
-                if (tid.id) { glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(tid));
-                           glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
-                                           GL_LINEAR_MIPMAP_LINEAR);
-                           glTexParameterf(GL_TEXTURE_2D, 0x84FE, 1.0f); }
+                const RhiSamplerDesc *cur = rhi_sampler_desc(rhi_texture_sampler(tid));
+                if (cur) { RhiSamplerDesc d = *cur;
+                           d.mip_filter = RHI_MIP_LINEAR; d.max_anisotropy = 1.0f;
+                           rhi_texture_set_sampler(tid, rhi_sampler_create(&d)); }
                 printf("SM sampler state restored to the production default\n");
                 running = 0;
             }
