@@ -3730,6 +3730,8 @@ int main(int argc, char **argv) {
 #endif
 
     RProg rp = render_program();
+    UG2WorldPipelines wpipe;   /* sky, vista and world passes */
+    render_world_pipelines(&rp, &wpipe);
     HeadlightShadows headlight_shadows = {0};
     RhiBuffer rain_vbo = {0};
     RhiBuffer wall_debug_vbo = {0};
@@ -8623,22 +8625,21 @@ int main(int argc, char **argv) {
             rp.p->uAlpha = 1.0f;
             ug2_vec3(rp.p->uColor, 1.0f, 1.0f, 1.0f);
             rp.p->uFogDensity = 0.0f;
-            glDepthMask(GL_FALSE);
-            glDisable(GL_BLEND);
+            rhi_cmd_bind_pipeline(wpipe.sky_dome);
             /* Dome first. Exact classification means ordinary assets such as
                XB_SKYDOMEB and XB_FACTORYSKYLIGHT never enter this list. */
             for (int k = 0; k < nsky; k++) {
                 if (skybatch[k].texkey != sky_dome_key || !skybatch[k].tex.id) continue;
-                glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(skybatch[k].tex));
-                draw_batch(&skybatch[k]);
+                rhi_cmd_bind_texture(0, skybatch[k].tex);
+                render_draw_batch(&skybatch[k]);
                 g_dbg.drawn++; skydraws++;
             }
             /* The DXT3 cap carries its own authored gradient alpha. */
-            glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            rhi_cmd_bind_pipeline(wpipe.sky_cap);
             for (int k = 0; k < nsky; k++) {
                 if (skybatch[k].texkey != sky_cap_key || !skybatch[k].tex.id) continue;
-                glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(skybatch[k].tex));
-                draw_batch(&skybatch[k]);
+                rhi_cmd_bind_texture(0, skybatch[k].tex);
+                render_draw_batch(&skybatch[k]);
                 g_dbg.drawn++; skydraws++;
             }
             glDisable(GL_BLEND);
@@ -8698,9 +8699,7 @@ int main(int argc, char **argv) {
             rp.p->uFogDensity = vd;
             rp.p->uVista = 1.0f;
             rp.p->uVColor = 1.0f;   /* source vertex alpha is the fade */
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            glDepthMask(GL_FALSE);
+            rhi_cmd_bind_pipeline(wpipe.vista);
             RhiTexture vlast = {UINT32_MAX};
             for (int k = 0; k < nvista; k++) {
                 N2Batch *b = &vbatch[k];
@@ -8769,11 +8768,11 @@ int main(int argc, char **argv) {
                            b->index_count/3, sqrtf(near2), hi, cam[2]);
                 }
                 if (b->tex.id != vlast.id) {
-                    if (b->tex.id) { rp.p->uUseTex = 1.0f; glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(b->tex)); }
+                    if (b->tex.id) { rp.p->uUseTex = 1.0f; rhi_cmd_bind_texture(0, b->tex); }
                     else { rp.p->uUseTex = 0.0f; ug2_vec3(rp.p->uColor, 0.30f, 0.32f, 0.38f); }
                     vlast = b->tex;
                 }
-                draw_batch(b);
+                render_draw_batch(b);
                 g_dbg.drawn++; vistadraws++; vistadrawn++; vistamesh += b->nmesh;
             }
             /* restore every piece of state the pass touched */
@@ -8829,6 +8828,7 @@ int main(int argc, char **argv) {
         RhiTexture lasttex = {UINT32_MAX};
         int lastmode = -1;
         rp.p->uVColor = g_dbg.vcolor;   /* apply source prelight to world geom */
+        rhi_cmd_bind_pipeline(wpipe.opaque);
         for (int k = 0; g_dbg.show_track && (passmode == 0 || passmode == 1) && k < nbatch; k++) {
             if (passbatch >= 0 && (k < passbatch || k > passbatch2)) continue;   /* M79 */
             N2Batch *b = &wbatch[k];
@@ -8877,7 +8877,7 @@ int main(int argc, char **argv) {
             }
             ndrawn += b->nmesh;
             if (b->tex.id != lasttex.id) {
-                if (b->tex.id) { rp.p->uUseTex = 1.0f; glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(b->tex)); }
+                if (b->tex.id) { rp.p->uUseTex = 1.0f; rhi_cmd_bind_texture(0, b->tex); }
                 else { rp.p->uUseTex = 0.0f; ug2_vec3(rp.p->uColor, 0.28f, 0.29f, 0.31f); }
                 lasttex = b->tex;
             }
@@ -8886,7 +8886,7 @@ int main(int argc, char **argv) {
                 lastmode = b->drawmode;
             }
             rp.p->uWetness = b->wettable ? g_dbg.road_wetness : 0;
-            draw_batch(b);
+            render_draw_batch(b);
             for (int sc=0; sc<8; sc++) vis_scen[sc] += b->scen_count[sc];
             g_dbg.drawn++; wbdrawn++;
             if (nviskept < 4096) viskept[nviskept++] = k;
@@ -8910,8 +8910,6 @@ int main(int argc, char **argv) {
            than drawing at flat uAlpha strength. */
         if (ndefblend || ndefadd) {
             n2_sort_back_to_front(defblend, ndefblend, defdist);
-            glEnable(GL_BLEND);
-            glDepthMask(GL_FALSE);
             rp.p->uTextureAlpha = 1.0f;
             RhiTexture lasttex2 = {UINT32_MAX}; int lastmode2 = -1;
             for (int pass = 0; pass < 2; pass++) {
@@ -8920,15 +8918,15 @@ int main(int argc, char **argv) {
                 for (int q = 0; q < cnt; q++) {
                     N2Batch *b = &wbatch[list[q]];
                     if (b->tex.id != lasttex2.id) {
-                        if (b->tex.id) { rp.p->uUseTex = 1.0f; glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(b->tex)); }
+                        if (b->tex.id) { rp.p->uUseTex = 1.0f; rhi_cmd_bind_texture(0, b->tex); }
                         else { rp.p->uUseTex = 0.0f; ug2_vec3(rp.p->uColor, 0.28f, 0.29f, 0.31f); }
                         lasttex2 = b->tex;
                     }
                     if (b->drawmode != lastmode2) {
-                        glBlendFunc(GL_SRC_ALPHA, b->drawmode == N2_DRAW_ADD ? GL_ONE : GL_ONE_MINUS_SRC_ALPHA);
+                        rhi_cmd_bind_pipeline(b->drawmode == N2_DRAW_ADD ? wpipe.add : wpipe.blend);
                         lastmode2 = b->drawmode;
                     }
-                    draw_batch(b);
+                    render_draw_batch(b);
                     for (int sc=0; sc<8; sc++) vis_scen[sc] += b->scen_count[sc];
                     ndrawn += b->nmesh; g_dbg.drawn++; wbdrawn++;
                     if (nviskept < 4096) viskept[nviskept++] = list[q];
@@ -8943,8 +8941,8 @@ int main(int argc, char **argv) {
             rp.p->uUseTex = 0.0f;
             rp.p->uUnlit = 1.0f;
             ug2_vec3(rp.p->uColor, 1.0f, 0.15f, 0.85f);
-            glDepthMask(GL_FALSE);
-            for (int k = 0; k < nrep; k++) { draw_batch(&rbatch[k]); g_dbg.drawn++; }
+            rhi_cmd_bind_pipeline(wpipe.overlay);
+            for (int k = 0; k < nrep; k++) { render_draw_batch(&rbatch[k]); g_dbg.drawn++; }
             glDepthMask(GL_TRUE);
             rp.p->uUnlit = 0.0f;
         }

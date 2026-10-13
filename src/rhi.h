@@ -281,6 +281,76 @@ void      rhi_shader_destroy(RhiShader shader);
  * sees; write it any time. NULL for an invalid shader or block. */
 void     *rhi_shader_params(RhiShader shader, uint32_t block);
 
+/* ------------------------------------------------------------------------------ */
+/* Pipelines and draws                                                            */
+/* ------------------------------------------------------------------------------ */
+#define RHI_MAX_VERTEX_ATTRIBS 8u
+#define RHI_MAX_VERTEX_STREAMS 4u
+
+typedef enum RhiVertexFormat {
+    RHI_VERTEX_FLOAT2 = 1, RHI_VERTEX_FLOAT3, RHI_VERTEX_FLOAT4,
+    RHI_VERTEX_UNORM8X4      /* 4 bytes read as 0..1 */
+} RhiVertexFormat;
+
+typedef struct RhiVertexAttrib {
+    uint32_t        location;   /* shader attribute index (RhiShaderDesc order) */
+    uint32_t        stream;     /* vertex buffer slot */
+    uint32_t        offset;     /* bytes from the start of a vertex */
+    RhiVertexFormat format;
+} RhiVertexAttrib;
+
+typedef struct RhiVertexLayout {
+    RhiVertexAttrib attribs[RHI_MAX_VERTEX_ATTRIBS];
+    uint32_t        attrib_count;
+    uint32_t        stride[RHI_MAX_VERTEX_STREAMS];   /* bytes per vertex, per stream */
+} RhiVertexLayout;
+
+typedef enum RhiPrimitive { RHI_PRIMITIVE_TRIANGLES = 0, RHI_PRIMITIVE_LINES = 1 } RhiPrimitive;
+typedef enum RhiCullMode  { RHI_CULL_NONE = 0, RHI_CULL_BACK = 1, RHI_CULL_FRONT = 2 } RhiCullMode;
+typedef enum RhiCompare {
+    RHI_COMPARE_NEVER = 0, RHI_COMPARE_LESS, RHI_COMPARE_EQUAL, RHI_COMPARE_LESS_EQUAL,
+    RHI_COMPARE_GREATER, RHI_COMPARE_NOT_EQUAL, RHI_COMPARE_GREATER_EQUAL, RHI_COMPARE_ALWAYS
+} RhiCompare;
+typedef enum RhiBlendFactor {
+    RHI_BLEND_ZERO = 0, RHI_BLEND_ONE, RHI_BLEND_SRC_ALPHA, RHI_BLEND_ONE_MINUS_SRC_ALPHA,
+    RHI_BLEND_DST_ALPHA, RHI_BLEND_ONE_MINUS_DST_ALPHA, RHI_BLEND_SRC_COLOR,
+    RHI_BLEND_ONE_MINUS_SRC_COLOR, RHI_BLEND_DST_COLOR, RHI_BLEND_ONE_MINUS_DST_COLOR
+} RhiBlendFactor;
+
+/* Everything a draw needs besides its buffers, textures and parameters.
+ * Viewport and scissor are not part of it. Blending is "add" (src*f + dst*f).
+ * Not covered yet: stencil and depth bias (the passes that use them still set
+ * GL state directly). */
+typedef struct RhiPipelineDesc {
+    RhiShader       shader;
+    RhiVertexLayout vertex;
+    RhiPrimitive    primitive;
+    RhiCullMode     cull;          /* counter-clockwise faces are front faces */
+    uint8_t         depth_test, depth_write;
+    RhiCompare      depth_compare;
+    uint8_t         blend;
+    RhiBlendFactor  src_rgb, dst_rgb, src_alpha, dst_alpha;
+    uint8_t         color_write;   /* bits 0..3 = R, G, B, A */
+} RhiPipelineDesc;
+
+typedef struct RhiPipeline { uint32_t id; } RhiPipeline;
+
+/* GL's initial state: no depth test, LESS, depth write on, no blend (ONE,
+ * ZERO), no culling, all colour channels written, triangles. */
+void        rhi_pipeline_desc_init(RhiPipelineDesc *desc);
+/* Created by value: equal descriptions give the same handle. {0} on failure. */
+RhiPipeline rhi_pipeline_create(const RhiPipelineDesc *desc);
+
+/* Commands (GL: executed immediately). A draw uses the pipeline, vertex and
+ * index buffers and textures bound last, and the shader's parameter blocks as
+ * they are at that moment. */
+void rhi_cmd_bind_pipeline(RhiPipeline pipeline);
+void rhi_cmd_bind_vertex_buffer(uint32_t stream, RhiBuffer buffer, uint32_t offset);
+void rhi_cmd_bind_index_buffer(RhiBuffer buffer);           /* 16-bit indices */
+/* Texture for shader sampler unit `slot`, sampled with the texture's sampler. */
+void rhi_cmd_bind_texture(uint32_t slot, RhiTexture texture);
+void rhi_cmd_draw_indexed(uint32_t index_count, uint32_t first_index);
+
 #ifdef __cplusplus
 }
 #endif

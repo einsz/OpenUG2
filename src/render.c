@@ -1469,6 +1469,53 @@ int render_world_prop_updates(const N2Scene *scene,N2Batch *batches,int count,
     return changed;
 }
 
+/* ---- world pipelines (sky, vista, world passes) ----
+ * BatchedVertex: pos @0, uv @12, normal @20, RGBA8 prelight @32, stride 36.
+ * All world passes test depth with LEQUAL and never cull. */
+static RhiPipelineDesc world_pipeline(const RProg *r, int depth_write, int blend,
+                                      RhiBlendFactor dst) {
+    RhiPipelineDesc d;
+    rhi_pipeline_desc_init(&d);
+    d.shader = r->shader;
+    d.vertex.attribs[0] = (RhiVertexAttrib){ 0, 0, 0,  RHI_VERTEX_FLOAT3 };
+    d.vertex.attribs[1] = (RhiVertexAttrib){ 1, 0, 12, RHI_VERTEX_FLOAT2 };
+    d.vertex.attribs[2] = (RhiVertexAttrib){ 2, 0, 20, RHI_VERTEX_FLOAT3 };
+    d.vertex.attribs[3] = (RhiVertexAttrib){ 3, 0, 32, RHI_VERTEX_UNORM8X4 };
+    d.vertex.attrib_count = 4;
+    d.vertex.stride[0] = sizeof(BatchedVertex);
+    d.depth_test = 1;
+    d.depth_compare = RHI_COMPARE_LESS_EQUAL;
+    d.depth_write = (uint8_t)depth_write;
+    d.blend = (uint8_t)blend;
+    if (blend) {
+        d.src_rgb = d.src_alpha = RHI_BLEND_SRC_ALPHA;
+        d.dst_rgb = d.dst_alpha = dst;
+    }
+    return d;
+}
+
+void render_world_pipelines(const RProg *r, UG2WorldPipelines *p) {
+    RhiPipelineDesc d;
+    d = world_pipeline(r, 0, 0, RHI_BLEND_ZERO);
+    p->sky_dome = rhi_pipeline_create(&d);
+    p->overlay = p->sky_dome;   /* same state: depth test, no write, no blend */
+    d = world_pipeline(r, 0, 1, RHI_BLEND_ONE_MINUS_SRC_ALPHA);
+    p->sky_cap = rhi_pipeline_create(&d);
+    p->vista = p->sky_cap;
+    p->blend = p->sky_cap;
+    d = world_pipeline(r, 1, 0, RHI_BLEND_ZERO);
+    p->opaque = rhi_pipeline_create(&d);
+    d = world_pipeline(r, 0, 1, RHI_BLEND_ONE);
+    p->add = rhi_pipeline_create(&d);
+}
+
+/* A world batch through the bound world pipeline. */
+void render_draw_batch(const N2Batch *b) {
+    rhi_cmd_bind_vertex_buffer(0, b->vbo, 0);
+    rhi_cmd_bind_index_buffer(b->ibo);
+    rhi_cmd_draw_indexed((uint32_t)b->index_count, 0);
+}
+
 void draw_batch(const N2Batch *b) {
     glBindBuffer(GL_ARRAY_BUFFER, rhi_gl_buffer_name(b->vbo));
     glEnableVertexAttribArray(0);
