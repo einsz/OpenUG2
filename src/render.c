@@ -38,6 +38,10 @@ int render_world_glows(const RProg *r,const N2Batch *batches,int count,
     ug2_copy(r->p->uMVP, mvp, 16);
     r->p->uAlpha = 1;r->p->uSoft = 0;
     ug2_vec3(r->p->uFogColor, 0, 0, 0);
+    GLint pipeline_depth_func; GLboolean pipeline_color_mask[4];
+    GLboolean pipeline_cull = gls_is_enabled(GL_CULL_FACE);
+    gls_get_integerv(GL_DEPTH_FUNC, &pipeline_depth_func);
+    gls_get_booleanv(GL_COLOR_WRITEMASK, pipeline_color_mask);
     rhi_cmd_bind_pipeline(pipelines_of(r)->world.add);   /* additive, depth tested, no write */
     int draws=0;
     for(int i=0;i<count;i++) {
@@ -53,6 +57,9 @@ int render_world_glows(const RProg *r,const N2Batch *batches,int count,
     ug2_copy(r->p->uFogColor, fog, 3);
     r->p->uEmissiveTex = 0;r->p->uUnlit = 0;
     glDepthMask(GL_TRUE);glDisable(GL_BLEND);
+    glDepthFunc((GLenum)pipeline_depth_func);
+    glColorMask(pipeline_color_mask[0], pipeline_color_mask[1], pipeline_color_mask[2], pipeline_color_mask[3]);
+    if (pipeline_cull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
     return draws;
 }
 
@@ -87,6 +94,10 @@ int render_district_lights(const RProg *r, GpuMesh *quad, RhiTexture texture,
     rt[0] /= rl; rt[1] /= rl;
     float up[3] = {rt[1]*ld[2], -rt[0]*ld[2],
                    rt[0]*ld[1] - rt[1]*ld[0]};
+    GLint pipeline_depth_func; GLboolean pipeline_color_mask[4];
+    GLboolean pipeline_cull = gls_is_enabled(GL_CULL_FACE);
+    gls_get_integerv(GL_DEPTH_FUNC, &pipeline_depth_func);
+    gls_get_booleanv(GL_COLOR_WRITEMASK, pipeline_color_mask);
     rhi_cmd_bind_pipeline(pipelines_of(r)->car.halo);   /* additive, depth tested, no write */
     rp.p->uUnlit = 0.0f; rp.p->uEmissiveTex = 1.0f;
     rp.p->uUseTex = 1.0f; rp.p->uSoft = 0.0f;
@@ -145,6 +156,9 @@ int render_district_lights(const RProg *r, GpuMesh *quad, RhiTexture texture,
     if (blend_before) glEnable(GL_BLEND); else glDisable(GL_BLEND);
     if (depth_before) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
     glDepthMask(depth_mask);
+    glDepthFunc((GLenum)pipeline_depth_func);
+    glColorMask(pipeline_color_mask[0], pipeline_color_mask[1], pipeline_color_mask[2], pipeline_color_mask[3]);
+    if (pipeline_cull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
     return draws;
 }
 
@@ -1725,6 +1739,10 @@ void render_wheel_mesh(const RProg *r, GpuMesh *mesh, RhiTexture texture, int mo
     }
     /* two-sided, depth tested; translucent slices blend without depth write */
     const UG2CarPipelines *cp = &pipelines_of(r)->car;
+    GLint pipeline_depth_func; GLboolean pipeline_color_mask[4];
+    GLboolean pipeline_cull = gls_is_enabled(GL_CULL_FACE);
+    gls_get_integerv(GL_DEPTH_FUNC, &pipeline_depth_func);
+    gls_get_booleanv(GL_COLOR_WRITEMASK, pipeline_color_mask);
     rhi_cmd_bind_pipeline(translucent ? cp->glass : cp->opaque[RHI_CULL_NONE]);
     render_draw_gpumesh(mesh);
     for(int i=0;i<10;i++)*loc[i] = saved[i];
@@ -1733,6 +1751,9 @@ void render_wheel_mesh(const RProg *r, GpuMesh *mesh, RhiTexture texture, int mo
     if(blend)glEnable(GL_BLEND);else glDisable(GL_BLEND);
     if(depth)glEnable(GL_DEPTH_TEST);else glDisable(GL_DEPTH_TEST);
     glDepthMask(mask);
+    glDepthFunc((GLenum)pipeline_depth_func);
+    glColorMask(pipeline_color_mask[0], pipeline_color_mask[1], pipeline_color_mask[2], pipeline_color_mask[3]);
+    if (pipeline_cull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
 }
 
 /* A split material slice shares its vertex pool with other surfaces. Only

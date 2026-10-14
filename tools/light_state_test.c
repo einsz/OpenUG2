@@ -154,7 +154,7 @@ int main(void) {
         bv[i].pos[0]=(i==1||i==2)?1:-1;bv[i].pos[1]=i>=2?1:-1;
         memset(bv[i].col,255,4);
     }
-    N2Batch batch={.index_count=6,.tex=tex[0]};
+    N2Batch batch={.index_count=6,.tex=light_tex};
     batch.vbo=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX,RHI_UPDATE_STATIC,sizeof bv,bv});
     batch.ibo=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_INDEX,RHI_UPDATE_STATIC,sizeof bi,bi});
     float identity[16],wrong[16];mat_trans(0,0,0,identity);mat_trans(100,100,100,wrong);
@@ -174,8 +174,19 @@ int main(void) {
         else assert(out[0]==0 && out[1]==0 && out[2]==0);
         assert(glGetError()==GL_NO_ERROR);
     }
+    /* Both helper layouts restore the caller's compare/cull/channel state. */
+    batch.unresolved=0;
+    for(int world=0;world<2;world++) {
+        glDepthFunc(GL_GREATER);glEnable(GL_CULL_FACE);glColorMask(GL_FALSE,GL_TRUE,GL_FALSE,GL_TRUE);
+        if(world)assert(render_world_glows(&r,&batch,1,identity)==1);
+        else assert(render_district_lights(&r,&quad,light_tex,lights,2,cam,look,mvp,10,1,1)==1);
+        GLint depth_func;GLboolean cm[4];
+        glGetIntegerv(GL_DEPTH_FUNC,&depth_func);glGetBooleanv(GL_COLOR_WRITEMASK,cm);
+        assert(depth_func==GL_GREATER && glIsEnabled(GL_CULL_FACE));
+        assert(!cm[0] && cm[1] && !cm[2] && cm[3]);
+    }
     rhi_buffer_destroy(batch.vbo);rhi_buffer_destroy(batch.ibo);
-    glDeleteTextures(2,tex); rhi_shader_destroy(r.shader);
+    rhi_texture_destroy(light_tex); glDeleteTextures(1,tex+1); rhi_shader_destroy(r.shader);
     rhi_buffer_destroy(quad.vbo); rhi_buffer_destroy(quad.nbo); rhi_buffer_destroy(quad.ibo);
     SDL_GL_DeleteContext(ctx); SDL_DestroyWindow(win); SDL_Quit();
     puts("light_state_test: PASS (vehicle footprints, soft shadow coverage, state isolation, depth occlusion, distance culling, additive fog, world-glow transform isolation)");

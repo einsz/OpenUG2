@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 #ifdef N2_GLES
 #  define RHI_GL_BUILD_BACKEND RHI_BACKEND_GLES2
@@ -131,8 +132,12 @@ RhiResult rhi_read_pixels(int32_t x, int32_t y, int32_t w, int32_t h,
     size_t bpp = format == RHI_READ_RGB8 ? 3 : format == RHI_READ_RGBA8 ? 4 : 0;
     if (!g_rhi.in_frame || !dst || !bpp || w <= 0 || h <= 0 || x < 0 || y < 0 ||
         w > g_rhi.frame_w - x || h > g_rhi.frame_h - y) return RHI_ERR_INVALID;
-    if (!stride) stride = (size_t)w * bpp;
-    else if (stride < (size_t)w * bpp) return RHI_ERR_INVALID;
+    size_t limit = (size_t)PTRDIFF_MAX;
+    if ((size_t)w > limit / 4 / (size_t)h) return RHI_ERR_INVALID;
+    size_t row_bytes = (size_t)w * bpp;
+    if (!stride) stride = row_bytes;
+    if (stride < row_bytes || (size_t)(h - 1) > (limit - row_bytes) / stride)
+        return RHI_ERR_INVALID;
     unsigned char *rgba = malloc((size_t)w * h * 4);
     if (!rgba) return RHI_ERR_INVALID;
     glReadPixels(x, g_rhi.frame_h - y - h, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
@@ -269,6 +274,8 @@ void rhi_buffer_destroy(RhiBuffer buf) {
     glDeleteBuffers(1, &b->name);
     b->name = 0;
     b->size = 0;
+    /* Retire the slot before its generation wraps and revives stale handles. */
+    if (b->generation == UINT8_MAX) return;
     b->generation++;
     g_buffers.free_list[g_buffers.free_count++] = buf.id & RHI_GL_SLOT_MASK;
 }
@@ -363,6 +370,8 @@ RhiTexture rhi_texture_create(const RhiTextureDesc *desc) {
         fprintf(stderr, "rhi: texture_create: invalid description\n");
         return out;
     }
+    RhiSampler sampler = rhi_sampler_create(&k_default_sampler);
+    if (!sampler.id) return out;
     uint32_t slot = texture_slot_alloc();
     if (!slot) { fprintf(stderr, "rhi: texture_create: out of handles\n"); return out; }
     RhiGlTexture *t = &g_textures.slots[slot - 1];
@@ -378,7 +387,7 @@ RhiTexture rhi_texture_create(const RhiTextureDesc *desc) {
     t->format = desc->format;
     t->width = desc->width;
     t->height = desc->height;
-    t->sampler = rhi_sampler_create(&k_default_sampler);
+    t->sampler = sampler;
     t->wrap_s = t->wrap_t = GL_REPEAT;               /* GL's initial parameters */
     t->min_filter = GL_NEAREST_MIPMAP_LINEAR;
     t->mag_filter = GL_LINEAR;
@@ -424,6 +433,8 @@ void rhi_texture_destroy(RhiTexture tex) {
     if (!t) return;
     glDeleteTextures(1, &t->name);
     t->name = 0;
+    /* Retire the slot before its generation can alias an old handle. */
+    if (t->generation == UINT8_MAX) return;
     t->generation++;
     g_textures.free_list[g_textures.free_count++] = tex.id & RHI_GL_SLOT_MASK;
 }
@@ -584,7 +595,7 @@ RhiResult rhi_param_layout_check(const RhiParamLayout *l) {
             fprintf(stderr, "rhi: %s: %s: std140 arrays must be vec4 or mat4\n", name, f->name);
             return RHI_ERR_INVALID;
         }
-        uint32_t end = f->offset + param_size(f->type) * f->count;
+        uint64_t end = (uint64_t)f->offset + (uint64_t)param_size(f->type) * f->count;
         if (f->offset % param_align(f->type) || end > l->size || end < f->offset) {
             fprintf(stderr, "rhi: %s: %s: offset %u breaks std140 alignment or the block size\n",
                     name, f->name, (unsigned)f->offset);
@@ -592,7 +603,7 @@ RhiResult rhi_param_layout_check(const RhiParamLayout *l) {
         }
         for (uint32_t j = 0; j < i; j++) {
             const RhiParamField *g = &l->fields[j];
-            uint32_t gend = g->offset + param_size(g->type) * g->count;
+            uint64_t gend = (uint64_t)g->offset + (uint64_t)param_size(g->type) * g->count;
             if (f->offset < gend && g->offset < end) {
                 fprintf(stderr, "rhi: %s: %s overlaps %s\n", name, f->name, g->name);
                 return RHI_ERR_INVALID;
@@ -641,7 +652,7 @@ RhiShader rhi_shader_create(const RhiShaderDesc *desc) {
     const char *label = desc->label ? desc->label : "unnamed";
     int slot = -1;
     for (uint32_t i = 0; i < RHI_GL_MAX_SHADERS && slot < 0; i++)
-        if (!g_shaders.program[i]) slot = (int)i;
+        if (!g_shaders.program[i] && g_shaders.generation[i] != UINT8_MAX) slot = (int)i;
     if (slot < 0) { fprintf(stderr, "rhi: shader_create: out of handles\n"); return out; }
     GLuint v = shader_compile(GL_VERTEX_SHADER, desc->vertex_source, label);
     GLuint f = shader_compile(GL_FRAGMENT_SHADER, desc->fragment_source, label);
@@ -743,7 +754,7 @@ void rhi_shader_destroy(RhiShader shader) {
     glDeleteProgram(g_shaders.program[i]);
     param_blocks_free(i);
     g_shaders.program[i] = 0;
-    g_shaders.generation[i]++;
+    if (g_shaders.generation[i] != UINT8_MAX) g_shaders.generation[i]++;
 }
 
 /* ------------------------------------------------------------------------------ */
@@ -798,6 +809,11 @@ static int pipeline_desc_equal(const RhiPipelineDesc *a, const RhiPipelineDesc *
            (a->color_write & 0xF) == (b->color_write & 0xF);
 }
 
+static uint32_t vertex_format_bytes(RhiVertexFormat format) {
+    static const uint32_t bytes[] = {0, 8, 12, 16, 4};
+    return format >= RHI_VERTEX_FLOAT2 && format <= RHI_VERTEX_UNORM8X4 ? bytes[format] : 0;
+}
+
 RhiPipeline rhi_pipeline_create(const RhiPipelineDesc *desc) {
     RhiPipeline out = {0};
     if (!desc || shader_slot(desc->shader) < 0 ||
@@ -809,13 +825,18 @@ RhiPipeline rhi_pipeline_create(const RhiPipelineDesc *desc) {
         fprintf(stderr, "rhi: pipeline_create: invalid description\n");
         return out;
     }
+    uint32_t locations = 0;
     for (uint32_t i = 0; i < desc->vertex.attrib_count; i++) {
         const RhiVertexAttrib *a = &desc->vertex.attribs[i];
-        if (a->stream >= RHI_MAX_VERTEX_STREAMS || a->format < RHI_VERTEX_FLOAT2 ||
-            a->format > RHI_VERTEX_UNORM8X4) {
+        uint32_t bytes = vertex_format_bytes(a->format);
+        if (a->stream >= RHI_MAX_VERTEX_STREAMS || !bytes ||
+            a->location >= RHI_MAX_VERTEX_ATTRIBS || (locations & (1u << a->location)) ||
+            desc->vertex.stride[a->stream] > INT_MAX ||
+            (uint64_t)a->offset + bytes > (desc->vertex.stride[a->stream] ? desc->vertex.stride[a->stream] : bytes)) {
             fprintf(stderr, "rhi: pipeline_create: invalid vertex attribute %u\n", (unsigned)i);
             return out;
         }
+        locations |= 1u << a->location;
     }
     for (uint32_t i = 0; i < g_pipelines.count; i++)
         if (pipeline_desc_equal(&g_pipelines.desc[i], desc)) { out.id = i + 1; return out; }
@@ -851,6 +872,11 @@ void rhi_cmd_bind_pipeline(RhiPipeline pipeline) {
         return;
     }
     const RhiPipelineDesc *d = &g_pipelines.desc[pipeline.id - 1];
+    if (shader_slot(d->shader) < 0) {
+        fprintf(stderr, "rhi: bind_pipeline: destroyed shader\n");
+        g_cmd.pipeline = -1;
+        return;
+    }
     g_cmd.pipeline = (int)pipeline.id - 1;
     GLint current = 0;
     GLuint program = rhi_gl_shader_program(d->shader);
@@ -911,15 +937,38 @@ void rhi_cmd_draw_indexed(uint32_t index_count, uint32_t first_index) {
         return;
     }
     const RhiPipelineDesc *d = &g_pipelines.desc[g_cmd.pipeline];
+    if (shader_slot(d->shader) < 0) {
+        fprintf(stderr, "rhi: draw_indexed: destroyed shader\n");
+        g_cmd.pipeline = -1;
+        return;
+    }
+    if (!index_count) return;
+    const RhiGlBuffer *index = buffer_lookup(g_cmd.index, "draw_indexed");
+    if (!index || index->target != GL_ELEMENT_ARRAY_BUFFER || index_count > INT_MAX ||
+        (uint64_t)first_index * 2u > PTRDIFF_MAX || first_index > index->size / 2u ||
+        index_count > index->size / 2u - first_index) {
+        fprintf(stderr, "rhi: draw_indexed: invalid index buffer or range\n");
+        return;
+    }
+    GLuint names[RHI_MAX_VERTEX_STREAMS] = {0};
+    for (uint32_t i = 0; i < d->vertex.attrib_count; i++) {
+        const RhiVertexAttrib *a = &d->vertex.attribs[i];
+        if (!g_cmd.vertex[a->stream].id) continue; /* disabled constant attribute */
+        const RhiGlBuffer *b = buffer_lookup(g_cmd.vertex[a->stream], "draw_indexed");
+        uint64_t off = (uint64_t)g_cmd.vertex_offset[a->stream] + a->offset;
+        if (!b || b->target != GL_ARRAY_BUFFER || off > PTRDIFF_MAX || off > b->size ||
+            vertex_format_bytes(a->format) > b->size - (size_t)off) {
+            fprintf(stderr, "rhi: draw_indexed: invalid vertex buffer or range\n");
+            return;
+        }
+        names[a->stream] = b->name;
+    }
     int bound_stream = -1;
     for (uint32_t i = 0; i < d->vertex.attrib_count; i++) {
         const RhiVertexAttrib *a = &d->vertex.attribs[i];
-        if (!g_cmd.vertex[a->stream].id) {   /* no buffer: the attribute's current value */
-            glDisableVertexAttribArray(a->location);
-            continue;
-        }
+        if (!names[a->stream]) { glDisableVertexAttribArray(a->location); continue; }
         if ((int)a->stream != bound_stream) {
-            glBindBuffer(GL_ARRAY_BUFFER, rhi_gl_buffer_name(g_cmd.vertex[a->stream]));
+            glBindBuffer(GL_ARRAY_BUFFER, names[a->stream]);
             bound_stream = (int)a->stream;
         }
         static const GLint comps[] = { 0, 2, 3, 4, 4 };
@@ -930,7 +979,7 @@ void rhi_cmd_draw_indexed(uint32_t index_count, uint32_t first_index) {
                               a->format == RHI_VERTEX_UNORM8X4 ? GL_TRUE : GL_FALSE,
                               (GLsizei)d->vertex.stride[a->stream], (const void *)off);
     }
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, rhi_gl_buffer_name(g_cmd.index));
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index->name);
     rhi_gl_flush_params();
     glDrawElements(d->primitive == RHI_PRIMITIVE_LINES ? GL_LINES : GL_TRIANGLES,
                    (GLsizei)index_count, GL_UNSIGNED_SHORT,
