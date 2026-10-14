@@ -346,7 +346,8 @@ typedef enum RhiBlendFactor {
 
 /* Everything a draw needs besides its buffers, textures and parameters.
  * Viewport and scissor are not part of it. Blending is "add" (src*f + dst*f).
- * The same stencil state applies to both faces. Not covered yet: depth bias.
+ * The same stencil state applies to both faces. There is no depth bias yet:
+ * binding a pipeline turns it off (GL: polygon offset fill).
  * Shader attributes that are not in the vertex layout read their default
  * value (no array). */
 typedef struct RhiPipelineDesc {
@@ -383,7 +384,10 @@ void rhi_cmd_bind_pipeline(RhiPipeline pipeline);
 /* {0} disables the stream's attributes; the caller supplies their constants. */
 void rhi_cmd_bind_vertex_buffer(uint32_t stream, RhiBuffer buffer, uint32_t offset);
 void rhi_cmd_bind_index_buffer(RhiBuffer buffer);           /* 16-bit indices */
-/* Texture for shader sampler unit `slot`, sampled with the texture's sampler. */
+/* Texture for shader sampler unit `slot` (< RHI_TEXTURE_SLOTS), sampled with
+ * the texture's sampler. Creating, uploading or copying into a texture does
+ * not change what is bound. */
+#define RHI_TEXTURE_SLOTS 7u
 void rhi_cmd_bind_texture(uint32_t slot, RhiTexture texture);
 /* Invalid resources or byte ranges are skipped before GL setup. Callers must
  * ensure index values reference valid vertices; the backend does not scan them. */
@@ -404,8 +408,8 @@ typedef struct RhiAttachment {
     int32_t    face;      /* cube face 0..5, 0 for 2D */
 } RhiAttachment;
 
-/* Rendering into textures. Viewport becomes the attachment size and the
- * scissor test is off. Passes do not nest; the main target is not a pass yet.
+/* Rendering into textures. Viewport becomes the attachment size, the
+ * scissor test is off and the output is not dithered. Passes do not nest; the main target is not a pass yet.
  * GL: clearing writes all colour channels / depth regardless of the last
  * pipeline's write masks. */
 typedef struct RhiPassDesc {
@@ -435,6 +439,10 @@ RhiResult rhi_cmd_copy_main_to_texture(RhiTexture texture, int32_t x, int32_t y,
  * write masks do not apply (they are restored afterwards).
  * Only inside a frame and outside a pass. */
 RhiResult rhi_cmd_clear_main(const float color[4], float depth);
+
+/* The viewport the next draw uses: x, y, width, height in pixels from the
+ * bottom left of the target. */
+void rhi_viewport(int32_t viewport[4]);
 
 /* The state the next draw uses when no pipeline or texture is bound in
  * between: the bound pipeline and its raster state, the texture on sampler

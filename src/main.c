@@ -5999,8 +5999,6 @@ int main(int argc, char **argv) {
         } else printf("player HUD: initialisation failed; running without it\n");
     }
 
-    glEnable(GL_DEPTH_TEST);
-    glDepthFunc(GL_LEQUAL);   /* coplanar re-draws (last write wins) pass cleanly */
     /* Stock showroom paint: metallic silver (the files carry no chosen
        colour; badges/vinyls overlay as decals). The debug pane's paint
        override still allows any colour live. */
@@ -8706,8 +8704,6 @@ int main(int argc, char **argv) {
                 render_draw_batch(&skybatch[k]);
                 g_dbg.drawn++; skydraws++;
             }
-            glDisable(GL_BLEND);
-            glDepthMask(GL_TRUE);
             rp.p->uEmissiveTex = 0.0f;
             rp.p->uFogDensity = g_dbg.fog_density;
             rp.p->uUseTex = 0.0f;
@@ -8840,8 +8836,6 @@ int main(int argc, char **argv) {
                 g_dbg.drawn++; vistadraws++; vistadrawn++; vistamesh += b->nmesh;
             }
             /* restore every piece of state the pass touched */
-            glDepthMask(GL_TRUE);
-            glDisable(GL_BLEND);
             rp.p->uVista = 0.0f;
             rp.p->uVColor = 0.0f;
             rp.p->uFogDensity = g_dbg.fog_density;
@@ -8997,9 +8991,6 @@ int main(int argc, char **argv) {
                 }
             }
             rp.p->uTextureAlpha = 0.0f;
-            glDepthMask(GL_TRUE);
-            glDisable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);   /* restore the ordinary default */
         }
         if (nrep) {   /* diagnostic overlay: where the restored geometry is */
             rp.p->uUseTex = 0.0f;
@@ -9007,7 +8998,6 @@ int main(int argc, char **argv) {
             ug2_vec3(rp.p->uColor, 1.0f, 0.15f, 0.85f);
             rhi_cmd_bind_pipeline(wpipe.overlay);
             for (int k = 0; k < nrep; k++) { render_draw_batch(&rbatch[k]); g_dbg.drawn++; }
-            glDepthMask(GL_TRUE);
             rp.p->uUnlit = 0.0f;
         }
         rp.p->uVColor = 0.0f;   /* per-car prelight is set by each car mesh */
@@ -9054,7 +9044,6 @@ int main(int argc, char **argv) {
             }
             rp.p->uAlpha = 1.0f; rp.p->uUnlit = 0.0f;
             ug2_copy(rp.p->uMVP, MVP, 16);
-            glDepthMask(GL_TRUE); glDisable(GL_BLEND);
         }
 
         pf_mark(PF_WORLD_DRAW);
@@ -9092,7 +9081,6 @@ int main(int argc, char **argv) {
                 g_dbg.drawn++;
             }
             rp.p->uAlpha = 1.0f; rp.p->uSoft = 0.0f;
-            glDepthMask(GL_TRUE); glDisable(GL_BLEND);
 
             /* neon underglow: an additive coloured pool on the asphalt under
                the chassis. Additive (not alpha) so it reads as emitted light
@@ -9113,7 +9101,6 @@ int main(int argc, char **argv) {
                 render_draw_gpumesh(&quad); g_dbg.drawn++;
                 rp.p->uAlpha = 1.0f; rp.p->uSoft = 0.0f;
                 ug2_copy(rp.p->uMVP, MVP, 16);
-                glDepthMask(GL_TRUE); glDisable(GL_BLEND);
             }
         }
 
@@ -9138,7 +9125,7 @@ int main(int argc, char **argv) {
                 ug2_copy(rp.p->uMVP, MV, 16); render_draw_gpumesh(&quad);
                 g_dbg.drawn++;
             }
-            rp.p->uAlpha = 1.0f; glDepthMask(GL_TRUE); glDisable(GL_BLEND);
+            rp.p->uAlpha = 1.0f;
         }
 
         /* car: solid-shaded, positioned + banked to the road (up = render_up) */
@@ -9258,7 +9245,6 @@ int main(int argc, char **argv) {
                since Phase 6: none of the lit-path work (gloss, badges,
                reflections) was ever reaching the screen. */
             rp.p->uUnlit = 0.0f; rp.p->uSoft = 0.0f;
-            if (g_dbg.car_cull) { glEnable(GL_CULL_FACE); glCullFace(GL_BACK); }
             /* per-mesh: each part wears its own bound texture (body/wheel/...);
                parts with no in-TPK texture get a sensible flat colour by class. */
             for (int i = 0; !player_hidden && i < ncar; i++) {
@@ -9409,17 +9395,9 @@ int main(int argc, char **argv) {
                 if (insp_on && g_dbg.insp_wire)
                     rhi_cmd_set_wireframe(1);
                 if (insp_on && g_dbg.insp_flipn) rp.p->uFlipN = 1.0f;
-                if (insp_on && g_dbg.insp_cull) {
-                    /* culling is OFF engine-wide, so glFrontFace alone would be
-                       inert; enable it here so winding actually has an effect
-                       and the inversion question becomes testable. */
-                    glEnable(GL_CULL_FACE);
-                    glCullFace(g_dbg.insp_cull == 1 ? GL_BACK : GL_FRONT);
-                }
 #endif
                 if (mount == N2_MOUNT_FRONT_BRAKE || mount == N2_MOUNT_REAR_BRAKE) {
                     int first = mount == N2_MOUNT_FRONT_BRAKE ? 0 : 2;
-                    glDisable(GL_CULL_FACE); /* the opposite side mirrors Y */
                     for (int k=first;k<first+2;k++) {
                         float MB[16]; mat_mul(MVPwheel,brakeT[k],MB);
                         ug2_copy(rp.p->uMVP, MB, 16);
@@ -9428,7 +9406,6 @@ int main(int argc, char **argv) {
                     }
                     ug2_copy(rp.p->uMVP, MVPc, 16);
                     render_model(&rp,Model);
-                    if (g_dbg.car_cull) glEnable(GL_CULL_FACE);
                 } else {
                     RhiCullMode cull = g_dbg.car_cull ? RHI_CULL_BACK : RHI_CULL_NONE;
 #ifdef DEBUG_UI
@@ -9442,7 +9419,6 @@ int main(int argc, char **argv) {
                 if (insp_on && g_dbg.insp_wire) rhi_cmd_set_wireframe(0);
                 if (insp_on && g_dbg.insp_highlight) rp.p->uUnlit = 0.0f;
                 if (insp_on && g_dbg.insp_flipn) rp.p->uFlipN = 0.0f;
-                if (insp_on && g_dbg.insp_cull) { if (g_dbg.car_cull) glCullFace(GL_BACK); else glDisable(GL_CULL_FACE); }
 #endif
             }
             rp.p->uUnlit = 0.0f;
@@ -9450,7 +9426,6 @@ int main(int argc, char **argv) {
             rp.p->uVColor = 0.0f;
             /* Finish opaque opponents before player glass/blended wheels: the
                latter do not write depth and cannot occlude a later opaque draw. */
-            glDisable(GL_CULL_FACE);   /* opponents were already two-sided */
             pf_mark(PF_PLAYER_DRAW); pf_gpu(pf_frame,1);
             /* AI rivals use the same parsed material categories as the player.
                Their geometry is the initial car snapshot, so its stance and
@@ -9610,7 +9585,6 @@ int main(int argc, char **argv) {
                         render_draw_gpumesh(&draw_gpu[i]);g_dbg.drawn++;
                     }
                     rp.p->uAlpha = 1.0f;rp.p->uFresnel = 0.0f;
-                    glDepthMask(GL_TRUE);glDisable(GL_BLEND);
                 }
                 ug2_vec3(rp.p->uEmissive, 0, 0, 0);
                 rp.p->uVColor = 0.0f;
@@ -9651,9 +9625,8 @@ int main(int argc, char **argv) {
 #endif
                 }
                 rp.p->uUnlit = 0.0f;rp.p->uAlpha = 1.0f;
-                rp.p->uFresnel = 0.0f;glDepthMask(GL_TRUE);glDisable(GL_BLEND);
+                rp.p->uFresnel = 0.0f;
             }
-            glDisable(GL_CULL_FACE);
             rp.p->uClearcoat = 0.0f;
             /* Headlight/taillight bloom: a soft camera-facing additive halo over
                each lens cluster -- night-time light diffusion the flat lens mesh
@@ -9719,7 +9692,6 @@ int main(int argc, char **argv) {
                 }
                 rp.p->uAlpha = 1.0f; rp.p->uSoft = 0.0f; rp.p->uUnlit = 0.0f;
                 ug2_copy(rp.p->uMVP, MVPc, 16);
-                glDepthMask(GL_TRUE); glDisable(GL_BLEND);
             }
             /* Keep authored wheels and material routing at every speed.
                ponytail: no motion blur until it preserves the selected wheel;
@@ -9905,7 +9877,6 @@ int main(int argc, char **argv) {
             /* restore EVERYTHING this pass set: uUnlit and uColor leaking out of
                here is what painted the neon pass red (see the glow pass below). */
             rp.p->uUnlit = 0.0f; ug2_vec3(rp.p->uColor, 1.0f, 1.0f, 1.0f);
-            glDepthMask(GL_TRUE); glDisable(GL_BLEND);
         }
 
         pf_mark(PF_AI_LAMPS);
@@ -9930,7 +9901,6 @@ int main(int argc, char **argv) {
             }
             rp.p->uAlpha = 1.0f; rp.p->uSoft = 0.0f;
             rp.p->uUnlit = 0.0f; ug2_copy(rp.p->uMVP, MVP, 16);
-            glDepthMask(GL_TRUE); glEnable(GL_DEPTH_TEST); glDisable(GL_BLEND);
         }
 
         /* drift smoke: camera-facing billboards, light + fading, additive-ish */
@@ -9956,7 +9926,7 @@ int main(int argc, char **argv) {
                 render_draw_gpumesh(&quad);
                 g_dbg.drawn++;
             }
-            rp.p->uAlpha = 1.0f; rp.p->uSoft = 0.0f; glDepthMask(GL_TRUE); glDisable(GL_BLEND);
+            rp.p->uAlpha = 1.0f; rp.p->uSoft = 0.0f;
         }
 
         /* Authored point lights are render-only; gameplay owns no part of this pass. */
@@ -10118,7 +10088,6 @@ int main(int argc, char **argv) {
                 MMDOT(carpos[0],carpos[1], 0.013f, 0.95f,0.15f,0.15f);
                 #undef MMDOT
             }
-            glEnable(GL_DEPTH_TEST);
         }
 
         /* race banners: 3-2-1 countdown, then a finish banner + place pips */
@@ -10197,7 +10166,6 @@ int main(int argc, char **argv) {
             ug2_vec3(rp.p->uColor, 1, 1, 1);
             draw_text(&quad, &rp, b, -text_width(b,0.05f)/2, 0.14f, 0.05f, 0.075f);
         }
-        glEnable(GL_DEPTH_TEST);
 
         g_dbg.nav = world.city.nav; g_dbg.nnav = world.city.nnav;
         g_dbg.navedge = world.city.navedge; g_dbg.nnavedge = world.city.nnavedge;
