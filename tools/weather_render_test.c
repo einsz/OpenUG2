@@ -441,7 +441,7 @@ int main(void) {
     reflection_test(&r);
     car_render_test(&r);
     collision_wall_render_test(&r);
-    glDeleteProgram(r.prog);SDL_GL_DeleteContext(ctx);SDL_DestroyWindow(win);SDL_Quit();
+    rhi_shader_destroy(r.shader);SDL_GL_DeleteContext(ctx);SDL_DestroyWindow(win);SDL_Quit();
     puts("weather: screen droplets/aspect, camera cover, conservative culling, wet materials/reflections and GL state passed");
     return 0;
 }

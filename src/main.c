@@ -5948,8 +5948,9 @@ int main(int argc, char **argv) {
     /* F3 debug pipeline: wrap the existing world VBOs/IBOs in WorldMeshBatch so
        render_world_map can draw them with the prelight/normal/wireframe shader.
        Shared GL handles (owned by wbatch) -> no extra VRAM, no separate upload. */
-    GLuint dbgprog = world_debug_program_load("src/world_debug_120.vert",
-                                              "src/world_debug_120.frag");
+    RhiShader dbgshader = world_debug_shader_load("src/world_debug_120.vert",
+                                                  "src/world_debug_120.frag");
+    GLuint dbgprog = rhi_gl_shader_program(dbgshader);
     WorldMeshBatch *wmbatch = world2 ? active_resident->resources.debug_batches
         : (WorldMeshBatch *)calloc((size_t)(nbatch > 0 ? nbatch : 1),
                                    sizeof *wmbatch);
@@ -11306,7 +11307,7 @@ int main(int argc, char **argv) {
     world_props_reset();
     free(aipath.xy);
     free(ai_drive_path.xy);
-    if (dbgprog) glDeleteProgram(dbgprog);
+    rhi_shader_destroy(dbgshader);
     if (adev) SDL_CloseAudioDevice(adev);
 #ifdef OPENUG2_MENU
     fed_free(frontend_draw);

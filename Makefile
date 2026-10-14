@@ -38,11 +38,18 @@ HDRS := src/world_collision_rules.h src/world_collision.h src/race_log.h src/rac
 # with no hand-maintained string copy. Relative input paths give stable array
 # names src_world_debug_120_vert / _frag (+ *_len). Regenerated when either
 # shader changes; a build-time artifact (gitignored, not committed).
-GEN := src/generated_world_debug_shaders.h
-$(GEN): src/world_debug_120.vert src/world_debug_120.frag
+GEN := src/generated_world_debug_shaders.h src/generated_shaders.h
+src/generated_world_debug_shaders.h: src/world_debug_120.vert src/world_debug_120.frag
 	@echo "/* AUTO-GENERATED from world_debug_120.vert/.frag by make -- do not edit */" > $@
 	@xxd -i src/world_debug_120.vert >> $@
 	@xxd -i src/world_debug_120.frag >> $@
+# Renderer shader sources (src/shaders/), embedded the same way: arrays named
+# src_shaders_<file>_<ext> (+ *_len), not NUL-terminated. Made static const so
+# more than one file can include the header.
+SHADERS := $(sort $(wildcard src/shaders/*.vert src/shaders/*.frag))
+src/generated_shaders.h: $(SHADERS)
+	@echo "/* AUTO-GENERATED from src/shaders/ by make -- do not edit */" > $@
+	@for f in $(SHADERS); do xxd -i $$f | sed 's/^unsigned/static const unsigned/' >> $@; done
 
 nfsu2: $(SRC) $(HDRS) $(GEN)
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) $(SRC) -o nfsu2 $(SDL_LIBS) $(GL_LIBS) -lz -lm
@@ -113,7 +120,7 @@ car-material-test: tools/car_material_test.c src/nfsu2.h src/car_config.h src/ca
 
 # HUD maths only: no GL calls are executed, but hud.c still references the GL
 # symbols, so the link needs the same libraries as the engine.
-hud-test: tools/hud_test.c src/hud.c src/hud.h src/hud_host.h src/hud_asset.h src/hud_baseline.h src/hud_texture.h src/audio.h src/render.c src/render.h src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/nfsu2.h
+hud-test: tools/hud_test.c src/hud.c src/hud.h src/hud_host.h src/hud_asset.h src/hud_baseline.h src/hud_texture.h src/audio.h src/render.c src/render.h src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/nfsu2.h src/generated_shaders.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/hud_test.c src/hud.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c \
 		-o build/hud_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
@@ -124,7 +131,7 @@ world-render-test: tools/world_render_test.c src/nfsu2.h
 	$(CC) $(CFLAGS) -Isrc tools/world_render_test.c -o build/world_render_test -lm
 	./build/world_render_test
 
-world-resident-test: tools/world_resident_test.c src/world_resident.c src/world.c src/resource.c src/world_instance.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c $(HDRS)
+world-resident-test: tools/world_resident_test.c src/world_resident.c src/world.c src/resource.c src/world_instance.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c $(HDRS) src/generated_shaders.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -DWORLD_RESIDENT_TESTING -Isrc tools/world_resident_test.c src/world_resident.c src/world.c src/resource.c src/world_instance.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c -o build/world_resident_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
 	./build/world_resident_test
@@ -141,12 +148,12 @@ district-collision-test: tools/district_collision_test.c src/physics.c src/physi
 	$(CC) $(CFLAGS) -Isrc tools/district_collision_test.c src/physics.c -o build/district_collision_test -lm
 	./build/district_collision_test
 
-ground-motion-test: tools/ground_motion_test.c src/ground_motion.h src/world.c src/resource.c src/world_instance.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c $(HDRS)
+ground-motion-test: tools/ground_motion_test.c src/ground_motion.h src/world.c src/resource.c src/world_instance.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c $(HDRS) src/generated_shaders.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/ground_motion_test.c src/world.c src/resource.c src/world_instance.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c -o build/ground_motion_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
 	./build/ground_motion_test
 
-world-collision-test: tools/world_collision_test.c src/world.c src/resource.c src/world_instance.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c $(HDRS)
+world-collision-test: tools/world_collision_test.c src/world.c src/resource.c src/world_instance.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c $(HDRS) src/generated_shaders.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/world_collision_test.c src/world.c src/resource.c src/world_instance.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c -o build/world_collision_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
 	./build/world_collision_test
@@ -156,12 +163,12 @@ traffic-heatmap-test: tools/traffic_heatmap_test.c src/traffic_heatmap.h
 	$(CC) $(CFLAGS) -Isrc tools/traffic_heatmap_test.c -o build/traffic_heatmap_test -lm
 	./build/traffic_heatmap_test
 
-ai-drive-test: tools/ai_drive_test.c src/ai.c src/world.c src/resource.c src/world_instance.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c $(HDRS)
+ai-drive-test: tools/ai_drive_test.c src/ai.c src/world.c src/resource.c src/world_instance.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c $(HDRS) src/generated_shaders.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/ai_drive_test.c src/ai.c src/world.c src/resource.c src/world_instance.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c -o build/ai_drive_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
 	./build/ai_drive_test
 
-fence-impact-test: tools/fence_impact_test.c src/ai.c src/world.c src/resource.c src/world_instance.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c $(HDRS)
+fence-impact-test: tools/fence_impact_test.c src/ai.c src/world.c src/resource.c src/world_instance.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c $(HDRS) src/generated_shaders.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/fence_impact_test.c src/ai.c src/world.c src/resource.c src/world_instance.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c -o build/fence_impact_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
 	./build/fence_impact_test
@@ -173,13 +180,13 @@ race-log-test: tools/race_log_test.c src/race_log.h
 	$(CC) $(CFLAGS) -Isrc tools/race_log_test.c -o build/race_log_test
 	./build/race_log_test
 
-race-ai-test: tools/race_ai_test.c src/ai.c src/world.c src/resource.c src/world_instance.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c $(HDRS)
+race-ai-test: tools/race_ai_test.c src/ai.c src/world.c src/resource.c src/world_instance.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c $(HDRS) src/generated_shaders.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/race_ai_test.c src/ai.c src/world.c src/resource.c src/world_instance.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c -o build/race_ai_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
 	./build/race_ai_test
 
 # Local asset check: optional --drive [event-id] runs normal physics/contact.
-race-events-check: tools/race_events_check.c src/ai.c src/world.c src/resource.c src/world_instance.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c $(HDRS)
+race-events-check: tools/race_events_check.c src/ai.c src/world.c src/resource.c src/world_instance.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c $(HDRS) src/generated_shaders.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/race_events_check.c src/ai.c src/world.c src/resource.c src/world_instance.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c -o build/race_events_check $(SDL_LIBS) $(GL_LIBS) -lz -lm
 
@@ -196,7 +203,7 @@ route-membership-audit: tools/m160_route_audit.c src/world_group_reader.h src/wo
 	@mkdir -p build
 	$(CC) $(CFLAGS) tools/m160_route_audit.c -o build/m160_route_audit -lm
 
-wheel-render-test: tools/wheel_render_test.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/render.h src/nfsu2.h
+wheel-render-test: tools/wheel_render_test.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/render.h src/nfsu2.h src/generated_shaders.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/wheel_render_test.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c -o build/wheel_render_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
 	./build/wheel_render_test
@@ -213,12 +220,12 @@ modification-test: wheel-reload-test
 .PHONY: modification-test
 .PHONY: body-kit-test
 
-light-state-test: tools/light_state_test.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/render.h src/nfsu2.h
+light-state-test: tools/light_state_test.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/render.h src/nfsu2.h src/generated_shaders.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/light_state_test.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c -o build/light_state_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
 	./build/light_state_test
 
-world-texture-test: tools/world_texture_test.c src/world.c src/resource.c src/world_instance.c src/world_resident.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c $(HDRS) src/world.h
+world-texture-test: tools/world_texture_test.c src/world.c src/resource.c src/world_instance.c src/world_resident.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c $(HDRS) src/world.h src/generated_shaders.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/world_texture_test.c src/world.c src/resource.c src/world_instance.c src/world_resident.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c -o build/world_texture_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
 	./build/world_texture_test
@@ -329,14 +336,14 @@ clean:
 .PHONY: race-ai-test race-events-check run normal menu gles clean debug world-instance-test world-cli-test car-material-test world-render-test world-resident-test district-collision-test wheel-render-test light-state-test world-texture-test world-group-test world-group-audit ai-drive-test ai-drive-cli-test resolution-cli-test render-resolution-test
 
 .PHONY: headlight-render-test
-headlight-render-test: tools/headlight_render_test.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/render.h src/nfsu2.h
+headlight-render-test: tools/headlight_render_test.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/render.h src/nfsu2.h src/generated_shaders.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/headlight_render_test.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c -o build/headlight_render_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
 	./build/headlight_render_test
 
 .PHONY: traffic-heatmap-test
 
-weather-render-test: tools/weather_render_test.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/render.h src/nfsu2.h
+weather-render-test: tools/weather_render_test.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/render.h src/nfsu2.h src/generated_shaders.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/weather_render_test.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c -o build/weather_render_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
 	./build/weather_render_test
@@ -371,7 +378,7 @@ hud-spec-test: hud-asset-probe
 
 hud-asset-probe: build/hud_asset_probe
 
-build/hud_asset_probe: src/tex_override.c tools/hud_asset_probe.c src/hud.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/hud.h src/hud_asset.h src/hud_texture.h src/hud_baseline.h src/render.h src/nfsu2.h
+build/hud_asset_probe: src/tex_override.c tools/hud_asset_probe.c src/hud.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/hud.h src/hud_asset.h src/hud_texture.h src/hud_baseline.h src/render.h src/nfsu2.h src/generated_shaders.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/hud_asset_probe.c src/hud.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c -o build/hud_asset_probe $(SDL_LIBS) $(GL_LIBS) -lz -lm
 
@@ -383,9 +390,16 @@ rhi-readback-test: tools/rhi_readback_test.c src/rhi_gl.c src/rhi_gl_state.c src
 .PHONY: rhi-readback-test
 
 # The test includes rhi_gl.c to inject allocator failure into the real backend.
-rhi-sampler-test: tools/rhi_sampler_test.c src/render.c src/rhi_gl.c src/rhi_gl_state.c src/tex_override.c $(HDRS)
+rhi-sampler-test: tools/rhi_sampler_test.c src/render.c src/rhi_gl.c src/rhi_gl_state.c src/tex_override.c $(HDRS) $(GEN)
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/rhi_sampler_test.c src/render.c src/rhi_gl_state.c src/tex_override.c -o build/rhi_sampler_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
 	./build/rhi_sampler_test
 
 .PHONY: rhi-sampler-test
+
+# Shader lifetime: synthetic GLSL only, no retail assets.
+.PHONY: rhi-shader-test
+rhi-shader-test: tools/rhi_shader_test.c src/rhi.h src/rhi_gl.h src/rhi_gl_state.h src/rhi_gl.c src/rhi_gl_state.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/rhi_shader_test.c src/rhi_gl.c src/rhi_gl_state.c -o build/rhi_shader_test $(SDL_LIBS) $(GL_LIBS)
+	./build/rhi_shader_test

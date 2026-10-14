@@ -10,6 +10,7 @@
 #include "render.h"
 #include "tex_override.h"
 #include "rhi_gl.h"   /* GL names behind buffer handles for the draw code */
+#include "generated_shaders.h"   /* src/shaders/: make-embedded byte arrays */
 
 #if defined(__APPLE__) && !defined(N2_GLES)
 /* Bind/Delete Framebuffers/Renderbuffers go through rhi_gl_state.c, which maps
@@ -384,7 +385,7 @@ void free_car_environment(CarEnvironment *s) {
     if(s->fbo)glDeleteFramebuffers(1,&s->fbo);
     if(s->depth)glDeleteRenderbuffers(1,&s->depth);
     glDeleteTextures(2,s->cube);
-    if(s->capture.prog)glDeleteProgram(s->capture.prog);
+    rhi_shader_destroy(s->capture.shader);
     memset(s,0,sizeof *s);
 }
 
@@ -410,8 +411,7 @@ int render_car_environment(const RProg *r,CarEnvironment *s,const N2Batch *world
     int size=quality==1?64:128,draws=0;
     if(s->size!=size) {
         free_car_environment(s);s->size=size;s->capture=render_program();
-        GLint linked=0;glGetProgramiv(s->capture.prog,GL_LINK_STATUS,&linked);
-        if(!linked){free_car_environment(s);s->failed=1;draws=-1;goto restore;}
+        if(!s->capture.prog){free_car_environment(s);s->failed=1;draws=-1;goto restore;}
         glGenTextures(2,s->cube);glActiveTexture(GL_TEXTURE5);
         for(int t=0;t<2;t++) {
             glBindTexture(GL_TEXTURE_CUBE_MAP,s->cube[t]);
@@ -629,330 +629,8 @@ int render_collision_walls(const RProg *r,RhiBuffer *vbo,const float *faces,int 
     return 2;
 }
 
-static const char *VS =
-    GLSL_VS_HEADER
-    "attribute vec3 aPos; attribute vec2 aUV; attribute vec3 aNor; attribute vec4 aColor;\n"
-    "uniform mat4 uMVP; uniform mat4 uModel; varying vec2 vUV; varying vec3 vN; varying float vDepth;\n"
-    "varying vec3 vPos; varying vec4 vColor;\n"
-    /* clip.w == view-space depth under a perspective projection, for world
-       (P*V) and car (P*V*M) alike — no view matrix or extra uniforms needed.
-       NDC-drawn HUD quads have w==1, so fog leaves them alone. */
-    "void main(){ vUV=aUV; vN=(uModel*vec4(aNor,0.0)).xyz;\n"
-    "  vPos=(uModel*vec4(aPos,1.0)).xyz; vColor=aColor;\n"
-    "  gl_Position=uMVP*vec4(aPos,1.0); vDepth=gl_Position.w; }\n";
-
-static const char *FS =
-    GLSL_FS_HEADER
-    "varying vec2 vUV; varying vec3 vN; varying float vDepth; varying vec3 vPos;\n"
-    "varying vec4 vColor;\n"
-    "uniform sampler2D uTex;\n"
-    "uniform float uVColor;\n"   /* 0 off, 1 world MODULATE2X, 2 car diffuse */
-    "uniform float uUseTex; uniform vec3 uColor; uniform float uUnlit; uniform float uAlpha; uniform float uSoft; uniform float uSpec; uniform float uDecal;\n"
-    "uniform float uAmbient; uniform float uDiffuse; uniform vec3 uLight;\n"
-    "uniform vec3 uFogColor; uniform float uFogDensity;\n"
-    "uniform vec3 uCamPos; uniform float uEnv; uniform float uUVCheck;\n"
-    "uniform samplerCube uEnvCube; uniform float uEnvReady; uniform vec3 uEnvOrigin;\n"
-    "uniform float uGloss; uniform float uFlipN;\n"
-    "uniform float uWetness, uWeatherTime, uRainIntensity;\n"
-    "uniform vec4 uWetLightPos[8],uWetLightColor[8];\n"
-    "uniform float uPaintLights;\n"
-    "uniform float uRoadReflection; uniform vec4 uReflectionParams;\n"
-    "uniform sampler2D uReflectionColor,uReflectionDepth; uniform mat4 uMVP;\n"
-    "uniform float uRimTint;\n"   /* >0: recolor the rim diffuse toward uColor */
-    "uniform vec3 uEmissive;\n"   /* lamp emission added on top of the lit result */
-    "uniform float uVista;\n"     /* >0.5: authored backdrop pass, alpha-blended */
-    "uniform float uAlphaTest;\n" /* >0.5: discard below 0.5 texture alpha */
-    "uniform float uTextureAlpha;\n" /* >0.5: output alpha = texture2D(...).a *
-        uAlpha instead of plain uAlpha (M135-R: N2_DRAW_BLEND/ADD world
-        batches only -- everything else, including CUTOUT, cars, and every
-        HUD/debug uUnlit pass, leaves this at its default 0.0 and keeps its
-        existing uAlpha-only alpha output unchanged) */
-    "uniform float uEmissiveTex;\n" /* authored texture-backed unlit pass */
-    "uniform float uFresnel;\n"   /* >0.5: glass -- fresnel drives alpha + reflection */
-    "uniform float uClearcoat;\n" /* >0: second tight specular lobe over the base coat */
-    "uniform vec4 uHeadPos[2];\n"
-    "uniform vec3 uHeadForward, uHeadRight, uHeadUp;\n"
-    "uniform vec4 uHeadShape;\n" /* horizontal/vertical spread, downward slope, range */
-    "uniform float uHeadGain, uHeadLow;\n"
-    "uniform float uHeadShadow;\n"
-    "uniform sampler2D uHeadShadowMap0, uHeadShadowMap1;\n"
-    "uniform mat4 uHeadShadowMVP[2];\n"
-    "float headVisibility(int h,vec3 position,vec3 normal,float along){\n"
-    "  if(uHeadShadow<0.5)return 1.0;\n"
-    "  float offset=0.005+along*max(uHeadShape.x,uHeadShape.y)*2.0/512.0;\n"
-    "  vec4 clip=uHeadShadowMVP[h]*vec4(position+normal*offset,1.0);\n"
-    "  vec2 uv=clip.xy/clip.w*0.5+0.5;\n"
-    "  if(clip.w<=0.0 || uv.x<0.0 || uv.x>1.0 || uv.y<0.0 || uv.y>1.0)return 1.0;\n"
-    "  float depth=(clip.w-0.025-0.001*along)/uHeadShape.w;\n"
-    "  float visibility=0.0;\n"
-    "  for(int x=0;x<2;x++)for(int y=0;y<2;y++){\n"
-    "    vec2 at=uv+(vec2(float(x),float(y))-0.5)/512.0;\n"
-    "    vec2 depthRG=h==0?texture2D(uHeadShadowMap0,at).rg:texture2D(uHeadShadowMap1,at).rg;\n"
-    "    visibility+=step(depth,dot(depthRG,vec2(1.0,1.0/255.0)))*0.25;\n"
-    "  }\n"
-    "  return visibility;\n"
-    "}\n"
-    "float wetHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}\n"
-    "float wetNoise(vec2 p){\n"
-    "  vec2 i=floor(p),f=fract(p); f=f*f*(3.0-2.0*f);\n"
-    "  return mix(mix(wetHash(i),wetHash(i+vec2(1,0)),f.x),mix(wetHash(i+vec2(0,1)),wetHash(i+vec2(1,1)),f.x),f.y);\n"
-    "}\n"
-    /* Screen-space reflection: bounded trace against this frame's depth.
-       Missing/offscreen geometry keeps the ordinary wet material underneath. */
-    "vec4 roadReflection(vec3 N,vec3 V,float wet,float puddle){\n"
-    "  if(wet<0.001 || distance(vPos,uCamPos)>80.0)return vec4(0.0);\n"
-    "  vec3 direction=reflect(-V,N),origin=vPos+N*0.04;\n"
-    "  float previous=0.0;\n"
-    "  for(int i=0;i<32;i++){\n"
-    "    if(float(i)>=uReflectionParams.z)break;\n"
-    "    float stepSize=32.0/uReflectionParams.z;\n"
-    "    float t=0.3+pow((float(i)+1.0)*stepSize,2.0)*0.045;\n"
-    "    vec4 clip=uMVP*vec4(origin+direction*t,1.0);\n"
-    "    vec2 uv=clip.xy/clip.w*0.5+0.5;\n"
-    "    if(clip.w<=0.1 || min(uv.x,uv.y)<0.002 || max(uv.x,uv.y)>0.998)break;\n"
-    "    float depth=texture2D(uReflectionDepth,uv).r;\n"
-    "    float surface=uReflectionParams.y/(depth*2.0-1.0+uReflectionParams.x);\n"
-    "    if(depth<0.999999 && clip.w>surface){\n"
-    "      float lo=previous,hi=t;\n"
-    "      for(int j=0;j<5;j++){\n"
-    "        float mid=(lo+hi)*0.5;\n"
-    "        clip=uMVP*vec4(origin+direction*mid,1.0); uv=clip.xy/clip.w*0.5+0.5;\n"
-    "        depth=texture2D(uReflectionDepth,uv).r;\n"
-    "        surface=uReflectionParams.y/(depth*2.0-1.0+uReflectionParams.x);\n"
-    "        if(clip.w>surface)hi=mid;else lo=mid;\n"
-    "      }\n"
-    "      clip=uMVP*vec4(origin+direction*hi,1.0); uv=clip.xy/clip.w*0.5+0.5;\n"
-    "      depth=texture2D(uReflectionDepth,uv).r;\n"
-    "      surface=uReflectionParams.y/(depth*2.0-1.0+uReflectionParams.x);\n"
-    "      float gap=clip.w-surface;\n"
-    "      if(hi<0.6 || depth>=0.999999 || gap<0.0 || gap>0.4+surface*0.003)return vec4(0.0);\n"
-    "      float edge=smoothstep(0.0,0.08,min(min(uv.x,uv.y),min(1.0-uv.x,1.0-uv.y)));\n"
-    "      float fres=0.04+0.96*pow(1.0-max(dot(N,V),0.0),3.0);\n"
-    "      float fade=(1.0-smoothstep(30.0,46.0,hi))*(1.0-smoothstep(60.0,80.0,distance(vPos,uCamPos)));\n"
-    "      return vec4(texture2D(uReflectionColor,uv).rgb,edge*fade*fres*(0.18*wet+0.72*puddle));\n"
-    "    }\n"
-    "    previous=t;\n"
-    "  }\n"
-    "  return vec4(0.0);\n"
-    "}\n"
-    /* exp^2 distance fog: fades far batches into the sky colour (which is
-       cleared to uFogColor, so the horizon and the haze always agree) */
-    "void main(){\n"
-    /* diagnostic UV visualization: bypasses lighting/texture/fog entirely.
-       R=u, G=v (raw, unclamped -- a mesh whose UVs run outside [0,1] shows
-       as a flat saturated patch instead of a gradient, exposing tiling
-       regions at a glance) with a darkened 10x10 grid overlaid so uneven
-       cell spacing reveals stretching and grid-line direction reveals
-       flips/mirrors. Checked first so it overrides every other path. */
-    "  if(uUVCheck>0.5){\n"
-    "    vec2 g=abs(fract(vUV*10.0-0.5)-0.5);\n"
-    "    float grid=smoothstep(0.0,0.04,min(g.x,g.y));\n"
-    "    gl_FragColor=vec4(vec3(vUV.x,vUV.y,0.2)*mix(0.35,1.0,grid),1.0); return;\n"
-    "  }\n"
-    "  float fog = clamp(exp(-pow(vDepth*uFogDensity, 2.0)), 0.0, 1.0);\n"
-    /* M132-R2 vista path. The backdrops are authored as cut-out sheets: their
-       DXT1 blocks carry one-bit transparency (up to 57.7% of texels fully
-       clear) and their DXT3 blocks carry real gradients, all of which the
-       decoder used to throw away -- which is exactly why a panorama rendered
-       as an opaque black-edged slab. Alpha here comes only from those two
-       proven sources, texture alpha and source vertex-colour alpha; nothing is
-       keyed off black pixels. Fully clear texels are discarded so they cannot
-       write depth-adjacent artefacts or fringe. */
-    "  if(uVista>0.5){\n"
-    "    vec4 t = texture2D(uTex, vUV);\n"
-    "    vec3 c = uUseTex>0.5 ? t.rgb : uColor;\n"
-    "    float a = (uUseTex>0.5 ? t.a : 1.0) * vColor.a;\n"
-    "    if(a < 0.02) discard;\n"
-    "    gl_FragColor = vec4(mix(uFogColor, c, fog), a);\n"
-    "    return;\n"
-    "  }\n"
-    "  if(uEmissiveTex>0.5){\n"
-    "    vec4 t=texture2D(uTex,vUV);\n"
-    "    float a=t.a*uAlpha; if(a<0.02) discard;\n"
-    "    gl_FragColor=vec4(mix(uFogColor,t.rgb*uColor,fog),a); return;\n"
-    "  }\n"
-    "  if(uUnlit>0.5){ float a=uAlpha;\n"
-    /* Shadow footprints need a filled rounded rectangle; lamp/neon sprites
-       retain their radial falloff. Both fade to zero at the quad boundary. */
-    "    if(uSoft>0.5){\n"
-    /* ponytail: transparent lens highlights, no refraction copy. Add image
-       distortion only if its measured cost fits the frame budget. */
-    "      if(uSoft>2.5){\n"
-    "        vec2 p=vUV*2.0-1.0; p.x*=1.0+0.12*p.y; float d=dot(p,p); if(d>1.0)discard;\n"
-    "        float rim=smoothstep(0.48,0.83,d)*(1.0-smoothstep(0.83,1.0,d));\n"
-    "        float glint=pow(max(0.0,1.0-length(p-vec2(-0.25,0.35))*3.0),3.0);\n"
-    "        float shade=clamp(0.35+p.y*0.65+glint,0.0,1.0);\n"
-    "        vec3 drop=mix(vec3(0.015,0.025,0.035),vec3(0.85,0.92,1.0),shade);\n"
-    "        gl_FragColor=vec4(drop,vColor.r*uAlpha*(0.04*(1.0-d)+0.26*rim+0.28*glint));return;\n"
-    "      }\n"
-    "      else if(uSoft>1.5){ float d=length(max(abs(vUV-vec2(0.5))-vec2(0.4),vec2(0.0))); a*=1.0-smoothstep(0.02,0.1,d); }\n"
-    "      else { float d=length(vUV-vec2(0.5)); a*=clamp(1.0-d*2.0,0.0,1.0); } a*=a; }\n"
-    "    gl_FragColor=vec4(mix(uFogColor,uColor,fog),a); return; }\n"
-    /* Positions, normals, light and camera share world space. The model
-       includes road tilt and each wheel/brake hub's own transform. */
-    "  vec3 L=normalize(uLight); vec3 N=normalize(vN);\n"
-    "  if(uFlipN>0.5) N = -N;\n"
-    "  vec3 V=normalize(uCamPos - vPos);\n"
-    /* Two-sided glass reflects the viewer-facing side; a backwards normal
-       otherwise forces Fresnel to 1 and makes the far window fully opaque. */
-    "  if(uFresnel>0.5 && dot(N,V)<0.0) N=-N;\n"
-    /* Wet asphalt keeps a broad sheen; only sparse, nearly level patches
-       collect standing water. Keep the reflection normal steady: unfiltered
-       fine rain ripples alias at road distance and jump screen-space hits.
-       ponytail: analytic sky/key-light fallback for offscreen geometry; use
-       environment probes if reflections must survive outside the camera. */
-    "  float wet=uWetness*smoothstep(0.55,0.9,N.z);\n"
-    "  float puddle=0.0;\n"
-    "  if(wet>0.001){\n"
-    "    float pools=0.7*wetNoise(vPos.xy*0.24)+0.3*wetNoise(vPos.xy*0.73);\n"
-    "    puddle=0.45*wet*smoothstep(0.66,0.85,pools)*smoothstep(0.94,0.99,N.z);\n"
-    "  }\n"
-    "  if(uRoadReflection>0.5){\n"
-    "    if(uAlphaTest>0.5 && texture2D(uTex,vUV).a<0.5)discard;\n"
-    "    vec4 reflected=roadReflection(N,V,wet,puddle); reflected.a*=fog;\n"
-    "    gl_FragColor=reflected;return;\n"
-    "  }\n"
-    "  float nl=max(dot(N,L),0.0);\n"
-    "  float d=uAmbient+uDiffuse*nl;\n"   /* directional; reveals body form */
-    /* uAmbient/uDiffuse are one shared per-frame pair (world+cars both read
-       them), so retuning the defaults to fix a car panel would also retune
-       every building and road. Cars get their own lower ambient floor /
-       sharper diffuse swing right here instead, gated the same way as the
-       cavity term above — world batches always set uSpec=0, so they never
-       take this branch. */
-    /* Paint was clipping to white: at 0.55/1.2 the diffuse term alone reached
-       ~0.95, which the shared *1.35 exposure below pushed past 1.0 before the
-       specular, rim and environment terms were even added -- so every panel
-       saturated and the highlights had no headroom left to show against.
-       Pulling the body's own diffuse back leaves that headroom for them. */
-    "  if(uSpec>0.001) d=uAmbient*0.35+uDiffuse*0.80*nl;\n"
-    /* uDecal: paint under an alpha-masked decal atlas (badges/vinyls) —
-       texture RGB shows only where its alpha says so, paint elsewhere */
-    "  vec4 t = texture2D(uTex,vUV);\n"
-    /* N2_DRAW_CUTOUT world batches and authored wheel textures. Threshold 0.5
-       matches the authored railing/fence texture's own 1-bit DXT1 alpha
-       (fully 0 or 255, no partial value to tune against). */
-    "  if(uAlphaTest>0.5 && t.a<0.5) discard;\n"
-    "  vec3 base = uUseTex>0.5 ? (uDecal>0.5 ? mix(uColor,t.rgb,t.a) : t.rgb) : uColor;\n"
-    /* Rim paint: recolor the diffuse toward uColor while KEEPING its detail.
-       Luminance drives the shade, uColor picks the metal, so a gold OEM sheet
-       becomes any painted colour (silver by default) with spokes/shadows
-       intact. uRimTint 0 = raw OEM texture, 1 = fully painted. */
-    "  if(uRimTint>0.001){ float y=dot(t.rgb, vec3(0.299,0.587,0.114));\n"
-    "    base = mix(base, uColor*(0.25+1.5*y), uRimTint); }\n"
-    /* cheap view-angle cavity darkening (cars only, uSpec>0 — the world
-       batches always set uSpec=0): panel gaps/creases have no texture data
-       to show them (verified: body meshes carry no diffuse map at all), so
-       this fakes the early-2000s baked-AO look by darkening paint where the
-       surface turns away from the camera, instead of claiming detail that
-       isn't in the asset. Narrowed from pow4/0.6 to pow6/0.78: at pow4 the
-       falloff reached far onto flat panels and fought the fresnel edge
-       brightening below, which is what flattened the paint into matte clay.
-       It now only bites in the last few degrees, i.e. actual creases. */
-    "  if(uSpec>0.001){\n"
-    "    float edge=pow(1.0-clamp(dot(N,V),0.0,1.0), 6.0);\n"
-    "    base *= mix(1.0, 0.78, edge);\n"
-    "  }\n"
-    /* Phong: reflect the light about the normal and test it against the VIEW
-       vector. The old form used dot(N,L) with no V term at all, so it was a
-       sharpened diffuse -- the highlight could not travel across a panel as
-       the camera moved, which is what made the paint read flat/matte. */
-    "  float rl = max(dot(reflect(-L,N), V), 0.0);\n"
-    "  float sp = pow(rl, uGloss)*uSpec;\n"
-    /* clear coat: automotive paint is a coloured base coat under a clear
-       lacquer, so it carries TWO highlights -- the broad soft one from the
-       pigment (sp above) and a small hard one from the lacquer surface. One
-       lobe alone is what makes painted metal read as moulded plastic. */
-    "  sp += pow(rl, 160.0)*uClearcoat;\n"
-    "  float rim = pow(1.0-abs(N.z), 3.0)*uSpec*0.4;\n"        /* fresnel-ish edge sheen */
-    /* The city capture supplies the clear-coat shape; the night key light
-       must not clip the hood to white and hide those reflected buildings. */
-    "  if(uEnvReady>0.5 && uClearcoat>0.001){sp*=0.30;rim*=0.25;}\n"
-    "  vec3 lit = base*d*1.35 + sp + rim;\n"
-    /* World prelight uses MODULATE2X (0.5 neutral); textureless vehicle assets
-       use the same byte slot as direct diffuse color for windows and trim. */
-    "  if(uVColor>1.5) lit *= vColor.rgb;\n"
-    "  else if(uVColor>0.001) lit *= clamp(vColor.rgb*2.0, 0.0, 1.6);\n"
-    "  if(wet>0.001){\n"
-    "    lit*=1.0-0.32*wet;\n"
-    "    float wf=0.025+0.975*pow(1.0-max(dot(N,V),0.0),5.0);\n"
-    "    vec3 sky=mix(uFogColor,vec3(0.16,0.20,0.28),0.5);\n"
-    "    lit=mix(lit,sky,clamp(wf*(0.3*wet+0.65*puddle),0.0,0.85));\n"
-    "    lit+=vec3(0.65,0.72,0.85)*pow(rl,mix(36.0,120.0,puddle))*wet*0.35;\n"
-    "  }\n"
-    /* ponytail: camera-local unshadowed district highlights. Add per-car light
-       selection for distant cars, light shadows for leakage; headlights use shadows. */
-    "  if(wet>0.001 || uPaintLights*uClearcoat>0.001)for(int i=0;i<8;i++){\n"
-    "    vec3 delta=uWetLightPos[i].xyz-vPos; float distance=length(delta);\n"
-    "    if(uWetLightColor[i].a>0.0 && distance<uWetLightPos[i].w){\n"
-    "      vec3 toLight=delta/max(distance,0.001);\n"
-    "      float reflected=max(dot(reflect(-toLight,N),V),0.0);\n"
-    "      float attenuation=1.0-smoothstep(0.0,uWetLightPos[i].w,distance);\n"
-    "      vec3 radiance=uWetLightColor[i].rgb*uWetLightColor[i].a*attenuation;\n"
-    "      if(wet>0.001 && delta.z>0.0)lit+=radiance*pow(reflected,mix(18.0,85.0,puddle))*wet*(0.3+1.7*puddle);\n"
-    /* Existing clear-coat classification excludes rubber, cabin and plastic.
-       No new scene pass or reflection copy: source lamps, normal and view
-       determine a moving paint highlight in this same material draw. */
-    "      if(uPaintLights*uClearcoat>0.001){\n"
-    "        float glint=0.3*uSpec*pow(reflected,max(uGloss,24.0))+0.65*uClearcoat*pow(reflected,96.0);\n"
-    "        lit+=radiance*glint*uPaintLights*max(dot(N,toLight),0.0);\n"
-    "      }\n"
-    "    }\n"
-    "  }\n"
-    /* Surface lighting and per-lamp world-geometry shadows. */
-    "  if(uHeadGain>0.0) for(int h=0;h<2;h++){\n"
-    "    vec3 ray=vPos-uHeadPos[h].xyz; float dist=length(ray);\n"
-    "    float along=dot(ray,uHeadForward);\n"
-    "    if(uHeadPos[h].w>0.5 && along>0.05 && dist<uHeadShape.w){\n"
-    "      float lateral=dot(ray,uHeadRight)/along;\n"
-    "      float elevation=dot(ray,uHeadUp)/along;\n"
-    "      vec2 cone=vec2(lateral/uHeadShape.x,(elevation+uHeadShape.z)/uHeadShape.y);\n"
-    "      float edge=1.0-smoothstep(0.55,1.0,length(cone));\n"
-    "      float cutoff=mix(1.0,1.0-smoothstep(-0.018,-0.008,elevation),uHeadLow);\n"
-    "      float reach=1.0-smoothstep(uHeadShape.w*0.65,uHeadShape.w,dist);\n"
-    "      float lambert=max(dot(N,-ray/max(dist,0.001)),0.0);\n"
-    "      if(edge*cutoff*lambert>0.0)lit+=base*vec3(1.0,0.94,0.82)*edge*cutoff*reach*lambert*uHeadGain*5.0*headVisibility(h,vPos,N,along)/(1.0+dist*dist/350.0);\n"
-    "      if(wet>0.001 && edge*cutoff>0.0){\n"
-    "        float highlight=pow(max(dot(reflect(ray/max(dist,0.001),N),V),0.0),mix(24.0,100.0,puddle));\n"
-    "        lit+=vec3(1.0,0.94,0.82)*highlight*wet*edge*cutoff*reach*uHeadGain*headVisibility(h,vPos,N,along)/(1.0+dist*dist/350.0);\n"
-    "      }\n"
-    "    }\n"
-    "  }\n"
-    /* Local scene cube, sampled in world space so reflections stay anchored
-       while the body banks. Fresnel adds clear-coat reflection without washing
-       the base paint into the old constant warm horizon band. */
-    "  float fres = 0.18 + 0.82*pow(1.0-clamp(dot(N,V),0.0,1.0), 3.0);\n"
-    "  if(uEnv>0.001){\n"
-    "    vec3 R = reflect(-V, N);\n"
-    "    float up = clamp(R.z*0.5+0.5, 0.0, 1.0);\n"
-    "    vec3 env = mix(vec3(0.025,0.025,0.035), vec3(0.10,0.14,0.24), up);\n"
-    "    float local=uEnvReady*(1.0-smoothstep(35.0,100.0,length(vPos-uEnvOrigin)));\n"
-    "    env=mix(env,textureCube(uEnvCube,R).rgb,local);\n"
-    "    lit=mix(lit,env,clamp(uEnv*fres,0.0,0.85));\n"
-    "  }\n"
-    /* lit alpha = uAlpha (1 everywhere but the blended glass pass), so
-       translucent glass keeps its specular highlight. M135-R: authored
-       BLEND/ADD world batches and blended wheels multiply in the TEXTURE's own alpha
-       (uTextureAlpha>0.5) -- otherwise a cutout-shaped blend/additive
-       texture (e.g. a lit-window sheet with transparent gaps) would draw
-       fully opaque/full-strength through those gaps, since uAlpha alone
-       carries no per-texel information. */
-    /* Lamp emission. Added after every lighting term so a lit lens keeps its
-       highlight, rim sheen and environment reflection and still reads as
-       switched on. The dome weight is the same dot(N,V) the fresnel uses: a
-       curved lens is hottest where its surface faces the camera and falls off
-       toward the rim, which is the difference between a lens and a sticker.
-       The 0.55 floor keeps the lamp clearly lit all over. */
-    "  if(dot(uEmissive,uEmissive)>0.0) lit += uEmissive*(0.55+0.45*clamp(dot(N,V),0.0,1.0));\n"
-    "  float outA = uTextureAlpha>0.5 ? t.a*uAlpha : uAlpha;\n"
-    /* Glass (uFresnel, the car glass pass only). A flat per-pass alpha is what
-       made the cabin read as a still pool: every window sat at one constant
-       opacity regardless of angle, so it looked like a filled surface rather
-       than a pane. Real glass is nearly clear head-on and a mirror at grazing
-       incidence, so alpha rides the same fresnel term the reflection does. */
-    "  if(uFresnel>0.5) outA = clamp(mix(uAlpha, 1.0, fres), 0.0, 1.0);\n"
-    "  gl_FragColor=vec4(mix(uFogColor, lit, fog), outA);\n"
-    "}\n";
+/* The UG2 uber shader, headlight shadow and frontend sources live in
+ * src/shaders/ and are embedded by make (generated_shaders.h). */
 
 /* ---- tiny 4x4 matrix (column-major) ---- */
 void mat_mul(const float *a, const float *b, float *o) {
@@ -1047,13 +725,25 @@ int render_read_rgb(int w, int h, unsigned char *rgb) {
     return rhi_read_pixels(0, 0, w, h, RHI_READ_RGB8, rgb, 0) == RHI_OK;
 }
 
-static GLuint compile(GLenum type, const char *src) {
-    GLuint s = glCreateShader(type);
-    glShaderSource(s, 1, &src, NULL); glCompileShader(s);
-    GLint ok; glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
-    if (!ok) { char log[512]; glGetShaderInfoLog(s, 512, NULL, log);
-        fprintf(stderr, "shader: %s\n", log); }
-    return s;
+/* Prefix an embedded shader body (not NUL-terminated) with this build's GLSL
+ * header; the game owns the preamble, the backend gets finished text. */
+static char *shader_text(const char *header, const unsigned char *body, unsigned len) {
+    size_t n = strlen(header);
+    char *t = (char *)malloc(n + len + 1);
+    if (!t) return NULL;
+    memcpy(t, header, n); memcpy(t + n, body, len); t[n + len] = 0;
+    return t;
+}
+RhiShader render_shader_create(const char *label,
+                               const char *vs_header, const unsigned char *vs, unsigned vs_len,
+                               const char *fs_header, const unsigned char *fs, unsigned fs_len,
+                               const char *const *attributes, uint32_t count) {
+    char *v = shader_text(vs_header, vs, vs_len), *f = shader_text(fs_header, fs, fs_len);
+    RhiShader out = {0};
+    if (v && f)
+        out = rhi_shader_create(&(RhiShaderDesc){ v, f, attributes, count, label });
+    free(v); free(f);
+    return out;
 }
 
 /* Colour maps plus a depth renderbuffer work without depth-texture extensions.
@@ -1062,26 +752,17 @@ static GLuint compile(GLenum type, const char *src) {
 void free_headlight_shadows(HeadlightShadows *s) {
     glDeleteTextures(2,s->texture);rhi_texture_destroy(s->white);
     glDeleteRenderbuffers(1,&s->depth);glDeleteFramebuffers(1,&s->fbo);
-    if(s->program)glDeleteProgram(s->program);
+    rhi_shader_destroy(s->shader);
     memset(s,0,sizeof *s);
 }
 
 static int headlight_shadow_init(HeadlightShadows *s) {
-    const char *vs=GLSL_VS_HEADER
-        "attribute vec3 aPos;attribute vec2 aUV;uniform mat4 uMVP;"
-        "varying vec2 uv;varying float distance;"
-        "void main(){uv=aUV;gl_Position=uMVP*vec4(aPos,1.0);distance=gl_Position.w;}";
-    const char *fs=GLSL_FS_HEADER
-        "uniform sampler2D uTex;uniform float uCutout,uRange;"
-        "varying vec2 uv;varying float distance;"
-        "void main(){if(uCutout>0.5 && texture2D(uTex,uv).a<0.5)discard;"
-        "vec2 enc=fract(clamp(distance/uRange,0.0,0.99999)*vec2(1.0,255.0));"
-        "enc.x-=enc.y/255.0;gl_FragColor=vec4(enc,0.0,1.0);}";
-    GLuint v=compile(GL_VERTEX_SHADER,vs),f=compile(GL_FRAGMENT_SHADER,fs);
-    s->program=glCreateProgram();glAttachShader(s->program,v);glAttachShader(s->program,f);
-    glBindAttribLocation(s->program,0,"aPos");glBindAttribLocation(s->program,1,"aUV");
-    glLinkProgram(s->program);glDeleteShader(v);glDeleteShader(f);
-    GLint linked=0;glGetProgramiv(s->program,GL_LINK_STATUS,&linked);if(!linked)return 0;
+    static const char *const attributes[] = { "aPos", "aUV" };
+    s->shader=render_shader_create("headlight shadow",
+        GLSL_VS_HEADER, src_shaders_headlight_shadow_vert, src_shaders_headlight_shadow_vert_len,
+        GLSL_FS_HEADER, src_shaders_headlight_shadow_frag, src_shaders_headlight_shadow_frag_len,
+        attributes, 2);
+    s->program=rhi_gl_shader_program(s->shader);if(!s->program)return 0;
     s->mvp=glGetUniformLocation(s->program,"uMVP");
     s->cutout=glGetUniformLocation(s->program,"uCutout");
     s->range=glGetUniformLocation(s->program,"uRange");
@@ -1237,15 +918,13 @@ void render_model(const RProg *r,const float model[16]) {
 }
 
 RProg render_program(void) {
+    static const char *const attributes[] = { "aPos", "aUV", "aNor", "aColor" };
     RProg r;
-    r.prog = glCreateProgram();
-    glAttachShader(r.prog, compile(GL_VERTEX_SHADER, VS));
-    glAttachShader(r.prog, compile(GL_FRAGMENT_SHADER, FS));
-    glBindAttribLocation(r.prog, 0, "aPos");
-    glBindAttribLocation(r.prog, 1, "aUV");
-    glBindAttribLocation(r.prog, 2, "aNor");
-    glBindAttribLocation(r.prog, 3, "aColor");
-    glLinkProgram(r.prog); glUseProgram(r.prog);
+    r.shader = render_shader_create("ug2",
+        GLSL_VS_HEADER, src_shaders_ug2_vert, src_shaders_ug2_vert_len,
+        GLSL_FS_HEADER, src_shaders_ug2_frag, src_shaders_ug2_frag_len, attributes, 4);
+    r.prog = rhi_gl_shader_program(r.shader);
+    glUseProgram(r.prog);
     r.uMVP     = glGetUniformLocation(r.prog, "uMVP");
     r.uModel   = glGetUniformLocation(r.prog, "uModel");
     render_model(&r,NULL);

@@ -274,6 +274,6 @@ int main(void) {
     model_lighting_test(&r);
     tail_lamp_test(&r);
     free_headlight_shadows(&shadows);
-    free_scene_gpu(road,1);rhi_texture_destroy(texture);glDeleteProgram(r.prog);
+    free_scene_gpu(road,1);rhi_texture_destroy(texture);rhi_shader_destroy(r.shader);
     SDL_GL_DeleteContext(context);SDL_DestroyWindow(window);SDL_Quit();return 0;
 }

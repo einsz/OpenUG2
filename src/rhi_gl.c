@@ -531,3 +531,92 @@ RhiResult rhi_texture_set_sampler(RhiTexture tex, RhiSampler sampler) {
     t->sampler = sampler;
     return RHI_OK;
 }
+
+/* ------------------------------------------------------------------------------ */
+/* Shaders                                                                        */
+/* ------------------------------------------------------------------------------ */
+/* A handful of programs: a fixed table with generation-checked ids. */
+#define RHI_GL_MAX_SHADERS 64u
+
+static struct {
+    GLuint  program[RHI_GL_MAX_SHADERS];   /* 0 = free slot */
+    uint8_t generation[RHI_GL_MAX_SHADERS];
+} g_shaders;
+
+static int shader_slot(RhiShader shader) {
+    uint32_t slot = shader.id & RHI_GL_SLOT_MASK;
+    if (!slot || slot > RHI_GL_MAX_SHADERS || !g_shaders.program[slot - 1] ||
+        g_shaders.generation[slot - 1] != (uint8_t)(shader.id >> RHI_GL_SLOT_BITS)) return -1;
+    return (int)slot - 1;
+}
+
+GLuint rhi_gl_shader_program(RhiShader shader) {
+    int i = shader_slot(shader);
+    return i < 0 ? 0 : g_shaders.program[i];
+}
+
+static GLuint shader_compile(GLenum type, const char *src, const char *label) {
+    GLuint s = glCreateShader(type);
+    glShaderSource(s, 1, &src, NULL);
+    glCompileShader(s);
+    GLint ok = 0;
+    glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
+    if (!ok) {
+        char log[1024];
+        glGetShaderInfoLog(s, (GLsizei)sizeof log, NULL, log);
+        fprintf(stderr, "rhi: %s %s shader: %s\n", label,
+                type == GL_VERTEX_SHADER ? "vertex" : "fragment", log);
+        glDeleteShader(s);
+        return 0;
+    }
+    return s;
+}
+
+RhiShader rhi_shader_create(const RhiShaderDesc *desc) {
+    RhiShader out = {0};
+    if (!desc || !desc->vertex_source || !desc->fragment_source ||
+        (desc->attribute_count && !desc->attribute_names)) {
+        fprintf(stderr, "rhi: shader_create: invalid description\n");
+        return out;
+    }
+    const char *label = desc->label ? desc->label : "unnamed";
+    int slot = -1;
+    for (uint32_t i = 0; i < RHI_GL_MAX_SHADERS && slot < 0; i++)
+        if (!g_shaders.program[i] && g_shaders.generation[i] != UINT8_MAX) slot = (int)i;
+    if (slot < 0) { fprintf(stderr, "rhi: shader_create: out of handles\n"); return out; }
+    GLuint v = shader_compile(GL_VERTEX_SHADER, desc->vertex_source, label);
+    GLuint f = shader_compile(GL_FRAGMENT_SHADER, desc->fragment_source, label);
+    if (!v || !f) {
+        if (v) glDeleteShader(v);
+        if (f) glDeleteShader(f);
+        return out;
+    }
+    GLuint p = glCreateProgram();
+    glAttachShader(p, v);
+    glAttachShader(p, f);
+    for (uint32_t i = 0; i < desc->attribute_count; i++)
+        glBindAttribLocation(p, i, desc->attribute_names[i]);
+    glLinkProgram(p);
+    glDeleteShader(v);   /* freed with the program */
+    glDeleteShader(f);
+    GLint ok = 0;
+    glGetProgramiv(p, GL_LINK_STATUS, &ok);
+    if (!ok) {
+        char log[1024];
+        glGetProgramInfoLog(p, (GLsizei)sizeof log, NULL, log);
+        fprintf(stderr, "rhi: %s shader link: %s\n", label, log);
+        glDeleteProgram(p);
+        return out;
+    }
+    g_shaders.program[slot] = p;
+    out.id = ((uint32_t)g_shaders.generation[slot] << RHI_GL_SLOT_BITS) | (uint32_t)(slot + 1);
+    return out;
+}
+
+void rhi_shader_destroy(RhiShader shader) {
+    int i = shader_slot(shader);
+    if (i < 0) return;
+    glDeleteProgram(g_shaders.program[i]);
+    g_shaders.program[i] = 0;
+    if (g_shaders.generation[i] != UINT8_MAX) g_shaders.generation[i]++;
+}

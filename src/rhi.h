@@ -222,6 +222,27 @@ const RhiSamplerDesc *rhi_sampler_desc(RhiSampler sampler);
 RhiResult  rhi_texture_set_sampler(RhiTexture tex, RhiSampler sampler);
 RhiSampler rhi_texture_sampler(RhiTexture tex);
 
+/* ------------------------------------------------------------------------------ */
+/* Shaders                                                                        */
+/* ------------------------------------------------------------------------------ */
+/* One vertex + fragment program. Opaque handle like RhiBuffer, {0} = none. */
+typedef struct RhiShader { uint32_t id; } RhiShader;
+
+typedef struct RhiShaderDesc {
+    /* Complete source text in the backend's language (GL: GLSL 1.20, or
+     * GLSL ES 1.00 for RHI_BACKEND_GLES2); NUL-terminated. */
+    const char        *vertex_source, *fragment_source;
+    /* Vertex attribute i is named attribute_names[i]. */
+    const char *const *attribute_names;
+    uint32_t           attribute_count;
+    const char        *label;   /* for error messages; may be NULL */
+} RhiShaderDesc;
+
+/* Compiles and links. Returns {0} on failure; the compiler log goes to stderr. */
+RhiShader rhi_shader_create(const RhiShaderDesc *desc);
+/* {0} is ignored. The handle becomes invalid. */
+void      rhi_shader_destroy(RhiShader shader);
+
 #ifdef __cplusplus
 }
 #endif
