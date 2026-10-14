@@ -1,0 +1,897 @@
+{
+ "provenance": "Synthetic. Row order, row kinds and the cap condition are [static]; the cap values are assumed inputs. slot = n in the OPTION_NAME_n / OPTION_DATA_n / ... object names the row binds to.",
+ "cases": [
+  {
+   "id": "display_rows",
+   "screen": "display",
+   "input": {},
+   "expected_rows": [
+    {
+     "slot": 1,
+     "kind": "choice",
+     "label_key": "0xA9A76BBA",
+     "label_en": "Resolution",
+     "selectable": true
+    },
+    {
+     "slot": 2,
+     "kind": "slider",
+     "label_key": "0xB55E7665",
+     "label_en": "Level Of Detail",
+     "selectable": true,
+     "range": [
+      1,
+      5
+     ]
+    },
+    {
+     "slot": 3,
+     "kind": "button",
+     "label_key": "0x381FE1E9",
+     "label_en": "Customize Display Settings",
+     "selectable": true
+    },
+    {
+     "slot": 4,
+     "kind": "button",
+     "label_key": "0x13F0EDEB",
+     "label_en": "Default Settings",
+     "selectable": true
+    }
+   ]
+  },
+  {
+   "id": "customize_full_caps",
+   "screen": "customize",
+   "input": {
+    "caps": {
+     "CarEnvironmentMap": 3,
+     "CarEnvironmentMapUpdateData": 1,
+     "CarShadow": 2,
+     "CarHeadlight": 1,
+     "Crowd": 1,
+     "RoadReflection": 3,
+     "Fog": 1,
+     "MotionBlur": 1,
+     "LightStreaks": 1,
+     "LightGlow": 1,
+     "ParticleSystem": 1,
+     "DepthOfField": 1,
+     "WorldLod": 3,
+     "CarLod": 1,
+     "OverBright": 1,
+     "BleachByPass": 1,
+     "Tinting": 1,
+     "FSAA": 4,
+     "HorizonFog": 1,
+     "Rain": 1,
+     "TextureFiltering": 2
+    },
+    "label_0x7D3930E7_contains_caret": false
+   },
+   "expected_rows": [
+    {
+     "slot": 1,
+     "kind": "slider",
+     "label_key": "0x7D3930E7",
+     "label_en": "Car Reflection Update Rate",
+     "selectable": true,
+     "range": [
+      0,
+      3
+     ]
+    },
+    {
+     "slot": 2,
+     "kind": "choice",
+     "label_key": "0x8FE9288E",
+     "label_en": "Car Reflection Detail",
+     "selectable": true
+    },
+    {
+     "slot": 3,
+     "kind": "slider",
+     "label_key": "0xA7A683AC",
+     "label_en": "Car Shadow / Neon",
+     "selectable": true,
+     "range": [
+      0,
+      2
+     ]
+    },
+    {
+     "slot": 4,
+     "kind": "choice",
+     "label_key": "0xCFBEDB50",
+     "label_en": "Car Headlight",
+     "selectable": true
+    },
+    {
+     "slot": 5,
+     "kind": "choice",
+     "label_key": "0x4AC50BCF",
+     "label_en": "Car Geometry Detail",
+     "selectable": true
+    },
+    {
+     "slot": 6,
+     "kind": "choice",
+     "label_key": "0x06CC3750",
+     "label_en": "Crowds",
+     "selectable": true
+    },
+    {
+     "slot": 7,
+     "kind": "slider",
+     "label_key": "0xBDE2E94B",
+     "label_en": "World Detail",
+     "selectable": true,
+     "range": [
+      0,
+      3
+     ]
+    },
+    {
+     "slot": 8,
+     "kind": "slider",
+     "label_key": "0x2A2A4AB3",
+     "label_en": "Road Reflection Detail",
+     "selectable": true,
+     "range": [
+      0,
+      3
+     ]
+    },
+    {
+     "slot": 9,
+     "kind": "choice",
+     "label_key": "0x6F2C7417",
+     "label_en": "Light Trails",
+     "selectable": true
+    },
+    {
+     "slot": 10,
+     "kind": "choice",
+     "label_key": "0x62925361",
+     "label_en": "Light Glow",
+     "selectable": true
+    },
+    {
+     "slot": 11,
+     "kind": "choice",
+     "label_key": "0x2522A4E9",
+     "label_en": "Particle System",
+     "selectable": true
+    },
+    {
+     "slot": 12,
+     "kind": "choice",
+     "label_key": "0x822E4E9B",
+     "label_en": "Motion Blur",
+     "selectable": true
+    },
+    {
+     "slot": 13,
+     "kind": "choice",
+     "label_key": "0x95B8F38D",
+     "label_en": "Fog",
+     "selectable": true
+    },
+    {
+     "slot": 14,
+     "kind": "choice",
+     "label_key": "0xA9C27DFD",
+     "label_en": "Depth Of Field",
+     "selectable": true
+    },
+    {
+     "slot": 15,
+     "kind": "slider",
+     "label_key": "0x4CD775AC",
+     "label_en": "Full Screen Anti-Aliasing",
+     "selectable": true,
+     "range": [
+      0,
+      4
+     ]
+    },
+    {
+     "slot": 16,
+     "kind": "choice",
+     "label_key": "0x11504D0E",
+     "label_en": "Tinting",
+     "selectable": true
+    },
+    {
+     "slot": 17,
+     "kind": "choice",
+     "label_key": "0x4E57D355",
+     "label_en": "Horizon Fog",
+     "selectable": true
+    },
+    {
+     "slot": 18,
+     "kind": "choice",
+     "label_key": "0xD6F5F38C",
+     "label_en": "Over Bright",
+     "selectable": true
+    },
+    {
+     "slot": 19,
+     "kind": "choice",
+     "label_key": "0x571F6C00",
+     "label_en": "Enhanced Contrast",
+     "selectable": true
+    },
+    {
+     "slot": 20,
+     "kind": "choice",
+     "label_key": "0x4CDDBEBB",
+     "label_en": "Rain Splatter",
+     "selectable": true
+    },
+    {
+     "slot": 21,
+     "kind": "slider",
+     "label_key": "0x61A50B8F",
+     "label_en": "Texture Filtering",
+     "selectable": true,
+     "range": [
+      0,
+      2
+     ]
+    },
+    {
+     "slot": 22,
+     "kind": "choice",
+     "label_key": "0x5B4AA6E4",
+     "label_en": "Vsync",
+     "selectable": true
+    }
+   ]
+  },
+  {
+   "id": "customize_some_caps_zero",
+   "screen": "customize",
+   "input": {
+    "caps": {
+     "CarEnvironmentMap": 3,
+     "CarEnvironmentMapUpdateData": 1,
+     "CarShadow": 2,
+     "CarHeadlight": 1,
+     "Crowd": 1,
+     "RoadReflection": 3,
+     "Fog": 1,
+     "MotionBlur": 1,
+     "LightStreaks": 1,
+     "LightGlow": 1,
+     "ParticleSystem": 1,
+     "DepthOfField": 0,
+     "WorldLod": 3,
+     "CarLod": 1,
+     "OverBright": 1,
+     "BleachByPass": 0,
+     "Tinting": 1,
+     "FSAA": 0,
+     "HorizonFog": 1,
+     "Rain": 0,
+     "TextureFiltering": 2
+    },
+    "label_0x7D3930E7_contains_caret": false
+   },
+   "expected_rows": [
+    {
+     "slot": 1,
+     "kind": "slider",
+     "label_key": "0x7D3930E7",
+     "label_en": "Car Reflection Update Rate",
+     "selectable": true,
+     "range": [
+      0,
+      3
+     ]
+    },
+    {
+     "slot": 2,
+     "kind": "choice",
+     "label_key": "0x8FE9288E",
+     "label_en": "Car Reflection Detail",
+     "selectable": true
+    },
+    {
+     "slot": 3,
+     "kind": "slider",
+     "label_key": "0xA7A683AC",
+     "label_en": "Car Shadow / Neon",
+     "selectable": true,
+     "range": [
+      0,
+      2
+     ]
+    },
+    {
+     "slot": 4,
+     "kind": "choice",
+     "label_key": "0xCFBEDB50",
+     "label_en": "Car Headlight",
+     "selectable": true
+    },
+    {
+     "slot": 5,
+     "kind": "choice",
+     "label_key": "0x4AC50BCF",
+     "label_en": "Car Geometry Detail",
+     "selectable": true
+    },
+    {
+     "slot": 6,
+     "kind": "choice",
+     "label_key": "0x06CC3750",
+     "label_en": "Crowds",
+     "selectable": true
+    },
+    {
+     "slot": 7,
+     "kind": "slider",
+     "label_key": "0xBDE2E94B",
+     "label_en": "World Detail",
+     "selectable": true,
+     "range": [
+      0,
+      3
+     ]
+    },
+    {
+     "slot": 8,
+     "kind": "slider",
+     "label_key": "0x2A2A4AB3",
+     "label_en": "Road Reflection Detail",
+     "selectable": true,
+     "range": [
+      0,
+      3
+     ]
+    },
+    {
+     "slot": 9,
+     "kind": "choice",
+     "label_key": "0x6F2C7417",
+     "label_en": "Light Trails",
+     "selectable": true
+    },
+    {
+     "slot": 10,
+     "kind": "choice",
+     "label_key": "0x62925361",
+     "label_en": "Light Glow",
+     "selectable": true
+    },
+    {
+     "slot": 11,
+     "kind": "choice",
+     "label_key": "0x2522A4E9",
+     "label_en": "Particle System",
+     "selectable": true
+    },
+    {
+     "slot": 12,
+     "kind": "choice",
+     "label_key": "0x822E4E9B",
+     "label_en": "Motion Blur",
+     "selectable": true
+    },
+    {
+     "slot": 13,
+     "kind": "choice",
+     "label_key": "0x95B8F38D",
+     "label_en": "Fog",
+     "selectable": true
+    },
+    {
+     "slot": 14,
+     "kind": "choice",
+     "label_key": "0x11504D0E",
+     "label_en": "Tinting",
+     "selectable": true
+    },
+    {
+     "slot": 15,
+     "kind": "choice",
+     "label_key": "0x4E57D355",
+     "label_en": "Horizon Fog",
+     "selectable": true
+    },
+    {
+     "slot": 16,
+     "kind": "choice",
+     "label_key": "0xD6F5F38C",
+     "label_en": "Over Bright",
+     "selectable": true
+    },
+    {
+     "slot": 17,
+     "kind": "slider",
+     "label_key": "0x61A50B8F",
+     "label_en": "Texture Filtering",
+     "selectable": true,
+     "range": [
+      0,
+      2
+     ]
+    },
+    {
+     "slot": 18,
+     "kind": "choice",
+     "label_key": "0x5B4AA6E4",
+     "label_en": "Vsync",
+     "selectable": true
+    }
+   ]
+  },
+  {
+   "id": "customize_fsaa_cap_1",
+   "screen": "customize",
+   "input": {
+    "caps": {
+     "CarEnvironmentMap": 3,
+     "CarEnvironmentMapUpdateData": 1,
+     "CarShadow": 2,
+     "CarHeadlight": 1,
+     "Crowd": 1,
+     "RoadReflection": 3,
+     "Fog": 1,
+     "MotionBlur": 1,
+     "LightStreaks": 1,
+     "LightGlow": 1,
+     "ParticleSystem": 1,
+     "DepthOfField": 1,
+     "WorldLod": 3,
+     "CarLod": 1,
+     "OverBright": 1,
+     "BleachByPass": 1,
+     "Tinting": 1,
+     "FSAA": 1,
+     "HorizonFog": 1,
+     "Rain": 1,
+     "TextureFiltering": 2
+    },
+    "label_0x7D3930E7_contains_caret": false
+   },
+   "expected_rows": [
+    {
+     "slot": 1,
+     "kind": "slider",
+     "label_key": "0x7D3930E7",
+     "label_en": "Car Reflection Update Rate",
+     "selectable": true,
+     "range": [
+      0,
+      3
+     ]
+    },
+    {
+     "slot": 2,
+     "kind": "choice",
+     "label_key": "0x8FE9288E",
+     "label_en": "Car Reflection Detail",
+     "selectable": true
+    },
+    {
+     "slot": 3,
+     "kind": "slider",
+     "label_key": "0xA7A683AC",
+     "label_en": "Car Shadow / Neon",
+     "selectable": true,
+     "range": [
+      0,
+      2
+     ]
+    },
+    {
+     "slot": 4,
+     "kind": "choice",
+     "label_key": "0xCFBEDB50",
+     "label_en": "Car Headlight",
+     "selectable": true
+    },
+    {
+     "slot": 5,
+     "kind": "choice",
+     "label_key": "0x4AC50BCF",
+     "label_en": "Car Geometry Detail",
+     "selectable": true
+    },
+    {
+     "slot": 6,
+     "kind": "choice",
+     "label_key": "0x06CC3750",
+     "label_en": "Crowds",
+     "selectable": true
+    },
+    {
+     "slot": 7,
+     "kind": "slider",
+     "label_key": "0xBDE2E94B",
+     "label_en": "World Detail",
+     "selectable": true,
+     "range": [
+      0,
+      3
+     ]
+    },
+    {
+     "slot": 8,
+     "kind": "slider",
+     "label_key": "0x2A2A4AB3",
+     "label_en": "Road Reflection Detail",
+     "selectable": true,
+     "range": [
+      0,
+      3
+     ]
+    },
+    {
+     "slot": 9,
+     "kind": "choice",
+     "label_key": "0x6F2C7417",
+     "label_en": "Light Trails",
+     "selectable": true
+    },
+    {
+     "slot": 10,
+     "kind": "choice",
+     "label_key": "0x62925361",
+     "label_en": "Light Glow",
+     "selectable": true
+    },
+    {
+     "slot": 11,
+     "kind": "choice",
+     "label_key": "0x2522A4E9",
+     "label_en": "Particle System",
+     "selectable": true
+    },
+    {
+     "slot": 12,
+     "kind": "choice",
+     "label_key": "0x822E4E9B",
+     "label_en": "Motion Blur",
+     "selectable": true
+    },
+    {
+     "slot": 13,
+     "kind": "choice",
+     "label_key": "0x95B8F38D",
+     "label_en": "Fog",
+     "selectable": true
+    },
+    {
+     "slot": 14,
+     "kind": "choice",
+     "label_key": "0xA9C27DFD",
+     "label_en": "Depth Of Field",
+     "selectable": true
+    },
+    {
+     "slot": 15,
+     "kind": "slider",
+     "label_key": "0x4CD775AC",
+     "label_en": "Full Screen Anti-Aliasing",
+     "selectable": true,
+     "range": [
+      0,
+      1
+     ]
+    },
+    {
+     "slot": 16,
+     "kind": "choice",
+     "label_key": "0x11504D0E",
+     "label_en": "Tinting",
+     "selectable": true
+    },
+    {
+     "slot": 17,
+     "kind": "choice",
+     "label_key": "0x4E57D355",
+     "label_en": "Horizon Fog",
+     "selectable": true
+    },
+    {
+     "slot": 18,
+     "kind": "choice",
+     "label_key": "0xD6F5F38C",
+     "label_en": "Over Bright",
+     "selectable": true
+    },
+    {
+     "slot": 19,
+     "kind": "choice",
+     "label_key": "0x571F6C00",
+     "label_en": "Enhanced Contrast",
+     "selectable": true
+    },
+    {
+     "slot": 20,
+     "kind": "choice",
+     "label_key": "0x4CDDBEBB",
+     "label_en": "Rain Splatter",
+     "selectable": true
+    },
+    {
+     "slot": 21,
+     "kind": "slider",
+     "label_key": "0x61A50B8F",
+     "label_en": "Texture Filtering",
+     "selectable": true,
+     "range": [
+      0,
+      2
+     ]
+    },
+    {
+     "slot": 22,
+     "kind": "choice",
+     "label_key": "0x5B4AA6E4",
+     "label_en": "Vsync",
+     "selectable": true
+    }
+   ]
+  },
+  {
+   "id": "customize_all_caps_zero",
+   "screen": "customize",
+   "input": {
+    "caps": {
+     "CarEnvironmentMap": 0,
+     "CarEnvironmentMapUpdateData": 0,
+     "CarShadow": 0,
+     "CarHeadlight": 0,
+     "Crowd": 0,
+     "RoadReflection": 0,
+     "Fog": 0,
+     "MotionBlur": 0,
+     "LightStreaks": 0,
+     "LightGlow": 0,
+     "ParticleSystem": 0,
+     "DepthOfField": 0,
+     "WorldLod": 0,
+     "CarLod": 0,
+     "OverBright": 0,
+     "BleachByPass": 0,
+     "Tinting": 0,
+     "FSAA": 0,
+     "HorizonFog": 0,
+     "Rain": 0,
+     "TextureFiltering": 0
+    },
+    "label_0x7D3930E7_contains_caret": false
+   },
+   "expected_rows": [
+    {
+     "slot": 1,
+     "kind": "choice",
+     "label_key": "0x5B4AA6E4",
+     "label_en": "Vsync",
+     "selectable": true
+    }
+   ]
+  },
+  {
+   "id": "customize_caret_spacer",
+   "screen": "customize",
+   "input": {
+    "caps": {
+     "CarEnvironmentMap": 3,
+     "CarEnvironmentMapUpdateData": 1,
+     "CarShadow": 2,
+     "CarHeadlight": 1,
+     "Crowd": 1,
+     "RoadReflection": 3,
+     "Fog": 1,
+     "MotionBlur": 1,
+     "LightStreaks": 1,
+     "LightGlow": 1,
+     "ParticleSystem": 1,
+     "DepthOfField": 1,
+     "WorldLod": 3,
+     "CarLod": 1,
+     "OverBright": 1,
+     "BleachByPass": 1,
+     "Tinting": 1,
+     "FSAA": 4,
+     "HorizonFog": 1,
+     "Rain": 1,
+     "TextureFiltering": 2
+    },
+    "label_0x7D3930E7_contains_caret": true
+   },
+   "expected_rows": [
+    {
+     "slot": 1,
+     "kind": "slider",
+     "label_key": "0x7D3930E7",
+     "label_en": "Car Reflection Update Rate",
+     "selectable": true,
+     "range": [
+      0,
+      3
+     ]
+    },
+    {
+     "slot": 2,
+     "kind": "spacer",
+     "label_key": null,
+     "selectable": false
+    },
+    {
+     "slot": 3,
+     "kind": "choice",
+     "label_key": "0x8FE9288E",
+     "label_en": "Car Reflection Detail",
+     "selectable": true
+    },
+    {
+     "slot": 4,
+     "kind": "slider",
+     "label_key": "0xA7A683AC",
+     "label_en": "Car Shadow / Neon",
+     "selectable": true,
+     "range": [
+      0,
+      2
+     ]
+    },
+    {
+     "slot": 5,
+     "kind": "choice",
+     "label_key": "0xCFBEDB50",
+     "label_en": "Car Headlight",
+     "selectable": true
+    },
+    {
+     "slot": 6,
+     "kind": "choice",
+     "label_key": "0x4AC50BCF",
+     "label_en": "Car Geometry Detail",
+     "selectable": true
+    },
+    {
+     "slot": 7,
+     "kind": "choice",
+     "label_key": "0x06CC3750",
+     "label_en": "Crowds",
+     "selectable": true
+    },
+    {
+     "slot": 8,
+     "kind": "slider",
+     "label_key": "0xBDE2E94B",
+     "label_en": "World Detail",
+     "selectable": true,
+     "range": [
+      0,
+      3
+     ]
+    },
+    {
+     "slot": 9,
+     "kind": "slider",
+     "label_key": "0x2A2A4AB3",
+     "label_en": "Road Reflection Detail",
+     "selectable": true,
+     "range": [
+      0,
+      3
+     ]
+    },
+    {
+     "slot": 10,
+     "kind": "choice",
+     "label_key": "0x6F2C7417",
+     "label_en": "Light Trails",
+     "selectable": true
+    },
+    {
+     "slot": 11,
+     "kind": "choice",
+     "label_key": "0x62925361",
+     "label_en": "Light Glow",
+     "selectable": true
+    },
+    {
+     "slot": 12,
+     "kind": "choice",
+     "label_key": "0x2522A4E9",
+     "label_en": "Particle System",
+     "selectable": true
+    },
+    {
+     "slot": 13,
+     "kind": "choice",
+     "label_key": "0x822E4E9B",
+     "label_en": "Motion Blur",
+     "selectable": true
+    },
+    {
+     "slot": 14,
+     "kind": "choice",
+     "label_key": "0x95B8F38D",
+     "label_en": "Fog",
+     "selectable": true
+    },
+    {
+     "slot": 15,
+     "kind": "choice",
+     "label_key": "0xA9C27DFD",
+     "label_en": "Depth Of Field",
+     "selectable": true
+    },
+    {
+     "slot": 16,
+     "kind": "slider",
+     "label_key": "0x4CD775AC",
+     "label_en": "Full Screen Anti-Aliasing",
+     "selectable": true,
+     "range": [
+      0,
+      4
+     ]
+    },
+    {
+     "slot": 17,
+     "kind": "choice",
+     "label_key": "0x11504D0E",
+     "label_en": "Tinting",
+     "selectable": true
+    },
+    {
+     "slot": 18,
+     "kind": "choice",
+     "label_key": "0x4E57D355",
+     "label_en": "Horizon Fog",
+     "selectable": true
+    },
+    {
+     "slot": 19,
+     "kind": "choice",
+     "label_key": "0xD6F5F38C",
+     "label_en": "Over Bright",
+     "selectable": true
+    },
+    {
+     "slot": 20,
+     "kind": "choice",
+     "label_key": "0x571F6C00",
+     "label_en": "Enhanced Contrast",
+     "selectable": true
+    },
+    {
+     "slot": 21,
+     "kind": "choice",
+     "label_key": "0x4CDDBEBB",
+     "label_en": "Rain Splatter",
+     "selectable": true
+    },
+    {
+     "slot": 22,
+     "kind": "slider",
+     "label_key": "0x61A50B8F",
+     "label_en": "Texture Filtering",
+     "selectable": true,
+     "range": [
+      0,
+      2
+     ]
+    },
+    {
+     "slot": 23,
+     "kind": "choice",
+     "label_key": "0x5B4AA6E4",
+     "label_en": "Vsync",
+     "selectable": true
+    }
+   ]
+  }
+ ]
+}

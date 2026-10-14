@@ -31,10 +31,10 @@ endif
 UGUI_IMAGE_LIBS := $(shell pkg-config --libs libpng libcrypto)
 override CFLAGS += $(shell pkg-config --cflags libpng libcrypto)
 # engine modules: orchestrator + Renderer/Physics/AI/Audio/Resources/World
-GAME_UI_SRC := $(wildcard src/ugui/*.c) src/pause_menu.c src/frontend/frontend.c src/frontend/frontend_draw.c
+GAME_UI_SRC := $(wildcard src/ugui/*.c) src/pause_menu.c src/options_menu.c src/settings.c src/frontend/frontend.c src/frontend/frontend_draw.c
 SRC  := src/main.c src/render.c src/render_params.c src/physics.c src/ai.c src/audio.c src/resource.c src/world.c src/world_instance.c src/world_resident.c src/world_mesh.c src/hud.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/rhi_gl_state.c src/rhi_gl.c src/camera.c src/tex_override.c $(GAME_UI_SRC)
 HDRS := src/world_collision_rules.h src/world_collision.h src/race_log.h src/race.h src/traffic_heatmap.h src/asset_chunks.h src/car_config.h src/car_mod.h src/nfsu2.h src/render.h src/physics.h src/ai.h src/audio.h src/resource.h src/debug.h src/world.h src/world_instance.h src/world_resident.h src/world_mesh.h src/world_capture_policy.h src/world_group_reader.h src/world_scenery.h src/ground_motion.h src/hud.h src/hud_asset.h src/hud_texture.h src/hud_baseline.h src/hud_host.h src/rhi_gl_state.h src/rhi.h src/rhi_gl.h src/render_params.h src/camera.h src/tex_override.h
-HDRS += src/pause_menu_binding.h src/pause_menu_quit.h src/pause_menu.h src/pause_menu_layout.h src/frontend/frontend.h src/frontend/frontend_draw.h $(wildcard src/ugui/*.h)
+HDRS += src/options_menu.h src/settings.h src/pause_menu_binding.h src/pause_menu_quit.h src/pause_menu.h src/pause_menu_layout.h src/frontend/frontend.h src/frontend/frontend_draw.h $(wildcard src/ugui/*.h)
 
 .DEFAULT_GOAL := nfsu2   # keep `make` building the binary, not the generated header
 
@@ -492,6 +492,9 @@ ugui-gl-state-test: tools/ugui_gl_state_test.c $(UGUI_SRC) src/ugui/ugui_gl.c sr
 build/pause_menu_test: tools/pause_menu_test.c tools/pause_menu_authored_test.inc tools/pause_menu_binding_test.inc tools/pause_menu_behavior_test.inc tools/pause_menu_quit_test.inc src/pause_menu.c $(HDRS) $(UGUI_SRC)
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/pause_menu_test.c src/frontend/frontend.c $(UGUI_SRC) src/ugui/ugui_gl.c src/rhi_gl_state.c -o $@ $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lm
+build/pause_menu_test: tools/pause_menu_test.c tools/pause_menu_authored_test.inc tools/pause_menu_binding_test.inc tools/pause_menu_behavior_test.inc tools/pause_menu_quit_test.inc tools/pause_menu_options_test.inc src/pause_menu.c $(HDRS) $(UGUI_SRC)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/pause_menu_test.c src/frontend/frontend.c src/options_menu.c src/settings.c $(UGUI_SRC) src/ugui/ugui_gl.c src/rhi_gl_state.c -o $@ $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) $(SETTINGS_LIBS) -lm
 pause-menu-test: build/pause_menu_test
 	env -u UGUI_DATA -u NFSU2_DATA python3 tools/pause_menu_vector_check.py build/pause_menu_test tools/pause_menu_vectors
 	env -u UGUI_DATA -u NFSU2_DATA python3 tools/pause_menu_supplement_check.py build/pause_menu_test tools/pause_menu_vectors
@@ -505,3 +508,14 @@ build/pause_menu_gl_test: tools/pause_menu_gl_test.c $(HDRS) $(UGUI_SRC)
 pause-menu-gl-test: build/pause_menu_gl_test
 	SDL_VIDEODRIVER=$(if $(filter Darwin,$(UNAME)),cocoa,offscreen) ./build/pause_menu_gl_test
 .PHONY: pause-menu-gl-test
+
+# Graphics Display/Customize option screens vs docs/cleanroom-settings/test-vectors-gui (synthetic
+# vectors, no retail data). The state machine is GL-free; the test links ugui only for the canvas.
+OPTIONS_SPEC ?= docs/cleanroom-settings
+build/options_menu_test: tools/options_menu_test.c src/options_menu.c src/options_menu.h src/settings.c src/settings.h $(UGUI_SRC) $(UGUI_HDR)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(UGUI_FLAGS) -Isrc tools/options_menu_test.c src/options_menu.c src/settings.c $(UGUI_SRC) -o $@ $(UGUI_IMAGE_LIBS) $(SETTINGS_LIBS) -lm
+options-menu-test: build/options_menu_test build/pause_menu_test
+	env -u UGUI_DATA -u NFSU2_DATA ./build/options_menu_test "$(OPTIONS_SPEC)/test-vectors-gui"
+	env -u UGUI_DATA -u NFSU2_DATA ./build/pause_menu_test options
+.PHONY: options-menu-test

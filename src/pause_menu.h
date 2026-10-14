@@ -3,6 +3,7 @@
 #define OPENUG2_PAUSE_MENU_H
 #include <SDL.h>
 #include "frontend/frontend.h"
+#include "options_menu.h"
 /* Verification captures are bounded to 6,000 ten-millisecond UI substeps. */
 #define PAUSE_MENU_CAPTURE_MAX_MS 60000.0f
 int pause_menu_capture_duration_valid(float elapsed_ms);
@@ -15,6 +16,12 @@ int pause_menu_is_open(const PauseMenu *p);
 void pause_menu_event(PauseMenu *p, const SDL_Event *e, SDL_Window *win);
 /* Window-point input; dimensions are logical window units, as in SDL events. */
 void pause_menu_pointer(PauseMenu *p, float x, float y, int width, int height);
+/* Options entry (SPEC_GUI): off until the host lends the graphics settings it edits. With it on, the pause
+ * row is Resume / Options / Quit Game. The lent objects must outlive the menu; the store may be NULL. */
+void pause_menu_set_options(PauseMenu *p, StGraphics *gfx, const StGfxCaps *caps, StRegStore *store);
+int pause_menu_options_open(const PauseMenu *p);
+/* The options state machine, for the apply/re-init hook (om_take_reinit_request ...). NULL if p is NULL. */
+OptionsMenu *pause_menu_options(PauseMenu *p);
 const char *pause_menu_caption(const PauseMenu *p);
 /* Resources may be unavailable while state/input remains usable. */
 int pause_menu_visual_available(const PauseMenu *p);

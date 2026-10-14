@@ -7,6 +7,7 @@
 #include "pause_menu_authored_test.inc"
 #include "pause_menu_behavior_test.inc"
 #include "pause_menu_quit_test.inc"
+#include "pause_menu_options_test.inc"
 
 static void focused_checks(void) {
     authored_checks();
@@ -211,6 +212,7 @@ int main(int argc, char **argv) {
     if (!strcmp(argv[1],"quit-constants")) { quit_constants();return 0; }
     if (!strcmp(argv[1],"quit-track") && argc>3) { quit_track(argc,argv);return 0; }
     if (!strcmp(argv[1],"checks")) { focused_checks();return 0; }
+    if (!strcmp(argv[1],"options")) { options_checks();return 0; }
     if (!strcmp(argv[1],"correction")) { correction_vector(atoi(argv[2]));return 0; }
     if (!strcmp(argv[1], "geometry")) {
         int w=atoi(argv[2]), h=atoi(argv[3]);

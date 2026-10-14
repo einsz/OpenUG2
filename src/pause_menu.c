@@ -3,6 +3,7 @@
 #include "pause_menu_layout.h"
 #include "pause_menu_binding.h"
 #include "pause_menu_quit.h"
+#include "options_menu.h"
 #include "ugui/ugui_gl.h"
 #include "ugui/ugui_assets.h"
 #include "ugui/ugui_ui.h"
@@ -38,6 +39,9 @@ struct PauseMenu {
     int pill_hover, pill_initialized;
     UgAnim pill_pulse,pill_glow;
     PauseQuitDialog quit;        /* authored quit confirmation, QUIT_DIALOG.md */
+    OptionsMenu options;         /* graphics Display/Customize screens, SPEC_GUI */
+    StGraphics *opt_gfx; const StGfxCaps *opt_caps; StRegStore *opt_store;
+    int options_enabled;         /* host lent the settings: the row gains an Options entry */
     char status[256];
 };
 
@@ -53,6 +57,17 @@ static void pause_resolve_art(PauseMenu *p) {
     p->marker_tex=pause_texture(&p->assets,0xDA10B4A1u);
 }
 
+/* Icon of entry k. Without the Options entry art follows the position (Resume, Quit); with it the art
+ * follows the action. The Options entry has no authored icon yet, so its slot shows the caption only. */
+static int pause_entry_art(const PauseMenu *p,int k) {
+    if(p->options_enabled && k>=0 && k<p->state.entry_count) {
+        FeAction a=p->state.entries[k].action;
+        if(a==FE_ACTION_OPTIONS)return 0;
+        if(a==FE_ACTION_QUIT)return p->item_tex[1];
+        if(a==FE_ACTION_RESUME)return p->item_tex[0];
+    }
+    return k>=0 && k<FE_MENU_MAX?p->item_tex[k]:0;
+}
 static void pause_bind_apply(PauseMenu *p);
 static int pause_bind_detect(PauseMenu *p);
 static int pause_scene_open(PauseMenu *p) {
@@ -102,6 +117,11 @@ void pause_menu_destroy(PauseMenu *p) {
 void pause_menu_open(PauseMenu *p) {
     if(!p)return;
     fe_pause_init(&p->state);p->open=1;
+    om_close(&p->options);
+    if(p->options_enabled) {
+        static const FeMenuEntry row[]={{"Resume",FE_ACTION_RESUME,1},{"Options",FE_ACTION_OPTIONS,1},{"Quit Game",FE_ACTION_QUIT,1}};
+        fe_set_entries(&p->state,row,3);
+    }
     if(p->quit.open)pqd_close(&p->quit,PQD_NONE);
     p->ui_ms=0;
     if(p->pill_initialized){ug_anim_free(&p->pill_pulse);ug_anim_free(&p->pill_glow);}
@@ -119,6 +139,13 @@ void pause_menu_open(PauseMenu *p) {
     }
 }
 int pause_menu_is_open(const PauseMenu *p){return p && p->open;}
+void pause_menu_set_options(PauseMenu *p,StGraphics *gfx,const StGfxCaps *caps,StRegStore *store) {
+    if(!p)return;
+    p->opt_gfx=gfx;p->opt_caps=caps;p->opt_store=store;
+    p->options_enabled=gfx && caps;
+}
+int pause_menu_options_open(const PauseMenu *p){return p && om_is_open(&p->options);}
+OptionsMenu *pause_menu_options(PauseMenu *p){return p?&p->options:NULL;}
 int pause_menu_visual_available(const PauseMenu *p){return p && p->original;}
 const char *pause_menu_status(const PauseMenu *p){return p?p->status:"pause menu allocation unavailable";}
 int pause_menu_quit_dialog_open(const PauseMenu *p){return p && p->quit.open;}
@@ -242,6 +269,7 @@ void pause_menu_pointer(PauseMenu *p,float px,float py,int w,int h) {
     if(!pause_menu_is_open(p) || w<=0 || h<=0)return;
     float x,y;
     pause_menu_to_virtual(pause_menu_transform(w,h),px,py,&x,&y);
+    if(om_is_open(&p->options)){om_pointer_click(&p->options,x-320,y-240);return;}
     pause_pointer_press(p,x,y);pause_pointer_release(p,x,y);
 }
 
@@ -294,9 +322,46 @@ static void pause_quit_event(PauseMenu *p,const SDL_Event *e,SDL_Window *win) {
     }
     pause_quit_result(p,r);
 }
+/* Options screens (SPEC_GUI 2.7): Left/Right/Up/Down, Enter/A accept, Esc/B/right click Back, controller
+ * Start = Start. A primary click goes to the list. Wheel and hover are unspecified (SPEC_GUI 11.2) and
+ * ignored. Everything is consumed while the screens are open. */
+static void pause_options_event(PauseMenu *p,const SDL_Event *e,SDL_Window *win) {
+    OmInput in=OM_IN_NONE;
+    if(e->type==SDL_KEYDOWN && !e->key.repeat) {
+        switch(e->key.keysym.sym) {
+        case SDLK_LEFT: in=OM_IN_LEFT;break;
+        case SDLK_RIGHT: in=OM_IN_RIGHT;break;
+        case SDLK_UP: in=OM_IN_UP;break;
+        case SDLK_DOWN: in=OM_IN_DOWN;break;
+        case SDLK_RETURN: case SDLK_KP_ENTER: in=OM_IN_ACCEPT;break;
+        case SDLK_ESCAPE: in=OM_IN_BACK;break;
+        default:break;
+        }
+    } else if(e->type==SDL_CONTROLLERBUTTONDOWN) {
+        switch(e->cbutton.button) {
+        case SDL_CONTROLLER_BUTTON_DPAD_LEFT: in=OM_IN_LEFT;break;
+        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: in=OM_IN_RIGHT;break;
+        case SDL_CONTROLLER_BUTTON_DPAD_UP: in=OM_IN_UP;break;
+        case SDL_CONTROLLER_BUTTON_DPAD_DOWN: in=OM_IN_DOWN;break;
+        case SDL_CONTROLLER_BUTTON_A: in=OM_IN_ACCEPT;break;
+        case SDL_CONTROLLER_BUTTON_B: case SDL_CONTROLLER_BUTTON_BACK: in=OM_IN_BACK;break;
+        case SDL_CONTROLLER_BUTTON_START: in=OM_IN_START;break;
+        default:break;
+        }
+    } else if(e->type==SDL_MOUSEBUTTONDOWN && e->button.button==SDL_BUTTON_RIGHT)in=OM_IN_BACK;
+    else if(e->type==SDL_MOUSEBUTTONDOWN && e->button.button==SDL_BUTTON_LEFT && win) {
+        int w,h;SDL_GetWindowSize(win,&w,&h);
+        if(w<=0 || h<=0)return;
+        float x,y;pause_menu_to_virtual(pause_menu_transform(w,h),e->button.x,e->button.y,&x,&y);
+        om_pointer_click(&p->options,x-320,y-240);
+        return;
+    }
+    om_input(&p->options,in);
+}
 void pause_menu_event(PauseMenu *p,const SDL_Event *e,SDL_Window *win) {
     if(!pause_menu_is_open(p) || p->state.pending!=FE_ACTION_NONE)return;
     if(p->quit.open){pause_quit_event(p,e,win);return;}
+    if(om_is_open(&p->options)){pause_options_event(p,e,win);return;}
     FeInput in=FE_INPUT_NONE;
     if(e->type==SDL_KEYDOWN && !e->key.repeat) {
         switch(e->key.keysym.sym) {
@@ -351,6 +416,20 @@ FeAction pause_menu_update(PauseMenu *p,float seconds) {
     }
     fe_update(&p->state,seconds);
     FeAction a=fe_poll_action(&p->state);
+    if(a==FE_ACTION_OPTIONS) {
+        /* Opens the graphics screens inside the pause; the game stays paused and nothing is reported. */
+        a=FE_ACTION_NONE;
+        if(p->options_enabled) {
+            OmConfig cfg;om_config_default(&cfg,OM_CTX_INGAME);
+            om_open(&p->options,&cfg,p->opt_gfx,p->opt_caps,p->opt_store,0);
+        }
+    }
+    if(om_is_open(&p->options) || p->options.nevents) {
+        om_update(&p->options,seconds);
+        OmEvent oe;
+        while((oe=om_poll_event(&p->options))!=OM_EV_NONE)
+            if(oe==OM_EV_RESUME_GAME)a=FE_ACTION_RESUME; /* in-game Start: leave at once, nothing written (SPEC_GUI 5.2) */
+    }
     /* BEHAVIOR 5.3 / QUIT_DIALOG Q7.5: resume and a confirmed quit both leave at the input frame. The
      * authored fade-outs are presentation only and nothing waits for them or for a timer. */
     if(a==FE_ACTION_RESUME || a==FE_ACTION_QUIT) {
@@ -477,8 +556,9 @@ static void pause_bind_apply(PauseMenu *p) {
          * iff its opacity multiplier is positive (|k-s| < 1.8). Only the icons move. */
         PauseIconPlace ic=pause_icon_place(k,p->scroll);
         int listed=k<p->state.entry_count && k<FE_MENU_MAX;
-        n->app_hidden=!valid || !listed || ic.alpha<=0 || !p->item_tex[k];
-        n->tex_override=listed?p->item_tex[k]:0;
+        int art=listed?pause_entry_art(p,k):0;
+        n->app_hidden=!valid || !listed || ic.alpha<=0 || !art;
+        n->tex_override=art;
         n->app_opacity=ic.alpha;
         if(listed) {
             ug_scene_set_world_pos(s,n->index,slot->pos[0]+ic.dx,slot->pos[1]);
@@ -523,7 +603,19 @@ static void pause_menu_compose(PauseMenu *p) {
     ug_cv_translate(cv,-320,-240);
     pause_draw_pills(p);
 }
+static void pause_options_draw(PauseMenu *p,int width,int height) {
+    if(!p->gl || !p->compatible)return;
+    const UgFace *face=ug_text_face();
+    const UgSkin *old=ug_kit_skin();
+    UgSkin saved;if(old)saved=*old;
+    ug_text_set_face(ug_assets_main_face(&p->assets));ug_kit_set_skin(&p->skin);
+    ug_cv_clear(&p->canvas);
+    options_menu_draw(&p->options,&p->canvas);
+    ug_gl_render_overlay(p->gl,&p->canvas,width,height);
+    ug_text_set_face(face);ug_kit_set_skin(old?&saved:NULL);
+}
 void pause_menu_draw(PauseMenu *p,int width,int height) {
+    if(pause_menu_is_open(p) && om_is_open(&p->options) && width>0 && height>0){pause_options_draw(p,width,height);return;}
     if(!pause_menu_is_open(p) || !p->original || width<=0 || height<=0)return;
     const UgFace *face=ug_text_face();
     const UgSkin *old=ug_kit_skin();

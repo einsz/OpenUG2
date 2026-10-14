@@ -1,0 +1,134 @@
+{
+ "provenance": "Synthetic scenario table; transitions [static] unless a case says otherwise.",
+ "cases": [
+  {
+   "id": "fe_back_from_display",
+   "context": "frontend",
+   "screen": "UI_Options.fng (Display)",
+   "event": "Back",
+   "expected": {
+    "graphics_written_to_registry": true,
+    "next_package": "UI_OptionsMain.fng",
+    "after": "exit animation of the event-handler object completes"
+   }
+  },
+  {
+   "id": "ig_back_from_display",
+   "context": "in-game",
+   "screen": "UI_PauseOptions.fng (Display)",
+   "event": "Back",
+   "expected": {
+    "graphics_written_to_registry": true,
+    "next_package": "UI_PauseOptionsMain.fng"
+   }
+  },
+  {
+   "id": "ig_start_from_display",
+   "context": "in-game",
+   "screen": "UI_PauseOptions.fng (Display)",
+   "event": "Start",
+   "expected": {
+    "graphics_written_to_registry": false,
+    "closes": [
+     "UI_PauseOptions.fng",
+     "UI_PauseOptionsMain.fng",
+     "UI_Pause.fng"
+    ],
+    "game_resumes": true,
+    "confidence": "static"
+   }
+  },
+  {
+   "id": "customize_open",
+   "context": "either",
+   "screen": "Display",
+   "event": "Accept on row \"Customize Display Settings\"",
+   "expected": {
+    "next_package": "UI_PC_Customize_Options.fng",
+    "graphics_written_to_registry": false
+   }
+  },
+  {
+   "id": "customize_back_fe",
+   "context": "frontend",
+   "screen": "UI_PC_Customize_Options.fng",
+   "event": "Back",
+   "expected": {
+    "next_package": "UI_Options.fng",
+    "graphics_written_to_registry": false,
+    "display_initial_focus_row": 1
+   }
+  },
+  {
+   "id": "customize_back_ig",
+   "context": "in-game",
+   "screen": "UI_PC_Customize_Options.fng",
+   "event": "Back",
+   "expected": {
+    "next_package": "UI_PauseOptions.fng",
+    "graphics_written_to_registry": false
+   }
+  },
+  {
+   "id": "defaults_yes",
+   "context": "either",
+   "screen": "Display",
+   "event": "Accept on \"Default Settings\", then Yes",
+   "expected": {
+    "dialog_package": "GenericDialog_SMALL.fng",
+    "message_key": "0x2BBCCA6B",
+    "buttons": [
+     "0x0000F770",
+     "0x0000061C"
+    ],
+    "initial_dialog_focus": "button 1 (first label, Yes)",
+    "on_yes": [
+     "auto-detect (SPEC 4.2)",
+     "request display re-init",
+     "rebuild rows; focus row 1"
+    ],
+    "graphics_written_to_registry": false
+   }
+  },
+  {
+   "id": "defaults_no",
+   "context": "either",
+   "screen": "Display",
+   "event": "Accept on \"Default Settings\", then No or Back",
+   "expected": {
+    "settings_changed": false,
+    "focus_unchanged": true
+   }
+  },
+  {
+   "id": "change_requires_reinit",
+   "context": "either",
+   "screen": "Display or Customize",
+   "event": "Right on \"Light Glow\" (cap 1, value 0)",
+   "expected": {
+    "value": 1,
+    "display_reinit": "at the start of the next frame (not deferred to leaving the screen)",
+    "graphics_written_to_registry": false
+   }
+  },
+  {
+   "id": "change_no_reinit",
+   "context": "either",
+   "screen": "Customize",
+   "event": "Right on \"Crowds\" (cap 1, value 0)",
+   "expected": {
+    "value": 1,
+    "display_reinit": false
+   }
+  },
+  {
+   "id": "toggle_cap_zero_hidden",
+   "context": "either",
+   "screen": "Customize",
+   "event": "open with Fog cap 0",
+   "expected": {
+    "fog_row_present": false
+   }
+  }
+ ]
+}

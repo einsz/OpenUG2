@@ -37,7 +37,8 @@ typedef enum {
     FE_ACTION_FREE_ROAM,
     FE_ACTION_RACE_SELECT,
     FE_ACTION_QUIT,
-    FE_ACTION_RESUME
+    FE_ACTION_RESUME,
+    FE_ACTION_OPTIONS    /* pause menu only: open the graphics options screens */
 } FeAction;
 
 /* ---- main menu entries ---- */
