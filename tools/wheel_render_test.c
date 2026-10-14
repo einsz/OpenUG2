@@ -4,6 +4,23 @@
 #include <assert.h>
 #include <stdio.h>
 
+static void stale_buffer_test(void) {
+    unsigned char data[4] = {0};
+    RhiBufferDesc desc = {RHI_BUFFER_VERTEX,RHI_UPDATE_STATIC,sizeof data,data};
+    RhiBuffer stale = rhi_buffer_create(&desc); assert(stale.id);
+    rhi_buffer_destroy(stale);
+    for (int i=0;i<255;i++) {
+        RhiBuffer b = rhi_buffer_create(&desc); assert(b.id); rhi_buffer_destroy(b);
+    }
+    RhiBuffer live = rhi_buffer_create(&desc); assert(live.id);
+    GLuint name = rhi_gl_buffer_name(live);
+    assert(!rhi_gl_buffer_name(stale));
+    assert(rhi_buffer_update(stale,0,sizeof data,data)==RHI_ERR_INVALID);
+    rhi_buffer_destroy(stale);
+    assert(rhi_gl_buffer_name(live)==name && glIsBuffer(name));
+    rhi_buffer_destroy(live); glBindBuffer(GL_ARRAY_BUFFER,0);
+}
+
 int main(void) {
     float verts[]={0,0,0,0,0, 0,0,2,0,0};uint16_t idx[]={0,0,0,1,1,1};
     N2Mesh slices[2]={{.verts=verts,.nverts=2,.idx=idx,.nidx=3},
@@ -18,6 +35,7 @@ int main(void) {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION,1);
     SDL_Window *w=SDL_CreateWindow("wheel-render-test",0,0,32,32,SDL_WINDOW_OPENGL|SDL_WINDOW_HIDDEN);
     assert(w);SDL_GLContext ctx=SDL_GL_CreateContext(w);assert(ctx);
+    stale_buffer_test();
     RProg r=render_program();GpuMesh q=make_quad();
     float m[16]={2,0,0,0,0,2,0,0,0,0,1,0,-1,-1,0,1};
     ug2_copy(r.p->uMVP, m, 16);
