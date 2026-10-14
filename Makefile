@@ -36,6 +36,8 @@ SRC  := src/main.c src/render.c src/render_params.c src/physics.c src/ai.c src/a
 HDRS := src/world_collision_rules.h src/world_collision.h src/race_log.h src/race.h src/traffic_heatmap.h src/asset_chunks.h src/car_config.h src/car_mod.h src/nfsu2.h src/render.h src/physics.h src/ai.h src/audio.h src/resource.h src/debug.h src/world.h src/world_instance.h src/world_resident.h src/world_mesh.h src/world_capture_policy.h src/world_group_reader.h src/world_scenery.h src/ground_motion.h src/hud.h src/hud_asset.h src/hud_texture.h src/hud_baseline.h src/hud_host.h src/rhi_gl_state.h src/rhi.h src/rhi_gl.h src/render_params.h src/camera.h src/tex_override.h
 HDRS += src/pause_menu_binding.h src/pause_menu_quit.h src/pause_menu.h src/pause_menu_layout.h src/frontend/frontend.h src/frontend/frontend_draw.h $(wildcard src/ugui/*.h)
 
+HDRS += src/ug2_track_collision.h
+
 .DEFAULT_GOAL := nfsu2   # keep `make` building the binary, not the generated header
 
 # Auto-embed the F3 debug shaders so world_mesh.c has a CWD-independent fallback
@@ -163,6 +165,13 @@ ground-motion-test: tools/ground_motion_test.c src/ground_motion.h src/world.c s
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/ground_motion_test.c src/world.c src/resource.c src/world_instance.c src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c -o build/ground_motion_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
 	./build/ground_motion_test
+
+ug2-track-collision-test: tools/ug2_track_collision_test.c src/ug2_track_collision.h src/asset_chunks.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Isrc tools/ug2_track_collision_test.c -o build/ug2_track_collision_test -lm
+	./build/ug2_track_collision_test
+
+.PHONY: ug2-track-collision-test
 
 world-collision-test: tools/world_collision_test.c src/world.c src/resource.c src/world_instance.c src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c $(HDRS) src/generated_shaders.h
 	@mkdir -p build

@@ -585,6 +585,8 @@ int main(void) {
     snprintf(region,sizeof region,"%s/STREAMTEST.BUN",tracks);
     snprintf(common,sizeof common,"%s/InGameCommon.bun",global);
     snprintf(master,sizeof master,"%s/master-fixture.bun",root);
+    /* Texture-only fixtures have no collision table or polygons. */
+    assert(world_collision_init_source(WCOLLISION_LEGACY));
     assert(SDL_Init(SDL_INIT_VIDEO)==0);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION,2);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION,1);

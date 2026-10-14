@@ -13,10 +13,17 @@
 #include "world_collision_rules.h"
 
 static const WCollisionEdits *collision_edits;
-void world_collision_init(void) {
+static int collision_source=WCOLLISION_BUN;
+int world_collision_init_source(int source) {
+    if(source!=WCOLLISION_LEGACY && source!=WCOLLISION_BUN)return 0;
+    collision_source=source;
     collision_edits=&city_collision_edits;
-    puts("world collisions: driving ground and roadside walls; decorative scenery non-solid");
+    puts(source==WCOLLISION_BUN
+        ?"world collisions: BUN track walls, named race groups; source contact flags retained"
+        :"world collisions: driving ground, building facades and roadside walls; decorative scenery non-solid");
+    return 1;
 }
+void world_collision_init(void){(void)world_collision_init_source(WCOLLISION_BUN);}
 
 static void grid_build(World *w);
 static void nav_build_adj(World *w);
@@ -127,6 +134,7 @@ static void world_scene_free(N2Scene *scene) {
 
 void world_neighborhood_free(WorldNeighborhood *neighborhood) {
     if (!neighborhood) return;
+    ug2_track_collision_free(&neighborhood->track_collision);
     world_ground_grid_free(&neighborhood->grid);
     world_scene_free(&neighborhood->scene);
     world_scene_free(&neighborhood->vista);
@@ -326,6 +334,9 @@ static int world_neighborhood_load_facade(World *w, const char *troot,
                                           const WLoadOptions *options) {
     memset(&w->neighborhood, 0, sizeof w->neighborhood);
     const int instance_world = options && options->enabled;
+    if(collision_source==WCOLLISION_BUN && !strcmp(trackname,"ALL")) {
+        fprintf(stderr,"BUN collision requires one explicit STREAM bundle\n");return 0;
+    }
     if (instance_world && !strcmp(trackname, "ALL")) {
         fprintf(stderr, "instance world requires one explicit STREAM bundle; "
                         "--track ALL is not a production composition\n");
@@ -466,6 +477,36 @@ static int world_neighborhood_load_facade(World *w, const char *troot,
     if (collision_edits) {
         if (!wce_roadside(collision_edits,&w->neighborhood.scene,wce_map(collision_edits,trackname))) return 0;
     } else if (!phys_prepare_boundaries(&w->neighborhood.scene)) return 0;
+
+    if(collision_source==WCOLLISION_BUN) {
+        WRegion *region=w->neighborhood.rgn;
+        const char *stem=!strncmp(region->name,"STREAM",6)?region->name+6:region->name;
+        char path[1024];int plen=snprintf(path,sizeof path,"%s/%s.BUN",troot,stem);
+        if(plen<0 || (size_t)plen>=sizeof path)return 0;
+        long companion_len=0;unsigned char *companion=n2_read_file(path,&companion_len);
+        UG2TrackGroups activation={0};
+        int groups_valid=companion && ug2_track_groups_read(companion,(size_t)companion_len,&activation);
+        free(companion);
+        if(!groups_valid){fprintf(stderr,"invalid or missing BUN collision groups in %s\n",path);return 0;}
+        float bounds[4];const float *selection=NULL;
+        if(options && options->enabled && options->view_radius>0) {
+            bounds[0]=options->focus_x-options->view_radius;bounds[1]=options->focus_y-options->view_radius;
+            bounds[2]=options->focus_x+options->view_radius;bounds[3]=options->focus_y+options->view_radius;
+            selection=bounds;
+        }
+        if(!region->data || !ug2_track_collision_read(region->data,(size_t)region->len,&activation,selection,&w->neighborhood.track_collision)) {
+            fprintf(stderr,"invalid or missing BUN track collision data in %s\n",trackname);return 0;
+        }
+        uint32_t bundle=0xffffffffu;
+        for(const unsigned char *p=(const unsigned char*)trackname;*p;p++)bundle=bundle*33u+*p;
+        int before=w->neighborhood.scene.count;
+        int event=instance_world?w->neighborhood.inst_stats.scenery_effective:options?options->scenery_event:0;
+        if(!wce_bun(&w->neighborhood.scene,&w->neighborhood.track_collision,bundle,event))return 0;
+        printf("BUN collision: %zu groups, %zu source polygons, %zu local polygons, %d wall meshes; %zu activation groups, event=%d effective=%d\n",
+            w->neighborhood.track_collision.groups,w->neighborhood.track_collision.total,
+            w->neighborhood.track_collision.count,w->neighborhood.scene.count-before,
+            activation.count,event,wce_bun_event(&w->neighborhood.track_collision,event));
+    }
 
     /* per-mesh XY bounds — the draw cull and the ground grid both key off it */
     int nm = w->neighborhood.scene.count;

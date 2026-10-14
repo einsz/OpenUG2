@@ -10,6 +10,7 @@
 #include "render.h"
 #include "debug.h"   /* ScriptedDef, for world_scripted_defs */
 #include "world_instance.h"
+#include "ug2_track_collision.h"
 
 #define WORLD_MAXREG 16
 #define WORLD_MAXDIST 24
@@ -74,6 +75,7 @@ typedef struct {
     float (*mbb)[4];
     WGroundGrid grid;
     WInstStats inst_stats;
+    UG2TrackCollision track_collision;
     float center[2], radius;
 } WorldNeighborhood;
 
@@ -201,6 +203,9 @@ int world_load_ex(World *w, const char *troot, const char *trackname,
                   const WLoadOptions *options);
 /* Enable compiled gameplay corrections before loading/starting resident workers. */
 void world_collision_init(void);
+enum { WCOLLISION_LEGACY, WCOLLISION_BUN };
+/* Startup only, before resident workers. Original BUN walls are the default. */
+int world_collision_init_source(int source);
 
 int world_neighborhood_load(WorldNeighborhood *neighborhood,
                             const char *troot, const char *trackname,

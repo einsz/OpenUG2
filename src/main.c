@@ -2122,6 +2122,7 @@ int main(int argc, char **argv) {
                           free-roam context, so the top-left widget idles.
          --devui          open the ImGui developer menu at launch (make debug)
          --collision-walls show current collision wall candidate faces in 3D
+         --collision-source legacy|bun select static walls (default: bun)
          --instance-audit print instance/world/support diagnostics and exit GL-free
          --tex-overrides DIR  replace textures with user DDS files from DIR
                           (docs/TEXTURE_OVERRIDES.md); off by default
@@ -2186,6 +2187,7 @@ int main(int argc, char **argv) {
     const char *perf_csv = NULL;  /* --perf-csv FILE: per-frame section timings */
     int world_cull_off = 0; /* diagnostic A/B, never changes loading or shadows */
     int perf_still = 0;           /* --perf-still: no --shot auto-throttle */
+    int collision_source = WCOLLISION_BUN;
     float perf_orbit = 0.0f;      /* --perf-orbit RAD: orbit camera step per frame */
     N2Path ai_drive_path = {0}; AiDrive ai_drive = {0}; int ai_audit_complete = 0;
     int facecensus = 0;  /* --face-census (M131): wall-face vertical span histogram */
@@ -2354,6 +2356,12 @@ int main(int argc, char **argv) {
         }
         else if (!strcmp(argv[i], "--devui")) g_devui = 1;
         else if (!strcmp(argv[i], "--collision-walls")) g_dbg.wall_show = 1;
+        else if (!strcmp(argv[i], "--collision-source")) {
+            if(i+1>=argc || (strcmp(argv[i+1],"legacy") && strcmp(argv[i+1],"bun"))) {
+                fprintf(stderr,"--collision-source requires legacy or bun\n");return 1;
+            }
+            collision_source=!strcmp(argv[++i],"bun")?WCOLLISION_BUN:WCOLLISION_LEGACY;
+        }
         else if (!strcmp(argv[i], "--tier") && i+1 < argc) {
             const char *t = argv[++i];
             if      (!strcmp(t, "baseline")) tier = 0;
@@ -3354,7 +3362,7 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    world_collision_init();
+    if(!world_collision_init_source(collision_source))return 1;
     static World world;
     WorldResident *active_resident = NULL, *candidate_resident = NULL;
     WorldResident *retired_resident = NULL;
