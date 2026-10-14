@@ -785,6 +785,11 @@ void rhi_pipeline_desc_init(RhiPipelineDesc *d) {
     d->src_rgb = d->src_alpha = RHI_BLEND_ONE;
     d->dst_rgb = d->dst_alpha = RHI_BLEND_ZERO;
     d->color_write = 0xF;
+    d->stencil_test = 0;
+    d->stencil_compare = RHI_COMPARE_ALWAYS;
+    d->stencil_ref = 0;
+    d->stencil_read_mask = d->stencil_write_mask = 0xFF;
+    d->stencil_fail = d->stencil_depth_fail = d->stencil_pass = RHI_STENCIL_KEEP;
 }
 
 static int vertex_layout_equal(const RhiVertexLayout *a, const RhiVertexLayout *b) {
@@ -806,12 +811,16 @@ static int pipeline_desc_equal(const RhiPipelineDesc *a, const RhiPipelineDesc *
            a->depth_compare == b->depth_compare && !a->blend == !b->blend &&
            a->src_rgb == b->src_rgb && a->dst_rgb == b->dst_rgb &&
            a->src_alpha == b->src_alpha && a->dst_alpha == b->dst_alpha &&
-           (a->color_write & 0xF) == (b->color_write & 0xF);
+           (a->color_write & 0xF) == (b->color_write & 0xF) &&
+           !a->stencil_test == !b->stencil_test && a->stencil_compare == b->stencil_compare &&
+           a->stencil_ref == b->stencil_ref && a->stencil_read_mask == b->stencil_read_mask &&
+           a->stencil_write_mask == b->stencil_write_mask && a->stencil_fail == b->stencil_fail &&
+           a->stencil_depth_fail == b->stencil_depth_fail && a->stencil_pass == b->stencil_pass;
 }
 
 static uint32_t vertex_format_bytes(RhiVertexFormat format) {
-    static const uint32_t bytes[] = {0, 8, 12, 16, 4};
-    return format >= RHI_VERTEX_FLOAT2 && format <= RHI_VERTEX_UNORM8X4 ? bytes[format] : 0;
+    static const uint32_t bytes[] = {0, 8, 12, 16, 4, 4};
+    return format >= RHI_VERTEX_FLOAT2 && format <= RHI_VERTEX_FLOAT1 ? bytes[format] : 0;
 }
 
 RhiPipeline rhi_pipeline_create(const RhiPipelineDesc *desc) {
@@ -819,7 +828,9 @@ RhiPipeline rhi_pipeline_create(const RhiPipelineDesc *desc) {
     if (!desc || shader_slot(desc->shader) < 0 ||
         desc->vertex.attrib_count > RHI_MAX_VERTEX_ATTRIBS ||
         desc->primitive > RHI_PRIMITIVE_LINES || desc->cull > RHI_CULL_FRONT ||
-        desc->depth_compare > RHI_COMPARE_ALWAYS ||
+        desc->depth_compare > RHI_COMPARE_ALWAYS || desc->stencil_compare > RHI_COMPARE_ALWAYS ||
+        desc->stencil_fail > RHI_STENCIL_INVERT || desc->stencil_depth_fail > RHI_STENCIL_INVERT ||
+        desc->stencil_pass > RHI_STENCIL_INVERT ||
         desc->src_rgb > RHI_BLEND_ONE_MINUS_DST_COLOR || desc->dst_rgb > RHI_BLEND_ONE_MINUS_DST_COLOR ||
         desc->src_alpha > RHI_BLEND_ONE_MINUS_DST_COLOR || desc->dst_alpha > RHI_BLEND_ONE_MINUS_DST_COLOR) {
         fprintf(stderr, "rhi: pipeline_create: invalid description\n");
@@ -857,6 +868,10 @@ static GLenum gl_compare(RhiCompare c) {
     static const GLenum t[] = { GL_NEVER, GL_LESS, GL_EQUAL, GL_LEQUAL,
                                 GL_GREATER, GL_NOTEQUAL, GL_GEQUAL, GL_ALWAYS };
     return t[c];
+}
+static GLenum gl_stencil_op(RhiStencilOp op) {
+    static const GLenum t[] = { GL_KEEP, GL_ZERO, GL_REPLACE, GL_INCR, GL_DECR, GL_INVERT };
+    return t[op];
 }
 static GLenum gl_blend(RhiBlendFactor f) {
     static const GLenum t[] = { GL_ZERO, GL_ONE, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
@@ -910,6 +925,15 @@ void rhi_cmd_bind_pipeline(RhiPipeline pipeline) {
     GLboolean want_cm[4] = { (d->color_write & 1) ? GL_TRUE : GL_FALSE, (d->color_write & 2) ? GL_TRUE : GL_FALSE,
                              (d->color_write & 4) ? GL_TRUE : GL_FALSE, (d->color_write & 8) ? GL_TRUE : GL_FALSE };
     if (memcmp(cm, want_cm, sizeof cm)) glColorMask(want_cm[0], want_cm[1], want_cm[2], want_cm[3]);
+    /* Stencil functions are not tracked: set whenever the test is on, left as
+       they are when it is off (like the blend factors). */
+    set_cap(GL_STENCIL_TEST, d->stencil_test);
+    if (d->stencil_test) {
+        glStencilMask(d->stencil_write_mask);
+        glStencilFunc(gl_compare(d->stencil_compare), d->stencil_ref, d->stencil_read_mask);
+        glStencilOp(gl_stencil_op(d->stencil_fail), gl_stencil_op(d->stencil_depth_fail),
+                    gl_stencil_op(d->stencil_pass));
+    }
 }
 
 void rhi_cmd_bind_vertex_buffer(uint32_t stream, RhiBuffer buffer, uint32_t offset) {
@@ -928,20 +952,65 @@ void rhi_cmd_bind_texture(uint32_t slot, RhiTexture texture) {
     glBindTexture(t ? t->target : GL_TEXTURE_2D, t ? t->name : 0);
 }
 
-/* Same GL calls, in the same order, as the draw code issued before rhi.h had
- * draws: per attribute (in layout order) its buffer, enable and pointer; then
- * the index buffer, the changed parameters and the draw. */
-void rhi_cmd_draw_indexed(uint32_t index_count, uint32_t first_index) {
+/* Vertex setup for a draw: per layout attribute (in layout order) its buffer,
+ * enable and pointer -- the GL calls, in the same order, that the draw code
+ * issued before rhi.h had draws -- then attributes the layout does not name
+ * are switched off, so no stale array is read. */
+static const RhiPipelineDesc *draw_setup(const char *what, uint32_t vertex_count, uint32_t first_vertex) {
     if (g_cmd.pipeline < 0) {
-        fprintf(stderr, "rhi: draw_indexed: no pipeline bound\n");
-        return;
+        fprintf(stderr, "rhi: %s: no pipeline bound\n", what);
+        return NULL;
     }
     const RhiPipelineDesc *d = &g_pipelines.desc[g_cmd.pipeline];
     if (shader_slot(d->shader) < 0) {
-        fprintf(stderr, "rhi: draw_indexed: destroyed shader\n");
+        fprintf(stderr, "rhi: %s: destroyed shader\n", what);
         g_cmd.pipeline = -1;
-        return;
+        return NULL;
     }
+    GLuint names[RHI_MAX_VERTEX_STREAMS] = {0};
+    for (uint32_t i = 0; i < d->vertex.attrib_count; i++) {
+        const RhiVertexAttrib *a = &d->vertex.attribs[i];
+        if (!g_cmd.vertex[a->stream].id) continue; /* disabled constant attribute */
+        const RhiGlBuffer *b = buffer_lookup(g_cmd.vertex[a->stream], what);
+        uint32_t bytes = vertex_format_bytes(a->format);
+        uint32_t stride = d->vertex.stride[a->stream] ? d->vertex.stride[a->stream] : bytes;
+        uint64_t last = vertex_count ? (uint64_t)first_vertex + vertex_count - 1u : 0;
+        uint64_t end = (uint64_t)g_cmd.vertex_offset[a->stream] + a->offset + last * stride + bytes;
+        if (!b || b->target != GL_ARRAY_BUFFER || end > PTRDIFF_MAX || end > b->size) {
+            fprintf(stderr, "rhi: %s: invalid vertex buffer or range\n", what);
+            return NULL;
+        }
+        names[a->stream] = b->name;
+    }
+    unsigned used = 0;
+    int bound_stream = -1;
+    for (uint32_t i = 0; i < d->vertex.attrib_count; i++) {
+        const RhiVertexAttrib *a = &d->vertex.attribs[i];
+        used |= 1u << a->location;
+        if (!names[a->stream]) {
+            glDisableVertexAttribArray(a->location);
+            continue;
+        }
+        if ((int)a->stream != bound_stream) {
+            glBindBuffer(GL_ARRAY_BUFFER, names[a->stream]);
+            bound_stream = (int)a->stream;
+        }
+        static const GLint comps[] = { 0, 2, 3, 4, 4, 1 };
+        uintptr_t off = (uintptr_t)g_cmd.vertex_offset[a->stream] + a->offset;
+        glEnableVertexAttribArray(a->location);
+        glVertexAttribPointer(a->location, comps[a->format],
+                              a->format == RHI_VERTEX_UNORM8X4 ? GL_UNSIGNED_BYTE : GL_FLOAT,
+                              a->format == RHI_VERTEX_UNORM8X4 ? GL_TRUE : GL_FALSE,
+                              (GLsizei)d->vertex.stride[a->stream], (const void *)off);
+    }
+    for (GLuint loc = 0; loc < RHI_MAX_VERTEX_ATTRIBS; loc++)
+        if (!(used & (1u << loc)) && gls_attrib_enabled(loc)) glDisableVertexAttribArray(loc);
+    return d;
+}
+
+static GLenum gl_primitive(RhiPrimitive p) { return p == RHI_PRIMITIVE_LINES ? GL_LINES : GL_TRIANGLES; }
+
+void rhi_cmd_draw_indexed(uint32_t index_count, uint32_t first_index) {
     if (!index_count) return;
     const RhiGlBuffer *index = buffer_lookup(g_cmd.index, "draw_indexed");
     if (!index || index->target != GL_ELEMENT_ARRAY_BUFFER || index_count > INT_MAX ||
@@ -950,38 +1019,22 @@ void rhi_cmd_draw_indexed(uint32_t index_count, uint32_t first_index) {
         fprintf(stderr, "rhi: draw_indexed: invalid index buffer or range\n");
         return;
     }
-    GLuint names[RHI_MAX_VERTEX_STREAMS] = {0};
-    for (uint32_t i = 0; i < d->vertex.attrib_count; i++) {
-        const RhiVertexAttrib *a = &d->vertex.attribs[i];
-        if (!g_cmd.vertex[a->stream].id) continue; /* disabled constant attribute */
-        const RhiGlBuffer *b = buffer_lookup(g_cmd.vertex[a->stream], "draw_indexed");
-        uint64_t off = (uint64_t)g_cmd.vertex_offset[a->stream] + a->offset;
-        if (!b || b->target != GL_ARRAY_BUFFER || off > PTRDIFF_MAX || off > b->size ||
-            vertex_format_bytes(a->format) > b->size - (size_t)off) {
-            fprintf(stderr, "rhi: draw_indexed: invalid vertex buffer or range\n");
-            return;
-        }
-        names[a->stream] = b->name;
-    }
-    int bound_stream = -1;
-    for (uint32_t i = 0; i < d->vertex.attrib_count; i++) {
-        const RhiVertexAttrib *a = &d->vertex.attribs[i];
-        if (!names[a->stream]) { glDisableVertexAttribArray(a->location); continue; }
-        if ((int)a->stream != bound_stream) {
-            glBindBuffer(GL_ARRAY_BUFFER, names[a->stream]);
-            bound_stream = (int)a->stream;
-        }
-        static const GLint comps[] = { 0, 2, 3, 4, 4 };
-        uintptr_t off = (uintptr_t)g_cmd.vertex_offset[a->stream] + a->offset;
-        glEnableVertexAttribArray(a->location);
-        glVertexAttribPointer(a->location, comps[a->format],
-                              a->format == RHI_VERTEX_UNORM8X4 ? GL_UNSIGNED_BYTE : GL_FLOAT,
-                              a->format == RHI_VERTEX_UNORM8X4 ? GL_TRUE : GL_FALSE,
-                              (GLsizei)d->vertex.stride[a->stream], (const void *)off);
-    }
+    const RhiPipelineDesc *d = draw_setup("draw_indexed", 0, 0);
+    if (!d) return;
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index->name);
     rhi_gl_flush_params();
-    glDrawElements(d->primitive == RHI_PRIMITIVE_LINES ? GL_LINES : GL_TRIANGLES,
-                   (GLsizei)index_count, GL_UNSIGNED_SHORT,
+    glDrawElements(gl_primitive(d->primitive), (GLsizei)index_count, GL_UNSIGNED_SHORT,
                    (const void *)((uintptr_t)first_index * 2u));
+}
+
+void rhi_cmd_draw(uint32_t vertex_count, uint32_t first_vertex) {
+    if (!vertex_count) return;
+    if (vertex_count > INT_MAX || first_vertex > INT_MAX) {
+        fprintf(stderr, "rhi: draw: invalid vertex count or first vertex\n");
+        return;
+    }
+    const RhiPipelineDesc *d = draw_setup("draw", vertex_count, first_vertex);
+    if (!d) return;
+    rhi_gl_flush_params();
+    glDrawArrays(gl_primitive(d->primitive), (GLint)first_vertex, (GLsizei)vertex_count);
 }

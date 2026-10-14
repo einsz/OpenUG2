@@ -297,6 +297,14 @@ typedef struct {
                 halo;        /* lamp halos: src alpha + one, no depth write */
 } UG2CarPipelines;
 void render_car_pipelines(const RProg *r, UG2CarPipelines *p);
+/* Pipelines of the overlay effects: position-only car shadow and collision
+   walls, and the screen-space rain. */
+typedef struct {
+    RhiPipeline car_shadow,      /* blend, no depth write, stencil EQUAL 0 / INCR */
+                walls[2][2],     /* [depth test][lines]: blend, no depth write */
+                rain;            /* no depth test, blend, RainVertex layout */
+} UG2EffectPipelines;
+void render_effect_pipelines(const RProg *r, UG2EffectPipelines *p);
 /* draw_gpumesh through the bound pipeline */
 void render_draw_gpumesh(const GpuMesh *g);
 RhiTexture upload_tex(const N2Tex *t);

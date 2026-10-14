@@ -161,11 +161,12 @@ int main(void) {
     float vcolor;ug2_copy(&vcolor, &r.p->uVColor, 1);assert(vcolor==.25f);
     /* Pipeline helpers must preserve state they previously left untouched. */
     for(int blend=0;blend<2;blend++) {
-        glDepthFunc(GL_GREATER);glEnable(GL_CULL_FACE);glColorMask(GL_FALSE,GL_TRUE,GL_FALSE,GL_TRUE);
+        glDepthFunc(GL_GREATER);glEnable(GL_CULL_FACE);glEnable(GL_STENCIL_TEST);
+        glColorMask(GL_FALSE,GL_TRUE,GL_FALSE,GL_TRUE);
         render_wheel_mesh(&r,&q,wtex,blend?N2_DRAW_BLEND:N2_DRAW_OPAQUE);
         GLint depth_func;GLboolean cm[4];
         glGetIntegerv(GL_DEPTH_FUNC,&depth_func);glGetBooleanv(GL_COLOR_WRITEMASK,cm);
-        assert(depth_func==GL_GREATER && glIsEnabled(GL_CULL_FACE));
+        assert(depth_func==GL_GREATER && glIsEnabled(GL_CULL_FACE) && glIsEnabled(GL_STENCIL_TEST));
         assert(!cm[0] && cm[1] && !cm[2] && cm[3]);
     }
     rhi_buffer_destroy(q.cbo);q.cbo=(RhiBuffer){0};

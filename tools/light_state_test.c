@@ -177,12 +177,13 @@ int main(void) {
     /* Both helper layouts restore the caller's compare/cull/channel state. */
     batch.unresolved=0;
     for(int world=0;world<2;world++) {
-        glDepthFunc(GL_GREATER);glEnable(GL_CULL_FACE);glColorMask(GL_FALSE,GL_TRUE,GL_FALSE,GL_TRUE);
+        glDepthFunc(GL_GREATER);glEnable(GL_CULL_FACE);glEnable(GL_STENCIL_TEST);
+        glColorMask(GL_FALSE,GL_TRUE,GL_FALSE,GL_TRUE);
         if(world)assert(render_world_glows(&r,&batch,1,identity)==1);
         else assert(render_district_lights(&r,&quad,light_tex,lights,2,cam,look,mvp,10,1,1)==1);
         GLint depth_func;GLboolean cm[4];
         glGetIntegerv(GL_DEPTH_FUNC,&depth_func);glGetBooleanv(GL_COLOR_WRITEMASK,cm);
-        assert(depth_func==GL_GREATER && glIsEnabled(GL_CULL_FACE));
+        assert(depth_func==GL_GREATER && glIsEnabled(GL_CULL_FACE) && glIsEnabled(GL_STENCIL_TEST));
         assert(!cm[0] && cm[1] && !cm[2] && cm[3]);
     }
     rhi_buffer_destroy(batch.vbo);rhi_buffer_destroy(batch.ibo);
