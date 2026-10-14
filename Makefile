@@ -432,3 +432,30 @@ rhi-shader-test: tools/rhi_shader_test.c src/rhi.h src/rhi_gl.h src/rhi_gl_state
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/rhi_shader_test.c src/rhi_gl.c src/rhi_gl_state.c -o build/rhi_shader_test $(SDL_LIBS) $(GL_LIBS)
 	./build/rhi_shader_test
+
+# Independent clean-room GUI: runtime resources are supplied by the user.
+UGUI_SRC := $(filter-out src/ugui/ugui_gl.c,$(wildcard src/ugui/*.c))
+UGUI_HDR := $(wildcard src/ugui/*.h) tools/ugui_demo_app.h
+UGUI_APP := tools/ugui_demo_app.c tools/ugui_demo_orig.c
+UGUI_FLAGS := -std=c99 -D_POSIX_C_SOURCE=200809L -D_DARWIN_C_SOURCE -Isrc/ugui $(shell pkg-config --cflags libpng libcrypto)
+UGUI_IMAGE_LIBS := $(shell pkg-config --libs libpng libcrypto)
+build/ugui_test: tools/ugui_test.c $(wildcard tools/ugui_test*.inc) $(UGUI_APP) $(UGUI_SRC) $(UGUI_HDR)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(UGUI_FLAGS) tools/ugui_test.c $(UGUI_APP) $(UGUI_SRC) -o $@ $(UGUI_IMAGE_LIBS) -lm
+ugui-test: build/ugui_test
+	env -u UGUI_DATA -u NFSU2_DATA python3 tools/ugui_vector_check.py build/ugui_test tools/ugui_vectors
+build/ugui_demo: tools/ugui_demo.c $(UGUI_APP) $(UGUI_SRC) src/ugui/ugui_gl.c src/rhi_gl_state.c src/rhi_gl_state.h $(UGUI_HDR)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(UGUI_FLAGS) $(SDL_CFLAGS) tools/ugui_demo.c $(UGUI_APP) $(UGUI_SRC) src/ugui/ugui_gl.c src/rhi_gl_state.c -o $@ $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lm
+ugui-demo: build/ugui_demo
+.PHONY: ugui-test ugui-demo
+
+.PHONY: ugui-boundary-test ugui-gl-state-test
+ugui-boundary-test: tools/ugui_boundary_test.c src/ugui/ugui_anim.c src/ugui/ugui_util.c src/ugui/ugui_core.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Isrc/ugui tools/ugui_boundary_test.c src/ugui/ugui_anim.c src/ugui/ugui_util.c -o build/ugui_boundary_test -lm
+	./build/ugui_boundary_test
+ugui-gl-state-test: tools/ugui_gl_state_test.c $(UGUI_SRC) src/ugui/ugui_gl.c src/rhi_gl_state.c $(UGUI_HDR)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(UGUI_FLAGS) $(SDL_CFLAGS) -Isrc tools/ugui_gl_state_test.c $(UGUI_SRC) src/ugui/ugui_gl.c src/rhi_gl_state.c -o build/ugui_gl_state_test $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lm
+	./build/ugui_gl_state_test

@@ -1,0 +1,33 @@
+{
+  "provenance": "Requested Amendment 4 presentation choices and observed source availability; no copyrighted artwork.",
+  "cases": [
+    {
+      "input": "original corner with half turn about x",
+      "expected": "vertical reflection; identical to negative-height geometry with identity quaternion"
+    },
+    {
+      "input": "PS2 source provided; selected family PS2",
+      "expected": "load verified original 32\u00d732 format4 icons; no PC help-bar pills or mouse/key glyphs"
+    },
+    {
+      "input": "Xbox selected; only current PC/PS2 sources supplied",
+      "expected": "Xbox family unavailable; no invented Xbox artwork and no silent PS2 family substitution"
+    },
+    {
+      "input": "missing shared UI font",
+      "expected": "faithful demo unavailable; diagnostic outside game UI; no substitute font"
+    },
+    {
+      "input": "unresolved item texture",
+      "expected": "image omitted with unavailable-resource status; no placeholder or unrelated texture"
+    },
+    {
+      "input": "unbound action token",
+      "expected": "unbound status and glyph omitted; no guessed retail mapping"
+    },
+    {
+      "input": "console profile selected; PC help overlay suppressed; Back mouse input dispatched",
+      "expected": "Back action still works; no help-bar pill drawn"
+    }
+  ]
+}
