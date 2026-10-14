@@ -289,6 +289,16 @@ typedef struct {
 void render_world_pipelines(const RProg *r, UG2WorldPipelines *p);
 /* draw_batch through the bound pipeline (rhi_cmd_bind_pipeline) */
 void render_draw_batch(const N2Batch *b);
+/* Pipelines of the car passes (GpuMesh layout). */
+typedef struct {
+    RhiPipeline opaque[3],   /* by RhiCullMode: none, back, front; depth write */
+                glass,       /* alpha blend, no depth write, no culling */
+                glass_depth, /* the same with depth write (Mesh Inspector option) */
+                halo;        /* lamp halos: src alpha + one, no depth write */
+} UG2CarPipelines;
+void render_car_pipelines(const RProg *r, UG2CarPipelines *p);
+/* draw_gpumesh through the bound pipeline */
+void render_draw_gpumesh(const GpuMesh *g);
 RhiTexture upload_tex(const N2Tex *t);
 /* Upload a decoded TPK texture, preferring a direct glCompressedTexImage2D of
    its raw S3TC blocks when the driver supports the format; falls back to the
