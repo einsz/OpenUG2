@@ -29,11 +29,7 @@ int render_world_glows(const RProg *r,const N2Batch *batches,int count,
     ug2_copy(r->p->uMVP, mvp, 16);
     r->p->uAlpha = 1;r->p->uSoft = 0;
     ug2_vec3(r->p->uFogColor, 0, 0, 0);
-    GLint pipeline_depth_func; GLboolean pipeline_color_mask[4];
-    GLboolean pipeline_cull = gls_is_enabled(GL_CULL_FACE);
-    GLboolean pipeline_stencil = gls_is_enabled(GL_STENCIL_TEST);
-    gls_get_integerv(GL_DEPTH_FUNC, &pipeline_depth_func);
-    gls_get_booleanv(GL_COLOR_WRITEMASK, pipeline_color_mask);
+    RhiStateSnapshot saved; rhi_cmd_save_state(&saved);
     rhi_cmd_bind_pipeline(pipelines_of(r)->world.add);   /* additive, depth tested, no write */
     int draws=0;
     for(int i=0;i<count;i++) {
@@ -48,11 +44,7 @@ int render_world_glows(const RProg *r,const N2Batch *batches,int count,
     }
     ug2_copy(r->p->uFogColor, fog, 3);
     r->p->uEmissiveTex = 0;r->p->uUnlit = 0;
-    glDepthMask(GL_TRUE);glDisable(GL_BLEND);
-    glDepthFunc((GLenum)pipeline_depth_func);
-    glColorMask(pipeline_color_mask[0], pipeline_color_mask[1], pipeline_color_mask[2], pipeline_color_mask[3]);
-    if (pipeline_cull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
-    if (pipeline_stencil) glEnable(GL_STENCIL_TEST);
+    rhi_cmd_restore_state(&saved);
     return draws;
 }
 
@@ -70,14 +62,7 @@ int render_district_lights(const RProg *r, GpuMesh *quad, RhiTexture texture,
     ug2_copy(color, rp.p->uColor, 3);
     ug2_copy(fog_color, rp.p->uFogColor, 3);
     ug2_copy(saved_mvp, rp.p->uMVP, 16);
-    GLint texture_before, blend_src_rgb, blend_dst_rgb, blend_src_a, blend_dst_a;
-    gls_get_integerv(GL_TEXTURE_BINDING_2D,&texture_before);
-    gls_get_integerv(GL_BLEND_SRC_RGB,&blend_src_rgb);
-    gls_get_integerv(GL_BLEND_DST_RGB,&blend_dst_rgb);
-    gls_get_integerv(GL_BLEND_SRC_ALPHA,&blend_src_a);
-    gls_get_integerv(GL_BLEND_DST_ALPHA,&blend_dst_a);
-    GLboolean blend_before=gls_is_enabled(GL_BLEND), depth_before=gls_is_enabled(GL_DEPTH_TEST);
-    GLboolean depth_mask; gls_get_booleanv(GL_DEPTH_WRITEMASK,&depth_mask);
+    RhiStateSnapshot saved; rhi_cmd_save_state(&saved);
     float ll = sqrtf(look[0]*look[0] + look[1]*look[1] + look[2]*look[2]);
     if (ll < 1e-4f) ll = 1.0f;
     float ld[3] = {look[0]/ll, look[1]/ll, look[2]/ll};
@@ -87,11 +72,6 @@ int render_district_lights(const RProg *r, GpuMesh *quad, RhiTexture texture,
     rt[0] /= rl; rt[1] /= rl;
     float up[3] = {rt[1]*ld[2], -rt[0]*ld[2],
                    rt[0]*ld[1] - rt[1]*ld[0]};
-    GLint pipeline_depth_func; GLboolean pipeline_color_mask[4];
-    GLboolean pipeline_cull = gls_is_enabled(GL_CULL_FACE);
-    GLboolean pipeline_stencil = gls_is_enabled(GL_STENCIL_TEST);
-    gls_get_integerv(GL_DEPTH_FUNC, &pipeline_depth_func);
-    gls_get_booleanv(GL_COLOR_WRITEMASK, pipeline_color_mask);
     rhi_cmd_bind_pipeline(pipelines_of(r)->car.halo);   /* additive, depth tested, no write */
     rp.p->uUnlit = 0.0f; rp.p->uEmissiveTex = 1.0f;
     rp.p->uUseTex = 1.0f; rp.p->uSoft = 0.0f;
@@ -144,16 +124,7 @@ int render_district_lights(const RProg *r, GpuMesh *quad, RhiTexture texture,
     ug2_copy(rp.p->uColor, color, 3);
     ug2_copy(rp.p->uFogColor, fog_color, 3);
     ug2_copy(rp.p->uMVP, saved_mvp, 16);
-    glBindTexture(GL_TEXTURE_2D,(GLuint)texture_before);
-    glBlendFuncSeparate((GLenum)blend_src_rgb,(GLenum)blend_dst_rgb,
-                        (GLenum)blend_src_a,(GLenum)blend_dst_a);
-    if (blend_before) glEnable(GL_BLEND); else glDisable(GL_BLEND);
-    if (depth_before) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
-    glDepthMask(depth_mask);
-    glDepthFunc((GLenum)pipeline_depth_func);
-    glColorMask(pipeline_color_mask[0], pipeline_color_mask[1], pipeline_color_mask[2], pipeline_color_mask[3]);
-    if (pipeline_cull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
-    if (pipeline_stencil) glEnable(GL_STENCIL_TEST);
+    rhi_cmd_restore_state(&saved);
     return draws;
 }
 
@@ -207,11 +178,10 @@ int render_road_reflections(const RProg *r,RoadReflections *s,
     int nearby=0;
     for(int i=0;i<count;i++)nearby+=road_reflection_receiver(&batches[i],cam);
     if(!nearby)return 0;
-    GLint viewport[4],active,bindings[3];
-    gls_get_integerv(GL_VIEWPORT,viewport);gls_get_integerv(GL_ACTIVE_TEXTURE,&active);
+    GLint viewport[4];
+    gls_get_integerv(GL_VIEWPORT,viewport);
     if(viewport[2]<=0 || viewport[3]<=0)return 0;
-    const GLenum units[]={GL_TEXTURE0,GL_TEXTURE3,GL_TEXTURE4};
-    for(int i=0;i<3;i++){glActiveTexture(units[i]);gls_get_integerv(GL_TEXTURE_BINDING_2D,&bindings[i]);}
+    RhiStateSnapshot saved_state; rhi_cmd_save_state(&saved_state);
     /* Copies of the frame drawn so far: colour (linear) on unit 3, depth
        (nearest, the main target's precision) on unit 4. */
     RhiTexture *textures[]={&s->color,&s->depth};
@@ -231,8 +201,7 @@ int render_road_reflections(const RProg *r,RoadReflections *s,
     }
     if(!ok) {
         free_road_reflections(s);s->failed=1;
-        for(int i=0;i<3;i++){glActiveTexture(units[i]);glBindTexture(GL_TEXTURE_2D,bindings[i]);}
-        glActiveTexture(active);return -1;
+        rhi_cmd_restore_state(&saved_state);return -1;
     }
     s->width=viewport[2];s->height=viewport[3];
     float *const loc[]={&r->p->uUnlit,&r->p->uVista,&r->p->uEmissiveTex,&r->p->uUVCheck,&r->p->uFlipN,
@@ -241,13 +210,6 @@ int render_road_reflections(const RProg *r,RoadReflections *s,
     for(int i=0;i<9;i++)saved[i] = *loc[i];
     ug2_copy(matrix, r->p->uMVP, 16);ug2_copy(model, r->p->uModel, 16);
     ug2_copy(params, r->p->uReflectionParams, 4);
-    GLint df,sr,dr,sa,da;GLboolean mask;
-    GLboolean depth=gls_is_enabled(GL_DEPTH_TEST),blend=gls_is_enabled(GL_BLEND),cull=gls_is_enabled(GL_CULL_FACE);
-    GLboolean offset=gls_is_enabled(GL_POLYGON_OFFSET_FILL),stencil=gls_is_enabled(GL_STENCIL_TEST);
-    GLboolean color_mask[4];gls_get_booleanv(GL_COLOR_WRITEMASK,color_mask);
-    gls_get_integerv(GL_DEPTH_FUNC,&df);gls_get_booleanv(GL_DEPTH_WRITEMASK,&mask);
-    gls_get_integerv(GL_BLEND_SRC_RGB,&sr);gls_get_integerv(GL_BLEND_DST_RGB,&dr);
-    gls_get_integerv(GL_BLEND_SRC_ALPHA,&sa);gls_get_integerv(GL_BLEND_DST_ALPHA,&da);
     rhi_cmd_bind_pipeline(pipelines_of(r)->world.reflect);
     glDisable(GL_POLYGON_OFFSET_FILL);
     for(int i=0;i<7;i++)*loc[i] = 0;
@@ -264,13 +226,7 @@ int render_road_reflections(const RProg *r,RoadReflections *s,
     for(int i=0;i<9;i++)*loc[i] = saved[i];
     ug2_copy(r->p->uMVP, matrix, 16);ug2_copy(r->p->uModel, model, 16);
     ug2_copy(r->p->uReflectionParams, params, 4);
-    glDepthFunc(df);glDepthMask(mask);if(!depth)glDisable(GL_DEPTH_TEST);
-    if(!blend)glDisable(GL_BLEND);if(cull)glEnable(GL_CULL_FACE);if(offset)glEnable(GL_POLYGON_OFFSET_FILL);
-    if(stencil)glEnable(GL_STENCIL_TEST);
-    glColorMask(color_mask[0],color_mask[1],color_mask[2],color_mask[3]);
-    glBlendFuncSeparate(sr,dr,sa,da);
-    for(int i=0;i<3;i++){glActiveTexture(units[i]);glBindTexture(GL_TEXTURE_2D,bindings[i]);}
-    glActiveTexture(active);
+    rhi_cmd_restore_state(&saved_state);
     return draws;
 #endif
 }
@@ -370,10 +326,7 @@ int render_car_shadow(const RProg *r,CarShadow *s,const N2Scene *car,const GpuMe
     float projection[16],projected[16];mat_ground_shadow(ground,normal,projection);
     mat_mul(mvp,projection,projected);
     int draws=0;
-    GLboolean cull=gls_is_enabled(GL_CULL_FACE);
-    GLint pipeline_depth_func; GLboolean pipeline_color_mask[4];
-    gls_get_integerv(GL_DEPTH_FUNC, &pipeline_depth_func);
-    gls_get_booleanv(GL_COLOR_WRITEMASK, pipeline_color_mask);
+    RhiStateSnapshot saved; rhi_cmd_save_state(&saved);
     rhi_cmd_bind_pipeline(pipelines_of(r)->effect.car_shadow);
     r->p->uUnlit = 1;r->p->uSoft = 0;r->p->uUseTex = 0;
     ug2_vec3(r->p->uColor, 0, 0, 0);r->p->uAlpha = .48f;
@@ -386,11 +339,8 @@ int render_car_shadow(const RProg *r,CarShadow *s,const N2Scene *car,const GpuMe
         rhi_cmd_bind_vertex_buffer(0,buffer,0);
         rhi_cmd_draw((uint32_t)n,0);draws++;
     }
-    glDisable(GL_STENCIL_TEST);glDepthMask(GL_TRUE);glDisable(GL_BLEND);
     r->p->uUnlit = 0;r->p->uAlpha = 1;
-    if(cull)glEnable(GL_CULL_FACE);
-    glDepthFunc((GLenum)pipeline_depth_func);
-    glColorMask(pipeline_color_mask[0], pipeline_color_mask[1], pipeline_color_mask[2], pipeline_color_mask[3]);
+    rhi_cmd_restore_state(&saved);
     return draws;
 }
 
@@ -408,19 +358,7 @@ int render_car_environment(const RProg *r,CarEnvironment *s,const N2Batch *world
     if(quality==1 && s->size==64 && s->ready && (++s->ticks&1)) {
         r->p->uEnvReady = 1;ug2_copy(r->p->uEnvOrigin, s->published, 3);return 0;
     }
-    GLint program,fbo,rb,viewport[4],active,texture,depthfunc,sr,dr,sa,da;
-    GLfloat clear[4],clear_depth;GLboolean depthmask,color_mask[4];
-    GLboolean depth=gls_is_enabled(GL_DEPTH_TEST),blend=gls_is_enabled(GL_BLEND),cull=gls_is_enabled(GL_CULL_FACE);
-    GLboolean scissor=gls_is_enabled(GL_SCISSOR_TEST),stencil=gls_is_enabled(GL_STENCIL_TEST);
-    gls_get_integerv(GL_CURRENT_PROGRAM,&program);gls_get_integerv(GL_FRAMEBUFFER_BINDING,&fbo);
-    gls_get_integerv(GL_RENDERBUFFER_BINDING,&rb);gls_get_integerv(GL_VIEWPORT,viewport);
-    gls_get_integerv(GL_ACTIVE_TEXTURE,&active);glActiveTexture(GL_TEXTURE0);
-    gls_get_integerv(GL_TEXTURE_BINDING_2D,&texture);gls_get_integerv(GL_DEPTH_FUNC,&depthfunc);
-    gls_get_floatv(GL_COLOR_CLEAR_VALUE,clear);gls_get_booleanv(GL_DEPTH_WRITEMASK,&depthmask);
-    gls_get_floatv(GL_DEPTH_CLEAR_VALUE,&clear_depth);
-    gls_get_booleanv(GL_COLOR_WRITEMASK,color_mask);
-    gls_get_integerv(GL_BLEND_SRC_RGB,&sr);gls_get_integerv(GL_BLEND_DST_RGB,&dr);
-    gls_get_integerv(GL_BLEND_SRC_ALPHA,&sa);gls_get_integerv(GL_BLEND_DST_ALPHA,&da);
+    RhiStateSnapshot saved; rhi_cmd_save_state(&saved);
     int size=quality==1?64:128,draws=0;
     if(s->size!=size) {
         free_car_environment(s);s->size=size;s->capture=render_program();
@@ -454,9 +392,10 @@ int render_car_environment(const RProg *r,CarEnvironment *s,const N2Batch *world
     if(s->face==0)memcpy(s->origin,pos,sizeof s->origin);
     rhi_cmd_bind_pipeline(s->opaque);
     /* the face clears to what the main view clears to (the fog colour) */
+    const float *fog_rgb=r->p->uFogColor;
     if(rhi_cmd_begin_pass(&(RhiPassDesc){{s->cube[1-s->front],s->face},{s->depth,0},
                                          RHI_LOAD_CLEAR,RHI_LOAD_CLEAR,
-                                         {clear[0],clear[1],clear[2],clear[3]},clear_depth})!=RHI_OK) {
+                                         {fog_rgb[0],fog_rgb[1],fog_rgb[2],1},1.0f})!=RHI_OK) {
         free_car_environment(s);s->failed=1;draws=-1;goto restore;
     }
     rhi_cmd_bind_texture(5,s->cube[s->front]);
@@ -501,19 +440,11 @@ int render_car_environment(const RProg *r,CarEnvironment *s,const N2Batch *world
     rhi_cmd_end_pass();
     if(++s->face==6){s->face=0;s->front=1-s->front;s->ready=1;memcpy(s->published,s->origin,sizeof s->published);}
 restore:
-    glBindFramebuffer(GL_FRAMEBUFFER,fbo);glBindRenderbuffer(GL_RENDERBUFFER,rb);
-    glViewport(viewport[0],viewport[1],viewport[2],viewport[3]);glUseProgram(program);
-    glClearColor(clear[0],clear[1],clear[2],clear[3]);glColorMask(color_mask[0],color_mask[1],color_mask[2],color_mask[3]);
-    glDepthFunc(depthfunc);glDepthMask(depthmask);glBlendFuncSeparate(sr,dr,sa,da);
-    if(depth)glEnable(GL_DEPTH_TEST);else glDisable(GL_DEPTH_TEST);
-    if(blend)glEnable(GL_BLEND);else glDisable(GL_BLEND);
-    if(cull)glEnable(GL_CULL_FACE);else glDisable(GL_CULL_FACE);
-    if(scissor)glEnable(GL_SCISSOR_TEST);else glDisable(GL_SCISSOR_TEST);
-    if(stencil)glEnable(GL_STENCIL_TEST);else glDisable(GL_STENCIL_TEST);
-    glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,texture);
+    /* The published cube is this helper's output (unit 5 for the car shader);
+       cube bindings are not part of the snapshot, so it survives the restore. */
     if(s->cube[s->front].id)rhi_cmd_bind_texture(5,s->cube[s->front]);
     else {glActiveTexture(GL_TEXTURE5);glBindTexture(GL_TEXTURE_CUBE_MAP,0);}
-    glActiveTexture(active);
+    rhi_cmd_restore_state(&saved);
     r->p->uEnvReady = s->ready?1:0;ug2_copy(r->p->uEnvOrigin, s->published, 3);
     return draws;
 }
@@ -582,14 +513,7 @@ int render_rain(const RProg *r,RhiBuffer *vbo,float time,float intensity,int qua
     float saved[7],matrix[16];
     for(int i=0;i<7;i++)saved[i] = *loc[i];
     ug2_copy(matrix, r->p->uMVP, 16);
-    GLboolean depth=gls_is_enabled(GL_DEPTH_TEST),blend=gls_is_enabled(GL_BLEND),cull=gls_is_enabled(GL_CULL_FACE),mask;
-    GLint sr,dr,sa,da;
-    gls_get_booleanv(GL_DEPTH_WRITEMASK,&mask);
-    gls_get_integerv(GL_BLEND_SRC_RGB,&sr);gls_get_integerv(GL_BLEND_DST_RGB,&dr);
-    gls_get_integerv(GL_BLEND_SRC_ALPHA,&sa);gls_get_integerv(GL_BLEND_DST_ALPHA,&da);
-    GLboolean pipeline_color_mask[4];
-    gls_get_booleanv(GL_COLOR_WRITEMASK, pipeline_color_mask);
-    GLboolean pipeline_stencil = gls_is_enabled(GL_STENCIL_TEST);
+    RhiStateSnapshot saved_state; rhi_cmd_save_state(&saved_state);
     rhi_cmd_bind_pipeline(pipelines_of(r)->effect.rain);
     r->p->uUnlit = 1;r->p->uEmissiveTex = 0;r->p->uUseTex = 0;
     r->p->uVista = 0;r->p->uUVCheck = 0;
@@ -605,11 +529,7 @@ int render_rain(const RProg *r,RhiBuffer *vbo,float time,float intensity,int qua
     rhi_cmd_draw((uint32_t)n,0);
     for(int i=0;i<7;i++)*loc[i] = saved[i];
     ug2_copy(r->p->uMVP, matrix, 16);
-    glDepthMask(mask);if(depth)glEnable(GL_DEPTH_TEST);
-    if(!blend)glDisable(GL_BLEND);if(cull)glEnable(GL_CULL_FACE);
-    glBlendFuncSeparate(sr,dr,sa,da);
-    glColorMask(pipeline_color_mask[0], pipeline_color_mask[1], pipeline_color_mask[2], pipeline_color_mask[3]);
-    if (pipeline_stencil) glEnable(GL_STENCIL_TEST); else glDisable(GL_STENCIL_TEST);
+    rhi_cmd_restore_state(&saved_state);
     return 1;
 }
 
@@ -627,15 +547,7 @@ int render_collision_walls(const RProg *r,RhiBuffer *vbo,const float *faces,int 
     float saved[7],matrix[16],old_color[3];
     for(int i=0;i<7;i++)saved[i] = *loc[i];
     ug2_copy(matrix, r->p->uMVP, 16);ug2_copy(old_color, r->p->uColor, 3);
-    GLboolean depth=gls_is_enabled(GL_DEPTH_TEST),blend=gls_is_enabled(GL_BLEND),cull=gls_is_enabled(GL_CULL_FACE),mask;
-    GLint sr,dr,sa,da;
-    gls_get_booleanv(GL_DEPTH_WRITEMASK,&mask);
-    gls_get_integerv(GL_BLEND_SRC_RGB,&sr);gls_get_integerv(GL_BLEND_DST_RGB,&dr);
-    gls_get_integerv(GL_BLEND_SRC_ALPHA,&sa);gls_get_integerv(GL_BLEND_DST_ALPHA,&da);
-    GLint pipeline_depth_func; GLboolean pipeline_color_mask[4];
-    gls_get_integerv(GL_DEPTH_FUNC, &pipeline_depth_func);
-    gls_get_booleanv(GL_COLOR_WRITEMASK, pipeline_color_mask);
-    GLboolean pipeline_stencil = gls_is_enabled(GL_STENCIL_TEST);
+    RhiStateSnapshot saved_state; rhi_cmd_save_state(&saved_state);
     const UG2EffectPipelines *ep = &pipelines_of(r)->effect;
     r->p->uUnlit = 1;r->p->uEmissiveTex = 0;r->p->uUseTex = 0;
     r->p->uSoft = 0;r->p->uVista = 0;r->p->uUVCheck = 0;
@@ -648,12 +560,7 @@ int render_collision_walls(const RProg *r,RhiBuffer *vbo,const float *faces,int 
     r->p->uAlpha = .85f;rhi_cmd_bind_pipeline(ep->walls[!through][1]);rhi_cmd_draw((uint32_t)count*6,(uint32_t)count*3);
     for(int i=0;i<7;i++)*loc[i] = saved[i];
     ug2_copy(r->p->uMVP, matrix, 16);ug2_copy(r->p->uColor, old_color, 3);
-    glDepthMask(mask);if(depth)glEnable(GL_DEPTH_TEST);else glDisable(GL_DEPTH_TEST);
-    if(!blend)glDisable(GL_BLEND);if(cull)glEnable(GL_CULL_FACE);
-    glBlendFuncSeparate(sr,dr,sa,da);
-    glDepthFunc((GLenum)pipeline_depth_func);
-    glColorMask(pipeline_color_mask[0], pipeline_color_mask[1], pipeline_color_mask[2], pipeline_color_mask[3]);
-    if (pipeline_stencil) glEnable(GL_STENCIL_TEST); else glDisable(GL_STENCIL_TEST);
+    rhi_cmd_restore_state(&saved_state);
     return 2;
 }
 
@@ -841,17 +748,7 @@ int render_headlight_shadows(const RProg *r,HeadlightShadows *s,const N2Batch *b
     ug2_copy(pos[0], r->p->uHeadPos[0], 8);
     ug2_copy(forward, r->p->uHeadForward, 3);ug2_copy(right, r->p->uHeadRight, 3);
     ug2_copy(up, r->p->uHeadUp, 3);ug2_copy(shape, r->p->uHeadShape, 4);
-    GLint program,fbo,rb,viewport[4],active,texture,depthfunc;
-    GLfloat clear[4],clear_depth;GLboolean mask[4],depthmask;
-    GLboolean depth=gls_is_enabled(GL_DEPTH_TEST),blend=gls_is_enabled(GL_BLEND),cull=gls_is_enabled(GL_CULL_FACE);
-    GLboolean scissor=gls_is_enabled(GL_SCISSOR_TEST),dither=gls_is_enabled(GL_DITHER);
-    GLboolean stencil=gls_is_enabled(GL_STENCIL_TEST);
-    gls_get_integerv(GL_CURRENT_PROGRAM,&program);gls_get_integerv(GL_FRAMEBUFFER_BINDING,&fbo);
-    gls_get_integerv(GL_RENDERBUFFER_BINDING,&rb);gls_get_integerv(GL_VIEWPORT,viewport);
-    gls_get_integerv(GL_ACTIVE_TEXTURE,&active);glActiveTexture(GL_TEXTURE0);
-    gls_get_integerv(GL_TEXTURE_BINDING_2D,&texture);gls_get_integerv(GL_DEPTH_FUNC,&depthfunc);
-    gls_get_floatv(GL_COLOR_CLEAR_VALUE,clear);gls_get_booleanv(GL_COLOR_WRITEMASK,mask);
-    gls_get_booleanv(GL_DEPTH_WRITEMASK,&depthmask);gls_get_floatv(GL_DEPTH_CLEAR_VALUE,&clear_depth);
+    RhiStateSnapshot saved; rhi_cmd_save_state(&saved);
     int draws=0;float matrices[2][16];
     if(!s->shader.id && !headlight_shadow_init(s)) {
         free_headlight_shadows(s);s->failed=1;
@@ -892,30 +789,16 @@ int render_headlight_shadows(const RProg *r,HeadlightShadows *s,const N2Batch *b
         rhi_cmd_end_pass();
     }
 restore:
-    glBindFramebuffer(GL_FRAMEBUFFER,(GLuint)fbo);glBindRenderbuffer(GL_RENDERBUFFER,(GLuint)rb);
-    glViewport(viewport[0],viewport[1],viewport[2],viewport[3]);glUseProgram((GLuint)program);
-    glClearColor(clear[0],clear[1],clear[2],clear[3]);glColorMask(mask[0],mask[1],mask[2],mask[3]);
-    glDepthFunc((GLenum)depthfunc);glDepthMask(depthmask);
-#ifdef N2_GLES
-    glClearDepthf(clear_depth);
-#else
-    glClearDepth(clear_depth);
-#endif
-    if(depth)glEnable(GL_DEPTH_TEST);else glDisable(GL_DEPTH_TEST);
-    if(blend)glEnable(GL_BLEND);else glDisable(GL_BLEND);
-    if(cull)glEnable(GL_CULL_FACE);else glDisable(GL_CULL_FACE);
-    if(scissor)glEnable(GL_SCISSOR_TEST);else glDisable(GL_SCISSOR_TEST);
-    if(dither)glEnable(GL_DITHER);else glDisable(GL_DITHER);
-    if(stencil)glEnable(GL_STENCIL_TEST);else glDisable(GL_STENCIL_TEST);
-    glBindTexture(GL_TEXTURE_2D,(GLuint)texture);
     if(draws>=0) {
         ug2_copy(r->p->uHeadShadowMVP[0], matrices[0], 16*2);
-        /* Units 1 and 2 are reserved for the two maps; ordinary textures use 0. */
-        for(int h=0;h<2;h++)rhi_cmd_bind_texture(1+h,s->map[h]);
+        /* Units 1 and 2 are reserved for the two maps; ordinary textures use 0.
+           The maps are this helper's output: they stay bound after the restore. */
+        for(int h=0;h<2;h++)rhi_state_set_texture(&saved,1+(uint32_t)h,s->map[h]);
         r->p->uHeadShadowMap[0] = 1;r->p->uHeadShadowMap[1] = 2;
         r->p->uHeadShadow = 1.0f;
     }
-    glActiveTexture((GLenum)active);return draws;
+    rhi_cmd_restore_state(&saved);
+    return draws;
 }
 
 void render_headlights(const RProg *r, const float model[16], const float anchors[4][4],
@@ -1763,12 +1646,7 @@ void render_wheel_mesh(const RProg *r, GpuMesh *mesh, RhiTexture texture, int mo
     float *const loc[]={&r->p->uUseTex,&r->p->uAlphaTest,&r->p->uTextureAlpha,&r->p->uAlpha,&r->p->uDecal,
                        &r->p->uRimTint,&r->p->uSpec,&r->p->uEnv,&r->p->uClearcoat,&r->p->uVColor};
     float saved[10];for(int i=0;i<10;i++)saved[i] = *loc[i];
-    GLint oldtex,src,dst,srca,dsta;
-    gls_get_integerv(GL_TEXTURE_BINDING_2D,&oldtex);
-    gls_get_integerv(GL_BLEND_SRC_RGB,&src);gls_get_integerv(GL_BLEND_DST_RGB,&dst);
-    gls_get_integerv(GL_BLEND_SRC_ALPHA,&srca);gls_get_integerv(GL_BLEND_DST_ALPHA,&dsta);
-    GLboolean blend=gls_is_enabled(GL_BLEND),depth=gls_is_enabled(GL_DEPTH_TEST),mask;
-    gls_get_booleanv(GL_DEPTH_WRITEMASK,&mask);
+    RhiStateSnapshot saved_state; rhi_cmd_save_state(&saved_state);
     unsigned char amode = mesh->draw_mode ? mesh->draw_mode : (unsigned char)mode;
     int cut=texture.id && amode==N2_DRAW_CUTOUT, translucent=texture.id && amode==N2_DRAW_BLEND;
     /* The wheel INTERIOR slice is the inboard barrel/backing. Its atlas
@@ -1793,23 +1671,10 @@ void render_wheel_mesh(const RProg *r, GpuMesh *mesh, RhiTexture texture, int mo
     }
     /* two-sided, depth tested; translucent slices blend without depth write */
     const UG2CarPipelines *cp = &pipelines_of(r)->car;
-    GLint pipeline_depth_func; GLboolean pipeline_color_mask[4];
-    GLboolean pipeline_cull = gls_is_enabled(GL_CULL_FACE);
-    GLboolean pipeline_stencil = gls_is_enabled(GL_STENCIL_TEST);
-    gls_get_integerv(GL_DEPTH_FUNC, &pipeline_depth_func);
-    gls_get_booleanv(GL_COLOR_WRITEMASK, pipeline_color_mask);
     rhi_cmd_bind_pipeline(translucent ? cp->glass : cp->opaque[RHI_CULL_NONE]);
     render_draw_gpumesh(mesh);
     for(int i=0;i<10;i++)*loc[i] = saved[i];
-    glBindTexture(GL_TEXTURE_2D,(GLuint)oldtex);
-    glBlendFuncSeparate((GLenum)src,(GLenum)dst,(GLenum)srca,(GLenum)dsta);
-    if(blend)glEnable(GL_BLEND);else glDisable(GL_BLEND);
-    if(depth)glEnable(GL_DEPTH_TEST);else glDisable(GL_DEPTH_TEST);
-    glDepthMask(mask);
-    glDepthFunc((GLenum)pipeline_depth_func);
-    glColorMask(pipeline_color_mask[0], pipeline_color_mask[1], pipeline_color_mask[2], pipeline_color_mask[3]);
-    if (pipeline_cull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
-    if (pipeline_stencil) glEnable(GL_STENCIL_TEST);
+    rhi_cmd_restore_state(&saved_state);
 }
 
 /* A split material slice shares its vertex pool with other surfaces. Only
@@ -1906,7 +1771,7 @@ void render_texture_detail(float aniso) {
     if (aniso > (float)g_tex_aniso_max) aniso = (float)g_tex_aniso_max;
     if (aniso == g_tex_aniso) return;
     g_tex_aniso = aniso;
-    GLint bound = 0; gls_get_integerv(GL_TEXTURE_BINDING_2D, &bound);
+    RhiStateSnapshot saved; rhi_cmd_save_state(&saved);   /* sampler changes bind */
     int live = 0;
     for (int i = 0; i < g_tex_all_n; i++) {
         if (!rhi_texture_is_live(g_tex_all[i])) continue;   /* freed since upload */
@@ -1916,7 +1781,7 @@ void render_texture_detail(float aniso) {
         tex_change_sampler(g_tex_all[i], &d);
     }
     g_tex_all_n = live;                                 /* compact away dead ids */
-    glBindTexture(GL_TEXTURE_2D, (GLuint)bound);
+    rhi_cmd_restore_state(&saved);
 }
 
 /* tex_override.c: sampler + tracking for an override it has just uploaded. */
