@@ -125,6 +125,14 @@ int main(void) {
         assert(gls_texture_2d(1)==(GLint)rhi_gl_texture_name(t1));
         gls_get_integerv(GL_ACTIVE_TEXTURE,v);assert(v[0]==GL_TEXTURE2);
         rhi_state_set_texture(&s0,99,t1);   /* out of range: ignored */
+        /* A viewport set through rhi comes back too; a negative size is rejected. */
+        assert(rhi_cmd_set_viewport(5,6,7,8)==RHI_OK);
+        gls_get_integerv(GL_VIEWPORT,v);assert(v[0]==5 && v[1]==6 && v[2]==7 && v[3]==8);
+        glGetIntegerv(GL_VIEWPORT,v);assert(v[0]==5 && v[1]==6 && v[2]==7 && v[3]==8);
+        assert(rhi_cmd_set_viewport(0,0,-1,8)==RHI_ERR_INVALID);
+        gls_get_integerv(GL_VIEWPORT,v);assert(v[2]==7);
+        rhi_cmd_restore_state(&s0);
+        gls_get_integerv(GL_VIEWPORT,v);assert(v[0]==1 && v[1]==2 && v[2]==30 && v[3]==40);
         rhi_texture_destroy(t0);rhi_texture_destroy(t1);
         glDisable(GL_CULL_FACE);glDisable(GL_STENCIL_TEST);glDisable(GL_BLEND);glDepthMask(GL_TRUE);
         glColorMask(1,1,1,1);glActiveTexture(GL_TEXTURE0);
