@@ -29,7 +29,8 @@ static void copy_tests(SDL_Window *window) {
     for(int i=0;i<2;i++) {
         RhiTexture copy=rhi_texture_create(&d);assert(copy.id);
         assert(rhi_cmd_copy_main_to_texture(copy,0,0,4,4)==RHI_OK);
-        unsigned char pixel[64];glGetTexImage(GL_TEXTURE_2D,0,GL_RGBA,GL_UNSIGNED_BYTE,pixel);assert(pixel[0]==255 && !pixel[2]);
+        unsigned char pixel[64];glBindTexture(GL_TEXTURE_2D,rhi_gl_texture_name(copy));
+        glGetTexImage(GL_TEXTURE_2D,0,GL_RGBA,GL_UNSIGNED_BYTE,pixel);assert(pixel[0]==255 && !pixel[2]);
         rhi_texture_destroy(copy); /* Reuse must allocate new GL storage. */
     }
     RhiTexture copy=rhi_texture_create(&d);assert(copy.id);
@@ -110,7 +111,7 @@ int main(void) {
     assert(rhi_cmd_copy_main_to_texture(copy,30,0,4,4)==RHI_ERR_INVALID);
     assert(rhi_cmd_copy_main_to_texture(copy,0,0,8,8)==RHI_OK);
     g_rhi.in_frame=0;
-    GLint copied_w=0;glGetTexLevelParameteriv(GL_TEXTURE_2D,0,GL_TEXTURE_WIDTH,&copied_w);
+    GLint copied_w=0;glBindTexture(GL_TEXTURE_2D,rhi_gl_texture_name(copy));glGetTexLevelParameteriv(GL_TEXTURE_2D,0,GL_TEXTURE_WIDTH,&copied_w);
     assert(copied_w==8 && rhi_cmd_copy_main_to_texture(copy,2,2,8,8)==RHI_OK);
     color=rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D,RHI_FORMAT_RGBA8,4,4,RHI_TEXTURE_COLOR_TARGET});assert(color.id);
     assert(rhi_texture_upload(color,0,0,NULL,0)==RHI_OK);
