@@ -1024,7 +1024,8 @@ void free_scene_gpu(GpuMesh *gm, int count) {
     free(gm);
 }
 
-/* Upload meshes with per-vertex normals; allocation failure releases partial buffers. */
+/* Upload meshes with per-vertex normals; any failure releases every buffer and
+ * returns NULL. */
 GpuMesh *upload_scene(N2Scene *s) {
     GpuMesh *gm = (GpuMesh *)calloc(s->count, sizeof(GpuMesh));
     if (!gm) return NULL;
@@ -1050,6 +1051,10 @@ GpuMesh *upload_scene(N2Scene *s) {
         gm[i].car_material = m->car_material;
         free(nor);
         free(rounded.verts); free(rounded.idx);
+        if (!gm[i].vbo.id || !gm[i].nbo.id || !gm[i].ibo.id || (m->vcol && !gm[i].cbo.id)) {
+            free_scene_gpu(gm, s->count);
+            return NULL;
+        }
     }
     return gm;
 }
@@ -1247,7 +1252,7 @@ static int batch_emit(const N2Scene *s, const BSortEnt *ent, int i0, int i1,
     memset(b, 0, sizeof *b);
     b->vbo = rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, (size_t)nv * sizeof *bv, bv});
     b->ibo = rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_INDEX, RHI_UPDATE_STATIC, (size_t)ni * 2, bi});
-    if (glGetError() != GL_NO_ERROR) {
+    if (!b->vbo.id || !b->ibo.id) {
         rhi_buffer_destroy(b->vbo); rhi_buffer_destroy(b->ibo);
         memset(b, 0, sizeof *b); free(bv); free(bi); return 0;
     }
@@ -1494,8 +1499,8 @@ int render_world_prop_updates(const N2Scene *scene,N2Batch *batches,int count,
         BatchedVertex *v=malloc((size_t)m->nverts*sizeof *v);
         if(!v)return -1;
         if(!batch_mesh_vertices(m,v)){free(v);return -1;}
-        if(rhi_buffer_update(b->vbo,(size_t)range->vertex*sizeof *v,(size_t)m->nverts*sizeof *v,v)!=RHI_OK ||
-           glGetError()!=GL_NO_ERROR){free(v);return -1;}
+        if(rhi_buffer_update(b->vbo,(size_t)range->vertex*sizeof *v,(size_t)m->nverts*sizeof *v,v)!=RHI_OK)
+            {free(v);return -1;}
         for(int q=0;q<m->nverts;q++)for(int a=0;a<3;a++) {
             b->bbox_min[a]=fminf(b->bbox_min[a],v[q].pos[a]);
             b->bbox_max[a]=fmaxf(b->bbox_max[a],v[q].pos[a]);
@@ -1950,7 +1955,9 @@ RhiTexture upload_tpk_texture_to_gpu(const N2Tex *t) {
             int bw = lw < 4 ? 1 : lw/4, bh = lh < 4 ? 1 : lh/4;
             int sz = bw * bh * bpb;
             if (off + sz > t->dxtlen) break;
-            rhi_texture_upload(id, 0, level, t->dxt + off, (size_t)sz);
+            if (rhi_texture_upload(id, 0, level, t->dxt + off, (size_t)sz) != RHI_OK) {
+                rhi_texture_destroy(id); return (RhiTexture){0};
+            }
             off += sz; level++;
             if (lw == 1 && lh == 1) { complete = 1; break; }
             if (lw > 1) lw /= 2; if (lh > 1) lh /= 2;
@@ -1965,6 +1972,7 @@ RhiTexture upload_tpk_texture_to_gpu(const N2Tex *t) {
 RhiTexture upload_tex(const N2Tex *t) {
     RhiTexture id = rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D,
         t->alpha ? RHI_FORMAT_RGBA8 : RHI_FORMAT_RGB8, t->w, t->h, RHI_TEXTURE_SAMPLED});
+    int ok;
     if (!id.id) return id;
     if (t->alpha) {   /* interleave the decal-mask plane -> RGBA */
         unsigned char *px = (unsigned char *)malloc((size_t)t->w * t->h * 4);
@@ -1973,11 +1981,13 @@ RhiTexture upload_tex(const N2Tex *t) {
             px[p*4]=t->rgb[p*3]; px[p*4+1]=t->rgb[p*3+1];
             px[p*4+2]=t->rgb[p*3+2]; px[p*4+3]=t->alpha[p];
         }
-        rhi_texture_upload(id, 0, 0, px, 0);
+        ok = rhi_texture_upload(id, 0, 0, px, 0) == RHI_OK;
         free(px);
     } else
-        rhi_texture_upload(id, 0, 0, t->rgb, 0);
-    rhi_texture_generate_mips(id);
+        ok = rhi_texture_upload(id, 0, 0, t->rgb, 0) == RHI_OK;
+    if (!ok || rhi_texture_generate_mips(id) != RHI_OK) {
+        rhi_texture_destroy(id); return (RhiTexture){0};
+    }
     rhi_texture_set_sampler(id, tex_sampler(1));
     tex_track(id);
     return id;

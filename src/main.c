@@ -268,10 +268,9 @@ static int load_rim_style(const unsigned char *wldata, long wllen,
     long ar=0, ag=0, ab=0, bmn=255, bmx=0;
     if (!tk || !wtdata || !n2_load_car_tex_by_key(wtdata, wtlen, tk, &rt) ||
         !rt.rgb || rt.w <= 0 || rt.h <= 0) goto failed;
-    /* Do not commit resources after a failed GPU upload (or a pending GL error). */
-    if (glGetError() != GL_NO_ERROR) goto failed;
+    /* Do not commit resources after a failed GPU upload. */
     gm = upload_scene(lib);
-    if (!gm || glGetError() != GL_NO_ERROR) goto failed;
+    if (!gm) goto failed;
     for (int i = 0; i < n; i++)
         if (!gm[i].vbo.id || !gm[i].nbo.id || !gm[i].ibo.id) goto failed;
     {
@@ -287,7 +286,7 @@ static int load_rim_style(const unsigned char *wldata, long wllen,
             if (b < bmn) bmn = b; if (b > bmx) bmx = b; }
         if (np) { ar/=np; ag/=np; ab/=np; }
     }
-    if (!rimtex.id || glGetError() != GL_NO_ERROR) goto failed;
+    if (!rimtex.id) goto failed;
     free(rt.rgb); free(rt.alpha); free(rt.dxt);
     free_scene_gpu(*active_gm, *ngm);
     n2_free_scene(active);
@@ -440,7 +439,7 @@ static int prepare_car_switch(CarSwitchCandidate *candidate,
     candidate->nmesh = candidate->scene.count;
     candidate->stock_wheel = n2_car_prepare_wheels(&candidate->scene);
     candidate->gpu = upload_scene(&candidate->scene);
-    if (!candidate->gpu || glGetError() != GL_NO_ERROR) {
+    if (!candidate->gpu) {
         car_switch_release(candidate); return 0;
     }
     n2_car_profile(&candidate->scene, name, WHEEL_SEED_FRONTF, WHEEL_SEED_REARF,
@@ -476,7 +475,7 @@ static int prepare_car_switch(CarSwitchCandidate *candidate,
         candidate->alpha[slot] = tex.alpha != NULL && tex.dxtfmt != 1;
         candidate->mode[slot] = (char)n2_tex_mode(&tex);
         free(tex.rgb); free(tex.alpha); free(tex.dxt);
-        if (!candidate->textures[slot].id || glGetError() != GL_NO_ERROR) {
+        if (!candidate->textures[slot].id) {
             car_switch_release(candidate); return 0;
         }
         render_texture_clamp(candidate->textures[slot]);
@@ -528,8 +527,8 @@ static int car_body_metrics(const N2Scene *car, float bb[6], float bloom[4][4]) 
    here; collision keeps using the full AABB. */
 /* ---- optional frame profiler (--perf-csv FILE) -----------------------------
  * CPU time is split by sequential marks: each pf_mark(s) charges the time since
- * the previous mark to section s. GPU spans use EXT_timer_query elapsed queries
- * read back PF_GPU_LAG frames later without waiting; no glFinish is issued.
+ * the previous mark to section s. GPU spans use rhi timers read back
+ * PF_GPU_LAG frames later without waiting; nothing waits for the GPU.
  * Every entry point is a no-op unless the CSV is open. */
 enum { PF_FRAME_TOP, PF_PLAYER_SIM, PF_AI_FOLLOW, PF_AI_STEP, PF_AI_CONTACT,
        PF_AI_SPAWN, PF_CAMERA, PF_WORLD_DRAW, PF_CAR_SHADOW, PF_PLAYER_DRAW,
@@ -540,11 +539,7 @@ static const char *const pf_name[PF_N] = { "top","player_sim","ai_follow","ai_st
 #define PF_GPU_N 3      /* scene before AI cars | AI car meshes | rest to swap */
 #define PF_GPU_LAG 4
 static FILE *pf_csv; static Uint64 pf_last; static double pf_ms[PF_N];
-static int pf_gpu_ok; static GLuint pf_q[PF_GPU_LAG][PF_GPU_N]; static int pf_gpu_open=-1;
-static void (*pf_GenQueries)(GLsizei,GLuint*);
-static void (*pf_BeginQuery)(GLenum,GLuint), (*pf_EndQuery)(GLenum);
-static void (*pf_GetQueryObjectuiv)(GLuint,GLenum,GLuint*);
-static void (*pf_GetQueryObjectui64v)(GLuint,GLenum,unsigned long long*);
+static int pf_gpu_ok; static RhiTimer pf_q[PF_GPU_LAG][PF_GPU_N]; static int pf_gpu_open=-1;
 static void pf_mark(int s) {
     if(!pf_csv)return;
     Uint64 now=SDL_GetPerformanceCounter();
@@ -553,24 +548,17 @@ static void pf_mark(int s) {
 }
 static void pf_gpu(long frame,int span) {   /* close the open span, open `span` (-1: none) */
     if(!pf_csv || !pf_gpu_ok)return;
-    if(pf_gpu_open>=0)pf_EndQuery(0x88BF);
-    if(span>=0)pf_BeginQuery(0x88BF,pf_q[frame%PF_GPU_LAG][span]);
+    if(pf_gpu_open>=0)rhi_cmd_timer_end();
+    if(span>=0)rhi_cmd_timer_begin(pf_q[frame%PF_GPU_LAG][span]);
     pf_gpu_open=span;
 }
 static void pf_open(const char *path) {
     pf_csv=fopen(path,"w");
     if(!pf_csv){fprintf(stderr,"--perf-csv: cannot open %s\n",path);return;}
-    const char *ext=(const char *)glGetString(GL_EXTENSIONS);
-    pf_GenQueries=(void(*)(GLsizei,GLuint*))SDL_GL_GetProcAddress("glGenQueries");
-    pf_BeginQuery=(void(*)(GLenum,GLuint))SDL_GL_GetProcAddress("glBeginQuery");
-    pf_EndQuery=(void(*)(GLenum))SDL_GL_GetProcAddress("glEndQuery");
-    pf_GetQueryObjectuiv=(void(*)(GLuint,GLenum,GLuint*))SDL_GL_GetProcAddress("glGetQueryObjectuiv");
-    pf_GetQueryObjectui64v=(void(*)(GLuint,GLenum,unsigned long long*))
-        SDL_GL_GetProcAddress("glGetQueryObjectui64vEXT");
-    pf_gpu_ok=ext && strstr(ext,"GL_EXT_timer_query") && pf_GenQueries && pf_BeginQuery &&
-              pf_EndQuery && pf_GetQueryObjectuiv && pf_GetQueryObjectui64v;
-    if(pf_gpu_ok)pf_GenQueries(PF_GPU_LAG*PF_GPU_N,&pf_q[0][0]);
-    printf("perf csv %s: gpu timer %s\n",path,pf_gpu_ok?"EXT_timer_query":"unavailable (CPU only)");
+    pf_gpu_ok=rhi_caps()->gpu_timer;
+    for(int i=0;i<PF_GPU_LAG*PF_GPU_N && pf_gpu_ok;i++)
+        pf_gpu_ok=(pf_q[i/PF_GPU_N][i%PF_GPU_N]=rhi_timer_create()).id!=0;
+    printf("perf csv %s: gpu timer %s\n",path,pf_gpu_ok?"on":"unavailable (CPU only)");
     fprintf(pf_csv,"frame,traffic,racers,target,ai_visible,draws,contact_passes,pair_checks,"
                    "pair_hits,world_fixes,wall_candidates,spawn_attempts");
     for(int s=0;s<PF_N;s++)fprintf(pf_csv,",cpu_%s",pf_name[s]);
@@ -588,9 +576,8 @@ static void pf_row(long frame,const int counts[12]) {
     if(pf_gpu_ok && frame>=PF_GPU_LAG-1) {   /* oldest ring slot: written PF_GPU_LAG-1 frames ago */
         long old=frame-(PF_GPU_LAG-1);have=1;
         for(int k=0;k<PF_GPU_N;k++) {
-            GLuint ready=0;pf_GetQueryObjectuiv(pf_q[old%PF_GPU_LAG][k],0x8867,&ready);
-            if(!ready){have=0;break;}
-            unsigned long long ns=0;pf_GetQueryObjectui64v(pf_q[old%PF_GPU_LAG][k],0x8866,&ns);
+            uint64_t ns=0;
+            if(!rhi_timer_read(pf_q[old%PF_GPU_LAG][k],&ns)){have=0;break;}
             g[k]=ns/1e6;
         }
         if(have)fprintf(pf_csv,",%ld,%.4f,%.4f,%.4f,%.4f\n",old,g[0],g[1],g[2],g[0]+g[1]+g[2]);
@@ -799,9 +786,8 @@ static int prepare_body_kit(BodyKitCandidate *kit,
         if(!found)goto failed;
     }
     kit->stock_wheel=n2_car_prepare_wheels(&kit->scene);
-    if(glGetError()!=GL_NO_ERROR)goto failed;
     kit->gpu=upload_scene(&kit->scene);
-    if(!kit->gpu || glGetError()!=GL_NO_ERROR)goto failed;
+    if(!kit->gpu)goto failed;
     for(int i=0;i<kit->scene.count;i++) {
         if(!kit->gpu[i].vbo.id || !kit->gpu[i].nbo.id || !kit->gpu[i].ibo.id)goto failed;
         uint32_t tk=kit->scene.meshes[i].texkey;int seen=!tk;
@@ -825,7 +811,7 @@ static int prepare_body_kit(BodyKitCandidate *kit,
         kit->mode[j]=(char)n2_tex_mode(&t);
         render_texture_clamp(kit->textures[j]);
         free(t.rgb);free(t.alpha);free(t.dxt);
-        if(!kit->textures[j].id || glGetError()!=GL_NO_ERROR)goto failed;
+        if(!kit->textures[j].id)goto failed;
     }
     return 1;
 failed:
@@ -2051,7 +2037,7 @@ static int select_car_vinyl(int choice) {
                                                         g_vinyl_keys[choice-1],&tex);
         if(loaded)next=upload_tex_keyed(g_vinyl_keys[choice-1],"VINYLS",&tex);
         free(tex.rgb);free(tex.alpha);free(tex.dxt);
-        if(!next.id || glGetError()!=GL_NO_ERROR) {
+        if(!next.id) {
             if(next.id)rhi_texture_destroy(next);
             snprintf(g_dbg.vinyl_status,sizeof g_dbg.vinyl_status,
                      "Could not load this vinyl. The current design was kept.");
@@ -8461,13 +8447,10 @@ int main(int argc, char **argv) {
         RhiFrameInfo frame;
         rhi_frame_begin(&frame);
         int W = frame.width, H = frame.height;
-        glViewport(0, 0, W, H);
+        pf_mark(PF_CAMERA); pf_gpu(pf_frame,0);
         /* the sky is cleared to the fog colour: distant geometry dissolves
            into exactly what the horizon shows */
-        glClearColor(g_dbg.fog_r, g_dbg.fog_g, g_dbg.fog_b, 1);
-        pf_mark(PF_CAMERA); pf_gpu(pf_frame,0);
-        glStencilMask(0xff);glClearStencil(0);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        rhi_cmd_clear_main((const float[4]){g_dbg.fog_r, g_dbg.fog_g, g_dbg.fog_b, 1}, 1.0f);
         ug2_vec3(rp.p->uFogColor, g_dbg.fog_r, g_dbg.fog_g, g_dbg.fog_b);
         rp.p->uFogDensity = g_dbg.fog_density;
         rp.p->uUVCheck = (float)g_dbg.show_uv_checker;
