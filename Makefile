@@ -440,7 +440,15 @@ settings-boundary-test: tools/settings_boundary_test.c src/settings.c src/settin
 	./build/settings_boundary_test
 .PHONY: settings-boundary-test
 
-# RHI main-target clear, upload results, texture limit, state snapshots and GPU timers.
+# Every frontend screen in a hidden 16:9 window: menu area drawn, side bars
+# and caller state untouched.
+frontend-draw-test: tools/frontend_draw_test.c src/frontend/frontend.c src/frontend/frontend_draw.c src/rhi_gl.c src/rhi_gl_state.c $(HDRS) $(GEN)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/frontend_draw_test.c src/frontend/frontend.c src/frontend/frontend_draw.c src/rhi_gl.c src/rhi_gl_state.c -o build/frontend_draw_test $(SDL_LIBS) $(GL_LIBS) -lm
+	./build/frontend_draw_test
+.PHONY: frontend-draw-test
+
+# RHI main-target clear, upload results, texture limit, state snapshots, viewport and GPU timers.
 rhi-frame-test: tools/rhi_frame_test.c src/rhi_gl.c src/rhi_gl_state.c src/rhi.h src/rhi_gl.h src/rhi_gl_state.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/rhi_frame_test.c src/rhi_gl.c src/rhi_gl_state.c -o build/rhi_frame_test $(SDL_LIBS) $(GL_LIBS) -lm

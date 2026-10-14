@@ -1,14 +1,13 @@
-/* frontend_draw.c — GL drawing adapter for the frontend.
- * GLES2-compatible: no fixed-function, no immediate mode.
+/* frontend_draw.c — drawing adapter for the frontend, through rhi.h.
  *
  * Uses a minimal shader with position + color uniforms and an embedded
  * 3×5 bitmap font (same glyph set as the main game's render.c, but
  * self-contained — no dependency on render.h). */
-#include "../rhi_gl_state.h"   /* GL headers + CPU state tracker (no glGet* readback) */
-#include "../rhi_gl.h"        /* GL names behind the buffer and shader handles */
+#include "../rhi.h"
 #include "../generated_shaders.h"   /* src/shaders/: make-embedded byte arrays */
 
 #include "frontend_draw.h"
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -22,10 +21,23 @@ static char *fe_shader_text(const unsigned char *body, unsigned len) {
     return t;
 }
 
+typedef struct FeParams {
+    float uMVP[16];
+    float uColor[4];
+} FeParams;
+
+static const RhiParamField fe_param_fields[] = {
+    {"uMVP",   RHI_PARAM_MAT4, offsetof(FeParams, uMVP),   1},
+    {"uColor", RHI_PARAM_VEC4, offsetof(FeParams, uColor), 1},
+};
+static const RhiParamLayout fe_param_layout = {
+    fe_param_fields, sizeof fe_param_fields / sizeof fe_param_fields[0], sizeof(FeParams), "FeParams"
+};
+
 struct FeDraw {
     RhiShader shader;
-    unsigned prog;   /* GL program behind shader */
-    int uMVP, uColor;
+    FeParams *params;   /* the shader's parameter block */
+    RhiPipeline pipeline;
     RhiBuffer vbo;
 };
 
@@ -34,25 +46,34 @@ FeDraw *fed_init(void) {
     if (!d) return 0;
 
     static const char *const attributes[] = { "aPos" };
+    static const RhiParamLayout *const blocks[] = { &fe_param_layout };
     char *vs = fe_shader_text(src_shaders_frontend_vert, src_shaders_frontend_vert_len);
     char *fs = fe_shader_text(src_shaders_frontend_frag, src_shaders_frontend_frag_len);
     if (vs && fs)
-        d->shader = rhi_shader_create(&(RhiShaderDesc){ vs, fs, attributes, 1, "frontend", NULL, 0 });
+        d->shader = rhi_shader_create(&(RhiShaderDesc){ vs, fs, attributes, 1, "frontend", blocks, 1 });
     free(vs); free(fs);
-    d->prog = rhi_gl_shader_program(d->shader);
-    if (!d->prog) {
-        free(d);
-        return 0;
-    }
-    d->uMVP   = glGetUniformLocation(d->prog, "uMVP");
-    d->uColor = glGetUniformLocation(d->prog, "uColor");
+    d->params = (FeParams *)rhi_shader_params(d->shader, 0);
+
+    /* Translucent 2D: no depth test, alpha blending. */
+    RhiPipelineDesc pd;
+    rhi_pipeline_desc_init(&pd);
+    pd.shader = d->shader;
+    pd.vertex.attribs[0] = (RhiVertexAttrib){ 0, 0, 0, RHI_VERTEX_FLOAT2 };
+    pd.vertex.attrib_count = 1;
+    pd.depth_write = 0;
+    pd.blend = 1;
+    pd.src_rgb = pd.src_alpha = RHI_BLEND_SRC_ALPHA;
+    pd.dst_rgb = pd.dst_alpha = RHI_BLEND_ONE_MINUS_SRC_ALPHA;
+    d->pipeline = rhi_pipeline_create(&pd);
 
     /* unit quad: two triangles, (0,0)-(1,1) */
     float quad[] = { 0,0, 1,0, 1,1, 0,0, 1,1, 0,1 };
     d->vbo = rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC,
                                                  sizeof quad, quad});
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-
+    if (!d->params || !d->pipeline.id || !d->vbo.id) {
+        fed_free(d);
+        return 0;
+    }
     return d;
 }
 
@@ -86,20 +107,24 @@ static const unsigned char *fe_glyph(char c) {
 /* ---- internal draw helpers ---- */
 
 /* Draw a filled rect in NDC. x,y = bottom-left corner. */
+static void fe_quad(FeDraw *d, const float M[16]) {
+    memcpy(d->params->uMVP, M, sizeof d->params->uMVP);
+    rhi_cmd_draw(6, 0);
+}
+
 static void fe_rect(FeDraw *d, float x, float y, float w, float h) {
     float M[16] = { w,0,0,0, 0,h,0,0, 0,0,1,0, x,y,0,1 };
-    glUniformMatrix4fv(d->uMVP, 1, GL_FALSE, M);
-    glDrawArrays(GL_TRIANGLES, 0, 6);
+    fe_quad(d, M);
 }
 
 static void fe_slant(FeDraw *d, float x, float y, float w, float h, float skew) {
     float M[16] = { w,0,0,0, skew,h,0,0, 0,0,1,0, x,y,0,1 };
-    glUniformMatrix4fv(d->uMVP, 1, GL_FALSE, M);
-    glDrawArrays(GL_TRIANGLES, 0, 6);
+    fe_quad(d, M);
 }
 
 static void fe_color(FeDraw *d, float r, float g, float b, float a) {
-    glUniform4f(d->uColor, r, g, b, a);
+    d->params->uColor[0] = r; d->params->uColor[1] = g;
+    d->params->uColor[2] = b; d->params->uColor[3] = a;
 }
 
 static float fe_text_width(const char *s, float px) {
@@ -157,19 +182,8 @@ static void fe_text_center(FeDraw *d, const char *s, float cy,
 void fed_draw(FeDraw *d, const Fe *fe, int vp_w, int vp_h) {
     if (!d || !fe || vp_w <= 0 || vp_h <= 0) return;
 
-    /* Save GL state we change. */
-    int prev_prog = 0, prev_blend = 0, prev_depth = 0;
-    int prev_vp[4];
-    int prev_blend_src = 0, prev_blend_dst = 0;
-    int prev_buf = 0, prev_attr0 = 0;
-    gls_get_integerv(GL_CURRENT_PROGRAM, &prev_prog);
-    gls_get_integerv(GL_VIEWPORT, prev_vp);
-    prev_blend = gls_is_enabled(GL_BLEND);
-    prev_depth = gls_is_enabled(GL_DEPTH_TEST);
-    gls_get_integerv(GL_BLEND_SRC_RGB, &prev_blend_src);
-    gls_get_integerv(GL_BLEND_DST_RGB, &prev_blend_dst);
-    gls_get_integerv(GL_ARRAY_BUFFER_BINDING, &prev_buf);
-    prev_attr0 = gls_attrib_enabled(0);
+    RhiStateSnapshot saved;
+    rhi_cmd_save_state(&saved);
 
     /* Aspect-correct logical viewport: 4:3 area centered in the window. */
     float aspect = (float)vp_w / (float)vp_h;
@@ -182,15 +196,9 @@ void fed_draw(FeDraw *d, const Fe *fe, int vp_w, int vp_h) {
         ly = (vp_h - lh) / 2;
     }
 
-    glViewport(lx, ly, lw, lh);
-    glDisable(GL_DEPTH_TEST);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    glUseProgram(d->prog);
-    glBindBuffer(GL_ARRAY_BUFFER, rhi_gl_buffer_name(d->vbo));
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
+    rhi_cmd_set_viewport(lx, ly, lw, lh);
+    rhi_cmd_bind_pipeline(d->pipeline);
+    rhi_cmd_bind_vertex_buffer(0, d->vbo, 0);
 
     /* Pixel sizes for text (scale with viewport). */
     float px_big   = 0.022f;
@@ -326,15 +334,7 @@ void fed_draw(FeDraw *d, const Fe *fe, int vp_w, int vp_h) {
     }
     }
 
-    /* ---- restore GL state ---- */
-    glDisableVertexAttribArray(0);
-    if (prev_attr0) glEnableVertexAttribArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, (unsigned)prev_buf);
-    glUseProgram((unsigned)prev_prog);
-    glViewport(prev_vp[0], prev_vp[1], prev_vp[2], prev_vp[3]);
-    glBlendFunc((unsigned)prev_blend_src, (unsigned)prev_blend_dst);
-    if (!prev_blend) glDisable(GL_BLEND);
-    if (prev_depth) glEnable(GL_DEPTH_TEST);
+    rhi_cmd_restore_state(&saved);
 }
 
 void fed_free(FeDraw *d) {

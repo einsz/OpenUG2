@@ -1399,6 +1399,12 @@ RhiResult rhi_cmd_copy_main_to_texture(RhiTexture texture, int32_t x, int32_t y,
     return RHI_OK;
 }
 
+RhiResult rhi_cmd_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height) {
+    if (width < 0 || height < 0) return RHI_ERR_INVALID;
+    glViewport(x, y, width, height);
+    return RHI_OK;
+}
+
 /* ------------------------------------------------------------------------------ */
 /* Debug fill mode                                                                */
 /* ------------------------------------------------------------------------------ */
