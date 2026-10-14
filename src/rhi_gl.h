@@ -27,6 +27,11 @@ GLuint rhi_gl_texture_name(RhiTexture tex);
  * locations and calls glUseProgram on it. */
 GLuint rhi_gl_shader_program(RhiShader shader);
 
+/* Uploads the parameter fields of the current program's shader that changed
+ * since its last upload (glUniform* only for those). Draw code calls it right
+ * before each glDraw* until draws go through rhi.h. */
+void rhi_gl_flush_params(void);
+
 #ifdef __cplusplus
 }
 #endif

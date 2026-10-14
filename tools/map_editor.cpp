@@ -1127,36 +1127,35 @@ struct Editor {
         glDisable(GL_CULL_FACE);
         glDisable(GL_BLEND);
         glDepthMask(GL_TRUE);
-        glUniformMatrix4fv(shader.uMVP, 1, GL_FALSE, mvp);
+        ug2_copy(shader.p->uMVP, mvp, 16);
         render_model(&shader, nullptr);
-        glUniform3f(shader.uCamPos, camera.x, camera.y, camera.z);
-        glUniform3f(shader.uColor, 1, 1, 1);
-        glUniform1f(shader.uVColor, 1);
-        glUniform1f(shader.uAmbient, .6f);
-        glUniform1f(shader.uDiffuse, .4f);
-        glUniform3f(shader.uLight, N2_SUN_X, N2_SUN_Y, N2_SUN_Z);
-        glUniform1f(shader.uAlpha, 1);
-        glUniform1f(shader.uFogDensity, .0008f);
-        glUniform3f(shader.uFogColor, .025f, .035f, .065f);
-        glUniform1f(shader.uUnlit, 0);
-        glUniform1f(shader.uWetness, 0);
-        glUniform1f(shader.uSpec, 0);
+        ug2_vec3(shader.p->uCamPos, camera.x, camera.y, camera.z);
+        ug2_vec3(shader.p->uColor, 1, 1, 1);
+        shader.p->uVColor = 1;
+        shader.p->uAmbient = .6f;
+        shader.p->uDiffuse = .4f;
+        ug2_vec3(shader.p->uLight, N2_SUN_X, N2_SUN_Y, N2_SUN_Z);
+        shader.p->uAlpha = 1;
+        shader.p->uFogDensity = .0008f;
+        ug2_vec3(shader.p->uFogColor, .025f, .035f, .065f);
+        shader.p->uUnlit = 0;
+        shader.p->uWetness = 0;
+        shader.p->uSpec = 0;
         glActiveTexture(GL_TEXTURE0);
         if (world) {
             std::vector<std::pair<float, int>> blend;
             auto draw = [&](const N2Batch &b) {
-                glUniform1f(shader.uUseTex, b.tex.id ? 1 : 0);
+                shader.p->uUseTex = b.tex.id ? 1 : 0;
                 glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(b.tex));
-                glUniform1f(shader.uAlphaTest, b.drawmode == N2_DRAW_CUTOUT);
-                glUniform1f(shader.uTextureAlpha,
-                            b.drawmode == N2_DRAW_BLEND || b.drawmode == N2_DRAW_ADD);
+                shader.p->uAlphaTest = b.drawmode == N2_DRAW_CUTOUT;
+                shader.p->uTextureAlpha = b.drawmode == N2_DRAW_BLEND || b.drawmode == N2_DRAW_ADD;
                 draw_batch(&b);
             };
             glDepthMask(GL_FALSE);
-            glUniform1f(shader.uUnlit, 1);
+            shader.p->uUnlit = 1;
             for (int k = 0; k < nsky; k++)
                 draw(sky[k]);
-            glUniform1f(shader.uUnlit, 0);
+            shader.p->uUnlit = 0;
             glDepthMask(GL_TRUE);
             for (int k = 0; k < nbatch; k++) {
                 const auto &b = batches[k];
@@ -1186,8 +1185,8 @@ struct Editor {
             }
             glDepthMask(GL_TRUE);
             glDisable(GL_BLEND);
-            glUniform1f(shader.uAlphaTest, 0);
-            glUniform1f(shader.uTextureAlpha, 0);
+            shader.p->uAlphaTest = 0;
+            shader.p->uTextureAlpha = 0;
             render_world_glows(&shader, glows, nglow, mvp);
             if (flare.id && !lights.empty())
                 render_district_lights(&shader, &quad, flare, lights.data(), int(lights.size()),

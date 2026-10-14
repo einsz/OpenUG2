@@ -13,6 +13,7 @@
 #include <SDL.h>
 #include "rhi_gl_state.h"   /* GL headers + CPU state tracker (no glGet* readback) */
 #include "rhi.h"
+#include "render_params.h"
 
 #include "nfsu2.h"
 
@@ -82,48 +83,11 @@ typedef struct {
     int nprops;
 } N2Batch;
 
-/* the one shader program + its uniform handles */
+/* the one shader program + its parameter block (render_params.h) */
 typedef struct {
     RhiShader shader;
-    GLuint prog;   /* GL program behind shader, until param blocks/pipelines */
-    GLint uMVP, uModel, uUseTex, uColor, uUnlit, uAlpha, uSoft, uSpec, uAmbient, uDiffuse,
-          uLight,   /* sun direction in world space */
-          uVColor,  /* 0..1 strength of per-vertex prelight (world geometry only) */
-          uDecal,   /* 1 = texture is an alpha-masked decal over uColor paint */
-          uVista,                   /* >0.5: alpha-blended backdrop pass */
-          uAlphaTest,               /* >0.5: discard texels below 0.5 alpha
-                                       (N2_DRAW_CUTOUT world batches, M135) */
-          uTextureAlpha,            /* >0.5: output alpha = texture alpha *
-                                       uAlpha (N2_DRAW_BLEND/ADD world
-                                       batches only, M135-R) */
-          uEmissiveTex,             /* >0.5: texture-backed unlit RGB/alpha
-                                       (authored sky and point-light sprites) */
-          uFogColor, uFogDensity,   /* exp^2 distance fog (matches the sky) */
-          uCamPos,  /* camera in world space */
-          uEnvCube, uEnvReady, uEnvOrigin,
-          uEnv,     /* environment-reflection amount (cars only) */
-          uUVCheck, /* 1 = show the diagnostic UV-coordinate visualization
-                       instead of lighting/texture (toggle lives in the
-                       ImGui Session panel, make debug only) */
-          uFlipN,   /* 1 = negate the vertex normal (inspector diagnostic) */
-          uGloss,   /* specular pow() exponent: high = tight metallic-paint
-                       highlight, low = broad plastic/trim sheen (cars only) */
-          uFresnel, /* >0.5: alpha rides the fresnel term (car glass pass only) */
-          uClearcoat, /* >0: second tight specular lobe -- the lacquer over the
-                         coloured base coat (car body/trim only) */
-          uRimTint, /* 0 = raw rim texture, 1 = recolor toward uColor (rim paint) */
-          uEmissive; /* vec3 added AFTER lighting: a lamp lens that is lit AND
-                        glowing. Going fully uUnlit instead is what made every
-                        taillight a flat red sticker -- it discards the
-                        specular, the fresnel rim and the environment
-                        reflection, i.e. everything that reads as moulded
-                        plastic. Dome-weighted by dot(N,V) in the shader, so a
-                        curved lens is hottest where it faces the camera.
-                        Zero everywhere else; the car pass clears it. */
-    GLint uWetness, uWeatherTime, uRainIntensity, uWetLightPos, uWetLightColor, uPaintLights;
-    GLint uRoadReflection, uReflectionParams;
-    GLint uHeadPos, uHeadForward, uHeadRight, uHeadUp, uHeadShape, uHeadGain, uHeadLow;
-    GLint uHeadShadow, uHeadShadowMap[2], uHeadShadowMVP;
+    GLuint prog;     /* GL program behind shader, for glUseProgram until pipelines */
+    UG2Params *p;    /* the shader's parameters; the next draw uses what is here */
 } RProg;
 
 typedef struct {
@@ -230,11 +194,13 @@ void render_model(const RProg *r,const float model[16]);
 RProg    render_program(void);          /* compile+link the shader, fetch uniforms */
 /* Build a shader from embedded source bodies (make: generated_shaders.h), each
    prefixed with a header (GLSL_VS_HEADER / GLSL_FS_HEADER, or ""). Attribute i
-   is attributes[i]. Returns {0} on failure. */
+   is attributes[i]; blocks are its parameter layouts (may be NULL, 0).
+   Returns {0} on failure. */
 RhiShader render_shader_create(const char *label,
                                const char *vs_header, const unsigned char *vs, unsigned vs_len,
                                const char *fs_header, const unsigned char *fs, unsigned fs_len,
-                               const char *const *attributes, uint32_t count);
+                               const char *const *attributes, uint32_t count,
+                               const RhiParamLayout *const *blocks, uint32_t block_count);
 GpuMesh *upload_scene(N2Scene *s);      /* VBO/NBO/IBO per mesh, normals computed */
 void free_scene_gpu(GpuMesh *gm, int count);
 GpuMesh  make_wheel(float R, float halfW);  /* procedural tyre (see render.c) */
@@ -339,7 +305,7 @@ void render_texture_detail(float aniso);
 extern int g_tex_s3tc;   /* 1 = GL_EXT_texture_compression_s3tc present; set once at GL init */
 
 /* ---- 3x5 bitmap font (uppercase, digits, _ - /) ---- */
-void  draw_text(GpuMesh *quad, GLint uMVP, const char *s,
+void  draw_text(GpuMesh *quad, const RProg *r, const char *s,
                 float x, float y, float px, float py);
 float text_width(const char *s, float px);
 

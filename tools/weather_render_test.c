@@ -60,7 +60,7 @@ static void geometry(void) {
 
 static void pixel(const RProg *r,GpuMesh *quad,float wet,float normal_z,unsigned char out[4]) {
     glClear(GL_COLOR_BUFFER_BIT);
-    glUniform1f(r->uWetness,wet);
+    r->p->uWetness = wet;
     float normals[12];
     for(int i=0;i<4;i++){normals[i*3]=sqrtf(1-normal_z*normal_z);normals[i*3+1]=0;normals[i*3+2]=normal_z;}
     rhi_buffer_replace(quad->nbo,sizeof normals,normals);
@@ -71,31 +71,31 @@ static void pixel(const RProg *r,GpuMesh *quad,float wet,float normal_z,unsigned
 static void paint_shine_test(const RProg *r,GpuMesh *quad) {
     N2LightSrc lamp={{.5f,3,4},2,30,0xff2040ffu};
     float camera[]={.5f,-2,4};unsigned char base[4],shine[4],other[4];
-    glUniform1f(r->uSpec,.25f);glUniform1f(r->uGloss,32);glUniform1f(r->uClearcoat,.7f);
+    r->p->uSpec = .25f;r->p->uGloss = 32;r->p->uClearcoat = .7f;
     render_wet_lights(r,&lamp,1,camera,1,2);
-    glUniform1f(r->uPaintLights,0);pixel(r,quad,0,1,base);
-    glUniform1f(r->uPaintLights,1);pixel(r,quad,0,1,shine);
+    r->p->uPaintLights = 0;pixel(r,quad,0,1,base);
+    r->p->uPaintLights = 1;pixel(r,quad,0,1,shine);
     assert(shine[0]>base[0]+10 && shine[0]-base[0]>shine[1]-base[1]);
     /* View angle and source position move the glint; no constant brightening. */
-    glUniform3f(r->uCamPos,3,-2,4);pixel(r,quad,0,1,other);
-    assert(other[0]+5<shine[0]);glUniform3fv(r->uCamPos,1,camera);
+    ug2_vec3(r->p->uCamPos, 3, -2, 4);pixel(r,quad,0,1,other);
+    assert(other[0]+5<shine[0]);ug2_copy(r->p->uCamPos, camera, 3);
     lamp.pos[0]+=50;render_wet_lights(r,&lamp,1,camera,1,2);
     pixel(r,quad,0,1,other);assert(!memcmp(base,other,4));lamp.pos[0]-=50;
     render_wet_lights(r,&lamp,1,camera,1,2);
-    glUniform1f(r->uPaintLights,0);pixel(r,quad,0,-1,base);
-    glUniform1f(r->uPaintLights,1);pixel(r,quad,0,-1,other);
+    r->p->uPaintLights = 0;pixel(r,quad,0,-1,base);
+    r->p->uPaintLights = 1;pixel(r,quad,0,-1,other);
     assert(!memcmp(base,other,4)); /* lamp behind the surface cannot shine */
     /* Uncoated trim/rubber/glass and disabled lamps retain their old pixels. */
-    glUniform1f(r->uClearcoat,0);pixel(r,quad,0,1,other);
-    glUniform1f(r->uPaintLights,0);pixel(r,quad,0,1,base);
+    r->p->uClearcoat = 0;pixel(r,quad,0,1,other);
+    r->p->uPaintLights = 0;pixel(r,quad,0,1,base);
     assert(!memcmp(base,other,4));
-    glUniform1f(r->uClearcoat,.7f);pixel(r,quad,0,1,base);
-    glUniform1f(r->uPaintLights,1);
+    r->p->uClearcoat = .7f;pixel(r,quad,0,1,base);
+    r->p->uPaintLights = 1;
     for(int mode=0;mode<2;mode++) {
         render_wet_lights(r,&lamp,1,camera,mode?0:1,mode?2:0);
         pixel(r,quad,0,1,other);assert(!memcmp(base,other,4));
     }
-    glUniform1f(r->uPaintLights,0);glUniform1f(r->uClearcoat,0);glUniform1f(r->uSpec,0);
+    r->p->uPaintLights = 0;r->p->uClearcoat = 0;r->p->uSpec = 0;
     puts("paint shine: source color/range, moving view, front-facing coat and off/low checks PASS");
 }
 
@@ -104,16 +104,16 @@ static void wet_patch_test(const RProg *r,GpuMesh *quad) {
        pixels indicate standing water rather than the uniform wet sheen. */
     float clip[]={2,0,0,0,0,2,0,0,0,0,1,0,-1,-1,0,1};
     float model[16];mat_trans(-100,-100,0,model);model[0]=model[5]=200;
-    glUniformMatrix4fv(r->uMVP,1,GL_FALSE,clip);
-    render_model(r,model);glUniform3f(r->uCamPos,0,-100000,1);
-    glUniform3f(r->uColor,0,0,0);glUniform3f(r->uFogColor,1,1,1);
-    glUniform1f(r->uAmbient,0);glUniform1f(r->uDiffuse,0);
-    glUniform1f(r->uFogDensity,0);glUniform1f(r->uRainIntensity,1);
-    glUniform1f(r->uWeatherTime,0);
+    ug2_copy(r->p->uMVP, clip, 16);
+    render_model(r,model);ug2_vec3(r->p->uCamPos, 0, -100000, 1);
+    ug2_vec3(r->p->uColor, 0, 0, 0);ug2_vec3(r->p->uFogColor, 1, 1, 1);
+    r->p->uAmbient = 0;r->p->uDiffuse = 0;
+    r->p->uFogDensity = 0;r->p->uRainIntensity = 1;
+    r->p->uWeatherTime = 0;
     unsigned char first[64*64*4],next[64*64*4],pixel_value[4];
     pixel(r,quad,1,1,pixel_value);
     glReadPixels(0,0,64,64,GL_RGBA,GL_UNSIGNED_BYTE,first);
-    glUniform1f(r->uWeatherTime,1.0f/60);
+    r->p->uWeatherTime = 1.0f/60;
     pixel(r,quad,1,1,pixel_value);
     glReadPixels(0,0,64,64,GL_RGBA,GL_UNSIGNED_BYTE,next);
     int pools=0,changes=0;
@@ -127,16 +127,16 @@ static void wet_patch_test(const RProg *r,GpuMesh *quad) {
     assert(!memcmp(first,next,sizeof first));
     /* A one-pixel camera pan must sample the same world patch, not regenerate it. */
     clip[12]-=2.0f/64;
-    glUniformMatrix4fv(r->uMVP,1,GL_FALSE,clip);
+    ug2_copy(r->p->uMVP, clip, 16);
     pixel(r,quad,1,1,pixel_value);
     glReadPixels(0,0,64,64,GL_RGBA,GL_UNSIGNED_BYTE,next);
     for(int y=0;y<64;y++)for(int x=0;x<63;x++)
         assert(abs(next[(y*64+x)*4]-first[(y*64+x+1)*4])<=1);
     render_model(r,NULL);clip[12]=-1;
-    glUniformMatrix4fv(r->uMVP,1,GL_FALSE,clip);
-    glUniform3f(r->uFogColor,0,0,0);glUniform3f(r->uColor,.3f,.3f,.3f);
-    glUniform1f(r->uAmbient,.5f);glUniform1f(r->uDiffuse,.5f);
-    glUniform1f(r->uRainIntensity,1);glUniform1f(r->uWeatherTime,0);glUniform1f(r->uWetness,0);
+    ug2_copy(r->p->uMVP, clip, 16);
+    ug2_vec3(r->p->uFogColor, 0, 0, 0);ug2_vec3(r->p->uColor, .3f, .3f, .3f);
+    r->p->uAmbient = .5f;r->p->uDiffuse = .5f;
+    r->p->uRainIntensity = 1;r->p->uWeatherTime = 0;r->p->uWetness = 0;
 }
 
 static void car_render_test(const RProg *r) {
@@ -198,7 +198,7 @@ static void car_render_test(const RProg *r) {
     scene.meshes=walls;scene.count=6;
     count=upload_world_batches(&scene,bounds,textures,(RhiTexture){0},&batches,NULL,NULL,NULL);
     CarEnvironment env={0};float origin[]={0,0,0};
-    glUniform1f(r->uAmbient,1);glUniform1f(r->uDiffuse,0);glUniform1f(r->uFogDensity,0);
+    r->p->uAmbient = 1;r->p->uDiffuse = 0;r->p->uFogDensity = 0;
     for(int face=0;face<6;face++) {
         assert(render_car_environment(r,&env,batches,count,NULL,0,origin,1)>0);
         assert(env.ready==(face==5));assert(env.face==(face+1)%6);
@@ -211,24 +211,24 @@ static void car_render_test(const RProg *r) {
         assert(center[axis]>=(face%2?90:220));assert(center[(axis+1)%3]==0);
     }
     glActiveTexture(GL_TEXTURE0);GpuMesh panel=make_quad();
-    glUniformMatrix4fv(r->uMVP,1,GL_FALSE,clip);render_model(r,NULL);
-    glUniform3f(r->uCamPos,.5f,.5f,3);glUniform3f(r->uColor,0,0,0);
-    glUniform1f(r->uEnv,1);glUniform1f(r->uSpec,0);glUniform1f(r->uUseTex,0);
+    ug2_copy(r->p->uMVP, clip, 16);render_model(r,NULL);
+    ug2_vec3(r->p->uCamPos, .5f, .5f, 3);ug2_vec3(r->p->uColor, 0, 0, 0);
+    r->p->uEnv = 1;r->p->uSpec = 0;r->p->uUseTex = 0;
     glDisable(GL_DEPTH_TEST);glClear(GL_COLOR_BUFFER_BIT);draw_gpumesh(&panel);
     unsigned char reflected[4],fallback[4];glReadPixels(32,32,1,1,GL_RGBA,GL_UNSIGNED_BYTE,reflected);
-    glUniform1f(r->uEnvReady,0);glClear(GL_COLOR_BUFFER_BIT);draw_gpumesh(&panel);
+    r->p->uEnvReady = 0;glClear(GL_COLOR_BUFFER_BIT);draw_gpumesh(&panel);
     glReadPixels(32,32,1,1,GL_RGBA,GL_UNSIGNED_BYTE,fallback);
     assert(reflected[2]>fallback[2]+20 && reflected[2]>reflected[0]+20);
-    glUniform1f(r->uEnv,0);rhi_buffer_destroy(panel.vbo);rhi_buffer_destroy(panel.nbo);rhi_buffer_destroy(panel.ibo);
+    r->p->uEnv = 0;rhi_buffer_destroy(panel.vbo);rhi_buffer_destroy(panel.nbo);rhi_buffer_destroy(panel.ibo);
     origin[0]=.5f;
     assert(render_car_environment(r,&env,batches,count,NULL,0,origin,2)>0);
     assert(env.size==128 && !env.ready && env.origin[0]==.5f);
     assert(!render_car_environment(r,&env,batches,count,NULL,0,origin,0));
-    float ready;glGetUniformfv(r->prog,r->uEnvReady,&ready);assert(ready==0);
+    float ready;ug2_copy(&ready, &r->p->uEnvReady, 1);assert(ready==0);
     GLuint cube=env.cube[0];free_car_environment(&env);assert(!glIsTexture(cube));
     render_batch_array_free(&batches,&count);for(int i=0;i<6;i++)rhi_texture_destroy(textures[i]);
-    glActiveTexture(GL_TEXTURE0);glUniform1f(r->uEnvReady,0);
-    glUniformMatrix4fv(r->uMVP,1,GL_FALSE,clip);glUniform1f(r->uAmbient,.5f);glUniform1f(r->uDiffuse,.5f);
+    glActiveTexture(GL_TEXTURE0);r->p->uEnvReady = 0;
+    ug2_copy(r->p->uMVP, clip, 16);r->p->uAmbient = .5f;r->p->uDiffuse = .5f;
     glClearColor(0,0,0,0);assert(glGetError()==GL_NO_ERROR);
     puts("car rendering: free flight, sloped mesh shadow/stencil and six-face scene reflection PASS");
 }
@@ -245,16 +245,16 @@ static void reflection_test(const RProg *r) {
     assert(count==2);
     float cam[]={0,-4,3},look[]={0,1,-.15f},p[16],v[16],mvp[16];
     mat_persp(1.1f,1,.1f,60,p);mat_lookat(cam,look,v);mat_mul(p,v,mvp);
-    glUniformMatrix4fv(r->uMVP,1,GL_FALSE,mvp);render_model(r,NULL);
-    glUniform3fv(r->uCamPos,1,cam);glUniform1f(r->uFogDensity,0);
-    glUniform1f(r->uUnlit,1);glUniform1f(r->uAlpha,1);glUniform1f(r->uSoft,0);
-    glUniform1f(r->uRainIntensity,0);glUniform1f(r->uWetness,0);
+    ug2_copy(r->p->uMVP, mvp, 16);render_model(r,NULL);
+    ug2_copy(r->p->uCamPos, cam, 3);r->p->uFogDensity = 0;
+    r->p->uUnlit = 1;r->p->uAlpha = 1;r->p->uSoft = 0;
+    r->p->uRainIntensity = 0;r->p->uWetness = 0;
     glDisable(GL_CULL_FACE);glDisable(GL_BLEND);glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);glDepthMask(GL_TRUE);glClearDepth(1);
     glViewport(0,0,64,64);glClearColor(0,0,0,0);
     glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
-    glUniform3f(r->uColor,.12f,.12f,.12f);draw_batch(&batches[map[0]]);
-    glUniform3f(r->uColor,1,.02f,1);draw_batch(&batches[map[1]]);
+    ug2_vec3(r->p->uColor, .12f, .12f, .12f);draw_batch(&batches[map[0]]);
+    ug2_vec3(r->p->uColor, 1, .02f, 1);draw_batch(&batches[map[1]]);
     unsigned char before[64*64*4],after[64*64*4];
     glReadPixels(0,0,64,64,GL_RGBA,GL_UNSIGNED_BYTE,before);
     RoadReflections refl={0};
@@ -264,7 +264,7 @@ static void reflection_test(const RProg *r) {
     glActiveTexture(GL_TEXTURE5);
     int draws=render_road_reflections(r,&refl,batches,count,cam,mvp,p,1,2);
     assert(draws==1 && !refl.failed && refl.width==64 && refl.height==64);
-    float unlit;glGetUniformfv(r->prog,r->uUnlit,&unlit);assert(unlit==1);
+    float unlit;ug2_copy(&unlit, &r->p->uUnlit, 1);assert(unlit==1);
     GLint state;glGetIntegerv(GL_ACTIVE_TEXTURE,&state);assert(state==GL_TEXTURE5);
     glGetIntegerv(GL_DEPTH_FUNC,&state);assert(state==GL_LESS);
     assert(!glIsEnabled(GL_BLEND));GLboolean mask;glGetBooleanv(GL_DEPTH_WRITEMASK,&mask);assert(mask);
@@ -279,9 +279,9 @@ static void reflection_test(const RProg *r) {
        tear into a new pattern as the weather clock advances. */
     glActiveTexture(GL_TEXTURE0);
     glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
-    glUniform3f(r->uColor,.12f,.12f,.12f);draw_batch(&batches[map[0]]);
-    glUniform3f(r->uColor,1,.02f,1);draw_batch(&batches[map[1]]);
-    glUniform1f(r->uWeatherTime,1.0f/60);
+    ug2_vec3(r->p->uColor, .12f, .12f, .12f);draw_batch(&batches[map[0]]);
+    ug2_vec3(r->p->uColor, 1, .02f, 1);draw_batch(&batches[map[1]]);
+    r->p->uWeatherTime = 1.0f/60;
     assert(render_road_reflections(r,&refl,batches,count,cam,mvp,p,1,2)==1);
     glReadPixels(0,0,64,64,GL_RGBA,GL_UNSIGNED_BYTE,before);
     assert(!memcmp(before,after,sizeof before));
@@ -291,10 +291,10 @@ static void reflection_test(const RProg *r) {
         int quality=1+frame%2;
         cam[0]=frame*.07f;cam[1]=-4+frame*.15f;
         mat_lookat(cam,look,v);mat_mul(p,v,mvp);
-        glUniformMatrix4fv(r->uMVP,1,GL_FALSE,mvp);glUniform3fv(r->uCamPos,1,cam);
+        ug2_copy(r->p->uMVP, mvp, 16);ug2_copy(r->p->uCamPos, cam, 3);
         glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
-        glUniform3f(r->uColor,.12f,.12f,.12f);draw_batch(&batches[map[0]]);
-        glUniform3f(r->uColor,1,.02f,1);draw_batch(&batches[map[1]]);
+        ug2_vec3(r->p->uColor, .12f, .12f, .12f);draw_batch(&batches[map[0]]);
+        ug2_vec3(r->p->uColor, 1, .02f, 1);draw_batch(&batches[map[1]]);
         glReadPixels(0,0,64,64,GL_RGBA,GL_UNSIGNED_BYTE,before);
         assert(render_road_reflections(r,&refl,batches,count,cam,mvp,p,1,quality)==1);
         glReadPixels(0,0,64,64,GL_RGBA,GL_UNSIGNED_BYTE,after);
@@ -316,7 +316,7 @@ static void reflection_test(const RProg *r) {
        and the old wall must not remain in the copied scene textures. */
     glActiveTexture(GL_TEXTURE0);glClearColor(0,1,0,1);
     glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
-    glUniform3f(r->uColor,.12f,.12f,.12f);draw_batch(&batches[map[0]]);
+    ug2_vec3(r->p->uColor, .12f, .12f, .12f);draw_batch(&batches[map[0]]);
     glReadPixels(0,0,64,64,GL_RGBA,GL_UNSIGNED_BYTE,before);
     assert(render_road_reflections(r,&refl,batches,count,cam,mvp,p,1,1)==1);
     glReadPixels(0,0,64,64,GL_RGBA,GL_UNSIGNED_BYTE,after);
@@ -343,19 +343,19 @@ static void collision_wall_render_test(const RProg *r) {
         glDepthMask(GL_TRUE);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
         glEnable(GL_DEPTH_TEST);glEnable(GL_CULL_FACE);glDisable(GL_BLEND);
         glBlendFuncSeparate(GL_ONE,GL_ZERO,GL_ZERO,GL_ONE);
-        glUniform1f(r->uUnlit,0);glUniform1f(r->uSoft,0);glUniform1f(r->uAlpha,.6f);
-        glUniform3f(r->uColor,.2f,.3f,.4f);glUniformMatrix4fv(r->uMVP,1,GL_FALSE,clip);
+        r->p->uUnlit = 0;r->p->uSoft = 0;r->p->uAlpha = .6f;
+        ug2_vec3(r->p->uColor, .2f, .3f, .4f);ug2_copy(r->p->uMVP, clip, 16);
         assert(render_collision_walls(r,&vbo,faces,1,color,identity,through)==2);
         glReadPixels(0,0,64,64,GL_RGBA,GL_UNSIGNED_BYTE,pixels);
         int lit=0;for(int i=0;i<64*64;i++)lit+=pixels[i*4+2]>0;
         assert(through?lit>100:lit==0);
         assert(glIsEnabled(GL_DEPTH_TEST) && glIsEnabled(GL_CULL_FACE) && !glIsEnabled(GL_BLEND));
         GLboolean mask;glGetBooleanv(GL_DEPTH_WRITEMASK,&mask);assert(mask);
-        float matrix[16],value,restored[3];glGetUniformfv(r->prog,r->uMVP,matrix);
+        float matrix[16],value,restored[3];ug2_copy(matrix, r->p->uMVP, 16);
         assert(!memcmp(matrix,clip,sizeof matrix));
-        glGetUniformfv(r->prog,r->uUnlit,&value);assert(value==0);
-        glGetUniformfv(r->prog,r->uAlpha,&value);assert(value==.6f);
-        glGetUniformfv(r->prog,r->uColor,restored);assert(restored[0]==.2f && restored[1]==.3f && restored[2]==.4f);
+        ug2_copy(&value, &r->p->uUnlit, 1);assert(value==0);
+        ug2_copy(&value, &r->p->uAlpha, 1);assert(value==.6f);
+        ug2_copy(restored, r->p->uColor, 3);assert(restored[0]==.2f && restored[1]==.3f && restored[2]==.4f);
         GLint blend;glGetIntegerv(GL_BLEND_SRC_RGB,&blend);assert(blend==GL_ONE);
         glGetIntegerv(GL_BLEND_DST_ALPHA,&blend);assert(blend==GL_ONE);
         assert(glGetError()==GL_NO_ERROR);
@@ -388,9 +388,9 @@ int main(void) {
     GpuMesh quad=make_quad();
     float clip[]={2,0,0,0,0,2,0,0,0,0,1,0,-1,-1,0,1};
     glViewport(0,0,64,64);glDisable(GL_DEPTH_TEST);glDisable(GL_BLEND);
-    glUniformMatrix4fv(r.uMVP,1,GL_FALSE,clip);
-    glUniform3f(r.uColor,.3f,.3f,.3f);glUniform1f(r.uAmbient,.5f);glUniform1f(r.uDiffuse,.5f);
-    glUniform3f(r.uCamPos,.5f,-2,4);
+    ug2_copy(r.p->uMVP, clip, 16);
+    ug2_vec3(r.p->uColor, .3f, .3f, .3f);r.p->uAmbient = .5f;r.p->uDiffuse = .5f;
+    ug2_vec3(r.p->uCamPos, .5f, -2, 4);
     unsigned char dry[4],wet[4],wall[4],wall_wet[4];
     pixel(&r,&quad,0,1,dry);pixel(&r,&quad,1,1,wet);
     assert(wet[0]+10<dry[0]);
@@ -400,16 +400,16 @@ int main(void) {
     N2LightSrc lamp={ {.5f,3,4}, 2,30,0xff2040ffu };
     float camera[]={.5f,-2,4},lamp_data[4];
     render_wet_lights(&r,&lamp,1,camera,1,2);
-    glGetUniformfv(r.prog,r.uWetLightPos,lamp_data);
+    ug2_copy(lamp_data, r.p->uWetLightPos[0], 4);
     assert(lamp_data[0]==lamp.pos[0] && lamp_data[2]==4 && lamp_data[3]==30);
-    glGetUniformfv(r.prog,r.uWetLightColor,lamp_data);
+    ug2_copy(lamp_data, r.p->uWetLightColor[0], 4);
     assert(lamp_data[0]==1 && lamp_data[1]<.3f && lamp_data[3]>0);
     unsigned char highlight[4];pixel(&r,&quad,1,1,highlight);
     assert(highlight[0]>wet[0]);
     render_wet_lights(&r,&lamp,1,camera,1,0);
-    glGetUniformfv(r.prog,r.uWetLightColor,lamp_data);assert(lamp_data[3]==0);
-    glUniform1f(r.uWetness,0);glUniform1f(r.uRainIntensity,1);
-    glUniform1f(r.uWeatherTime,29);pixel(&r,&quad,0,1,wet);
+    ug2_copy(lamp_data, r.p->uWetLightColor[0], 4);assert(lamp_data[3]==0);
+    r.p->uWetness = 0;r.p->uRainIntensity = 1;
+    r.p->uWeatherTime = 29;pixel(&r,&quad,0,1,wet);
     assert(!memcmp(dry,wet,4)); /* dry path unaffected by weather time */
     paint_shine_test(&r,&quad);
     wet_patch_test(&r,&quad);
@@ -425,9 +425,9 @@ int main(void) {
         assert(render_rain(&r,&rain,2,1,2,1)==1);
         assert(!glIsEnabled(GL_DEPTH_TEST) && !glIsEnabled(GL_BLEND) && glIsEnabled(GL_CULL_FACE));
         GLboolean mask;glGetBooleanv(GL_DEPTH_WRITEMASK,&mask);assert(mask);
-        float value;glGetUniformfv(r.prog,r.uSoft,&value);assert(value==0);
-        glGetUniformfv(r.prog,r.uUnlit,&value);assert(value==0);
-        float saved[16];glGetUniformfv(r.prog,r.uMVP,saved);assert(!memcmp(saved,clip,sizeof clip));
+        float value;ug2_copy(&value, &r.p->uSoft, 1);assert(value==0);
+        ug2_copy(&value, &r.p->uUnlit, 1);assert(value==0);
+        float saved[16];ug2_copy(saved, r.p->uMVP, 16);assert(!memcmp(saved,clip,sizeof clip));
         GLint blend;glGetIntegerv(GL_BLEND_SRC_RGB,&blend);assert(blend==GL_ONE);
         glGetIntegerv(GL_BLEND_DST_ALPHA,&blend);assert(blend==GL_ONE);
         glReadPixels(0,0,64,64,GL_RGBA,GL_UNSIGNED_BYTE,image);

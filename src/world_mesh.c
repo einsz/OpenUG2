@@ -144,7 +144,7 @@ RhiShader world_debug_shader_load(const char *vert_path, const char *frag_path) 
     free(vfile); free(ffile);
     RhiShader shader = {0};
     if (vtext && ftext)
-        shader = rhi_shader_create(&(RhiShaderDesc){ vtext, ftext, attributes, 4, "world_debug" });
+        shader = rhi_shader_create(&(RhiShaderDesc){ vtext, ftext, attributes, 4, "world_debug", NULL, 0 });
     free(vtext); free(ftext);
     return shader;
 }
