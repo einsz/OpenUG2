@@ -3,12 +3,15 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #ifdef _WIN32
 #include <direct.h>
+#include <io.h>
+#include <sys/stat.h>
 #include <windows.h>
 #define ST_SEP '\\'
 #else
@@ -69,7 +72,7 @@ int st_container_parse(const uint8_t *buf, size_t len, StContainerView *v) {
 size_t st_container_build(uint8_t *out, size_t cap, const uint8_t *a, uint32_t sa,
                           const uint8_t *b, uint32_t sb) {
     uint64_t total = (uint64_t)ST_CONTAINER_HEADER + sa + sb;
-    if (!out || total > 0xFFFFFFFFu || total > cap) return 0;
+    if (!out || (sa && !a) || (sb && !b) || total > 0xFFFFFFFFu || total > cap) return 0;
     memcpy(out, "20CM", 4);
     wr32(out + 4, (uint32_t)total);
     wr32(out + 8, sa);
@@ -159,7 +162,8 @@ void st_profile_pack_payload(const StProfile *p, uint8_t out[ST_PAYLOAD_SIZE]) {
     out[OFF_PROMPT] = p->save_prompt;
     w = out + OFF_NAME;
     memset(w, 0, 32);
-    size_t nl = strlen(p->name);
+    size_t nl = 0;
+    while (nl < 32 && p->name[nl]) nl++;
     memcpy(w, p->name, nl > 32 ? 32 : nl);
     w = out + OFF_ONLINE;
     wr32(w, 0); wr32(w + 4, 0);                 /* always written 0 (5.5) */
@@ -399,10 +403,51 @@ static int dir_nonempty(const char *path) {
     return dir_iter(path, count_cb, &n) == 0 && n > 0;
 }
 
+/* Profile components are untrusted directory entries. Do not follow links or
+ * open special files; POSIX operations stay relative to the opened directory. */
+static FILE *profile_open(const char *dir, const char *name, int write) {
+#ifdef _WIN32
+    /* shortcut: path-based directory checks assume no concurrent replacement;
+     * anchor a directory handle if multiple writers must be supported. */
+    DWORD attrs = GetFileAttributesA(dir);
+    if (attrs == INVALID_FILE_ATTRIBUTES || !(attrs & FILE_ATTRIBUTE_DIRECTORY) ||
+        (attrs & FILE_ATTRIBUTE_REPARSE_POINT)) return NULL;
+    char path[1024];
+    if (snprintf(path, sizeof path, "%s/%s", dir, name) >= (int)sizeof path) return NULL;
+    HANDLE h = CreateFileA(path, write ? GENERIC_WRITE : GENERIC_READ, FILE_SHARE_READ,
+                          NULL, write ? OPEN_ALWAYS : OPEN_EXISTING,
+                          FILE_FLAG_OPEN_REPARSE_POINT, NULL);
+    if (h == INVALID_HANDLE_VALUE) return NULL;
+    BY_HANDLE_FILE_INFORMATION info;
+    if (!GetFileInformationByHandle(h, &info) ||
+        (info.dwFileAttributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY)) ||
+        (write && info.nNumberOfLinks != 1)) { CloseHandle(h); return NULL; }
+    int fd = _open_osfhandle((intptr_t)h, _O_BINARY | (write ? _O_WRONLY : _O_RDONLY));
+    if (fd < 0) { CloseHandle(h); return NULL; }
+    if (write && _chsize(fd, 0) != 0) { _close(fd); return NULL; }
+    FILE *f = _fdopen(fd, write ? "wb" : "rb");
+    if (!f) _close(fd);
+#else
+    int d = open(dir, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    if (d < 0) return NULL;
+    int fd = openat(d, name, O_NOFOLLOW | O_NONBLOCK |
+                   (write ? O_WRONLY | O_CREAT : O_RDONLY), 0666);
+    close(d);
+    if (fd < 0) return NULL;
+    struct stat info;
+    if (fstat(fd, &info) != 0 || !S_ISREG(info.st_mode) || (write && info.st_nlink != 1) ||
+        (write && ftruncate(fd, 0) != 0)) { close(fd); return NULL; }
+    FILE *f = fdopen(fd, write ? "wb" : "rb");
+    if (!f) close(fd);
+#endif
+    return f;
+}
+
 /* ================================================================ 3.1 profile files */
 int st_profile_name_valid(const char *name) {
     if (!name) return 0;
-    size_t n = strlen(name);
+    size_t n = 0;
+    while (n <= ST_NAME_MAX && name[n]) n++;
     if (n == 0 || n > ST_NAME_MAX) return 0;
     for (size_t i = 0; i < n; i++) {
         unsigned char c = (unsigned char)name[i];
@@ -425,6 +470,7 @@ int st_profile_path(const char *root, const char *name, char *out, size_t cap) {
 }
 
 int st_profile_save(const char *root, const StProfile *p) {
+    if (!p) return ST_E_ARG;
     char dir[1024], path[1024];
     int rc = dir_path(root, p->name, dir, sizeof dir);
     if (rc == ST_OK) rc = st_profile_path(root, p->name, path, sizeof path);
@@ -436,7 +482,7 @@ int st_profile_save(const char *root, const StProfile *p) {
     rc = make_dirs(root);
     if (rc == ST_OK) rc = make_dir(dir);
     if (rc == ST_OK) {
-        FILE *f = fopen(path, "wb");           /* create/truncate; not atomic (3.3) */
+        FILE *f = profile_open(dir, p->name, 1); /* create/truncate; not atomic (3.3) */
         if (!f) rc = ST_E_IO;
         else {
             if (fwrite(buf, 1, n, f) != n) rc = ST_E_IO;
@@ -447,23 +493,61 @@ int st_profile_save(const char *root, const StProfile *p) {
     return rc;
 }
 
+/* Validate a block while retaining only the bytes its caller understands. */
+static int profile_read_block(FILE *f, uint32_t size, uint8_t *out, size_t keep, uint32_t *crc) {
+    uint8_t chunk[4096];
+    uint32_t done = 0, r = 0;
+    crc_init();
+    while (done < size) {
+        size_t n = size - done;
+        if (n > sizeof chunk) n = sizeof chunk;
+        if (fread(chunk, 1, n, f) != n) return ST_E_IO;
+        if (done < keep) {
+            size_t copy = keep - done;
+            if (copy > n) copy = n;
+            memcpy(out + done, chunk, copy);
+        }
+        for (size_t i = 0; i < n; i++) {
+            if (done + i < 4) {
+                r = (r << 8) | chunk[i];
+                if (done + i == 3) r = ~r;
+            } else r = ((r << 8) | chunk[i]) ^ g_crc_tab[r >> 24];
+        }
+        done += (uint32_t)n;
+    }
+    *crc = size < 4 ? 0 : ~r;
+    return ST_OK;
+}
+
 int st_profile_load(const char *root, const char *name, StProfile *out) {
-    char path[1024];
-    int rc = st_profile_path(root, name, path, sizeof path);
+    char dir[1024];
+    int rc = dir_path(root, name, dir, sizeof dir);
     if (rc != ST_OK) return rc;
-    FILE *f = fopen(path, "rb");
+    FILE *f = profile_open(dir, name, 0);
     if (!f) return ST_E_NOTFOUND;
-    uint8_t *buf = NULL;
     long len = -1;
     if (fseek(f, 0, SEEK_END) == 0) len = ftell(f);
-    if (len < 0 || len > 0x7FFFFFFFL || fseek(f, 0, SEEK_SET) != 0) { fclose(f); return ST_E_IO; }
-    buf = (uint8_t *)malloc(len ? (size_t)len : 1);
-    if (!buf) { fclose(f); return ST_E_NOMEM; }
-    size_t got = fread(buf, 1, (size_t)len, f);
+    if (len < ST_CONTAINER_HEADER || len > 0x7FFFFFFFL || fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f); return ST_E_IO;
+    }
+    uint8_t header[ST_CONTAINER_HEADER], a[8];
+    if (fread(header, 1, sizeof header, f) != sizeof header) { fclose(f); return ST_E_IO; }
+    uint32_t sa = rd32(header + 8), sb = rd32(header + 12);
+    if (rd32(header + 4) != (uint32_t)len || memcmp(header, "20CM", 4) ||
+        rd32(header + 24) != st_checksum(header, 24)) { fclose(f); return ST_E_CORRUPT; }
+    if ((uint64_t)sa + sb > (uint64_t)len - ST_CONTAINER_HEADER) { fclose(f); return ST_E_IO; }
+    uint8_t *payload = sb == ST_PAYLOAD_SIZE ? (uint8_t *)malloc(ST_PAYLOAD_SIZE) : NULL;
+    if (sb == ST_PAYLOAD_SIZE && !payload) { fclose(f); return ST_E_NOMEM; }
+    uint32_t ca = 0, cb = 0;
+    rc = profile_read_block(f, sa, a, sizeof a, &ca);
+    if (rc == ST_OK) rc = profile_read_block(f, sb, payload, payload ? ST_PAYLOAD_SIZE : 0, &cb);
     fclose(f);
-    if (got != (size_t)len) rc = ST_E_IO;
-    else rc = st_profile_parse(buf, (size_t)len, out);
-    free(buf);
+    if (rc == ST_OK && (ca != rd32(header + 16) || cb != rd32(header + 20))) rc = ST_E_CORRUPT;
+    if (rc == ST_OK && !out) rc = ST_E_ARG;
+    if (rc == ST_OK && (sa < 8 || rd32(a) != ST_PROFILE_VERSION ||
+        rd32(a + 4) != ST_PAYLOAD_SIZE || sb != ST_PAYLOAD_SIZE)) rc = ST_E_INCOMPATIBLE;
+    if (rc == ST_OK) st_profile_unpack_payload(out, payload);
+    free(payload);
     return rc;
 }
 
@@ -487,12 +571,30 @@ int st_profile_delete(const char *root, const char *name) {
     char dir[1024];
     int rc = dir_path(root, name, dir, sizeof dir);
     if (rc != ST_OK) return rc;
+#ifdef _WIN32
+    /* shortcut: path-based directory checks assume no concurrent replacement;
+     * anchor a directory handle if multiple writers must be supported. */
+    DWORD attrs = GetFileAttributesA(dir);
+    if (attrs == INVALID_FILE_ATTRIBUTES) return ST_E_NOTFOUND;
+    if (!(attrs & FILE_ATTRIBUTE_DIRECTORY) || (attrs & FILE_ATTRIBUTE_REPARSE_POINT)) return ST_E_IO;
     DelCtx d = { dir, ST_OK };
     if (dir_iter(dir, del_cb, &d) != 0) return ST_E_NOTFOUND;
     if (d.rc != ST_OK) return d.rc;
-#ifdef _WIN32
     return _rmdir(dir) == 0 ? ST_OK : ST_E_IO;
 #else
+    int fd = open(dir, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    if (fd < 0) return errno == ENOENT ? ST_E_NOTFOUND : ST_E_IO;
+    DIR *d = fdopendir(fd);
+    if (!d) { close(fd); return ST_E_IO; }
+    struct dirent *e;
+    while ((e = readdir(d)) != NULL) {
+        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+        struct stat info;
+        if (fstatat(fd, e->d_name, &info, AT_SYMLINK_NOFOLLOW) != 0 ||
+            unlinkat(fd, e->d_name, S_ISDIR(info.st_mode) ? AT_REMOVEDIR : 0) != 0) rc = ST_E_IO;
+    }
+    closedir(d);
+    if (rc != ST_OK) return rc;
     return rmdir(dir) == 0 ? ST_OK : ST_E_IO;
 #endif
 }
@@ -511,7 +613,7 @@ static int user_base(const char *kind, char *out, size_t cap) {
     if (e && *e) return join(out, cap, e, "");
     e = getenv("USERPROFILE");
     if (!e || !*e) return ST_E_NOTFOUND;
-    snprintf(tmp, sizeof tmp, "%s\\AppData\\Local", e);
+    if (snprintf(tmp, sizeof tmp, "%s\\AppData\\Local", e) >= (int)sizeof tmp) return ST_E_ARG;
     return join(out, cap, tmp, "");
 #else
     const char *home = getenv("HOME");
@@ -519,13 +621,13 @@ static int user_base(const char *kind, char *out, size_t cap) {
     (void)cfg;
 #ifdef __APPLE__
     if (!home || !*home) return ST_E_NOTFOUND;
-    snprintf(tmp, sizeof tmp, "%s/Library/Application Support", home);
+    if (snprintf(tmp, sizeof tmp, "%s/Library/Application Support", home) >= (int)sizeof tmp) return ST_E_ARG;
     return join(out, cap, tmp, "");
 #else
     const char *x = getenv(cfg ? "XDG_CONFIG_HOME" : "XDG_DATA_HOME");
     if (x && *x == '/') return join(out, cap, x, "");
     if (!home || !*home) return ST_E_NOTFOUND;
-    snprintf(tmp, sizeof tmp, cfg ? "%s/.config" : "%s/.local/share", home);
+    if (snprintf(tmp, sizeof tmp, cfg ? "%s/.config" : "%s/.local/share", home) >= (int)sizeof tmp) return ST_E_ARG;
     return join(out, cap, tmp, "");
 #endif
 #endif
@@ -595,9 +697,11 @@ static MemEntry *mem_find(MemStore *m, const char *name) {
 }
 static MemEntry *mem_slot(MemStore *m, const char *name) {
     MemEntry *e = mem_find(m, name);
-    if (e) { free(e->str); e->str = NULL; return e; }
+    if (e) return e;
     if (m->n == m->cap) {
+        if (m->cap > SIZE_MAX / 2) return NULL;
         size_t nc = m->cap ? m->cap * 2 : 16;
+        if (nc > SIZE_MAX / sizeof *m->e) return NULL;
         MemEntry *ne = (MemEntry *)realloc(m->e, nc * sizeof *ne);
         if (!ne) return NULL;
         m->e = ne; m->cap = nc;
@@ -611,6 +715,13 @@ static MemEntry *mem_slot(MemStore *m, const char *name) {
 }
 
 static int ini_flush(MemStore *m);
+static int ini_name_valid(const char *name) {
+    size_t n = strlen(name);
+    if (!n || strchr(" #;[\t", name[0]) || name[n - 1] == ' ' || name[n - 1] == '\t') return 0;
+    for (size_t i = 0; i < n; i++)
+        if ((unsigned char)name[i] < 32 || name[i] == 127 || name[i] == '=') return 0;
+    return 1;
+}
 
 static int mem_exists(void *impl, const char *name) { return mem_find((MemStore *)impl, name) != NULL; }
 static int mem_get_dword(void *impl, const char *name, uint32_t *out) {
@@ -627,17 +738,22 @@ static int mem_get_string(void *impl, const char *name, char *buf, size_t cap) {
 }
 static int mem_set_dword(void *impl, const char *name, uint32_t v) {
     MemStore *m = (MemStore *)impl;
+    if (m->path && !ini_name_valid(name)) return ST_E_ARG;
     MemEntry *e = mem_slot(m, name);
     if (!e) return ST_E_NOMEM;
+    free(e->str); e->str = NULL;
     e->is_dword = 1; e->dword = v;
     return m->path ? ini_flush(m) : ST_OK;
 }
 static int mem_set_string(void *impl, const char *name, const char *v) {
     MemStore *m = (MemStore *)impl;
+    if (m->path && !ini_name_valid(name)) return ST_E_ARG;
+    char *copy = dup_str(v);
+    if (!copy) return ST_E_NOMEM;
     MemEntry *e = mem_slot(m, name);
-    if (!e) return ST_E_NOMEM;
-    e->is_dword = 0; e->str = dup_str(v);
-    if (!e->str) return ST_E_NOMEM;
+    if (!e) { free(copy); return ST_E_NOMEM; }
+    free(e->str);
+    e->is_dword = 0; e->str = copy;
     return m->path ? ini_flush(m) : ST_OK;
 }
 static void mem_close(void *impl) {
@@ -674,12 +790,30 @@ static int ini_flush(MemStore *m) {
         }
     }
     size_t plen = strlen(m->path);
-    char *tmp = (char *)malloc(plen + 5);
+    if (plen > SIZE_MAX - 48) return ST_E_NOMEM;
+    char *tmp = (char *)malloc(plen + 48);
     if (!tmp) return ST_E_NOMEM;
-    memcpy(tmp, m->path, plen);
-    memcpy(tmp + plen, ".tmp", 5);
-    FILE *f = fopen(tmp, "wb");
-    if (!f) { free(tmp); return ST_E_IO; }
+    static unsigned serial;
+    int fd = -1;
+    for (int tries = 0; tries < 32; tries++) {
+#ifdef _WIN32
+        snprintf(tmp, plen + 48, "%s.tmp.%lu.%u", m->path, (unsigned long)GetCurrentProcessId(), serial++);
+        fd = _open(tmp, _O_WRONLY | _O_CREAT | _O_EXCL | _O_BINARY, _S_IREAD | _S_IWRITE);
+#else
+        snprintf(tmp, plen + 48, "%s.tmp.%lu.%u", m->path, (unsigned long)getpid(), serial++);
+        fd = open(tmp, O_WRONLY | O_CREAT | O_EXCL, 0600);
+#endif
+        if (fd >= 0 || errno != EEXIST) break;
+    }
+    if (fd < 0) { free(tmp); return ST_E_IO; }
+#ifdef _WIN32
+    FILE *f = _fdopen(fd, "wb");
+    if (!f) _close(fd);
+#else
+    FILE *f = fdopen(fd, "wb");
+    if (!f) close(fd);
+#endif
+    if (!f) { remove(tmp); free(tmp); return ST_E_IO; }
     int ok = fprintf(f, "[%s]\n", INI_SECTION) > 0;
     for (size_t i = 0; ok && i < m->n; i++) {
         const MemEntry *e = &m->e[i];
@@ -687,8 +821,12 @@ static int ini_flush(MemStore *m) {
         else {
             ok = fprintf(f, "%s=\"", e->name) > 0;
             for (const char *c = e->str; ok && *c; c++) {
-                if (*c == '\\' || *c == '"') ok = fputc('\\', f) != EOF;
-                if (ok) ok = fputc((unsigned char)*c, f) != EOF;
+                const char *escape = *c == '\n' ? "\\n" : *c == '\r' ? "\\r" : *c == '\t' ? "\\t" : NULL;
+                if (escape) ok = fputs(escape, f) >= 0;
+                else {
+                    if (*c == '\\' || *c == '"') ok = fputc('\\', f) != EOF;
+                    if (ok) ok = fputc((unsigned char)*c, f) != EOF;
+                }
             }
             if (ok) ok = fputs("\"\n", f) >= 0;
         }
@@ -696,9 +834,10 @@ static int ini_flush(MemStore *m) {
     if (fclose(f) != 0) ok = 0;
     if (ok) {
 #ifdef _WIN32
-        remove(m->path);
-#endif
+        ok = MoveFileExA(tmp, m->path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+#else
         ok = rename(tmp, m->path) == 0;
+#endif
     }
     if (!ok) remove(tmp);
     free(tmp);
@@ -712,30 +851,66 @@ static char *trim(char *s) {
     return s;
 }
 
-static void ini_parse_line(MemStore *m, char *line, int *in_section) {
+static int ini_parse_line(MemStore *m, char *line, int *in_section) {
     char *l = trim(line);
-    if (!*l || *l == ';' || *l == '#') return;
+    if (!*l || *l == ';' || *l == '#') return ST_OK;
     if (*l == '[') {
         char *r = strchr(l, ']');
         if (r) { *r = 0; *in_section = ieq(l + 1, INI_SECTION); }
-        return;
+        return ST_OK;
     }
-    if (!*in_section) return;
+    if (!*in_section) return ST_OK;
     char *eq = strchr(l, '=');
-    if (!eq) return;
+    if (!eq) return ST_OK;
     *eq = 0;
     char *name = trim(l), *val = trim(eq + 1);
-    if (!*name) return;
+    if (!ini_name_valid(name)) return ST_E_CORRUPT;
     if (!strncmp(val, "dword:", 6)) {
         char *end;
+        errno = 0;
         unsigned long u = strtoul(val + 6, &end, 16);
-        if (end != val + 6 && !*end) mem_set_dword(m, name, (uint32_t)u);
+        if (errno || u > UINT32_MAX || val[6] == '-' || end == val + 6 || *end) return ST_E_CORRUPT;
+        return mem_set_dword(m, name, (uint32_t)u);
     } else if (*val == '"') {
         char *w = val, *r = val + 1;
-        while (*r && *r != '"') { if (*r == '\\' && r[1]) r++; *w++ = *r++; }
+        while (*r && *r != '"') {
+            if (*r == '\\') {
+                if (!r[1]) return ST_E_CORRUPT;
+                r++;
+                *w++ = *r == 'n' ? '\n' : *r == 'r' ? '\r' : *r == 't' ? '\t' : *r;
+                r++;
+            } else *w++ = *r++;
+        }
+        if (*r != '"' || *trim(r + 1)) return ST_E_CORRUPT;
         *w = 0;
-        mem_set_string(m, name, val);
+        return mem_set_string(m, name, val);
     }
+    return ST_OK;
+}
+
+static int ini_read(FILE *f, MemStore *m) {
+    size_t n = 0, cap = 256;
+    char *line = (char *)malloc(cap);
+    if (!line) return ST_E_NOMEM;
+    int section = 0, rc = ST_OK, c;
+    while ((c = fgetc(f)) != EOF) {
+        if (!c) { rc = ST_E_CORRUPT; break; }
+        if (n == cap - 1) {
+            if (cap > SIZE_MAX / 2) { rc = ST_E_NOMEM; break; }
+            size_t nc = cap * 2;
+            char *next = (char *)realloc(line, nc);
+            if (!next) { rc = ST_E_NOMEM; break; }
+            line = next; cap = nc;
+        }
+        if (c == '\n') {
+            line[n] = 0; rc = ini_parse_line(m, line, &section); n = 0;
+            if (rc != ST_OK) break;
+        } else line[n++] = (char)c;
+    }
+    if (rc == ST_OK && ferror(f)) rc = ST_E_IO;
+    if (rc == ST_OK && n) { line[n] = 0; rc = ini_parse_line(m, line, &section); }
+    free(line);
+    return rc;
 }
 
 int st_reg_open_ini(StRegStore *s, const char *path) {
@@ -746,15 +921,13 @@ int st_reg_open_ini(StRegStore *s, const char *path) {
     if (!m->path) { mem_close(m); return ST_E_NOMEM; }
     FILE *f = fopen(path, "rb");
     if (f) {
-        /* Entries are loaded with the file-less setters first, then the path is armed. */
         char *path_keep = m->path;
         m->path = NULL;
-        char line[2048];
-        int in_section = 0;
-        while (fgets(line, sizeof line, f)) ini_parse_line(m, line, &in_section);
+        int rc = ini_read(f, m);
         m->path = path_keep;
-        fclose(f);
-    }
+        if (fclose(f) != 0 && rc == ST_OK) rc = ST_E_IO;
+        if (rc != ST_OK) { mem_close(m); return rc; }
+    } else if (errno != ENOENT) { mem_close(m); return ST_E_IO; }
     s->ops = &k_mem_ops; s->impl = m;
     return ST_OK;
 }
@@ -1025,6 +1198,7 @@ int st_gfx_startup(StRegStore *s, StGraphics *g, const StGfxCaps *c, int safe_mo
 
 int st_resolution_step(StGraphics *g, const StGfxCaps *c, int dir) {
     int r = g->v[ST_GFX_RESOLUTION], step = dir < 0 ? -1 : 1;
+    if (r < 0 || r >= 6) return 0;
     for (int k = r + step; k >= 0 && k < 6; k += step)
         if (c->resolution_ok[k]) { g->v[ST_GFX_RESOLUTION] = k; return 1; }
     return 0;

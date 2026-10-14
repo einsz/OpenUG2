@@ -1,0 +1,230 @@
+{
+  "provenance": "Freshly authored D acceptance examples of estimated net-composite bands; no original pixel payload or recovered original alpha. Arithmetic cases do not replace actual frozen-scene renderer capture pairs at both viewports. See OPACITY.md.",
+  "cases": [
+    {
+      "id": "outer_neutral_positive",
+      "input": {
+        "scene_channels": [
+          0,
+          64,
+          128,
+          192,
+          255
+        ],
+        "T_rgb": [
+          0.1,
+          0.1,
+          0.1
+        ],
+        "F_rgb": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "unrounded_output_channels": [
+          0.0,
+          6.4,
+          12.8,
+          19.2,
+          25.5
+        ],
+        "target_band_pass": true
+      }
+    },
+    {
+      "id": "rail_neutral_positive",
+      "input": {
+        "scene_channels": [
+          0,
+          64,
+          128,
+          192,
+          255
+        ],
+        "T_rgb": [
+          0.02,
+          0.02,
+          0.02
+        ],
+        "F_rgb": [
+          63,
+          63,
+          63
+        ]
+      },
+      "expected": {
+        "unrounded_output_channels": [
+          63.0,
+          64.28,
+          65.56,
+          66.84,
+          68.1
+        ],
+        "target_band_pass": true
+      }
+    },
+    {
+      "id": "selector_neutral_positive",
+      "input": {
+        "scene_channels": [
+          0,
+          64,
+          128,
+          192,
+          255
+        ],
+        "T_rgb": [
+          0.06,
+          0.06,
+          0.06
+        ],
+        "F_rgb": [
+          52,
+          52,
+          52
+        ]
+      },
+      "expected": {
+        "unrounded_output_channels": [
+          52.0,
+          55.84,
+          59.68,
+          63.52,
+          67.3
+        ],
+        "target_band_pass": true
+      }
+    },
+    {
+      "id": "caption_neutral_positive",
+      "input": {
+        "scene_channels": [
+          0,
+          64,
+          128,
+          192,
+          255
+        ],
+        "T_rgb": [
+          0.02,
+          0.02,
+          0.02
+        ],
+        "F_rgb": [
+          43,
+          43,
+          43
+        ]
+      },
+      "expected": {
+        "unrounded_output_channels": [
+          43.0,
+          44.28,
+          45.56,
+          46.84,
+          48.1
+        ],
+        "target_band_pass": true
+      }
+    },
+    {
+      "id": "transparent_outer_negative",
+      "input": {
+        "T_rgb": [
+          0.55,
+          0.55,
+          0.55
+        ],
+        "F_rgb": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "target_band_pass": false
+      }
+    },
+    {
+      "id": "green_cast_selector_negative",
+      "input": {
+        "T_rgb": [
+          0.06,
+          0.06,
+          0.06
+        ],
+        "F_rgb": [
+          50,
+          56,
+          48
+        ]
+      },
+      "expected": {
+        "target_band_pass": false
+      }
+    },
+    {
+      "id": "bright_caption_negative",
+      "input": {
+        "T_rgb": [
+          0.02,
+          0.02,
+          0.02
+        ],
+        "F_rgb": [
+          110,
+          110,
+          110
+        ]
+      },
+      "expected": {
+        "target_band_pass": false
+      }
+    },
+    {
+      "id": "single_unpaired_screenshot",
+      "input": {
+        "actual_menu_on_available": true,
+        "matching_menu_off_available": false
+      },
+      "expected": {
+        "actual_opacity_acceptance": "unverified"
+      }
+    },
+    {
+      "id": "state_only_alpha",
+      "input": {
+        "declared_alpha_matches_target": true,
+        "actual_paired_frames_available": false
+      },
+      "expected": {
+        "actual_opacity_acceptance": "unverified"
+      }
+    },
+    {
+      "id": "dark_scene_fit",
+      "input": {
+        "paired_frames_available": true,
+        "B_p95_minus_p5_channels": [
+          20,
+          18,
+          22
+        ]
+      },
+      "expected": {
+        "actual_opacity_acceptance": "unresolved_insufficient_variation"
+      }
+    },
+    {
+      "id": "outside_global_dimming",
+      "input": {
+        "outside_panel_pair_agreement_fraction_within_1_level": 0.9
+      },
+      "expected": {
+        "actual_opacity_acceptance": "fail"
+      }
+    }
+  ]
+}

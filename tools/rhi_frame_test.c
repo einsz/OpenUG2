@@ -40,7 +40,24 @@ int main(void) {
     assert(target.id && rhi_texture_upload(target,0,0,NULL,0)==RHI_OK);
     assert(rhi_cmd_begin_pass(&(RhiPassDesc){{target,0},{{0},0},RHI_LOAD_CLEAR,RHI_LOAD_KEEP,{0,0,0,1},1})==RHI_OK);
     assert(rhi_cmd_clear_main(green,1.0f)==RHI_ERR_INVALID);
-    rhi_cmd_end_pass();glBindFramebuffer(GL_FRAMEBUFFER,0);
+    GLint offscreen_fbo;glGetIntegerv(GL_FRAMEBUFFER_BINDING,&offscreen_fbo);assert(offscreen_fbo);
+    rhi_cmd_end_pass();
+    /* Ending a pass leaves its target bound; clear_main must select the main target. */
+    assert(rhi_cmd_clear_main(green,1.0f)==RHI_OK);
+    GLint main_fbo;glGetIntegerv(GL_FRAMEBUFFER_BINDING,&main_fbo);assert(main_fbo==0);
+    assert(rhi_read_pixels(0,0,64,64,RHI_READ_RGB8,px,0)==RHI_OK);
+    for(int i=0;i<64*64;i++)assert(px[i*3]==0 && px[i*3+1]==255 && px[i*3+2]==0);
+    glBindFramebuffer(GL_FRAMEBUFFER,(GLuint)offscreen_fbo);
+    unsigned char offscreen[4];glReadPixels(0,0,1,1,GL_RGBA,GL_UNSIGNED_BYTE,offscreen);
+    assert(!offscreen[0] && !offscreen[1] && !offscreen[2]);
+    glBindFramebuffer(GL_FRAMEBUFFER,0);
+    /* Clear ignores but preserves both stencil write masks. */
+    glStencilMaskSeparate(GL_FRONT,0x12);glStencilMaskSeparate(GL_BACK,0x34);
+    assert(rhi_cmd_clear_main(green,1.0f)==RHI_OK);
+    GLint front_mask,back_mask;
+    glGetIntegerv(GL_STENCIL_WRITEMASK,&front_mask);glGetIntegerv(GL_STENCIL_BACK_WRITEMASK,&back_mask);
+    assert(front_mask==0x12 && back_mask==0x34);
+    glStencilMask(0xFF);
     assert(glGetError()==GL_NO_ERROR);
 
     /* Upload failures come back as results. */

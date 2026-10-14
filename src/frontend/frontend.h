@@ -18,7 +18,8 @@
 typedef enum {
     FE_SCREEN_TITLE,        /* "press enter to start" */
     FE_SCREEN_MAIN,         /* main menu with selectable entries */
-    FE_SCREEN_QUIT_CONFIRM  /* "quit? yes/no" */
+    FE_SCREEN_QUIT_CONFIRM, /* "quit? yes/no" */
+    FE_SCREEN_PAUSE
 } FeScreen;
 
 /* ---- semantic input events (one per press, not held) ---- */
@@ -35,7 +36,8 @@ typedef enum {
     FE_ACTION_NONE = 0,
     FE_ACTION_FREE_ROAM,
     FE_ACTION_RACE_SELECT,
-    FE_ACTION_QUIT
+    FE_ACTION_QUIT,
+    FE_ACTION_RESUME
 } FeAction;
 
 /* ---- main menu entries ---- */
@@ -63,10 +65,13 @@ typedef struct {
     float       held_timer;     /* seconds since hold started */
     float       held_repeat;    /* seconds until next repeat fires */
     int         confirm_consumed; /* prevents confirm leaking across screens */
+    int         pause_menu;      /* return to pause after cancelling quit */
 } Fe;
 
 /* Initialize / reset to title screen. */
 void fe_init(Fe *fe);
+/* Open a pause menu with Resume and Quit; no gameplay state is changed. */
+void fe_pause_init(Fe *fe);
 
 /* Set main-menu entries. Call after fe_init, before the first frame.
  * Entries are copied. Count must be <= FE_MENU_MAX. */

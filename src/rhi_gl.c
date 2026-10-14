@@ -1176,9 +1176,10 @@ static void rhi_gl_forget_framebuffers(RhiTexture tex) {
 
 /* Clears `bits` of the bound framebuffer with every colour channel and depth
  * writable, then puts the write masks back. Stencil is cleared to 0 with all
- * bits writable; pipelines set the stencil write mask whenever they test. */
+ * bits writable, then both stencil write masks are restored too. */
 static void clear_target(GLbitfield bits, const float color[4], float depth) {
     GLboolean cm[4] = {GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE}, dm = GL_TRUE;
+    GLint stencil_mask = 0, stencil_back_mask = 0;
     if (!bits) return;
     if (bits & GL_COLOR_BUFFER_BIT) {
         GLfloat cc[4];
@@ -1200,10 +1201,18 @@ static void clear_target(GLbitfield bits, const float color[4], float depth) {
 #endif
         }
     }
-    if (bits & GL_STENCIL_BUFFER_BIT) { glStencilMask(0xFF); glClearStencil(0); }
+    if (bits & GL_STENCIL_BUFFER_BIT) {
+        glGetIntegerv(GL_STENCIL_WRITEMASK, &stencil_mask);
+        glGetIntegerv(GL_STENCIL_BACK_WRITEMASK, &stencil_back_mask);
+        glStencilMask(0xFF); glClearStencil(0);
+    }
     glClear(bits);
     if (!cm[0] || !cm[1] || !cm[2] || !cm[3]) glColorMask(cm[0], cm[1], cm[2], cm[3]);
     if (!dm) glDepthMask(GL_FALSE);
+    if (bits & GL_STENCIL_BUFFER_BIT) {
+        glStencilMaskSeparate(GL_FRONT, (GLuint)stencil_mask);
+        glStencilMaskSeparate(GL_BACK, (GLuint)stencil_back_mask);
+    }
 }
 
 RhiResult rhi_cmd_begin_pass(const RhiPassDesc *desc) {
@@ -1345,6 +1354,7 @@ void rhi_cmd_restore_state(const RhiStateSnapshot *state) {
 
 RhiResult rhi_cmd_clear_main(const float color[4], float depth) {
     if (!color || !g_rhi.in_frame || g_in_pass) return RHI_ERR_INVALID;
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, g_rhi.frame_w, g_rhi.frame_h);
     set_cap(GL_SCISSOR_TEST, 0);
     clear_target(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT, color, depth);
