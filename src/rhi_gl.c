@@ -777,7 +777,7 @@ void rhi_gl_flush_params(void) {
         const RhiParamLayout *l = pb->layout;
         for (uint32_t i = 0; i < l->field_count; i++) {
             const RhiParamField *f = &l->fields[i];
-            size_t off = f->offset, n = param_size(f->type) * f->count;
+            size_t off = f->offset, n = (size_t)param_size(f->type) * f->count;
             if (pb->location[i] < 0 || !memcmp(pb->data + off, pb->uploaded + off, n)) continue;
             param_upload(f, pb->location[i], pb->data + off);
             memcpy(pb->uploaded + off, pb->data + off, n);
