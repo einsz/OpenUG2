@@ -1,0 +1,52 @@
+[
+ {
+  "name": "SYN_A_VERY_LONG_TEXTURE_NAME_X",
+  "key": "2cd5c774",
+  "width": 4,
+  "height": 4,
+  "format": "0x22",
+  "levels": 1,
+  "data_offset": 0,
+  "level0_rgba_hex": "ff0000ff0000ffffaa0055ff5500aaffff0000ff0000ffffaa0055ff5500aaffff0000ff0000ffffaa0055ff5500aaffff0000ff0000ffffaa0055ff5500aaff"
+ },
+ {
+  "name": "SYN_PALETTE",
+  "key": "49792307",
+  "width": 4,
+  "height": 4,
+  "format": "0x08",
+  "levels": 1,
+  "data_offset": 128,
+  "level0_rgba_hex": "ffffff00ffffff80285078ff000000ffffffff80285078ff000000ffffffff00285078ff000000ffffffff00ffffff80000000ffffffff00ffffff80285078ff"
+ },
+ {
+  "name": "SYN_DXT1_MIPPED",
+  "key": "620cdd97",
+  "width": 8,
+  "height": 8,
+  "format": "0x22",
+  "levels": 2,
+  "data_offset": 1280,
+  "level0_rgba_hex": "ff0000ff0000ffffaa0055ff5500aaff00ff00ff00ff00ff0000000000000000ff0000ff0000ffffaa0055ff5500aaff00000000000000000000000000000000ff0000ff0000ffffaa0055ff5500aaff00000000000000000000000000000000ff0000ff0000ffffaa0055ff5500aaff0000000000000000000000000000000000ff00ff00ff00ff0000000000000000ff0000ff0000ffffaa0055ff5500aaff00000000000000000000000000000000ff0000ff0000ffffaa0055ff5500aaff00000000000000000000000000000000ff0000ff0000ffffaa0055ff5500aaff00000000000000000000000000000000ff0000ff0000ffffaa0055ff5500aaff"
+ },
+ {
+  "name": "SYN_BGRA",
+  "key": "a4a995d4",
+  "width": 4,
+  "height": 2,
+  "format": "0x20",
+  "levels": 1,
+  "data_offset": 1408,
+  "level0_rgba_hex": "0000ffff3c00c3ff78008780b4004b8000c8ffff3cc8c3ff78c88780b4c84b80"
+ },
+ {
+  "name": "SYN_DXT3",
+  "key": "a4aaf71b",
+  "width": 8,
+  "height": 4,
+  "format": "0x24",
+  "levels": 1,
+  "data_offset": 1536,
+  "level0_rgba_hex": "55555500aaaaaa1100000022ffffff33000000ff000000ff000000ff000000ff55555544aaaaaa5500000066ffffff77000000ff000000ff000000ff000000ff55555588aaaaaa99000000aaffffffbb000000ff000000ff000000ff000000ff555555ccaaaaaadd000000eeffffffff000000ff000000ff000000ff000000ff"
+ }
+]

@@ -5,6 +5,7 @@ extern "C" {
 #include "resource.h"
 #include "world.h"
 #include "rhi_gl.h"
+#include "legacy_draw.h"   /* draw_batch: the editor still sets GL state by hand */
 }
 #include "backends/imgui_impl_opengl2.h"
 #include "backends/imgui_impl_sdl2.h"
@@ -60,7 +61,7 @@ struct Editor {
     std::vector<uint64_t> mesh_sources;
     std::vector<std::vector<float>> verts;
     std::vector<float> bounds;
-    std::vector<GLuint> textures, source_textures;
+    std::vector<RhiTexture> textures, source_textures;
     std::vector<unsigned char> modes, source_modes;
     std::vector<N2LightSrc> lights;
     std::vector<Point> navpoints;
@@ -68,7 +69,7 @@ struct Editor {
     int nbatch = 0, nglow = 0, nsky = 0;
     RProg shader{};
     RhiBuffer wallvbo{};
-    GLuint flare = 0;
+    RhiTexture flare = {0};
     GpuMesh quad{};
     char root[1024] = "../TRACKS", file[1024] = "map-edits.ug2map", filter[128] = "";
     char tracks[128][64]{};
@@ -211,16 +212,16 @@ struct Editor {
         scene_event = event;
         sources();
         uint32_t keys[4096];
-        GLuint tex[4096];
+        RhiTexture tex[4096];
         unsigned char mode[4096];
         int count = world_bind_textures(world.get(), keys, tex, mode, 4096);
         if (count < 0) {
             error = "Texture upload failed; project is still retained";
             return false;
         }
-        source_textures.assign(world->neighborhood.scene.count, 0);
+        source_textures.assign(world->neighborhood.scene.count, RhiTexture{0});
         source_modes.assign(source_textures.size(), 0);
-        flare = 0;
+        flare = RhiTexture{0};
         std::unordered_map<uint32_t, int> binding;
         for (int k = 0; k < count; k++) {
             binding[keys[k]] = k;
@@ -295,7 +296,7 @@ struct Editor {
                         destination = int(meshes.size());
                         meshes.push_back({});
                         verts.emplace_back();
-                        textures.push_back(0);
+                        textures.push_back(RhiTexture{0});
                         modes.push_back(0);
                         mesh_sources.push_back(i.source);
                     }
@@ -349,7 +350,7 @@ struct Editor {
         }
         N2Batch *next = nullptr;
         int count = upload_world_batches(&view, (const float (*)[4])bounds.data(), textures.data(),
-                                         0, &next, nullptr, nullptr, modes.data());
+                                         RhiTexture{0}, &next, nullptr, nullptr, modes.data());
         if (count < 0) {
             error = "Could not rebuild map preview";
             return false;
@@ -1127,36 +1128,35 @@ struct Editor {
         glDisable(GL_CULL_FACE);
         glDisable(GL_BLEND);
         glDepthMask(GL_TRUE);
-        glUniformMatrix4fv(shader.uMVP, 1, GL_FALSE, mvp);
+        ug2_copy(shader.p->uMVP, mvp, 16);
         render_model(&shader, nullptr);
-        glUniform3f(shader.uCamPos, camera.x, camera.y, camera.z);
-        glUniform3f(shader.uColor, 1, 1, 1);
-        glUniform1f(shader.uVColor, 1);
-        glUniform1f(shader.uAmbient, .6f);
-        glUniform1f(shader.uDiffuse, .4f);
-        glUniform3f(shader.uLight, N2_SUN_X, N2_SUN_Y, N2_SUN_Z);
-        glUniform1f(shader.uAlpha, 1);
-        glUniform1f(shader.uFogDensity, .0008f);
-        glUniform3f(shader.uFogColor, .025f, .035f, .065f);
-        glUniform1f(shader.uUnlit, 0);
-        glUniform1f(shader.uWetness, 0);
-        glUniform1f(shader.uSpec, 0);
+        ug2_vec3(shader.p->uCamPos, camera.x, camera.y, camera.z);
+        ug2_vec3(shader.p->uColor, 1, 1, 1);
+        shader.p->uVColor = 1;
+        shader.p->uAmbient = .6f;
+        shader.p->uDiffuse = .4f;
+        ug2_vec3(shader.p->uLight, N2_SUN_X, N2_SUN_Y, N2_SUN_Z);
+        shader.p->uAlpha = 1;
+        shader.p->uFogDensity = .0008f;
+        ug2_vec3(shader.p->uFogColor, .025f, .035f, .065f);
+        shader.p->uUnlit = 0;
+        shader.p->uWetness = 0;
+        shader.p->uSpec = 0;
         glActiveTexture(GL_TEXTURE0);
         if (world) {
             std::vector<std::pair<float, int>> blend;
             auto draw = [&](const N2Batch &b) {
-                glUniform1f(shader.uUseTex, b.tex ? 1 : 0);
-                glBindTexture(GL_TEXTURE_2D, b.tex);
-                glUniform1f(shader.uAlphaTest, b.drawmode == N2_DRAW_CUTOUT);
-                glUniform1f(shader.uTextureAlpha,
-                            b.drawmode == N2_DRAW_BLEND || b.drawmode == N2_DRAW_ADD);
+                shader.p->uUseTex = b.tex.id ? 1 : 0;
+                glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(b.tex));
+                shader.p->uAlphaTest = b.drawmode == N2_DRAW_CUTOUT;
+                shader.p->uTextureAlpha = b.drawmode == N2_DRAW_BLEND || b.drawmode == N2_DRAW_ADD;
                 draw_batch(&b);
             };
             glDepthMask(GL_FALSE);
-            glUniform1f(shader.uUnlit, 1);
+            shader.p->uUnlit = 1;
             for (int k = 0; k < nsky; k++)
                 draw(sky[k]);
-            glUniform1f(shader.uUnlit, 0);
+            shader.p->uUnlit = 0;
             glDepthMask(GL_TRUE);
             for (int k = 0; k < nbatch; k++) {
                 const auto &b = batches[k];
@@ -1186,10 +1186,10 @@ struct Editor {
             }
             glDepthMask(GL_TRUE);
             glDisable(GL_BLEND);
-            glUniform1f(shader.uAlphaTest, 0);
-            glUniform1f(shader.uTextureAlpha, 0);
+            shader.p->uAlphaTest = 0;
+            shader.p->uTextureAlpha = 0;
             render_world_glows(&shader, glows, nglow, mvp);
-            if (flare && !lights.empty())
+            if (flare.id && !lights.empty())
                 render_district_lights(&shader, &quad, flare, lights.data(), int(lights.size()),
                                        eye, look, mvp, range, 1, 1);
             ImGui::GetBackgroundDrawList()->PushClipRect(view_min(), view_max(), true);
@@ -2897,7 +2897,7 @@ int main(int argc, char **argv) {
     rhi_buffer_destroy(e.quad.ibo);
     rhi_buffer_destroy(e.quad.nbo);
     rhi_buffer_destroy(e.quad.cbo);
-    glDeleteProgram(e.shader.prog);
+    rhi_shader_destroy(e.shader.shader);
     ImGui_ImplOpenGL2_Shutdown();
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();

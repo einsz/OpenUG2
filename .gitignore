@@ -37,6 +37,7 @@ scratchpad/
 !docs/screenshots/*.png
 mesh_out.*
 src/generated_world_debug_shaders.h
+src/generated_shaders.h
 *.log
 
 # --- Graphify output (reproducible local projection) ---
@@ -93,3 +94,12 @@ tools/capture_vehicle_shots.sh
 /games/
 /Need for Speed Underground 2/
 /analysis/
+
+
+# Clean-room analyst workspace (never commit)
+/cleanroom/analysis/
+
+# Local clean-room process records and runtime glyph exports
+/cleanroom/
+/src/ugui/DESIGN*.md
+/src/ugui/HANDOFF.md
