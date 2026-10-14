@@ -81,13 +81,28 @@ int main(void) {
     RhiParamField float_array[] = { {"f", RHI_PARAM_FLOAT, 0, 4} };
     RhiParamField overlap[] = { {"a", RHI_PARAM_VEC4, 0, 1}, {"b", RHI_PARAM_FLOAT, 8, 1} };
     RhiParamField outside[] = { {"m", RHI_PARAM_MAT4, 0, 2} };
+    RhiParamField wrap_vec4[] = { {"v", RHI_PARAM_VEC4, 0, UINT32_C(0x10000001)} };
+    RhiParamField wrap_mat4[] = { {"m", RHI_PARAM_MAT4, 0, UINT32_C(0x04000001)} };
+    RhiParamField wrap_zero[] = { {"v", RHI_PARAM_VEC4, 0, UINT32_C(0x10000000)} };
+    RhiParamField max_count[] = { {"v", RHI_PARAM_VEC4, 0, UINT32_MAX} };
+    RhiParamField wrap_overlap[] = { {"a", RHI_PARAM_FLOAT, 0, 1},
+                                    {"v", RHI_PARAM_VEC4, 0, UINT32_C(0x10000000)} };
+    RhiParamField wrap_offset[] = { {"v", RHI_PARAM_VEC4, UINT32_MAX - 15, 2} };
+    RhiParamField zero_count[] = { {"v", RHI_PARAM_VEC4, 0, 0} };
     RhiParamLayout bad[] = {
         { misaligned, 2, sizeof(Misaligned), "misaligned" },
         { float_array, 1, 16, "float array" },
         { overlap, 2, 16, "overlap" },
         { outside, 1, 64, "outside" },
+        { wrap_vec4, 1, 16, "vec4 multiplication wrap" },
+        { wrap_mat4, 1, 64, "mat4 multiplication wrap" },
+        { wrap_zero, 1, 16, "zero byte span wrap" },
+        { max_count, 1, UINT32_MAX, "maximum array count" },
+        { wrap_overlap, 2, 16, "hidden overlap" },
+        { wrap_offset, 1, UINT32_MAX, "offset addition wrap" },
+        { zero_count, 1, 16, "zero array count" },
     };
-    printf("param-layout-test: the next 4 rejections are expected\n"); fflush(stdout);
+    printf("param-layout-test: the next %zu rejections are expected\n", sizeof bad / sizeof bad[0]); fflush(stdout);
     for (unsigned i = 0; i < sizeof bad / sizeof bad[0]; i++)
         assert(rhi_param_layout_check(&bad[i]) == RHI_ERR_INVALID);
     printf("param-layout-test: PASS (%u fields, %zu bytes, std140)\n",

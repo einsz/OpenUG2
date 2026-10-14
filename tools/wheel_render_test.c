@@ -4,6 +4,23 @@
 #include <assert.h>
 #include <stdio.h>
 
+static void stale_buffer_test(void) {
+    unsigned char data[4] = {0};
+    RhiBufferDesc desc = {RHI_BUFFER_VERTEX,RHI_UPDATE_STATIC,sizeof data,data};
+    RhiBuffer stale = rhi_buffer_create(&desc); assert(stale.id);
+    rhi_buffer_destroy(stale);
+    for (int i=0;i<255;i++) {
+        RhiBuffer b = rhi_buffer_create(&desc); assert(b.id); rhi_buffer_destroy(b);
+    }
+    RhiBuffer live = rhi_buffer_create(&desc); assert(live.id);
+    GLuint name = rhi_gl_buffer_name(live);
+    assert(!rhi_gl_buffer_name(stale));
+    assert(rhi_buffer_update(stale,0,sizeof data,data)==RHI_ERR_INVALID);
+    rhi_buffer_destroy(stale);
+    assert(rhi_gl_buffer_name(live)==name && glIsBuffer(name));
+    rhi_buffer_destroy(live); glBindBuffer(GL_ARRAY_BUFFER,0);
+}
+
 int main(void) {
     float verts[]={0,0,0,0,0, 0,0,2,0,0};uint16_t idx[]={0,0,0,1,1,1};
     N2Mesh slices[2]={{.verts=verts,.nverts=2,.idx=idx,.nidx=3},
@@ -18,6 +35,7 @@ int main(void) {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION,1);
     SDL_Window *w=SDL_CreateWindow("wheel-render-test",0,0,32,32,SDL_WINDOW_OPENGL|SDL_WINDOW_HIDDEN);
     assert(w);SDL_GLContext ctx=SDL_GL_CreateContext(w);assert(ctx);
+    stale_buffer_test();
     RProg r=render_program();GpuMesh q=make_quad();
     float m[16]={2,0,0,0,0,2,0,0,0,0,1,0,-1,-1,0,1};
     ug2_copy(r.p->uMVP, m, 16);
@@ -141,6 +159,16 @@ int main(void) {
     glReadPixels(28,16,1,1,GL_RGBA,GL_UNSIGNED_BYTE,face);
     assert(corner[0]<5 && corner[2]>245 && face[2]<25);
     float vcolor;ug2_copy(&vcolor, &r.p->uVColor, 1);assert(vcolor==.25f);
+    /* Pipeline helpers must preserve state they previously left untouched. */
+    for(int blend=0;blend<2;blend++) {
+        glDepthFunc(GL_GREATER);glEnable(GL_CULL_FACE);glEnable(GL_STENCIL_TEST);
+        glColorMask(GL_FALSE,GL_TRUE,GL_FALSE,GL_TRUE);
+        render_wheel_mesh(&r,&q,wtex,blend?N2_DRAW_BLEND:N2_DRAW_OPAQUE);
+        GLint depth_func;GLboolean cm[4];
+        glGetIntegerv(GL_DEPTH_FUNC,&depth_func);glGetBooleanv(GL_COLOR_WRITEMASK,cm);
+        assert(depth_func==GL_GREATER && glIsEnabled(GL_CULL_FACE) && glIsEnabled(GL_STENCIL_TEST));
+        assert(!cm[0] && cm[1] && !cm[2] && cm[3]);
+    }
     rhi_buffer_destroy(q.cbo);q.cbo=(RhiBuffer){0};
     assert(glGetError()==GL_NO_ERROR);
     rhi_texture_destroy(wtex);rhi_buffer_destroy(q.vbo);rhi_buffer_destroy(q.nbo);rhi_buffer_destroy(q.ibo);

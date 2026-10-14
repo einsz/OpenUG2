@@ -294,7 +294,7 @@ typedef enum RhiVertexFormat {
 } RhiVertexFormat;
 
 typedef struct RhiVertexAttrib {
-    uint32_t        location;   /* shader attribute index (RhiShaderDesc order) */
+    uint32_t        location;   /* unique index < RHI_MAX_VERTEX_ATTRIBS (RhiShaderDesc order) */
     uint32_t        stream;     /* vertex buffer slot */
     uint32_t        offset;     /* bytes from the start of a vertex */
     RhiVertexFormat format;
@@ -303,7 +303,7 @@ typedef struct RhiVertexAttrib {
 typedef struct RhiVertexLayout {
     RhiVertexAttrib attribs[RHI_MAX_VERTEX_ATTRIBS];
     uint32_t        attrib_count;
-    uint32_t        stride[RHI_MAX_VERTEX_STREAMS];   /* bytes per vertex, per stream */
+    uint32_t        stride[RHI_MAX_VERTEX_STREAMS];   /* bytes per vertex; 0 = tightly packed, offset 0 */
 } RhiVertexLayout;
 
 typedef enum RhiPrimitive { RHI_PRIMITIVE_TRIANGLES = 0, RHI_PRIMITIVE_LINES = 1 } RhiPrimitive;
@@ -358,12 +358,16 @@ RhiPipeline rhi_pipeline_create(const RhiPipelineDesc *desc);
 void rhi_cmd_bind_pipeline(RhiPipeline pipeline);
 /* A stream bound to {0} leaves its attributes without an array: the shader
  * reads (0, 0, 0, 1) unless the backend's default value was changed. */
+/* {0} disables the stream's attributes; the caller supplies their constants. */
 void rhi_cmd_bind_vertex_buffer(uint32_t stream, RhiBuffer buffer, uint32_t offset);
 void rhi_cmd_bind_index_buffer(RhiBuffer buffer);           /* 16-bit indices */
 /* Texture for shader sampler unit `slot`, sampled with the texture's sampler. */
 void rhi_cmd_bind_texture(uint32_t slot, RhiTexture texture);
+/* Invalid resources or byte ranges are skipped before GL setup. Callers must
+ * ensure index values reference valid vertices; the backend does not scan them. */
 void rhi_cmd_draw_indexed(uint32_t index_count, uint32_t first_index);
-void rhi_cmd_draw(uint32_t vertex_count, uint32_t first_vertex);   /* no index buffer */
+/* No index buffer; the first/count byte extent must fit every enabled stream. */
+void rhi_cmd_draw(uint32_t vertex_count, uint32_t first_vertex);
 
 #ifdef __cplusplus
 }

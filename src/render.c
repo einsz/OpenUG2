@@ -39,6 +39,11 @@ int render_world_glows(const RProg *r,const N2Batch *batches,int count,
     ug2_copy(r->p->uMVP, mvp, 16);
     r->p->uAlpha = 1;r->p->uSoft = 0;
     ug2_vec3(r->p->uFogColor, 0, 0, 0);
+    GLint pipeline_depth_func; GLboolean pipeline_color_mask[4];
+    GLboolean pipeline_cull = gls_is_enabled(GL_CULL_FACE);
+    GLboolean pipeline_stencil = gls_is_enabled(GL_STENCIL_TEST);
+    gls_get_integerv(GL_DEPTH_FUNC, &pipeline_depth_func);
+    gls_get_booleanv(GL_COLOR_WRITEMASK, pipeline_color_mask);
     rhi_cmd_bind_pipeline(pipelines_of(r)->world.add);   /* additive, depth tested, no write */
     int draws=0;
     for(int i=0;i<count;i++) {
@@ -54,6 +59,10 @@ int render_world_glows(const RProg *r,const N2Batch *batches,int count,
     ug2_copy(r->p->uFogColor, fog, 3);
     r->p->uEmissiveTex = 0;r->p->uUnlit = 0;
     glDepthMask(GL_TRUE);glDisable(GL_BLEND);
+    glDepthFunc((GLenum)pipeline_depth_func);
+    glColorMask(pipeline_color_mask[0], pipeline_color_mask[1], pipeline_color_mask[2], pipeline_color_mask[3]);
+    if (pipeline_cull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
+    if (pipeline_stencil) glEnable(GL_STENCIL_TEST);
     return draws;
 }
 
@@ -88,6 +97,11 @@ int render_district_lights(const RProg *r, GpuMesh *quad, RhiTexture texture,
     rt[0] /= rl; rt[1] /= rl;
     float up[3] = {rt[1]*ld[2], -rt[0]*ld[2],
                    rt[0]*ld[1] - rt[1]*ld[0]};
+    GLint pipeline_depth_func; GLboolean pipeline_color_mask[4];
+    GLboolean pipeline_cull = gls_is_enabled(GL_CULL_FACE);
+    GLboolean pipeline_stencil = gls_is_enabled(GL_STENCIL_TEST);
+    gls_get_integerv(GL_DEPTH_FUNC, &pipeline_depth_func);
+    gls_get_booleanv(GL_COLOR_WRITEMASK, pipeline_color_mask);
     rhi_cmd_bind_pipeline(pipelines_of(r)->car.halo);   /* additive, depth tested, no write */
     rp.p->uUnlit = 0.0f; rp.p->uEmissiveTex = 1.0f;
     rp.p->uUseTex = 1.0f; rp.p->uSoft = 0.0f;
@@ -146,6 +160,10 @@ int render_district_lights(const RProg *r, GpuMesh *quad, RhiTexture texture,
     if (blend_before) glEnable(GL_BLEND); else glDisable(GL_BLEND);
     if (depth_before) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
     glDepthMask(depth_mask);
+    glDepthFunc((GLenum)pipeline_depth_func);
+    glColorMask(pipeline_color_mask[0], pipeline_color_mask[1], pipeline_color_mask[2], pipeline_color_mask[3]);
+    if (pipeline_cull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
+    if (pipeline_stencil) glEnable(GL_STENCIL_TEST);
     return draws;
 }
 
@@ -360,6 +378,9 @@ int render_car_shadow(const RProg *r,CarShadow *s,const N2Scene *car,const GpuMe
     mat_mul(mvp,projection,projected);
     int draws=0;
     GLboolean cull=gls_is_enabled(GL_CULL_FACE);
+    GLint pipeline_depth_func; GLboolean pipeline_color_mask[4];
+    gls_get_integerv(GL_DEPTH_FUNC, &pipeline_depth_func);
+    gls_get_booleanv(GL_COLOR_WRITEMASK, pipeline_color_mask);
     rhi_cmd_bind_pipeline(pipelines_of(r)->effect.car_shadow);
     r->p->uUnlit = 1;r->p->uSoft = 0;r->p->uUseTex = 0;
     ug2_vec3(r->p->uColor, 0, 0, 0);r->p->uAlpha = .48f;
@@ -375,6 +396,8 @@ int render_car_shadow(const RProg *r,CarShadow *s,const N2Scene *car,const GpuMe
     glDisable(GL_STENCIL_TEST);glDepthMask(GL_TRUE);glDisable(GL_BLEND);
     r->p->uUnlit = 0;r->p->uAlpha = 1;
     if(cull)glEnable(GL_CULL_FACE);
+    glDepthFunc((GLenum)pipeline_depth_func);
+    glColorMask(pipeline_color_mask[0], pipeline_color_mask[1], pipeline_color_mask[2], pipeline_color_mask[3]);
     return draws;
 }
 
@@ -563,6 +586,9 @@ int render_rain(const RProg *r,RhiBuffer *vbo,float time,float intensity,int qua
     gls_get_booleanv(GL_DEPTH_WRITEMASK,&mask);
     gls_get_integerv(GL_BLEND_SRC_RGB,&sr);gls_get_integerv(GL_BLEND_DST_RGB,&dr);
     gls_get_integerv(GL_BLEND_SRC_ALPHA,&sa);gls_get_integerv(GL_BLEND_DST_ALPHA,&da);
+    GLboolean pipeline_color_mask[4];
+    gls_get_booleanv(GL_COLOR_WRITEMASK, pipeline_color_mask);
+    GLboolean pipeline_stencil = gls_is_enabled(GL_STENCIL_TEST);
     rhi_cmd_bind_pipeline(pipelines_of(r)->effect.rain);
     r->p->uUnlit = 1;r->p->uEmissiveTex = 0;r->p->uUseTex = 0;
     r->p->uVista = 0;r->p->uUVCheck = 0;
@@ -581,6 +607,8 @@ int render_rain(const RProg *r,RhiBuffer *vbo,float time,float intensity,int qua
     glDepthMask(mask);if(depth)glEnable(GL_DEPTH_TEST);
     if(!blend)glDisable(GL_BLEND);if(cull)glEnable(GL_CULL_FACE);
     glBlendFuncSeparate(sr,dr,sa,da);
+    glColorMask(pipeline_color_mask[0], pipeline_color_mask[1], pipeline_color_mask[2], pipeline_color_mask[3]);
+    if (pipeline_stencil) glEnable(GL_STENCIL_TEST); else glDisable(GL_STENCIL_TEST);
     return 1;
 }
 
@@ -603,6 +631,10 @@ int render_collision_walls(const RProg *r,RhiBuffer *vbo,const float *faces,int 
     gls_get_booleanv(GL_DEPTH_WRITEMASK,&mask);
     gls_get_integerv(GL_BLEND_SRC_RGB,&sr);gls_get_integerv(GL_BLEND_DST_RGB,&dr);
     gls_get_integerv(GL_BLEND_SRC_ALPHA,&sa);gls_get_integerv(GL_BLEND_DST_ALPHA,&da);
+    GLint pipeline_depth_func; GLboolean pipeline_color_mask[4];
+    gls_get_integerv(GL_DEPTH_FUNC, &pipeline_depth_func);
+    gls_get_booleanv(GL_COLOR_WRITEMASK, pipeline_color_mask);
+    GLboolean pipeline_stencil = gls_is_enabled(GL_STENCIL_TEST);
     const UG2EffectPipelines *ep = &pipelines_of(r)->effect;
     r->p->uUnlit = 1;r->p->uEmissiveTex = 0;r->p->uUseTex = 0;
     r->p->uSoft = 0;r->p->uVista = 0;r->p->uUVCheck = 0;
@@ -618,6 +650,9 @@ int render_collision_walls(const RProg *r,RhiBuffer *vbo,const float *faces,int 
     glDepthMask(mask);if(depth)glEnable(GL_DEPTH_TEST);else glDisable(GL_DEPTH_TEST);
     if(!blend)glDisable(GL_BLEND);if(cull)glEnable(GL_CULL_FACE);
     glBlendFuncSeparate(sr,dr,sa,da);
+    glDepthFunc((GLenum)pipeline_depth_func);
+    glColorMask(pipeline_color_mask[0], pipeline_color_mask[1], pipeline_color_mask[2], pipeline_color_mask[3]);
+    if (pipeline_stencil) glEnable(GL_STENCIL_TEST); else glDisable(GL_STENCIL_TEST);
     return 2;
 }
 
@@ -1759,6 +1794,11 @@ void render_wheel_mesh(const RProg *r, GpuMesh *mesh, RhiTexture texture, int mo
     }
     /* two-sided, depth tested; translucent slices blend without depth write */
     const UG2CarPipelines *cp = &pipelines_of(r)->car;
+    GLint pipeline_depth_func; GLboolean pipeline_color_mask[4];
+    GLboolean pipeline_cull = gls_is_enabled(GL_CULL_FACE);
+    GLboolean pipeline_stencil = gls_is_enabled(GL_STENCIL_TEST);
+    gls_get_integerv(GL_DEPTH_FUNC, &pipeline_depth_func);
+    gls_get_booleanv(GL_COLOR_WRITEMASK, pipeline_color_mask);
     rhi_cmd_bind_pipeline(translucent ? cp->glass : cp->opaque[RHI_CULL_NONE]);
     render_draw_gpumesh(mesh);
     for(int i=0;i<10;i++)*loc[i] = saved[i];
@@ -1767,6 +1807,10 @@ void render_wheel_mesh(const RProg *r, GpuMesh *mesh, RhiTexture texture, int mo
     if(blend)glEnable(GL_BLEND);else glDisable(GL_BLEND);
     if(depth)glEnable(GL_DEPTH_TEST);else glDisable(GL_DEPTH_TEST);
     glDepthMask(mask);
+    glDepthFunc((GLenum)pipeline_depth_func);
+    glColorMask(pipeline_color_mask[0], pipeline_color_mask[1], pipeline_color_mask[2], pipeline_color_mask[3]);
+    if (pipeline_cull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
+    if (pipeline_stencil) glEnable(GL_STENCIL_TEST);
 }
 
 /* A split material slice shares its vertex pool with other surfaces. Only
