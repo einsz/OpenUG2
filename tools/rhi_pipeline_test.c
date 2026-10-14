@@ -44,7 +44,9 @@ int main(void) {
     RhiBuffer v=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX,RHI_UPDATE_STATIC,sizeof pos,pos});
     RhiBuffer i=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_INDEX,RHI_UPDATE_STATIC,sizeof indices,indices});
     assert(v.id && i.id);
-    rhi_cmd_bind_pipeline(p);rhi_cmd_bind_vertex_buffer(0,v,0);rhi_cmd_bind_index_buffer(i);
+    glEnable(GL_POLYGON_OFFSET_FILL);rhi_cmd_bind_pipeline(p);
+    assert(glIsEnabled(GL_POLYGON_OFFSET_FILL));glDisable(GL_POLYGON_OFFSET_FILL);
+    rhi_cmd_bind_vertex_buffer(0,v,0);rhi_cmd_bind_index_buffer(i);
     /* A null color stream disables its array and uses the caller's constant. */
     glEnableVertexAttribArray(1);glVertexAttrib4f(1,1,1,1,1);rhi_cmd_bind_vertex_buffer(1,(RhiBuffer){0},0);
     glClear(GL_COLOR_BUFFER_BIT);rhi_cmd_draw_indexed(3,0);unsigned char out[4];pixel(out);

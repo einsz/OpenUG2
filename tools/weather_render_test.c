@@ -259,7 +259,7 @@ static void reflection_test(const RProg *r) {
     glReadPixels(0,0,64,64,GL_RGBA,GL_UNSIGNED_BYTE,before);
     RoadReflections refl={0};
     assert(!render_road_reflections(r,&refl,batches,count,cam,mvp,p,0,2));
-    assert(!refl.color && !refl.depth);
+    assert(!refl.color.id && !refl.depth.id);
     assert(!render_road_reflections(r,&refl,batches,count,cam,mvp,p,1,0));
     glActiveTexture(GL_TEXTURE5);
     int draws=render_road_reflections(r,&refl,batches,count,cam,mvp,p,1,2);
@@ -324,10 +324,15 @@ static void reflection_test(const RProg *r) {
     /* Resize without stale source storage; repeated calls include no feedback
        because the production caller redraws the scene before each capture. */
     glViewport(0,0,32,32);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+    /* The reflection pipeline must not leak into the caller's raster state. */
+    glColorMask(1,1,1,0);glEnable(GL_STENCIL_TEST);glStencilFunc(GL_ALWAYS,0,0xff);glEnable(GL_POLYGON_OFFSET_FILL);
     assert(render_road_reflections(r,&refl,batches,count,cam,mvp,p,1,1)==1);
     assert(refl.width==32 && refl.height==32);
+    GLboolean cm[4];glGetBooleanv(GL_COLOR_WRITEMASK,cm);
+    assert(cm[0] && cm[1] && cm[2] && !cm[3] && glIsEnabled(GL_STENCIL_TEST) && glIsEnabled(GL_POLYGON_OFFSET_FILL));
+    glColorMask(1,1,1,1);glDisable(GL_STENCIL_TEST);glDisable(GL_POLYGON_OFFSET_FILL);
     assert(glGetError()==GL_NO_ERROR);
-    GLuint color=refl.color,depth=refl.depth;free_road_reflections(&refl);
+    GLuint color=rhi_gl_texture_name(refl.color),depth=rhi_gl_texture_name(refl.depth);free_road_reflections(&refl);
     assert(!glIsTexture(color) && !glIsTexture(depth) && !refl.width);
     render_batch_array_free(&batches,&count);
     glActiveTexture(GL_TEXTURE0);glViewport(0,0,64,64);

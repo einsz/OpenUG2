@@ -167,13 +167,16 @@ typedef enum RhiFormat {
     RHI_FORMAT_BC1   = 3,  /* S3TC DXT1, caps.tex_bc1 */
     RHI_FORMAT_BC2   = 4,  /* S3TC DXT3, caps.tex_bc2 */
     RHI_FORMAT_BC3   = 5,  /* S3TC DXT5, caps.tex_bc3 */
-    RHI_FORMAT_D16   = 6   /* 16-bit depth; render target only for now */
+    RHI_FORMAT_D16   = 6,  /* 16-bit depth; render target only for now */
+    RHI_FORMAT_DEPTH = 7   /* depth with the main target's precision: copies of
+                              the main depth (rhi_cmd_copy_main_to_texture) */
 } RhiFormat;
 
 typedef enum RhiTextureUsage {
     RHI_TEXTURE_SAMPLED      = 1u << 0,
     RHI_TEXTURE_COLOR_TARGET = 1u << 1,   /* colour attachment of a pass */
-    RHI_TEXTURE_DEPTH_TARGET = 1u << 2    /* depth attachment of a pass */
+    RHI_TEXTURE_DEPTH_TARGET = 1u << 2,   /* depth attachment of a pass */
+    RHI_TEXTURE_COPY_DST     = 1u << 3    /* target of rhi_cmd_copy_main_to_texture */
 } RhiTextureUsage;
 
 typedef struct RhiTextureDesc {
@@ -407,6 +410,15 @@ typedef struct RhiPassDesc {
 /* RHI_ERR_UNSUPPORTED if the attachments cannot be rendered to together. */
 RhiResult rhi_cmd_begin_pass(const RhiPassDesc *desc);
 void      rhi_cmd_end_pass(void);
+
+/* Copies a rectangle of the main target (x, y from the bottom-left) into level
+ * 0 of a COPY_DST texture, outside any pass: the colour for an RGBA8 texture,
+ * the depth for an RHI_FORMAT_DEPTH one. The texture takes the rectangle's
+ * size. For screen-space effects that sample the frame drawn so far.
+ * RHI_ERR_INVALID for a texture without COPY_DST or a rectangle outside the
+ * open frame; RHI_ERR_UNSUPPORTED if the backend cannot copy it (GLES2: depth). */
+RhiResult rhi_cmd_copy_main_to_texture(RhiTexture texture, int32_t x, int32_t y,
+                                       int32_t w, int32_t h);
 
 #ifdef __cplusplus
 }
