@@ -67,7 +67,7 @@ int main(void) {
         assert(soft==1?inside[0]>250:inside[0]<210);
         assert(edge[0]>250);
     }
-    RhiTexture light_tex = rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D,RHI_FORMAT_RGBA8,1,1});
+    RhiTexture light_tex = rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D,RHI_FORMAT_RGBA8,1,1, RHI_TEXTURE_SAMPLED});
     GLuint tex[2] = {rhi_gl_texture_name(light_tex), 0}; glGenTextures(1, tex + 1);
     const unsigned char pixel[4] = {128,64,32,255};
     glBindTexture(GL_TEXTURE_2D, tex[0]);

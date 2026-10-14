@@ -357,7 +357,7 @@ RhiTexture tex_override_upload(uint32_t key, const char *pack, const N2Tex *orig
     RhiFormat format = !compressed ? RHI_FORMAT_RGBA8
                      : o->fmt == TO_DXT1 ? RHI_FORMAT_BC1
                      : o->fmt == TO_DXT3 ? RHI_FORMAT_BC2 : RHI_FORMAT_BC3;
-    RhiTexture id = rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D, format, lw, lh});
+    RhiTexture id = rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D, format, lw, lh, RHI_TEXTURE_SAMPLED});
     if (!id.id) { free(buf); reject(o, "GL upload error"); return (RhiTexture){0}; }
     int ok = 1;
     int uplevels = complete ? nlev : 1;

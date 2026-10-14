@@ -10,6 +10,18 @@
 #include <string.h>
 #include <limits.h>
 
+#if defined(__APPLE__) && !defined(N2_GLES)
+/* The legacy macOS GL 2.1 context has framebuffer objects only as the EXT
+   extension. Bind/Delete Framebuffers/Renderbuffers go through
+   rhi_gl_state.c, which maps them to the EXT entry points itself. */
+#define glGenFramebuffers glGenFramebuffersEXT
+#define glFramebufferTexture2D glFramebufferTexture2DEXT
+#define glCheckFramebufferStatus glCheckFramebufferStatusEXT
+#define glGenRenderbuffers glGenRenderbuffersEXT
+#define glRenderbufferStorage glRenderbufferStorageEXT
+#define glFramebufferRenderbuffer glFramebufferRenderbufferEXT
+#endif
+
 #ifdef N2_GLES
 #  define RHI_GL_BUILD_BACKEND RHI_BACKEND_GLES2
 #else
@@ -299,6 +311,7 @@ typedef struct {
     GLuint    name;     /* 0 = free slot */
     GLenum    target;   /* GL_TEXTURE_2D / GL_TEXTURE_CUBE_MAP */
     RhiFormat format;
+    uint32_t  usage;
     int32_t   width, height;
     uint8_t   generation;
     RhiSampler sampler;
@@ -313,6 +326,8 @@ static struct {
     uint32_t      free_count;
     unsigned      stale_logged;
 } g_textures;
+
+static void rhi_gl_forget_framebuffers(RhiTexture tex);   /* passes, below */
 
 static RhiGlTexture *texture_find(RhiTexture tex) {
     uint32_t slot = tex.id & RHI_GL_SLOT_MASK;
@@ -363,9 +378,14 @@ static int format_compressed(RhiFormat f) {
 
 RhiTexture rhi_texture_create(const RhiTextureDesc *desc) {
     RhiTexture out = {0};
+    int depth = desc && desc->format == RHI_FORMAT_D16;
     if (!desc || (desc->type != RHI_TEXTURE_2D && desc->type != RHI_TEXTURE_CUBE) ||
-        desc->format < RHI_FORMAT_RGB8 || desc->format > RHI_FORMAT_BC3 ||
-        desc->width <= 0 || desc->height <= 0 ||
+        desc->format < RHI_FORMAT_RGB8 || desc->format > RHI_FORMAT_D16 ||
+        desc->width <= 0 || desc->height <= 0 || !desc->usage ||
+        (desc->usage & ~(uint32_t)(RHI_TEXTURE_SAMPLED | RHI_TEXTURE_COLOR_TARGET |
+                                   RHI_TEXTURE_DEPTH_TARGET)) ||
+        (depth && (desc->type != RHI_TEXTURE_2D || desc->usage != RHI_TEXTURE_DEPTH_TARGET)) ||
+        (!depth && (desc->usage & RHI_TEXTURE_DEPTH_TARGET)) ||
         (desc->type == RHI_TEXTURE_CUBE && desc->width != desc->height)) {
         fprintf(stderr, "rhi: texture_create: invalid description\n");
         return out;
@@ -376,15 +396,18 @@ RhiTexture rhi_texture_create(const RhiTextureDesc *desc) {
     if (!slot) { fprintf(stderr, "rhi: texture_create: out of handles\n"); return out; }
     RhiGlTexture *t = &g_textures.slots[slot - 1];
     GLuint name = 0;
-    glGenTextures(1, &name);
+    if (depth) glGenRenderbuffers(1, &name);   /* depth target, not sampled */
+    else glGenTextures(1, &name);
     if (!name) {
         g_textures.free_list[g_textures.free_count++] = slot;
         fprintf(stderr, "rhi: texture_create: glGenTextures failed\n");
         return out;
     }
     t->name = name;
-    t->target = desc->type == RHI_TEXTURE_CUBE ? GL_TEXTURE_CUBE_MAP : GL_TEXTURE_2D;
+    t->target = depth ? GL_RENDERBUFFER
+              : desc->type == RHI_TEXTURE_CUBE ? GL_TEXTURE_CUBE_MAP : GL_TEXTURE_2D;
     t->format = desc->format;
+    t->usage = desc->usage;
     t->width = desc->width;
     t->height = desc->height;
     t->sampler = sampler;
@@ -392,8 +415,13 @@ RhiTexture rhi_texture_create(const RhiTextureDesc *desc) {
     t->min_filter = GL_NEAREST_MIPMAP_LINEAR;
     t->mag_filter = GL_LINEAR;
     t->anisotropy = 1.0f;
-    glBindTexture(t->target, name);
     out.id = ((uint32_t)t->generation << RHI_GL_SLOT_BITS) | slot;
+    if (depth) {
+        glBindRenderbuffer(GL_RENDERBUFFER, name);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, desc->width, desc->height);
+        return out;
+    }
+    glBindTexture(t->target, name);
     return out;
 }
 
@@ -401,7 +429,8 @@ RhiResult rhi_texture_upload(RhiTexture tex, int32_t face, int32_t level,
                              const void *data, size_t size) {
     RhiGlTexture *t = texture_lookup(tex, "texture_upload");
     int faces = t && t->target == GL_TEXTURE_CUBE_MAP ? 6 : 1;
-    if (!t || face < 0 || face >= faces || level < 0 || level > 30) return RHI_ERR_INVALID;
+    if (!t || t->target == GL_RENDERBUFFER || face < 0 || face >= faces || level < 0 || level > 30)
+        return RHI_ERR_INVALID;
     GLsizei w = t->width >> level, h = t->height >> level;
     if (w < 1) w = 1;
     if (h < 1) h = 1;
@@ -431,7 +460,9 @@ RhiResult rhi_texture_generate_mips(RhiTexture tex) {
 void rhi_texture_destroy(RhiTexture tex) {
     RhiGlTexture *t = texture_lookup(tex, "texture_destroy");
     if (!t) return;
-    glDeleteTextures(1, &t->name);
+    rhi_gl_forget_framebuffers(tex);
+    if (t->target == GL_RENDERBUFFER) glDeleteRenderbuffers(1, &t->name);
+    else glDeleteTextures(1, &t->name);
     t->name = 0;
     /* Retire the slot before its generation can alias an old handle. */
     if (t->generation == UINT8_MAX) return;
@@ -510,7 +541,7 @@ static GLint gl_min_filter(const RhiSamplerDesc *d) {
 RhiResult rhi_texture_set_sampler(RhiTexture tex, RhiSampler sampler) {
     RhiGlTexture *t = texture_lookup(tex, "texture_set_sampler");
     const RhiSamplerDesc *d = rhi_sampler_desc(sampler);
-    if (!t || !d) return RHI_ERR_INVALID;
+    if (!t || !d || t->target == GL_RENDERBUFFER) return RHI_ERR_INVALID;
     GLint wrap_s = d->wrap_u == RHI_WRAP_CLAMP ? GL_CLAMP_TO_EDGE : GL_REPEAT;
     GLint wrap_t = d->wrap_v == RHI_WRAP_CLAMP ? GL_CLAMP_TO_EDGE : GL_REPEAT;
     GLint min_filter = gl_min_filter(d);
@@ -946,6 +977,7 @@ void rhi_cmd_bind_index_buffer(RhiBuffer buffer) { g_cmd.index = buffer; }
 
 void rhi_cmd_bind_texture(uint32_t slot, RhiTexture texture) {
     const RhiGlTexture *t = texture_lookup(texture, "bind_texture");
+    if (t && !(t->usage & RHI_TEXTURE_SAMPLED)) t = NULL;   /* not sampleable */
     GLint active = 0;
     gls_get_integerv(GL_ACTIVE_TEXTURE, &active);
     if ((GLenum)active != GL_TEXTURE0 + slot) glActiveTexture(GL_TEXTURE0 + slot);
@@ -1038,3 +1070,106 @@ void rhi_cmd_draw(uint32_t vertex_count, uint32_t first_vertex) {
     rhi_gl_flush_params();
     glDrawArrays(gl_primitive(d->primitive), (GLint)first_vertex, (GLsizei)vertex_count);
 }
+
+/* ------------------------------------------------------------------------------ */
+/* Passes                                                                         */
+/* ------------------------------------------------------------------------------ */
+/* One framebuffer object per depth attachment; the colour attachment is
+ * re-pointed when a pass names a different one, as the offscreen code did by
+ * hand before rhi.h had passes. */
+#define RHI_GL_MAX_FRAMEBUFFERS 8u
+
+static struct {
+    GLuint     fbo;
+    RhiTexture depth;
+    GLuint     color_name;     /* attached colour texture, 0 = none */
+    GLenum     color_target;   /* GL_TEXTURE_2D or a cube face */
+    int        complete;       /* checked since the last attachment change */
+} g_fbos[RHI_GL_MAX_FRAMEBUFFERS];
+static int g_in_pass;
+
+static void rhi_gl_forget_framebuffers(RhiTexture tex) {
+    for (uint32_t i = 0; i < RHI_GL_MAX_FRAMEBUFFERS; i++) {
+        if (!g_fbos[i].fbo) continue;
+        const RhiGlTexture *t = texture_find(tex);
+        if (g_fbos[i].depth.id == tex.id || (t && t->target != GL_RENDERBUFFER && g_fbos[i].color_name == t->name)) {
+            glDeleteFramebuffers(1, &g_fbos[i].fbo);
+            memset(&g_fbos[i], 0, sizeof g_fbos[i]);
+        }
+    }
+}
+
+RhiResult rhi_cmd_begin_pass(const RhiPassDesc *desc) {
+    if (!desc || g_in_pass) return RHI_ERR_INVALID;
+    const RhiGlTexture *color = texture_lookup(desc->color.texture, "begin_pass");
+    const RhiGlTexture *depth = texture_lookup(desc->depth.texture, "begin_pass");
+    if (!color || color->format != RHI_FORMAT_RGBA8 || !(color->usage & RHI_TEXTURE_COLOR_TARGET) ||
+        (desc->depth.texture.id && (!depth || depth->target != GL_RENDERBUFFER))) return RHI_ERR_INVALID;
+    int faces = color->target == GL_TEXTURE_CUBE_MAP ? 6 : 1;
+    if (desc->color.face < 0 || desc->color.face >= faces ||
+        (depth && desc->depth.face != 0) ||
+        (desc->color_load != RHI_LOAD_KEEP && desc->color_load != RHI_LOAD_CLEAR) ||
+        (desc->depth_load != RHI_LOAD_KEEP && desc->depth_load != RHI_LOAD_CLEAR)) return RHI_ERR_INVALID;
+    GLenum color_target = faces == 6 ? (GLenum)(GL_TEXTURE_CUBE_MAP_POSITIVE_X + desc->color.face)
+                                     : GL_TEXTURE_2D;
+    int f = -1, free_slot = -1;
+    for (uint32_t i = 0; i < RHI_GL_MAX_FRAMEBUFFERS; i++) {
+        if (g_fbos[i].fbo && g_fbos[i].depth.id == desc->depth.texture.id) { f = (int)i; break; }
+        if (!g_fbos[i].fbo && free_slot < 0) free_slot = (int)i;
+    }
+    if (f < 0) {
+        if (free_slot < 0) { fprintf(stderr, "rhi: begin_pass: out of framebuffers\n"); return RHI_ERR_INVALID; }
+        f = free_slot;
+        glGenFramebuffers(1, &g_fbos[f].fbo);
+        if (!g_fbos[f].fbo) return RHI_ERR_UNSUPPORTED;
+        g_fbos[f].depth = desc->depth.texture;
+        glBindFramebuffer(GL_FRAMEBUFFER, g_fbos[f].fbo);
+        if (depth) glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depth->name);
+    } else glBindFramebuffer(GL_FRAMEBUFFER, g_fbos[f].fbo);
+    if (g_fbos[f].color_name != color->name || g_fbos[f].color_target != color_target) {
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, color_target, color->name, 0);
+        g_fbos[f].color_name = color->name;
+        g_fbos[f].color_target = color_target;
+        g_fbos[f].complete = 0;
+    }
+    if (!g_fbos[f].complete) {
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) return RHI_ERR_UNSUPPORTED;
+        g_fbos[f].complete = 1;
+    }
+    glViewport(0, 0, color->width, color->height);
+    set_cap(GL_SCISSOR_TEST, 0);
+    GLbitfield clear = 0;
+    GLboolean cm[4] = {GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE}, dm = GL_TRUE;
+    if (desc->color_load == RHI_LOAD_CLEAR) {
+        GLfloat cc[4];
+        gls_get_booleanv(GL_COLOR_WRITEMASK, cm);
+        if (!cm[0] || !cm[1] || !cm[2] || !cm[3]) glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        gls_get_floatv(GL_COLOR_CLEAR_VALUE, cc);
+        if (memcmp(cc, desc->clear_color, sizeof cc))
+            glClearColor(desc->clear_color[0], desc->clear_color[1], desc->clear_color[2], desc->clear_color[3]);
+        clear |= GL_COLOR_BUFFER_BIT;
+    }
+    if (desc->depth_load == RHI_LOAD_CLEAR && depth) {
+        GLfloat cd;
+        gls_get_booleanv(GL_DEPTH_WRITEMASK, &dm);
+        if (!dm) glDepthMask(GL_TRUE);
+        gls_get_floatv(GL_DEPTH_CLEAR_VALUE, &cd);
+        if (cd != desc->clear_depth) {
+#ifdef N2_GLES
+            glClearDepthf(desc->clear_depth);
+#else
+            glClearDepth(desc->clear_depth);
+#endif
+        }
+        clear |= GL_DEPTH_BUFFER_BIT;
+    }
+    if (clear) {
+        glClear(clear);
+        if (!cm[0] || !cm[1] || !cm[2] || !cm[3]) glColorMask(cm[0], cm[1], cm[2], cm[3]);
+        if (!dm) glDepthMask(GL_FALSE);
+    }
+    g_in_pass = 1;
+    return RHI_OK;
+}
+
+void rhi_cmd_end_pass(void) { g_in_pass = 0; }

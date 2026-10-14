@@ -362,6 +362,14 @@ headlight-render-test: tools/headlight_render_test.c src/render.c src/render_par
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/headlight_render_test.c src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c -o build/headlight_render_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
 	./build/headlight_render_test
 
+
+# The test includes rhi_gl.c for controlled framebuffer-allocation failure.
+rhi-pass-test: tools/rhi_pass_test.c src/rhi_gl.c src/rhi_gl_state.c $(HDRS)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/rhi_pass_test.c src/rhi_gl_state.c -o build/rhi_pass_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
+	./build/rhi_pass_test
+.PHONY: rhi-pass-test
+
 .PHONY: traffic-heatmap-test
 
 weather-render-test: tools/weather_render_test.c src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/render.h src/nfsu2.h src/generated_shaders.h

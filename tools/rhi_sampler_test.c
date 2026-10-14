@@ -55,7 +55,7 @@ int main(void) {
     d = *rhi_sampler_desc(rhi_texture_sampler(texture));
     assert(d.min_filter == RHI_FILTER_LINEAR && d.mip_filter == RHI_MIP_NONE &&
            d.wrap_u == RHI_WRAP_CLAMP && d.wrap_v == RHI_WRAP_CLAMP);
-    RhiTexture guard = rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D, RHI_FORMAT_RGBA8, 1, 1});
+    RhiTexture guard = rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D, RHI_FORMAT_RGBA8, 1, 1, RHI_TEXTURE_SAMPLED});
     assert(guard.id);
     g_tex_aniso_max = (int)rhi_caps()->max_anisotropy;
     if (g_tex_aniso_max > 1) {
