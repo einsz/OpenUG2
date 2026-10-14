@@ -10,6 +10,18 @@
 
 static void focused_checks(void) {
     authored_checks();
+    PauseMenu duration={0};
+    pause_menu_open(&duration);
+    /* Reject before any capture substeps; float(1e10)-10 cannot make progress. */
+    assert(!pause_menu_capture_replay(&duration,NULL,1e10f,640,480));
+    assert(!pause_menu_capture_replay(&duration,NULL,NAN,640,480));
+    assert(!pause_menu_capture_replay(&duration,NULL,INFINITY,640,480));
+    assert(!pause_menu_capture_replay(&duration,NULL,-1,640,480));
+    assert(!pause_menu_capture_replay(&duration,NULL,PAUSE_MENU_CAPTURE_MAX_MS+1,640,480));
+    assert(pause_menu_capture_duration_valid(0));
+    assert(pause_menu_capture_duration_valid(PAUSE_MENU_CAPTURE_MAX_MS));
+    assert(pause_menu_capture_replay(&duration,NULL,0,640,480));
+    assert(duration.open && duration.ui_ms==0 && duration.capture_actions==0);
     PauseMenu p={0};
     pause_menu_open(&p);
     SDL_Event e={0};e.type=SDL_KEYDOWN;e.key.keysym.sym=SDLK_LEFT;

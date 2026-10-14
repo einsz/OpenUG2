@@ -230,7 +230,7 @@ void world_ground_grid_free(WGroundGrid *grid);
  * modes (optional, NULL to skip): parallel array receiving each resolved
  * key's authored N2_DRAW_* mode (n2_tex_mode on the same decoded record),
  * M135. */
-int world_bind_textures(World *w, uint32_t *keys, GLuint *texs,
+int world_bind_textures(World *w, uint32_t *keys, RhiTexture *texs,
                         unsigned char *modes, int cap);
 
 /* Zero-initialize for one binding; keep its world and output arrays alive.
@@ -243,11 +243,11 @@ typedef struct {
     int pass, region, request, count;
     uint32_t build, source;
 } WTextureBind;
-int world_bind_textures_step(World *w, uint32_t *keys, GLuint *texs,
+int world_bind_textures_step(World *w, uint32_t *keys, RhiTexture *texs,
                              unsigned char *modes, int cap,
                              WTextureBind *binding, int max_decodes);
 
-/* The GL names world_bind_textures writes are owned by a process-wide
+/* The textures world_bind_textures writes are owned by a process-wide
  * key -> texture cache, not by the caller: a moving-residency swap re-requests
  * essentially the same ~1100 keys, and re-decoding/re-uploading them was the
  * bulk of the frame-thread stall at a district boundary. Callers borrow the

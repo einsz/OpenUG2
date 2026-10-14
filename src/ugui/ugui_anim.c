@@ -107,7 +107,7 @@ void ug_script_apply(const UgScript *s, float t_ms, UgProps *p) {
     for (int i = 0; i < s->ntracks; i++) {
         const UgTrack *tr = &s->tracks[i];
         int n = ug_type_ncomp(tr->type);
-        if (tr->prop + (uint32_t)n > UG_NPROPS) continue;
+        if (tr->prop >= UG_NPROPS || (uint32_t)n > UG_NPROPS - tr->prop) continue;
         float v[4];
         ug_track_eval(tr, t_ms, v);
         for (int c = 0; c < n; c++) p->w[tr->prop + c] = v[c];

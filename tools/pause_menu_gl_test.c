@@ -1,5 +1,5 @@
 /* Synthetic GL transform/state test. No install, asset decoder or retail data. */
-#include "../src/gl_state.h"
+#include "../src/rhi_gl_state.h"
 #include "../src/ugui/ugui_gl.h"
 #include "../src/pause_menu_layout.h"
 #include <assert.h>

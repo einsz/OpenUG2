@@ -1,0 +1,505 @@
+{
+  "provenance": "All values and objects are independently authored synthetic cases for the specification; none are extracted original samples.",
+  "cases": [
+    {
+      "name": "fit-wide",
+      "input": {
+        "viewport": [
+          1280,
+          720
+        ],
+        "logical": [
+          100,
+          -50
+        ]
+      },
+      "expected": {
+        "scale": 1.5,
+        "screen": [
+          790,
+          285
+        ]
+      }
+    },
+    {
+      "name": "fit-four-three",
+      "input": {
+        "viewport": [
+          640,
+          480
+        ],
+        "logical": [
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "scale": 1,
+        "screen": [
+          320,
+          240
+        ]
+      }
+    },
+    {
+      "name": "pivot-orbit",
+      "input": {
+        "position": [
+          10,
+          20
+        ],
+        "pivot": [
+          0,
+          5
+        ],
+        "vertex": [
+          0,
+          0
+        ],
+        "angle_degrees": 90
+      },
+      "expected": {
+        "point": [
+          15,
+          25
+        ]
+      }
+    },
+    {
+      "name": "metric-trunc",
+      "input": {
+        "speed_mps": 10,
+        "metric": true
+      },
+      "expected": {
+        "text": "36",
+        "unit": "KM/H"
+      }
+    },
+    {
+      "name": "imperial-trunc",
+      "input": {
+        "speed_mps": 10,
+        "metric": false
+      },
+      "expected": {
+        "text": "22",
+        "unit": "MPH"
+      }
+    },
+    {
+      "name": "reverse",
+      "input": {
+        "gear": "reverse"
+      },
+      "expected": {
+        "text": "R"
+      }
+    },
+    {
+      "name": "neutral",
+      "input": {
+        "gear": "neutral"
+      },
+      "expected": {
+        "text": "N"
+      }
+    },
+    {
+      "name": "forward",
+      "input": {
+        "gear": 4
+      },
+      "expected": {
+        "text": "4"
+      }
+    },
+    {
+      "name": "scale-selection",
+      "input": {
+        "maximum_rpm": 8100,
+        "rpm": 4050,
+        "authored_angle_degrees": -20,
+        "zero_angle_degrees": 0
+      },
+      "expected": {
+        "scale_rpm": 8500,
+        "angle_degrees": 111.97058823529412
+      },
+      "note": "Runtime calibration uses zero planar angle; authored sample angle is deliberately not added."
+    },
+    {
+      "name": "scale-clamp",
+      "input": {
+        "maximum_rpm": 6000,
+        "rpm": 9000,
+        "authored_angle_degrees": 0
+      },
+      "expected": {
+        "scale_rpm": 7500,
+        "angle_degrees": 188
+      }
+    },
+    {
+      "name": "cash-absent",
+      "input": {
+        "career": false,
+        "balance": 1234,
+        "suppressed": false
+      },
+      "expected": {
+        "visible": false
+      }
+    },
+    {
+      "name": "cash-suppressed",
+      "input": {
+        "career": true,
+        "balance": 1234,
+        "suppressed": true
+      },
+      "expected": {
+        "visible": false
+      }
+    },
+    {
+      "name": "cash-present",
+      "input": {
+        "career": true,
+        "balance": 1234,
+        "suppressed": false
+      },
+      "expected": {
+        "visible": true,
+        "text": "1,234"
+      }
+    },
+    {
+      "name": "provisional-map",
+      "input": {
+        "origin": [
+          10,
+          90
+        ],
+        "extent": 100,
+        "position": [
+          35,
+          65
+        ],
+        "window_world": 50
+      },
+      "expected": {
+        "uv_center": [
+          0.25,
+          0.25
+        ],
+        "uv_window": [
+          0.5,
+          0.5
+        ]
+      }
+    },
+    {
+      "name": "font-advance-right",
+      "input": {
+        "anchor_x": 50,
+        "scale": 0.5,
+        "justification": 2,
+        "advances": [
+          8,
+          10,
+          6
+        ]
+      },
+      "expected": {
+        "unscaled_width": 24,
+        "start_x": 38,
+        "next_positions": [
+          38,
+          42,
+          47
+        ]
+      }
+    },
+    {
+      "name": "independent-feature-visibility",
+      "input": {
+        "gauge": true,
+        "map": false,
+        "career": false
+      },
+      "expected": {
+        "gauge_visible": true,
+        "map_children_visible": false,
+        "authoring_text_visible": false,
+        "cash_visible": false
+      }
+    },
+    {
+      "name": "skin-bounds",
+      "input": {
+        "skin": 11
+      },
+      "expected": {
+        "skin": 0
+      }
+    },
+    {
+      "name": "skin-resource-fallback",
+      "input": {
+        "skin": 7,
+        "requested_resource_present": false,
+        "skin00_present": true
+      },
+      "expected": {
+        "resource_skin": 0,
+        "diagnostic": true
+      }
+    },
+    {
+      "name": "reverse-speed-magnitude",
+      "input": {
+        "speed_mps": -10,
+        "metric": true
+      },
+      "expected": {
+        "text": "36",
+        "unit": "KM/H"
+      }
+    },
+    {
+      "name": "cash-missing",
+      "input": {
+        "career": true,
+        "suppressed": false
+      },
+      "expected": {
+        "visible": false
+      }
+    },
+    {
+      "name": "cash-zero",
+      "input": {
+        "career": true,
+        "balance": 0,
+        "suppressed": false
+      },
+      "expected": {
+        "visible": true,
+        "text": "0"
+      }
+    },
+    {
+      "name": "cash-negative",
+      "input": {
+        "career": true,
+        "balance": -1,
+        "suppressed": false
+      },
+      "expected": {
+        "visible": false,
+        "diagnostic": true
+      }
+    },
+    {
+      "name": "rpm-negative",
+      "input": {
+        "maximum_rpm": 6000,
+        "rpm": -1,
+        "authored_angle_degrees": -20
+      },
+      "expected": {
+        "scale_rpm": 7500,
+        "angle_degrees": 0
+      },
+      "note": "Negative RPM clamps to zero calibrated planar pose; authored sample angle is ignored."
+    },
+    {
+      "name": "justification-right-precedence",
+      "input": {
+        "anchor_x": 50,
+        "scale": 0.5,
+        "justification": 3,
+        "advances": [
+          8,
+          10,
+          6
+        ]
+      },
+      "expected": {
+        "unscaled_width": 24,
+        "start_x": 38,
+        "next_positions": [
+          38,
+          42,
+          47
+        ]
+      }
+    },
+    {
+      "name": "hash-ascii-case-fold",
+      "input": {
+        "names": [
+          "a",
+          "A"
+        ]
+      },
+      "expected": {
+        "hashes": [
+          32,
+          32
+        ]
+      }
+    },
+    {
+      "name": "zero-viewport",
+      "input": {
+        "viewport": [
+          0,
+          480
+        ]
+      },
+      "expected": {
+        "hud_visible": false
+      }
+    },
+    {
+      "name": "skin-last-valid",
+      "input": {
+        "skin": 10
+      },
+      "expected": {
+        "skin": 10
+      }
+    },
+    {
+      "name": "map-pick-wide-quarter-turn",
+      "input": {
+        "viewport": [
+          1280,
+          720
+        ],
+        "logical_map_center": [
+          100,
+          40
+        ],
+        "logical_map_size": [
+          100,
+          100
+        ],
+        "world_center": [
+          100,
+          200
+        ],
+        "window_world": 500,
+        "heading_radians": 1.5707963267948966,
+        "screen_click": [
+          805,
+          412.5
+        ],
+        "map_enabled": true,
+        "mask_coverage": 1
+      },
+      "expected": {
+        "accepted": true,
+        "world": [
+          125,
+          150
+        ]
+      }
+    },
+    {
+      "name": "map-pick-hidden",
+      "input": {
+        "viewport": [
+          1280,
+          720
+        ],
+        "screen_click": [
+          805,
+          412.5
+        ],
+        "map_enabled": false
+      },
+      "expected": {
+        "accepted": false
+      }
+    },
+    {
+      "name": "calibrated-zero-pose",
+      "input": {
+        "maximum_rpm": 8100,
+        "rpm": 0,
+        "authored_angle_degrees": -20
+      },
+      "expected": {
+        "scale_rpm": 8500,
+        "angle_degrees": 0
+      },
+      "note": "Synthetic inputs exercise static-asset inferred zero calibration, not observed retail output."
+    }
+  ],
+  "map_pick_properties": {
+    "provenance": "Fresh independent host interaction inputs; no original layout coordinates.",
+    "viewports": [
+      [
+        640,
+        480
+      ],
+      [
+        1280,
+        720
+      ],
+      [
+        1024,
+        1024
+      ]
+    ],
+    "headings_radians": [
+      0,
+      1.5707963267948966,
+      -1.5707963267948966,
+      0.73
+    ],
+    "window_world": [
+      50,
+      500,
+      900
+    ],
+    "world_center": [
+      100,
+      200
+    ],
+    "logical_map_center": [
+      100,
+      40
+    ],
+    "logical_map_size": [
+      100,
+      100
+    ],
+    "logical_panel_offsets": [
+      [
+        0,
+        0
+      ],
+      [
+        10,
+        -5
+      ],
+      [
+        -20,
+        15
+      ]
+    ],
+    "mask_coverage_at_test_offsets": 1,
+    "expected": "For every valid combination, project using drawn state then pick returns the same world point; map-center click returns world_center. Error tolerance1e-5 world units.",
+    "outside_logical_panel_offset": [
+      60,
+      0
+    ],
+    "outside_expected": "reject",
+    "hidden_expected": "reject",
+    "zero_mask_coverage_expected": "reject"
+  }
+}

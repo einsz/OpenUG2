@@ -3,6 +3,10 @@
 #define OPENUG2_PAUSE_MENU_H
 #include <SDL.h>
 #include "frontend/frontend.h"
+/* Verification captures are bounded to 6,000 ten-millisecond UI substeps. */
+#define PAUSE_MENU_CAPTURE_MAX_MS 60000.0f
+int pause_menu_capture_duration_valid(float elapsed_ms);
+
 typedef struct PauseMenu PauseMenu;
 PauseMenu *pause_menu_create(const char *dataroot);
 void pause_menu_destroy(PauseMenu *p);

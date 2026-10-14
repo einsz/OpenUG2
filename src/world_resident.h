@@ -27,14 +27,14 @@ int world_resident_route_point(const WResidentPolicy *policy,
 
 typedef struct {
     uint32_t *texture_keys;
-    GLuint *textures;
+    RhiTexture *textures;
     unsigned char *texture_modes;
     int texture_count;
-    GLuint *mesh_textures;
+    RhiTexture *mesh_textures;
     unsigned char *mesh_modes;
     int *mesh_batch;
     int mesh_count;
-    GLuint terrain_texture;
+    RhiTexture terrain_texture;
     N2Batch *ordinary, *sky, *glow, *vista;
     int ordinary_count, sky_count, glow_count, vista_count;
     WorldMeshBatch *debug_batches;

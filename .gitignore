@@ -37,6 +37,7 @@ scratchpad/
 !docs/screenshots/*.png
 mesh_out.*
 src/generated_world_debug_shaders.h
+src/generated_shaders.h
 *.log
 
 # --- Graphify output (reproducible local projection) ---
@@ -88,6 +89,12 @@ tools/capture_vehicle_shots.sh
 *.shops.txt.tmp.*
 *.districts.txt.tmp.*
 *.edits.txt.tmp.*
+
+# --- Local original game data / install (user-owned discs; never commit) ---
+/games/
+/Need for Speed Underground 2/
+/analysis/
+
 
 # Clean-room analyst workspace (never commit)
 /cleanroom/analysis/

@@ -1,0 +1,3371 @@
+{
+ "note": "Steady state: car level, constant velocity along its heading, zero acceleration, speed >= 13 m/s, all smoothers settled, no shake, no collision.",
+ "cases": [
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "FAR",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -5.8,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -5.8,
+    0.0,
+    1.7
+   ],
+   "look_local": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "eye_world": [
+    -5.8,
+    0.0,
+    1.7
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "FAR",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -5.8,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    5.8,
+    -0.0,
+    1.7
+   ],
+   "look_local": [
+    -0.0,
+    -0.0,
+    1.7
+   ],
+   "eye_world": [
+    5.8,
+    0.0,
+    1.7
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "FAR",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -5.8,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -5.8,
+    0.0,
+    1.7
+   ],
+   "look_local": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "eye_world": [
+    100.0,
+    -55.8,
+    4.7
+   ],
+   "look_world": [
+    100.0,
+    -50.0,
+    4.7
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "FAR",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -5.8,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    5.8,
+    -0.0,
+    1.7
+   ],
+   "look_local": [
+    -0.0,
+    -0.0,
+    1.7
+   ],
+   "eye_world": [
+    100.0,
+    -44.2,
+    4.7
+   ],
+   "look_world": [
+    100.0,
+    -50.0,
+    4.7
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "FAR",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -5.8,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -5.8,
+    0.0,
+    1.7
+   ],
+   "look_local": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "eye_world": [
+    -5.022947,
+    -2.9,
+    1.7
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "FAR",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -5.8,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    5.8,
+    -0.0,
+    1.7
+   ],
+   "look_local": [
+    -0.0,
+    -0.0,
+    1.7
+   ],
+   "eye_world": [
+    5.022947,
+    2.9,
+    1.7
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "CLOSE",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -4.7,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -4.7,
+    0.0,
+    1.7
+   ],
+   "look_local": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "eye_world": [
+    -4.7,
+    0.0,
+    1.7
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "CLOSE",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -4.7,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    4.7,
+    -0.0,
+    1.7
+   ],
+   "look_local": [
+    -0.0,
+    -0.0,
+    1.7
+   ],
+   "eye_world": [
+    4.7,
+    0.0,
+    1.7
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "CLOSE",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -4.7,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -4.7,
+    0.0,
+    1.7
+   ],
+   "look_local": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "eye_world": [
+    100.0,
+    -54.7,
+    4.7
+   ],
+   "look_world": [
+    100.0,
+    -50.0,
+    4.7
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "CLOSE",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -4.7,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    4.7,
+    -0.0,
+    1.7
+   ],
+   "look_local": [
+    -0.0,
+    -0.0,
+    1.7
+   ],
+   "eye_world": [
+    100.0,
+    -45.3,
+    4.7
+   ],
+   "look_world": [
+    100.0,
+    -50.0,
+    4.7
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "CLOSE",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -4.7,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -4.7,
+    0.0,
+    1.7
+   ],
+   "look_local": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "eye_world": [
+    -4.070319,
+    -2.35,
+    1.7
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "CLOSE",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -4.7,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    4.7,
+    -0.0,
+    1.7
+   ],
+   "look_local": [
+    -0.0,
+    -0.0,
+    1.7
+   ],
+   "eye_world": [
+    4.070319,
+    2.35,
+    1.7
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "BUMPER",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 500,
+    "fwd_m": 1.016,
+    "up_m": 1.09,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    1.016,
+    0.0,
+    1.09
+   ],
+   "look_local": [
+    2.016,
+    0.0,
+    1.042026
+   ],
+   "eye_world": [
+    1.016,
+    0.0,
+    1.09
+   ],
+   "look_world": [
+    2.016,
+    0.0,
+    1.042026
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "BUMPER",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 500,
+    "fwd_m": 1.016,
+    "up_m": 1.09,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -1.016,
+    -0.0,
+    1.09
+   ],
+   "look_local": [
+    -2.016,
+    -0.0,
+    1.042026
+   ],
+   "eye_world": [
+    -1.016,
+    0.0,
+    1.09
+   ],
+   "look_world": [
+    -2.016,
+    0.0,
+    1.042026
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "BUMPER",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 500,
+    "fwd_m": 1.016,
+    "up_m": 1.09,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    1.016,
+    0.0,
+    1.09
+   ],
+   "look_local": [
+    2.016,
+    0.0,
+    1.042026
+   ],
+   "eye_world": [
+    100.0,
+    -48.984,
+    4.09
+   ],
+   "look_world": [
+    100.0,
+    -47.984,
+    4.042026
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "BUMPER",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 500,
+    "fwd_m": 1.016,
+    "up_m": 1.09,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -1.016,
+    -0.0,
+    1.09
+   ],
+   "look_local": [
+    -2.016,
+    -0.0,
+    1.042026
+   ],
+   "eye_world": [
+    100.0,
+    -51.016,
+    4.09
+   ],
+   "look_world": [
+    100.0,
+    -52.016,
+    4.042026
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "BUMPER",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 500,
+    "fwd_m": 1.016,
+    "up_m": 1.09,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    1.016,
+    0.0,
+    1.09
+   ],
+   "look_local": [
+    2.016,
+    0.0,
+    1.042026
+   ],
+   "eye_world": [
+    0.879882,
+    0.508,
+    1.09
+   ],
+   "look_world": [
+    1.745907,
+    1.008,
+    1.042026
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "BUMPER",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 500,
+    "fwd_m": 1.016,
+    "up_m": 1.09,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -1.016,
+    -0.0,
+    1.09
+   ],
+   "look_local": [
+    -2.016,
+    -0.0,
+    1.042026
+   ],
+   "eye_world": [
+    -0.879882,
+    -0.508,
+    1.09
+   ],
+   "look_world": [
+    -1.745907,
+    -1.008,
+    1.042026
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "HOOD",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": 0.8,
+    "up_m": 1.2,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    0.8,
+    0.0,
+    1.2
+   ],
+   "look_local": [
+    1.8,
+    0.0,
+    1.2
+   ],
+   "eye_world": [
+    0.8,
+    0.0,
+    1.2
+   ],
+   "look_world": [
+    1.8,
+    0.0,
+    1.2
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "HOOD",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": 0.8,
+    "up_m": 1.2,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -0.8,
+    -0.0,
+    1.2
+   ],
+   "look_local": [
+    -1.8,
+    -0.0,
+    1.2
+   ],
+   "eye_world": [
+    -0.8,
+    0.0,
+    1.2
+   ],
+   "look_world": [
+    -1.8,
+    0.0,
+    1.2
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "HOOD",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": 0.8,
+    "up_m": 1.2,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    0.8,
+    0.0,
+    1.2
+   ],
+   "look_local": [
+    1.8,
+    0.0,
+    1.2
+   ],
+   "eye_world": [
+    100.0,
+    -49.2,
+    4.2
+   ],
+   "look_world": [
+    100.0,
+    -48.2,
+    4.2
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "HOOD",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": 0.8,
+    "up_m": 1.2,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -0.8,
+    -0.0,
+    1.2
+   ],
+   "look_local": [
+    -1.8,
+    -0.0,
+    1.2
+   ],
+   "eye_world": [
+    100.0,
+    -50.8,
+    4.2
+   ],
+   "look_world": [
+    100.0,
+    -51.8,
+    4.2
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "HOOD",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": 0.8,
+    "up_m": 1.2,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    0.8,
+    0.0,
+    1.2
+   ],
+   "look_local": [
+    1.8,
+    0.0,
+    1.2
+   ],
+   "eye_world": [
+    0.69282,
+    0.4,
+    1.2
+   ],
+   "look_world": [
+    1.558846,
+    0.9,
+    1.2
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "HOOD",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": 0.8,
+    "up_m": 1.2,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -0.8,
+    -0.0,
+    1.2
+   ],
+   "look_local": [
+    -1.8,
+    -0.0,
+    1.2
+   ],
+   "eye_world": [
+    -0.69282,
+    -0.4,
+    1.2
+   ],
+   "look_world": [
+    -1.558846,
+    -0.9,
+    1.2
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "DRIFT",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 3040,
+    "fwd_m": -5.8,
+    "up_m": 3.45,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -5.8,
+    0.0,
+    3.45
+   ],
+   "look_local": [
+    0.0,
+    0.0,
+    1.710003
+   ],
+   "eye_world": [
+    -5.8,
+    0.0,
+    3.45
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.710003
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "DRIFT",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 3040,
+    "fwd_m": -5.8,
+    "up_m": 3.45,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    5.8,
+    -0.0,
+    3.45
+   ],
+   "look_local": [
+    -0.0,
+    -0.0,
+    1.710003
+   ],
+   "eye_world": [
+    5.8,
+    0.0,
+    3.45
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.710003
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "DRIFT",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 3040,
+    "fwd_m": -5.8,
+    "up_m": 3.45,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -5.8,
+    0.0,
+    3.45
+   ],
+   "look_local": [
+    0.0,
+    0.0,
+    1.710003
+   ],
+   "eye_world": [
+    100.0,
+    -55.8,
+    6.45
+   ],
+   "look_world": [
+    100.0,
+    -50.0,
+    4.710003
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "DRIFT",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 3040,
+    "fwd_m": -5.8,
+    "up_m": 3.45,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    5.8,
+    -0.0,
+    3.45
+   ],
+   "look_local": [
+    -0.0,
+    -0.0,
+    1.710003
+   ],
+   "eye_world": [
+    100.0,
+    -44.2,
+    6.45
+   ],
+   "look_world": [
+    100.0,
+    -50.0,
+    4.710003
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "DRIFT",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 3040,
+    "fwd_m": -5.8,
+    "up_m": 3.45,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -5.8,
+    0.0,
+    3.45
+   ],
+   "look_local": [
+    0.0,
+    0.0,
+    1.710003
+   ],
+   "eye_world": [
+    -5.022947,
+    -2.9,
+    3.45
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.710003
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "PEUGOT",
+   "set": "primary",
+   "view": "DRIFT",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 3040,
+    "fwd_m": -5.8,
+    "up_m": 3.45,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    5.8,
+    -0.0,
+    3.45
+   ],
+   "look_local": [
+    -0.0,
+    -0.0,
+    1.710003
+   ],
+   "eye_world": [
+    5.022947,
+    2.9,
+    3.45
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.710003
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "FAR",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -5.8,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -5.8,
+    0.0,
+    1.7
+   ],
+   "look_local": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "eye_world": [
+    -5.8,
+    0.0,
+    1.7
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "FAR",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -5.8,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    5.8,
+    -0.0,
+    1.7
+   ],
+   "look_local": [
+    -0.0,
+    -0.0,
+    1.7
+   ],
+   "eye_world": [
+    5.8,
+    0.0,
+    1.7
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "FAR",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -5.8,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -5.8,
+    0.0,
+    1.7
+   ],
+   "look_local": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "eye_world": [
+    100.0,
+    -55.8,
+    4.7
+   ],
+   "look_world": [
+    100.0,
+    -50.0,
+    4.7
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "FAR",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -5.8,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    5.8,
+    -0.0,
+    1.7
+   ],
+   "look_local": [
+    -0.0,
+    -0.0,
+    1.7
+   ],
+   "eye_world": [
+    100.0,
+    -44.2,
+    4.7
+   ],
+   "look_world": [
+    100.0,
+    -50.0,
+    4.7
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "FAR",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -5.8,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -5.8,
+    0.0,
+    1.7
+   ],
+   "look_local": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "eye_world": [
+    -5.022947,
+    -2.9,
+    1.7
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "FAR",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -5.8,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    5.8,
+    -0.0,
+    1.7
+   ],
+   "look_local": [
+    -0.0,
+    -0.0,
+    1.7
+   ],
+   "eye_world": [
+    5.022947,
+    2.9,
+    1.7
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "CLOSE",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -4.7,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -4.7,
+    0.0,
+    1.7
+   ],
+   "look_local": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "eye_world": [
+    -4.7,
+    0.0,
+    1.7
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "CLOSE",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -4.7,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    4.7,
+    -0.0,
+    1.7
+   ],
+   "look_local": [
+    -0.0,
+    -0.0,
+    1.7
+   ],
+   "eye_world": [
+    4.7,
+    0.0,
+    1.7
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "CLOSE",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -4.7,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -4.7,
+    0.0,
+    1.7
+   ],
+   "look_local": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "eye_world": [
+    100.0,
+    -54.7,
+    4.7
+   ],
+   "look_world": [
+    100.0,
+    -50.0,
+    4.7
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "CLOSE",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -4.7,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    4.7,
+    -0.0,
+    1.7
+   ],
+   "look_local": [
+    -0.0,
+    -0.0,
+    1.7
+   ],
+   "eye_world": [
+    100.0,
+    -45.3,
+    4.7
+   ],
+   "look_world": [
+    100.0,
+    -50.0,
+    4.7
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "CLOSE",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -4.7,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -4.7,
+    0.0,
+    1.7
+   ],
+   "look_local": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "eye_world": [
+    -4.070319,
+    -2.35,
+    1.7
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "CLOSE",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -4.7,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    4.7,
+    -0.0,
+    1.7
+   ],
+   "look_local": [
+    -0.0,
+    -0.0,
+    1.7
+   ],
+   "eye_world": [
+    4.070319,
+    2.35,
+    1.7
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.7
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "BUMPER",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 500,
+    "fwd_m": 0.936,
+    "up_m": 1.01,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    0.936,
+    0.0,
+    1.01
+   ],
+   "look_local": [
+    1.936,
+    0.0,
+    0.962026
+   ],
+   "eye_world": [
+    0.936,
+    0.0,
+    1.01
+   ],
+   "look_world": [
+    1.936,
+    0.0,
+    0.962026
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "BUMPER",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 500,
+    "fwd_m": 0.936,
+    "up_m": 1.01,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -0.936,
+    -0.0,
+    1.01
+   ],
+   "look_local": [
+    -1.936,
+    -0.0,
+    0.962026
+   ],
+   "eye_world": [
+    -0.936,
+    0.0,
+    1.01
+   ],
+   "look_world": [
+    -1.936,
+    0.0,
+    0.962026
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "BUMPER",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 500,
+    "fwd_m": 0.936,
+    "up_m": 1.01,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    0.936,
+    0.0,
+    1.01
+   ],
+   "look_local": [
+    1.936,
+    0.0,
+    0.962026
+   ],
+   "eye_world": [
+    100.0,
+    -49.064,
+    4.01
+   ],
+   "look_world": [
+    100.0,
+    -48.064,
+    3.962026
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "BUMPER",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 500,
+    "fwd_m": 0.936,
+    "up_m": 1.01,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -0.936,
+    -0.0,
+    1.01
+   ],
+   "look_local": [
+    -1.936,
+    -0.0,
+    0.962026
+   ],
+   "eye_world": [
+    100.0,
+    -50.936,
+    4.01
+   ],
+   "look_world": [
+    100.0,
+    -51.936,
+    3.962026
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "BUMPER",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 500,
+    "fwd_m": 0.936,
+    "up_m": 1.01,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    0.936,
+    0.0,
+    1.01
+   ],
+   "look_local": [
+    1.936,
+    0.0,
+    0.962026
+   ],
+   "eye_world": [
+    0.8106,
+    0.468,
+    1.01
+   ],
+   "look_world": [
+    1.676625,
+    0.968,
+    0.962026
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "BUMPER",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 500,
+    "fwd_m": 0.936,
+    "up_m": 1.01,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -0.936,
+    -0.0,
+    1.01
+   ],
+   "look_local": [
+    -1.936,
+    -0.0,
+    0.962026
+   ],
+   "eye_world": [
+    -0.8106,
+    -0.468,
+    1.01
+   ],
+   "look_world": [
+    -1.676625,
+    -0.968,
+    0.962026
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "HOOD",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": 0.58,
+    "up_m": 1.27,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    0.58,
+    0.0,
+    1.27
+   ],
+   "look_local": [
+    1.58,
+    0.0,
+    1.27
+   ],
+   "eye_world": [
+    0.58,
+    0.0,
+    1.27
+   ],
+   "look_world": [
+    1.58,
+    0.0,
+    1.27
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "HOOD",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": 0.58,
+    "up_m": 1.27,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -0.58,
+    -0.0,
+    1.27
+   ],
+   "look_local": [
+    -1.58,
+    -0.0,
+    1.27
+   ],
+   "eye_world": [
+    -0.58,
+    0.0,
+    1.27
+   ],
+   "look_world": [
+    -1.58,
+    0.0,
+    1.27
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "HOOD",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": 0.58,
+    "up_m": 1.27,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    0.58,
+    0.0,
+    1.27
+   ],
+   "look_local": [
+    1.58,
+    0.0,
+    1.27
+   ],
+   "eye_world": [
+    100.0,
+    -49.42,
+    4.27
+   ],
+   "look_world": [
+    100.0,
+    -48.42,
+    4.27
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "HOOD",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": 0.58,
+    "up_m": 1.27,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -0.58,
+    -0.0,
+    1.27
+   ],
+   "look_local": [
+    -1.58,
+    -0.0,
+    1.27
+   ],
+   "eye_world": [
+    100.0,
+    -50.58,
+    4.27
+   ],
+   "look_world": [
+    100.0,
+    -51.58,
+    4.27
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "HOOD",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": 0.58,
+    "up_m": 1.27,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    0.58,
+    0.0,
+    1.27
+   ],
+   "look_local": [
+    1.58,
+    0.0,
+    1.27
+   ],
+   "eye_world": [
+    0.502295,
+    0.29,
+    1.27
+   ],
+   "look_world": [
+    1.36832,
+    0.79,
+    1.27
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "HOOD",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": 0.58,
+    "up_m": 1.27,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -0.58,
+    -0.0,
+    1.27
+   ],
+   "look_local": [
+    -1.58,
+    -0.0,
+    1.27
+   ],
+   "eye_world": [
+    -0.502295,
+    -0.29,
+    1.27
+   ],
+   "look_world": [
+    -1.36832,
+    -0.79,
+    1.27
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "DRIFT",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 3040,
+    "fwd_m": -5.8,
+    "up_m": 3.45,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -5.8,
+    0.0,
+    3.45
+   ],
+   "look_local": [
+    0.0,
+    0.0,
+    1.710003
+   ],
+   "eye_world": [
+    -5.8,
+    0.0,
+    3.45
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.710003
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "DRIFT",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 3040,
+    "fwd_m": -5.8,
+    "up_m": 3.45,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    5.8,
+    -0.0,
+    3.45
+   ],
+   "look_local": [
+    -0.0,
+    -0.0,
+    1.710003
+   ],
+   "eye_world": [
+    5.8,
+    0.0,
+    3.45
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.710003
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "DRIFT",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 3040,
+    "fwd_m": -5.8,
+    "up_m": 3.45,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -5.8,
+    0.0,
+    3.45
+   ],
+   "look_local": [
+    0.0,
+    0.0,
+    1.710003
+   ],
+   "eye_world": [
+    100.0,
+    -55.8,
+    6.45
+   ],
+   "look_world": [
+    100.0,
+    -50.0,
+    4.710003
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "DRIFT",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 3040,
+    "fwd_m": -5.8,
+    "up_m": 3.45,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    5.8,
+    -0.0,
+    3.45
+   ],
+   "look_local": [
+    -0.0,
+    -0.0,
+    1.710003
+   ],
+   "eye_world": [
+    100.0,
+    -44.2,
+    6.45
+   ],
+   "look_world": [
+    100.0,
+    -50.0,
+    4.710003
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "DRIFT",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 3040,
+    "fwd_m": -5.8,
+    "up_m": 3.45,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -5.8,
+    0.0,
+    3.45
+   ],
+   "look_local": [
+    0.0,
+    0.0,
+    1.710003
+   ],
+   "eye_world": [
+    -5.022947,
+    -2.9,
+    3.45
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.710003
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "SKYLINE",
+   "set": "primary",
+   "view": "DRIFT",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 3040,
+    "fwd_m": -5.8,
+    "up_m": 3.45,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    5.8,
+    -0.0,
+    3.45
+   ],
+   "look_local": [
+    -0.0,
+    -0.0,
+    1.710003
+   ],
+   "eye_world": [
+    5.022947,
+    2.9,
+    3.45
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.710003
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "FAR",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -6.7,
+    "up_m": 2.3,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -6.7,
+    0.0,
+    2.3
+   ],
+   "look_local": [
+    0.0,
+    0.0,
+    2.3
+   ],
+   "eye_world": [
+    -6.7,
+    0.0,
+    2.3
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    2.3
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "FAR",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -6.7,
+    "up_m": 2.3,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    6.7,
+    -0.0,
+    2.3
+   ],
+   "look_local": [
+    -0.0,
+    -0.0,
+    2.3
+   ],
+   "eye_world": [
+    6.7,
+    0.0,
+    2.3
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    2.3
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "FAR",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -6.7,
+    "up_m": 2.3,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -6.7,
+    0.0,
+    2.3
+   ],
+   "look_local": [
+    0.0,
+    0.0,
+    2.3
+   ],
+   "eye_world": [
+    100.0,
+    -56.7,
+    5.3
+   ],
+   "look_world": [
+    100.0,
+    -50.0,
+    5.3
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "FAR",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -6.7,
+    "up_m": 2.3,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    6.7,
+    -0.0,
+    2.3
+   ],
+   "look_local": [
+    -0.0,
+    -0.0,
+    2.3
+   ],
+   "eye_world": [
+    100.0,
+    -43.3,
+    5.3
+   ],
+   "look_world": [
+    100.0,
+    -50.0,
+    5.3
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "FAR",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -6.7,
+    "up_m": 2.3,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -6.7,
+    0.0,
+    2.3
+   ],
+   "look_local": [
+    0.0,
+    0.0,
+    2.3
+   ],
+   "eye_world": [
+    -5.80237,
+    -3.35,
+    2.3
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    2.3
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "FAR",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -6.7,
+    "up_m": 2.3,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    6.7,
+    -0.0,
+    2.3
+   ],
+   "look_local": [
+    -0.0,
+    -0.0,
+    2.3
+   ],
+   "eye_world": [
+    5.80237,
+    3.35,
+    2.3
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    2.3
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "CLOSE",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -5.5,
+    "up_m": 2.1,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -5.5,
+    0.0,
+    2.1
+   ],
+   "look_local": [
+    0.0,
+    0.0,
+    2.1
+   ],
+   "eye_world": [
+    -5.5,
+    0.0,
+    2.1
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    2.1
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "CLOSE",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -5.5,
+    "up_m": 2.1,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    5.5,
+    -0.0,
+    2.1
+   ],
+   "look_local": [
+    -0.0,
+    -0.0,
+    2.1
+   ],
+   "eye_world": [
+    5.5,
+    0.0,
+    2.1
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    2.1
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "CLOSE",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -5.5,
+    "up_m": 2.1,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -5.5,
+    0.0,
+    2.1
+   ],
+   "look_local": [
+    0.0,
+    0.0,
+    2.1
+   ],
+   "eye_world": [
+    100.0,
+    -55.5,
+    5.1
+   ],
+   "look_world": [
+    100.0,
+    -50.0,
+    5.1
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "CLOSE",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -5.5,
+    "up_m": 2.1,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    5.5,
+    -0.0,
+    2.1
+   ],
+   "look_local": [
+    -0.0,
+    -0.0,
+    2.1
+   ],
+   "eye_world": [
+    100.0,
+    -44.5,
+    5.1
+   ],
+   "look_world": [
+    100.0,
+    -50.0,
+    5.1
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "CLOSE",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -5.5,
+    "up_m": 2.1,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -5.5,
+    0.0,
+    2.1
+   ],
+   "look_local": [
+    0.0,
+    0.0,
+    2.1
+   ],
+   "eye_world": [
+    -4.76314,
+    -2.75,
+    2.1
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    2.1
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "CLOSE",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": -5.5,
+    "up_m": 2.1,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    5.5,
+    -0.0,
+    2.1
+   ],
+   "look_local": [
+    -0.0,
+    -0.0,
+    2.1
+   ],
+   "eye_world": [
+    4.76314,
+    2.75,
+    2.1
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    2.1
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "BUMPER",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 500,
+    "fwd_m": 0.966,
+    "up_m": 1.04,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    0.966,
+    0.0,
+    1.04
+   ],
+   "look_local": [
+    1.966,
+    0.0,
+    0.992026
+   ],
+   "eye_world": [
+    0.966,
+    0.0,
+    1.04
+   ],
+   "look_world": [
+    1.966,
+    0.0,
+    0.992026
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "BUMPER",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 500,
+    "fwd_m": 0.966,
+    "up_m": 1.04,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -0.966,
+    -0.0,
+    1.04
+   ],
+   "look_local": [
+    -1.966,
+    -0.0,
+    0.992026
+   ],
+   "eye_world": [
+    -0.966,
+    0.0,
+    1.04
+   ],
+   "look_world": [
+    -1.966,
+    0.0,
+    0.992026
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "BUMPER",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 500,
+    "fwd_m": 0.966,
+    "up_m": 1.04,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    0.966,
+    0.0,
+    1.04
+   ],
+   "look_local": [
+    1.966,
+    0.0,
+    0.992026
+   ],
+   "eye_world": [
+    100.0,
+    -49.034,
+    4.04
+   ],
+   "look_world": [
+    100.0,
+    -48.034,
+    3.992026
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "BUMPER",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 500,
+    "fwd_m": 0.966,
+    "up_m": 1.04,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -0.966,
+    -0.0,
+    1.04
+   ],
+   "look_local": [
+    -1.966,
+    -0.0,
+    0.992026
+   ],
+   "eye_world": [
+    100.0,
+    -50.966,
+    4.04
+   ],
+   "look_world": [
+    100.0,
+    -51.966,
+    3.992026
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "BUMPER",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 500,
+    "fwd_m": 0.966,
+    "up_m": 1.04,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    0.966,
+    0.0,
+    1.04
+   ],
+   "look_local": [
+    1.966,
+    0.0,
+    0.992026
+   ],
+   "eye_world": [
+    0.836581,
+    0.483,
+    1.04
+   ],
+   "look_world": [
+    1.702606,
+    0.983,
+    0.992026
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "BUMPER",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 500,
+    "fwd_m": 0.966,
+    "up_m": 1.04,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -0.966,
+    -0.0,
+    1.04
+   ],
+   "look_local": [
+    -1.966,
+    -0.0,
+    0.992026
+   ],
+   "eye_world": [
+    -0.836581,
+    -0.483,
+    1.04
+   ],
+   "look_world": [
+    -1.702606,
+    -0.983,
+    0.992026
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "HOOD",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": 1.1,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    1.1,
+    0.0,
+    1.7
+   ],
+   "look_local": [
+    2.1,
+    0.0,
+    1.7
+   ],
+   "eye_world": [
+    1.1,
+    0.0,
+    1.7
+   ],
+   "look_world": [
+    2.1,
+    0.0,
+    1.7
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "HOOD",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": 1.1,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -1.1,
+    -0.0,
+    1.7
+   ],
+   "look_local": [
+    -2.1,
+    -0.0,
+    1.7
+   ],
+   "eye_world": [
+    -1.1,
+    0.0,
+    1.7
+   ],
+   "look_world": [
+    -2.1,
+    0.0,
+    1.7
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "HOOD",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": 1.1,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    1.1,
+    0.0,
+    1.7
+   ],
+   "look_local": [
+    2.1,
+    0.0,
+    1.7
+   ],
+   "eye_world": [
+    100.0,
+    -48.9,
+    4.7
+   ],
+   "look_world": [
+    100.0,
+    -47.9,
+    4.7
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "HOOD",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": 1.1,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -1.1,
+    -0.0,
+    1.7
+   ],
+   "look_local": [
+    -2.1,
+    -0.0,
+    1.7
+   ],
+   "eye_world": [
+    100.0,
+    -51.1,
+    4.7
+   ],
+   "look_world": [
+    100.0,
+    -52.1,
+    4.7
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "HOOD",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": 1.1,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    1.1,
+    0.0,
+    1.7
+   ],
+   "look_local": [
+    2.1,
+    0.0,
+    1.7
+   ],
+   "eye_world": [
+    0.952628,
+    0.55,
+    1.7
+   ],
+   "look_world": [
+    1.818653,
+    1.05,
+    1.7
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "HOOD",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 0,
+    "fwd_m": 1.1,
+    "up_m": 1.7,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -1.1,
+    -0.0,
+    1.7
+   ],
+   "look_local": [
+    -2.1,
+    -0.0,
+    1.7
+   ],
+   "eye_world": [
+    -0.952628,
+    -0.55,
+    1.7
+   ],
+   "look_world": [
+    -1.818653,
+    -1.05,
+    1.7
+   ],
+   "up_world": "car up axis (= +Z for these level poses)",
+   "fov_units": 16384
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "DRIFT",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 3040,
+    "fwd_m": -5.8,
+    "up_m": 3.45,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -5.8,
+    0.0,
+    3.45
+   ],
+   "look_local": [
+    0.0,
+    0.0,
+    1.710003
+   ],
+   "eye_world": [
+    -5.8,
+    0.0,
+    3.45
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.710003
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "DRIFT",
+   "pose": "origin_facing_+X",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 3040,
+    "fwd_m": -5.8,
+    "up_m": 3.45,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    5.8,
+    -0.0,
+    3.45
+   ],
+   "look_local": [
+    -0.0,
+    -0.0,
+    1.710003
+   ],
+   "eye_world": [
+    5.8,
+    0.0,
+    3.45
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.710003
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "DRIFT",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 3040,
+    "fwd_m": -5.8,
+    "up_m": 3.45,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -5.8,
+    0.0,
+    3.45
+   ],
+   "look_local": [
+    0.0,
+    0.0,
+    1.710003
+   ],
+   "eye_world": [
+    100.0,
+    -55.8,
+    6.45
+   ],
+   "look_world": [
+    100.0,
+    -50.0,
+    4.710003
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "DRIFT",
+   "pose": "at_(100,-50,3)_facing_+Y",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 3040,
+    "fwd_m": -5.8,
+    "up_m": 3.45,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    5.8,
+    -0.0,
+    3.45
+   ],
+   "look_local": [
+    -0.0,
+    -0.0,
+    1.710003
+   ],
+   "eye_world": [
+    100.0,
+    -44.2,
+    6.45
+   ],
+   "look_world": [
+    100.0,
+    -50.0,
+    4.710003
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "DRIFT",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": false,
+   "entry": {
+    "pitch_units": 3040,
+    "fwd_m": -5.8,
+    "up_m": 3.45,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    -5.8,
+    0.0,
+    3.45
+   ],
+   "look_local": [
+    0.0,
+    0.0,
+    1.710003
+   ],
+   "eye_world": [
+    -5.022947,
+    -2.9,
+    3.45
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.710003
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  },
+  {
+   "car": "NAVIGATOR",
+   "set": "primary",
+   "view": "DRIFT",
+   "pose": "at_(0,0,0)_facing_yaw_30deg",
+   "look_back_mirrored": true,
+   "entry": {
+    "pitch_units": 3040,
+    "fwd_m": -5.8,
+    "up_m": 3.45,
+    "lat_m": 0.0
+   },
+   "eye_local": [
+    5.8,
+    -0.0,
+    3.45
+   ],
+   "look_local": [
+    -0.0,
+    -0.0,
+    1.710003
+   ],
+   "eye_world": [
+    5.022947,
+    2.9,
+    3.45
+   ],
+   "look_world": [
+    0.0,
+    0.0,
+    1.710003
+   ],
+   "up_world": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fov_units": 13020
+  }
+ ]
+}

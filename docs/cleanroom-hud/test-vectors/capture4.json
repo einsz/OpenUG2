@@ -1,0 +1,164 @@
+{
+  "provenance": "Independently authored synthetic cases for SPEC.md 'Runtime capture amendments, set 4 (implementer questions)'. Texel, tint and background values are synthetic. No original images or data samples are included.",
+  "cases": [
+    {
+      "name": "highlight-rgba-replaces-alpha",
+      "confidence": "observed result (D2)",
+      "input": {
+        "texel_rgba": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "authored_tint_rgba": [
+          255,
+          255,
+          255,
+          64
+        ],
+        "highlight_setting_rgba": [
+          255,
+          190,
+          50,
+          255
+        ],
+        "background_rgb": [
+          115,
+          115,
+          115
+        ],
+        "blend": "source-over"
+      },
+      "expected": {
+        "rgb": [
+          255,
+          190,
+          50
+        ]
+      }
+    },
+    {
+      "name": "highlight-rgb-only-contrast",
+      "confidence": "contrast case: the rejected interim (D2)",
+      "input": {
+        "texel_rgba": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "authored_tint_rgba": [
+          255,
+          255,
+          255,
+          64
+        ],
+        "highlight_setting_rgb_only": [
+          255,
+          190,
+          50
+        ],
+        "background_rgb": [
+          115,
+          115,
+          115
+        ],
+        "blend": "source-over"
+      },
+      "expected": {
+        "rgb_if_alpha_kept": [
+          150.14,
+          133.82,
+          98.69
+        ],
+        "conforms": false
+      },
+      "note": "Synthetic low alpha; shows why keeping authored alpha fails the D1 acceptance."
+    },
+    {
+      "name": "banner-suppressed-with-widget",
+      "confidence": "reviewer decision (D4)",
+      "input": {
+        "path": "standard",
+        "career": true,
+        "widget_targets_resolved": true,
+        "message_pending": true
+      },
+      "expected": {
+        "inherited_message_visuals": false,
+        "mail_icon": true,
+        "right_highlight": true
+      }
+    },
+    {
+      "name": "banner-fallback-without-widget",
+      "confidence": "existing gate (D4)",
+      "input": {
+        "path": "standard",
+        "career": false,
+        "message_pending": true
+      },
+      "expected": {
+        "widget_visible": false,
+        "inherited_message_visuals_permitted": true
+      }
+    },
+    {
+      "name": "banner-fallback-targets-missing",
+      "confidence": "existing gate (D4)",
+      "input": {
+        "path": "standard",
+        "career": true,
+        "widget_targets_resolved": false,
+        "message_pending": true
+      },
+      "expected": {
+        "widget_visible": false,
+        "inherited_message_visuals_permitted": true,
+        "diagnostic": true
+      }
+    },
+    {
+      "name": "banner-gate-no-pending",
+      "confidence": "existing gate (D4)",
+      "input": {
+        "path": "standard",
+        "career": false,
+        "message_pending": false
+      },
+      "expected": {
+        "inherited_message_visuals": false
+      }
+    },
+    {
+      "name": "shift-nonpositive-threshold",
+      "confidence": "provisional input policy (D5)",
+      "input": {
+        "setting_enabled": true,
+        "gear": 3,
+        "rpm": 5000,
+        "shift_rpm": 0
+      },
+      "expected": {
+        "visible": false,
+        "diagnostic": true
+      }
+    },
+    {
+      "name": "shift-clamped-rpm",
+      "confidence": "provisional input policy (D5)",
+      "input": {
+        "setting_enabled": true,
+        "gear": 3,
+        "maximum_rpm": 7000,
+        "rpm": 9000,
+        "shift_rpm": 7200
+      },
+      "expected": {
+        "indicated_rpm": 7000,
+        "visible": false
+      }
+    }
+  ]
+}

@@ -16,78 +16,73 @@ WorldMeshBatch upload_world_mesh_to_gpu(const BatchedVertex *verts, uint32_t vco
     snprintf(b.section_name, sizeof b.section_name, "%s", section_name ? section_name : "");
     if (!verts || !indices || !vcount || !icount) return b;   /* vbo stays 0 -> skipped */
 
-    glGenBuffers(1, &b.vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, b.vbo);
-    glBufferData(GL_ARRAY_BUFFER,
-                 (GLsizeiptr)vcount * (GLsizeiptr)sizeof(BatchedVertex),
-                 verts, GL_STATIC_DRAW);
+    b.vbo = rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC,
+                                                (size_t)vcount * sizeof(BatchedVertex), verts});
+    b.ibo = rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_INDEX, RHI_UPDATE_STATIC,
+                                                (size_t)icount * sizeof(uint16_t), indices});
 
-    glGenBuffers(1, &b.ibo);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, b.ibo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-                 (GLsizeiptr)icount * (GLsizeiptr)sizeof(uint16_t),
-                 indices, GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     return b;   /* GL 2.1: no VAO, so attribute pointers are set at draw time */
 }
 
+static const RhiParamField world_debug_params_fields[] = {
+    {"u_MVP", RHI_PARAM_MAT4, offsetof(WorldDebugParams, u_MVP), 1},
+    {"u_DebugMode", RHI_PARAM_INT, offsetof(WorldDebugParams, u_DebugMode), 1},
+};
+const RhiParamLayout world_debug_params_layout = {
+    world_debug_params_fields,
+    (uint32_t)(sizeof world_debug_params_fields / sizeof world_debug_params_fields[0]),
+    (uint32_t)sizeof(WorldDebugParams), "WorldDebugParams"
+};
+
+/* BatchedVertex in shader attribute order (a_Position, a_Normal, a_UV0,
+   a_Color); depth test LEQUAL with write, no blend, two-sided. */
+static RhiPipeline world_map_pipeline(RhiShader shader) {
+    static RhiShader cached_shader;
+    static RhiPipeline cached;
+    if (cached.id && cached_shader.id == shader.id) return cached;
+    RhiPipelineDesc d;
+    rhi_pipeline_desc_init(&d);
+    d.shader = shader;
+    d.vertex.attribs[0] = (RhiVertexAttrib){ 0, 0, (uint32_t)offsetof(BatchedVertex, pos),    RHI_VERTEX_FLOAT3 };
+    d.vertex.attribs[1] = (RhiVertexAttrib){ 1, 0, (uint32_t)offsetof(BatchedVertex, normal), RHI_VERTEX_FLOAT3 };
+    d.vertex.attribs[2] = (RhiVertexAttrib){ 2, 0, (uint32_t)offsetof(BatchedVertex, uv),     RHI_VERTEX_FLOAT2 };
+    d.vertex.attribs[3] = (RhiVertexAttrib){ 3, 0, (uint32_t)offsetof(BatchedVertex, col),    RHI_VERTEX_UNORM8X4 };
+    d.vertex.attrib_count = 4;
+    d.vertex.stride[0] = (uint32_t)sizeof(BatchedVertex);   /* 36 B */
+    d.depth_test = 1;
+    d.depth_write = 1;
+    d.depth_compare = RHI_COMPARE_LESS_EQUAL;
+    cached = rhi_pipeline_create(&d);
+    cached_shader = shader;
+    return cached;
+}
+
 void render_world_map(const WorldMeshBatch *batches, uint32_t n,
-                      GLuint program, const float *mvp16, int debug_mode) {
-    if (!batches || !program) return;
-    glUseProgram(program);
-
-    GLint locMVP  = glGetUniformLocation(program, "u_MVP");
-    GLint locMode = glGetUniformLocation(program, "u_DebugMode");
-    if (locMVP  >= 0 && mvp16) glUniformMatrix4fv(locMVP, 1, GL_FALSE, mvp16);
-    if (locMode >= 0)         glUniform1i(locMode, debug_mode);
-
-    /* Attribute locations (bound to 0..3 by world_debug_program_load; queried so
-       an externally-built program still works). Fetched once, not per batch. */
-    GLint aPos = glGetAttribLocation(program, "a_Position");
-    GLint aNor = glGetAttribLocation(program, "a_Normal");
-    GLint aUV  = glGetAttribLocation(program, "a_UV0");
-    GLint aCol = glGetAttribLocation(program, "a_Color");
-    const GLsizei stride = (GLsizei)sizeof(BatchedVertex);   /* 36 B */
-
-#ifndef N2_GLES
-    if (debug_mode == 2) glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);   /* desktop only */
-#endif
+                      RhiShader shader, const float *mvp16, int debug_mode) {
+    WorldDebugParams *p = (WorldDebugParams *)rhi_shader_params(shader, 0);
+    if (!batches || !p) return;
+    RhiPipeline pipeline = world_map_pipeline(shader);
+    if (!pipeline.id) return;
+    if (mvp16) memcpy(p->u_MVP, mvp16, sizeof p->u_MVP);
+    p->u_DebugMode = debug_mode;
+    rhi_cmd_bind_pipeline(pipeline);
+    int wire = debug_mode == 2 && rhi_cmd_set_wireframe(1) == RHI_OK;
 
     for (uint32_t k = 0; k < n; k++) {
         const WorldMeshBatch *b = &batches[k];
-        if (!b->vbo || !b->index_count) continue;   /* skip empty/disabled sections */
-
-        glBindBuffer(GL_ARRAY_BUFFER, b->vbo);
-        if (aPos >= 0) { glEnableVertexAttribArray((GLuint)aPos);
-            glVertexAttribPointer((GLuint)aPos, 3, GL_FLOAT, GL_FALSE, stride,
-                                  (const void *)offsetof(BatchedVertex, pos)); }
-        if (aNor >= 0) { glEnableVertexAttribArray((GLuint)aNor);
-            glVertexAttribPointer((GLuint)aNor, 3, GL_FLOAT, GL_FALSE, stride,
-                                  (const void *)offsetof(BatchedVertex, normal)); }
-        if (aUV  >= 0) { glEnableVertexAttribArray((GLuint)aUV);
-            glVertexAttribPointer((GLuint)aUV, 2, GL_FLOAT, GL_FALSE, stride,
-                                  (const void *)offsetof(BatchedVertex, uv)); }
-        if (aCol >= 0) { glEnableVertexAttribArray((GLuint)aCol);
-            glVertexAttribPointer((GLuint)aCol, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride,
-                                  (const void *)offsetof(BatchedVertex, col)); }
-
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, b->ibo);
-        glDrawElements(GL_TRIANGLES, (GLsizei)b->index_count, GL_UNSIGNED_SHORT, 0);
+        if (!b->vbo.id || !b->index_count) continue;   /* skip empty/disabled sections */
+        rhi_cmd_bind_vertex_buffer(0, b->vbo, 0);
+        rhi_cmd_bind_index_buffer(b->ibo);
+        rhi_cmd_draw_indexed(b->index_count, 0);
     }
 
-#ifndef N2_GLES
-    if (debug_mode == 2) glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-#endif
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    if (wire) rhi_cmd_set_wireframe(0);
 }
 
 void destroy_world_mesh_batch(WorldMeshBatch *b) {
     if (!b) return;
-    if (b->ibo) glDeleteBuffers(1, &b->ibo);
-    if (b->vbo) glDeleteBuffers(1, &b->vbo);
+    rhi_buffer_destroy(b->ibo);
+    rhi_buffer_destroy(b->vbo);
     /* b->vao intentionally not deleted: never created on GL 2.1 core */
     memset(b, 0, sizeof *b);
 }
@@ -104,35 +99,30 @@ static char *wm_read_text(const char *path) {
     s[n] = 0; fclose(f);
     return s;
 }
-static GLuint wm_compile(GLenum type, const char *src, GLint len) {
-    GLuint s = glCreateShader(type);
-#ifdef N2_GLES
-    /* GLSL ES 1.00 variant of the same source: drop the "#version 120" line
-       (ES has no 1.20) and put the ES precision prologue in front. */
+/* Final text for one stage. Desktop: the 1.20 source as is. GLES: the GLSL ES
+   1.00 variant of the same source -- drop the "#version 120" line (ES has no
+   1.20) and put the ES precision prologue in front. len < 0 = NUL-terminated. */
+static char *wm_text(GLenum type, const char *src, GLint len) {
     if (len < 0) len = (GLint)strlen(src);
+    const char *header = "";
+#ifdef N2_GLES
     if (len >= 8 && !strncmp(src, "#version", 8)) {
         const char *nl = memchr(src, '\n', (size_t)len);
         GLint skip = nl ? (GLint)(nl - src) + 1 : len;
         src += skip; len -= skip;
     }
-    const char *parts[2] = { type == GL_VERTEX_SHADER ? GLSL_VS_HEADER : GLSL_FS_HEADER, src };
-    const GLint lens[2] = { -1, len };
-    glShaderSource(s, 2, parts, lens);
+    header = type == GL_VERTEX_SHADER ? GLSL_VS_HEADER : GLSL_FS_HEADER;
 #else
-    const GLint *lp = (len < 0) ? NULL : &len;   /* len < 0 = NUL-terminated */
-    glShaderSource(s, 1, &src, lp);
+    (void)type;
 #endif
-    glCompileShader(s);
-    GLint ok = 0; glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
-    if (!ok) {
-        char log[1024]; glGetShaderInfoLog(s, (GLsizei)sizeof log, NULL, log);
-        fprintf(stderr, "world_debug shader compile: %s\n", log);
-        glDeleteShader(s); return 0;
-    }
-    return s;
+    size_t n = strlen(header);
+    char *t = (char *)malloc(n + (size_t)len + 1);
+    if (!t) return NULL;
+    memcpy(t, header, n); memcpy(t + n, src, (size_t)len); t[n + (size_t)len] = 0;
+    return t;
 }
 
-GLuint world_debug_program_load(const char *vert_path, const char *frag_path) {
+RhiShader world_debug_shader_load(const char *vert_path, const char *frag_path) {
     /* Prefer on-disk files (live-editable during dev); fall back per-shader to
        the make-embedded source (generated_world_debug_shaders.h, xxd byte
        arrays -- not NUL-terminated, so pass their *_len) so the binary works
@@ -149,24 +139,14 @@ GLuint world_debug_program_load(const char *vert_path, const char *frag_path) {
            flen = (GLint)src_world_debug_120_frag_len;
            fprintf(stderr, "world_debug: %s not found, using embedded fragment shader\n", frag_path); }
 
-    GLuint v = wm_compile(GL_VERTEX_SHADER, vsrc, vlen);
-    GLuint f = wm_compile(GL_FRAGMENT_SHADER, fsrc, flen);
+    static const char *const attributes[] = { "a_Position", "a_Normal", "a_UV0", "a_Color" };
+    static const RhiParamLayout *const blocks[] = { &world_debug_params_layout };
+    char *vtext = wm_text(GL_VERTEX_SHADER, vsrc, vlen);
+    char *ftext = wm_text(GL_FRAGMENT_SHADER, fsrc, flen);
     free(vfile); free(ffile);
-    if (!v || !f) return 0;
-
-    GLuint p = glCreateProgram();
-    glAttachShader(p, v); glAttachShader(p, f);
-    glBindAttribLocation(p, 0, "a_Position");
-    glBindAttribLocation(p, 1, "a_Normal");
-    glBindAttribLocation(p, 2, "a_UV0");
-    glBindAttribLocation(p, 3, "a_Color");
-    glLinkProgram(p);
-    GLint ok = 0; glGetProgramiv(p, GL_LINK_STATUS, &ok);
-    if (!ok) {
-        char log[1024]; glGetProgramInfoLog(p, (GLsizei)sizeof log, NULL, log);
-        fprintf(stderr, "world_debug link: %s\n", log);
-        glDeleteProgram(p); p = 0;
-    }
-    glDeleteShader(v); glDeleteShader(f);
-    return p;
+    RhiShader shader = {0};
+    if (vtext && ftext)
+        shader = rhi_shader_create(&(RhiShaderDesc){ vtext, ftext, attributes, 4, "world_debug", blocks, 1 });
+    free(vtext); free(ftext);
+    return shader;
 }

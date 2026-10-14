@@ -1,0 +1,140 @@
+{
+  "provenance": "Independently authored synthetic cases for SPEC.md 'Runtime capture amendments, capture set 2'. No original images, measurements tables or data samples are included. Glyph advances are synthetic. Inferred/provisional cases test the spec's labeled policies, not retail equivalence.",
+  "cases": [
+    {
+      "name": "gauge-placement-independent",
+      "confidence": "observed (C2-1)",
+      "input": {
+        "variants": [
+          {
+            "nos_installed": true,
+            "boost_fitted": true
+          },
+          {
+            "nos_installed": false,
+            "boost_fitted": false
+          }
+        ]
+      },
+      "expected": {
+        "tach_needle_speed_gear_unit_placement_identical": true,
+        "nos_draws_in_standard_path": 0,
+        "boost_draws_in_standard_path": 0
+      }
+    },
+    {
+      "name": "widget-idle",
+      "confidence": "observed state A; mapping to pending=false inferred (C2-4); assumes widget targets resolved",
+      "input": {
+        "career": true,
+        "message_pending": false
+      },
+      "expected": {
+        "backing_visible": true,
+        "dpad_visible": true,
+        "mail_visible": false,
+        "highlights_visible": [],
+        "centre_figure": "drawn with the C3-8 catalog texture when present; otherwise omitted with diagnostic (amended by capture set 3)"
+      }
+    },
+    {
+      "name": "widget-message-pending",
+      "confidence": "observed state B; mapping to pending=true inferred (C2-4); assumes widget targets resolved",
+      "input": {
+        "career": true,
+        "message_pending": true,
+        "highlight_colour_setting_rgb": [
+          255,
+          192,
+          48
+        ]
+      },
+      "expected": {
+        "backing_visible": true,
+        "dpad_visible": true,
+        "mail_visible": true,
+        "highlights_visible": [
+          "right"
+        ],
+        "highlight_rgb": [
+          255,
+          192,
+          48
+        ],
+        "banner_text_visible": false
+      }
+    },
+    {
+      "name": "widget-non-career",
+      "confidence": "provisional default (C2-4)",
+      "input": {
+        "career": false,
+        "message_pending": true
+      },
+      "expected": {
+        "widget_visible": false
+      }
+    },
+    {
+      "name": "widget-targets-missing",
+      "confidence": "provisional policy (C2-4)",
+      "input": {
+        "career": true,
+        "message_pending": false,
+        "widget_targets_resolved": false
+      },
+      "expected": {
+        "widget_visible": false,
+        "diagnostic": true
+      }
+    },
+    {
+      "name": "bank-100",
+      "confidence": "observed (C2-5); synthetic metrics",
+      "input": {
+        "career": true,
+        "balance": 100,
+        "suppressed": false,
+        "anchor_x": 100,
+        "size": 0.5,
+        "justification": 2,
+        "advances": [
+          10,
+          12,
+          12
+        ]
+      },
+      "expected": {
+        "value_text": "100",
+        "label_visible": true,
+        "backing_visible": true,
+        "pen_positions": [
+          83,
+          88,
+          94
+        ],
+        "pen_end": 100
+      }
+    },
+    {
+      "name": "north-heading-180",
+      "confidence": "existing provisional convention (C2-7)",
+      "input": {
+        "map_center": [
+          0,
+          0
+        ],
+        "north_pivot_offset": 72,
+        "heading_radians": 3.141592653589793
+      },
+      "expected": {
+        "north_center": [
+          0,
+          72
+        ],
+        "planar_rotation_degrees": 180
+      },
+      "note": "Tip points screen-down; -180 and 180 degrees are equivalent."
+    }
+  ]
+}

@@ -20,7 +20,7 @@ override CFLAGS += -D_DEFAULT_SOURCE
 
 IMAGE_CFLAGS := $(shell pkg-config --cflags libpng libcrypto)
 IMAGE_LIBS := $(shell pkg-config --libs libpng libcrypto)
-CFLAGS += $(IMAGE_CFLAGS)
+override CFLAGS += $(IMAGE_CFLAGS)
 
 SDL_CFLAGS := $(shell sdl2-config --cflags 2>/dev/null)
 SDL_LIBS   := $(shell sdl2-config --libs   2>/dev/null)
@@ -63,8 +63,8 @@ $(BUILD)/ugui_test: $(wildcard ../../tools/ugui_test*.inc) ../../tools/ugui_test
 demo: $(BUILD)/ugui_demo
 	@echo "Run:  $(BUILD)/ugui_demo [--data GAME_DIR] [--size W H]   (mouse only: hover, click, wheel, drag, right-click = Back)"
 
-$(BUILD)/ugui_demo: ../../tools/ugui_demo.c $(CORE) ugui_gl.c ../gl_state.c $(APP) $(HDRS) | $(BUILD)
-	$(CC) $(CFLAGS) -I. -I../../tools $(SDL_CFLAGS) ../../tools/ugui_demo.c $(CORE) ugui_gl.c ../gl_state.c $(APP) -o $@ $(SDL_LIBS) $(GL_LIBS) $(IMAGE_LIBS) -lm
+$(BUILD)/ugui_demo: ../../tools/ugui_demo.c $(CORE) ugui_gl.c ../rhi_gl_state.c $(APP) $(HDRS) | $(BUILD)
+	$(CC) $(CFLAGS) -I. -I../../tools $(SDL_CFLAGS) ../../tools/ugui_demo.c $(CORE) ugui_gl.c ../rhi_gl_state.c $(APP) -o $@ $(SDL_LIBS) $(GL_LIBS) $(IMAGE_LIBS) -lm
 
 run: demo
 	$(BUILD)/ugui_demo $(if $(DATA),--data "$(DATA)")

@@ -1,5 +1,7 @@
 /* Real GL shader regression, no retail assets. Run: make headlight-render-test. */
 #include "render.h"
+#include "rhi_gl.h"
+#include "legacy_draw.h"
 #include <assert.h>
 #include <stdio.h>
 
@@ -12,10 +14,10 @@ static void wall(N2Batch *b,float x,float ymin) {
     const float pos[4][3]={{x,ymin,0},{x,3,0},{x,3,3},{x,ymin,3}};
     const uint16_t idx[]={0,1,2,0,2,3};
     for(int i=0;i<4;i++)memcpy(v[i].pos,pos[i],sizeof pos[i]);
-    if(!b->vbo)glGenBuffers(1,&b->vbo);
-    if(!b->ibo)glGenBuffers(1,&b->ibo);
-    glBindBuffer(GL_ARRAY_BUFFER,b->vbo);glBufferData(GL_ARRAY_BUFFER,sizeof v,v,GL_STATIC_DRAW);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,b->ibo);glBufferData(GL_ELEMENT_ARRAY_BUFFER,sizeof idx,idx,GL_STATIC_DRAW);
+    if(!b->vbo.id)b->vbo=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX,RHI_UPDATE_STATIC,sizeof v,v});
+    else rhi_buffer_replace(b->vbo,sizeof v,v);
+    if(!b->ibo.id)b->ibo=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_INDEX,RHI_UPDATE_STATIC,sizeof idx,idx});
+    else rhi_buffer_replace(b->ibo,sizeof idx,idx);
     b->index_count=6;
     b->bbox_min[0]=b->bbox_max[0]=x;b->bbox_min[1]=ymin;b->bbox_max[1]=3;
     b->bbox_min[2]=0;b->bbox_max[2]=3;
@@ -24,7 +26,11 @@ static int sample(const RProg *r,GpuMesh *road,const float model[16],int high,fl
     const float anchors[4][4]={{0,.65f,.7f,1},{0,-.65f,.7f,1},{0},{0}};
     render_headlights(r,model,anchors,high,high?1:4,high?85:35,gain);
     if(shadow_enabled) {
+        GLboolean stencil=glIsEnabled(GL_STENCIL_TEST);
+        glEnable(GL_STENCIL_TEST);
         shadow_draws=render_headlight_shadows(r,&shadows,casters,caster_count);
+        assert(glIsEnabled(GL_STENCIL_TEST));
+        if(!stencil)glDisable(GL_STENCIL_TEST);
         assert(shadow_draws>=0);
         GLint viewport[4],program,active;glGetIntegerv(GL_VIEWPORT,viewport);
         glGetIntegerv(GL_CURRENT_PROGRAM,&program);glGetIntegerv(GL_ACTIVE_TEXTURE,&active);
@@ -45,13 +51,13 @@ static void model_lighting_test(const RProg *r) {
     uint16_t indices[]={0,1,2,0,2,3};
     N2Mesh mesh={.verts=local,.idx=indices,.nverts=4,.nidx=6,.authored_normals=1};
     N2Scene scene={.meshes=&mesh,.count=1};
-    assert(r->uModel>=0);
+    assert(glGetUniformLocation(r->prog,"uModel")>=0);
     glViewport(0,0,128,64);glDisable(GL_BLEND);glDisable(GL_DEPTH_TEST);glDisable(GL_CULL_FACE);
-    glUniform1f(r->uUseTex,0);glUniform1f(r->uHeadGain,0);glUniform1f(r->uFogDensity,0);
-    glUniform3f(r->uCamPos,0,0,6);glUniform3f(r->uLight,.3f,.4f,.8f);
-    glUniform3f(r->uColor,.12f,.16f,.20f);glUniform1f(r->uAmbient,.3f);glUniform1f(r->uDiffuse,.8f);
-    glUniform1f(r->uSpec,.4f);glUniform1f(r->uGloss,12);glUniform1f(r->uEnv,.45f);
-    glUniform1f(r->uClearcoat,.2f);glUniform1f(r->uAlpha,.25f);
+    r->p->uUseTex = 0;r->p->uHeadGain = 0;r->p->uFogDensity = 0;
+    ug2_vec3(r->p->uCamPos, 0, 0, 6);ug2_vec3(r->p->uLight, .3f, .4f, .8f);
+    ug2_vec3(r->p->uColor, .12f, .16f, .20f);r->p->uAmbient = .3f;r->p->uDiffuse = .8f;
+    r->p->uSpec = .4f;r->p->uGloss = 12;r->p->uEnv = .45f;
+    r->p->uClearcoat = .2f;r->p->uAlpha = .25f;
     for(int pose=0;pose<3;pose++)for(int glass=0;glass<2;glass++) {
         const float pos[]={.1f,-.1f,.2f},up[]={0,.6f,.8f};
         float body[16],hub[16],model[16],mvp[16],baked[32];
@@ -66,12 +72,12 @@ static void model_lighting_test(const RProg *r) {
             baked[v*5+a]=model[a]*local[v*5]+model[4+a]*local[v*5+1]+model[12+a];
             baked[20+v*3+a]=model[8+a]/scale;
         }
-        glUniform1f(r->uFresnel,(float)glass);
+        r->p->uFresnel = (float)glass;
         unsigned char pixel[2][4];
         for(int pass=0;pass<2;pass++) {
             mesh.verts=pass?baked:local;GpuMesh *gpu=upload_scene(&scene);assert(gpu);
             render_model(r,pass?NULL:model);
-            glUniformMatrix4fv(r->uMVP,1,GL_FALSE,pass?projection:mvp);
+            ug2_copy(r->p->uMVP, pass?projection:mvp, 16);
             glClear(GL_COLOR_BUFFER_BIT);draw_gpumesh(gpu);glFinish();
             glReadPixels(64,32,1,1,GL_RGBA,GL_UNSIGNED_BYTE,pixel[pass]);
             free_scene_gpu(gpu,1);
@@ -89,23 +95,23 @@ static void model_lighting_test(const RProg *r) {
 static void tail_lamp_test(const RProg *r) {
     GpuMesh quad=make_quad();
     unsigned char rgb[]={32,4,3, 192,10,6};
-    N2Tex image={.w=2,.h=1,.rgb=rgb};GLuint texture=upload_tex(&image);assert(texture);
+    N2Tex image={.w=2,.h=1,.rgb=rgb};RhiTexture texture=upload_tex(&image);assert(texture.id);
     float mvp[]={2,0,0,0,0,2,0,0,0,0,1,0,-1,-1,0,1};
-    render_model(r,NULL);glUniformMatrix4fv(r->uMVP,1,GL_FALSE,mvp);
+    render_model(r,NULL);ug2_copy(r->p->uMVP, mvp, 16);
     glViewport(0,0,128,64);glDisable(GL_BLEND);glDisable(GL_DEPTH_TEST);
-    glDisable(GL_CULL_FACE);glUniform1f(r->uFresnel,0);glUniform1f(r->uAlpha,1);
-    glUniform1f(r->uHeadGain,0);glUniform1f(r->uFogDensity,0);
-    glUniform1f(r->uAmbient,.3f);glUniform1f(r->uDiffuse,.8f);
-    glUniform3f(r->uLight,0,0,-1);glUniform3f(r->uCamPos,.5f,.5f,5);
+    glDisable(GL_CULL_FACE);r->p->uFresnel = 0;r->p->uAlpha = 1;
+    r->p->uHeadGain = 0;r->p->uFogDensity = 0;
+    r->p->uAmbient = .3f;r->p->uDiffuse = .8f;
+    ug2_vec3(r->p->uLight, 0, 0, -1);ug2_vec3(r->p->uCamPos, .5f, .5f, 5);
     const int running[]={0,1,0,1,1,0,1},braking[]={0,0,1,1,0,0,0},boost[]={0,0,0,0,1,1,0};
     int red[2][7];
     for(int textured=0;textured<2;textured++)for(int state=0;state<7;state++) {
-        render_tail_lamp(r,textured?texture:0,running[state],braking[state],boost[state],state==6?.25f:1);
+        render_tail_lamp(r,textured?texture:(RhiTexture){0},running[state],braking[state],boost[state],state==6?.25f:1);
         glClear(GL_COLOR_BUFFER_BIT);draw_gpumesh(&quad);glFinish();
         unsigned char pixel[4];glReadPixels(64,32,1,1,GL_RGBA,GL_UNSIGNED_BYTE,pixel);
         red[textured][state]=pixel[0];
-        float use,emission[3];glGetUniformfv(r->prog,r->uUseTex,&use);
-        glGetUniformfv(r->prog,r->uEmissive,emission);
+        float use,emission[3];ug2_copy(&use, &r->p->uUseTex, 1);
+        ug2_copy(emission, r->p->uEmissive, 3);
         assert(use==(float)textured);
         assert((emission[0]>0)==(running[state]||braking[state]));
         if(textured && state==1) {
@@ -124,8 +130,8 @@ static void tail_lamp_test(const RProg *r) {
         printf("tail lens textured=%d off=%d running=%d brake-day=%d brake-night=%d\n",
                tex,red[tex][0],red[tex][1],red[tex][2],red[tex][3]);
     }
-    glDeleteBuffers(1,&quad.vbo);glDeleteBuffers(1,&quad.nbo);glDeleteBuffers(1,&quad.ibo);
-    glDeleteTextures(1,&texture);glUniform3f(r->uEmissive,0,0,0);
+    rhi_buffer_destroy(quad.vbo);rhi_buffer_destroy(quad.nbo);rhi_buffer_destroy(quad.ibo);
+    rhi_texture_destroy(texture);ug2_vec3(r->p->uEmissive, 0, 0, 0);
     puts("PASS: rear lamps retain texture detail; day/night brakes, running lights and nitro response");
 }
 
@@ -155,7 +161,7 @@ int main(void) {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION,1);
     SDL_Window *window=SDL_CreateWindow("Headlight shader test",0,0,128,64,SDL_WINDOW_OPENGL|SDL_WINDOW_HIDDEN);
     assert(window);SDL_GLContext context=SDL_GL_CreateContext(window);assert(context);
-    RProg r=render_program();GLint linked=0;glGetProgramiv(r.prog,GL_LINK_STATUS,&linked);assert(linked);
+    RProg r=render_program();glUseProgram(r.prog);GLint linked=0;glGetProgramiv(r.prog,GL_LINK_STATUS,&linked);assert(linked);
     /* The normal buffer uses authored smoothing, with a per-vertex fallback
        for zero/NaN source data. Position/UV layout stays five floats wide. */
     float normal_verts[]={0,0,0,0,0, 1,0,0,1,0, 0,1,0,0,1,
@@ -166,7 +172,7 @@ int main(void) {
     for(int authored=1;authored>=0;authored--) {
         normal_mesh.authored_normals=(unsigned char)authored;
         GpuMesh *gpu=upload_scene(&normal_scene);assert(gpu);
-        float uploaded[9];glBindBuffer(GL_ARRAY_BUFFER,gpu[0].nbo);
+        float uploaded[9];glBindBuffer(GL_ARRAY_BUFFER,rhi_gl_buffer_name(gpu[0].nbo));
         glGetBufferSubData(GL_ARRAY_BUFFER,0,sizeof uploaded,uploaded);
         assert(fabsf(uploaded[0]-(authored?.6f:0))<1e-6f && uploaded[1]==0);
         assert(fabsf(uploaded[2]-(authored?.8f:1))<1e-6f);
@@ -174,7 +180,7 @@ int main(void) {
         free_scene_gpu(gpu,1);
     }
     unsigned char white[]={255,255,255};N2Tex tex={.w=1,.h=1,.rgb=white};
-    GLuint texture=upload_tex(&tex); /* shader sampler remains valid even for flat colour */
+    RhiTexture texture=upload_tex(&tex); /* shader sampler remains valid even for flat colour */
     float verts[]={0,-20,0,0,0,100,-20,0,1,0,100,20,0,1,1,0,20,0,0,1};
     uint16_t idx[]={0,1,2,0,2,3};
     N2Mesh mesh={.verts=verts,.idx=idx,.nverts=4,.nidx=6};N2Scene scene={.meshes=&mesh,.count=1};
@@ -182,9 +188,9 @@ int main(void) {
     float projection[16]={.02f,0,0,0,0,.05f,0,0,0,0,.01f,0,-1,0,0,1};
     float model[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
     glViewport(0,0,128,64);glDisable(GL_BLEND);glDisable(GL_CULL_FACE);
-    glUniformMatrix4fv(r.uMVP,1,GL_FALSE,projection);
-    glUniform3f(r.uColor,.3f,.3f,.3f);glUniform3f(r.uCamPos,0,0,10);
-    glUniform1f(r.uAmbient,.1f);glUniform1f(r.uDiffuse,0);
+    ug2_copy(r.p->uMVP, projection, 16);
+    ug2_vec3(r.p->uColor, .3f, .3f, .3f);ug2_vec3(r.p->uCamPos, 0, 0, 10);
+    r.p->uAmbient = .1f;r.p->uDiffuse = 0;
     int off=sample(&r,road,model,0,0,25);
     int low=sample(&r,road,model,0,1,25);
     int low_far=sample(&r,road,model,0,1,64);
@@ -205,7 +211,7 @@ int main(void) {
     blocker.drawmode=N2_DRAW_CUTOUT;
     unsigned char alpha=0;tex.alpha=&alpha;blocker.tex=upload_tex(&tex);
     assert(sample(&r,road,model,0,1,25)==low);
-    glDeleteTextures(1,&blocker.tex);alpha=255;blocker.tex=upload_tex(&tex);
+    rhi_texture_destroy(blocker.tex);alpha=255;blocker.tex=upload_tex(&tex);
     assert(sample(&r,road,model,0,1,25)==off);
     blocker.drawmode=N2_DRAW_BLEND;
     assert(sample(&r,road,model,0,1,25)==low && shadow_draws==0);
@@ -230,15 +236,15 @@ int main(void) {
     /* The road also casts: a surface must not shadow itself. */
     BatchedVertex surface[4]={0};
     for(int v=0;v<4;v++)memcpy(surface[v].pos,verts+v*5,3*sizeof(float));
-    glBindBuffer(GL_ARRAY_BUFFER,blocker.vbo);glBufferData(GL_ARRAY_BUFFER,sizeof surface,surface,GL_STATIC_DRAW);
+    rhi_buffer_replace(blocker.vbo,sizeof surface,surface);
     blocker.bbox_min[0]=0;blocker.bbox_max[0]=100;
     blocker.bbox_min[1]=-20;blocker.bbox_max[1]=20;blocker.bbox_max[2]=0;
     caster_count=1;
     assert(sample(&r,road,model,0,1,25)==low);
     assert(sample(&r,road,model,1,1,64)==high_far);
     shadow_enabled=0;
-    glDeleteTextures(1,&blocker.tex);glBindTexture(GL_TEXTURE_2D,texture);
-    glDeleteBuffers(1,&blocker.vbo);glDeleteBuffers(1,&blocker.ibo);
+    rhi_texture_destroy(blocker.tex);glBindTexture(GL_TEXTURE_2D,rhi_gl_texture_name(texture));
+    rhi_buffer_destroy(blocker.vbo);rhi_buffer_destroy(blocker.ibo);
     printf("PASS: world shadows blocked=%d single lamp=%d clear=%d; cutouts, culling, refresh and GL state\n",blocked,one_lamp,low);
     free_scene_gpu(road,1);
     /* Underside above lamp height: low-beam cutoff must reject it. */
@@ -251,10 +257,10 @@ int main(void) {
     printf("PASS: low road=%d off=%d; far low=%d high=%d; heading and upper cutoff\n",low,off,low_far,high_far);
     /* Two-sided car glass must not become opaque when seen from inside.
        Same pane and camera, opposite index winding; inspect the shader alpha. */
-    glUniform1f(r.uHeadGain,0);glUniform1f(r.uFresnel,1);glUniform1f(r.uAlpha,.2f);
-    glUniform1f(r.uSpec,.5f);glUniform1f(r.uGloss,40);glUniform1f(r.uEnv,.4f);
-    glUniform1f(r.uFogDensity,0);glUniform3f(r.uLight,0,0,1);
-    glUniform3f(r.uCamPos,20,0,10);glUniform3f(r.uColor,.05f,.05f,.05f);
+    r.p->uHeadGain = 0;r.p->uFresnel = 1;r.p->uAlpha = .2f;
+    r.p->uSpec = .5f;r.p->uGloss = 40;r.p->uEnv = .4f;
+    r.p->uFogDensity = 0;ug2_vec3(r.p->uLight, 0, 0, 1);
+    ug2_vec3(r.p->uCamPos, 20, 0, 10);ug2_vec3(r.p->uColor, .05f, .05f, .05f);
     glDisable(GL_BLEND);glDisable(GL_DEPTH_TEST);glDisable(GL_CULL_FACE);
     unsigned char glass[2][4];
     for(int side=0;side<2;side++) {
@@ -273,6 +279,6 @@ int main(void) {
     model_lighting_test(&r);
     tail_lamp_test(&r);
     free_headlight_shadows(&shadows);
-    free_scene_gpu(road,1);glDeleteTextures(1,&texture);glDeleteProgram(r.prog);
+    free_scene_gpu(road,1);rhi_texture_destroy(texture);rhi_shader_destroy(r.shader);
     SDL_GL_DeleteContext(context);SDL_DestroyWindow(window);SDL_Quit();return 0;
 }

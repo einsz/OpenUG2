@@ -110,9 +110,12 @@ a design at launch. Changing cars clears the vinyl and loads that car’s catalo
   needle uses the player's skin-00 sprite with a procedural fallback. See the
   [speed](docs/HUD_SPEED_READOUT.md), [tachometer](docs/HUD_TACHOMETER.md) and
   [sprite](docs/HUD_SPRITES.md) notes for remaining limits.
+  On windows wider than 4:3 the HUD defaults to a `wide` fitment that hangs the
+  left and right groups off the screen edges; `--hud-fit 4:3` keeps everything
+  in a centred 4:3 frame (see [widescreen HUD](docs/HUD_WIDESCREEN.md)).
 - **Open-world traffic** — traffic and roaming racers follow authored road
   points through steering and speed targets. Player and AI share suspension,
-  airborne momentum and landing response; the camera reacts to landing impact.
+  airborne momentum and landing response.
   Spawns require road support, clearance and an off-screen location.
 - **Racing** — source event types, grids, continuous courses, ordered checkpoints
   and laps drive physics-based opponents. Circuit, sprint, drag, drift, Street X
@@ -125,7 +128,7 @@ a design at launch. Changing cars clears the vinyl and loads that car’s catalo
   the game; arbitrary editor projects are not loaded by gameplay. See
   [`tools/MAP_EDITOR.md`](tools/MAP_EDITOR.md).
 - **Timing and diagnostics** — driving and contacts advance at a fixed 60 Hz,
-  with interpolated rendering and chase-camera movement. The ImGui Race Log
+  with interpolated rendering; the gameplay camera follows the interpolated car pose. The ImGui Race Log
   records telemetry; `.` marks a problem and saves its nearby actor snapshot.
   `make physics-clock-test` checks tick-indexed replay across fixed and irregular
   frame rates, invalid elapsed times and bounded stall recovery.
@@ -251,7 +254,7 @@ builds compile the panel out entirely, so none of this is reachable there —
 | --- | --- |
 | **Modification** | The vehicle shop surface. Live car selector (swaps the vehicle without restarting the world or losing your pose) plus colour-coded Underground 2 shop subtabs. |
 | **Vehicle Diagnostics** | Per-car wheel stance (axle, track, ride, body lowering), live handling readouts, engine-cover and car-part inspection, mesh inspector, wheel spin/steer demo. |
-| **Lighting & Environment** | Night mode, headlight beam preview, beam pitch/reach/intensity, lens opacity, headlight shadows, street/district flare size and brightness, chase-camera distance/height/stiffness, ambient/diffuse/fog. |
+| **Lighting & Environment** | Night mode, headlight beam preview, beam pitch/reach/intensity, lens opacity, headlight shadows, street/district flare size and brightness, legacy-camera distance/height/stiffness, gameplay camera readout, ambient/diffuse/fog. |
 | **World & Entities** | Live traffic density (0–16 cars, default 4), active traffic/racer counts, loaded track selector, scenery semantics census, nearby world chunks, decoded `ZCV_`/`ZCS_` entity definitions, UV checker, HUD toggle. |
 | **Placement Marks** | Report a misplaced object by driving to it. Live probe readout (world XYZ, the ground selector's surface height and category, the covering chunk's asset name, district), then `F9` marks the defect and `F10` marks where it should be. Marks carry a note, list colour-coded, and go to the clipboard or `placement_marks.txt` — and every mark is echoed to stdout, so nothing is lost if the session ends. |
 | **Engine Telemetry** | FPS and frame time, draw calls, car/track mesh counts, active district, camera and car coordinates, heading and speed, free camera. |
@@ -317,10 +320,20 @@ the nearest safe authored road; no internal world-mode or spawn flag is needed.
 - `--hud` — enable the prototype player HUD, including live speed/RPM readouts.
 - `--hud-mph` — enable the same HUD with MPH speed presentation; physics remains
   in its existing units.
+- `--hud-fit wide|4:3` — widescreen HUD fitment (enables the HUD). `wide` (the
+  default) keeps the uniform HUD scale and moves the left and right HUD groups
+  to the screen edges at aspects wider than 4:3; `4:3` centres the whole HUD in a
+  4:3 frame. A project policy, not original behaviour; identical at 4:3 and narrower.
 - `--tier ordinary` — production renderer and the default. `--tier full` is an
   experimental panorama path with known visual defects.
-- `--chase D,H` — chase-camera distance and height in metres, e.g. `--chase 9,1.8`.
-  Useful for framing captures without touching the ImGui sliders.
+- `--camera OPT` — start on camera option 0..4 (Bumper, Hood, Close, Far, Super Far) without saving it;
+  `--look-back` holds look-back on. See [`docs/CAMERA.md`](docs/CAMERA.md).
+- `--projection wide|original` — gameplay camera projection. `wide` (default) keeps the 4:3 view as
+  the reference and adds the extra width of wider windows horizontally (Hor+, vertical view
+  unchanged); `original` uses the original program's formula with the real window size, which
+  crops the vertical view on widescreen. Identical at 4:3. See [`docs/CAMERA.md`](docs/CAMERA.md).
+- `--chase D,H` — legacy spring distance and height in metres for the menu/orbit/`--shot-yaw` views,
+  e.g. `--chase 9,1.8`. The gameplay camera takes its offsets from the car's GLOBALB record.
 - `--devui` — open the developer menu at launch (`make debug` builds only), so a
   `--shot` capture includes the panel.
 
@@ -339,7 +352,7 @@ milestone.
 grip for drifts), hold **right mouse** and drag to orbit the car (press **F** for map free flight: **WASD**, **Q/E**, **Shift** for speed), `L` high beam, `J` headlight flash
 (racer invitations are not implemented yet), `N` nitro, **`1` developer menu** (the ImGui Master Inspector, in
 `make debug` builds), `F6` cycle rim style
-(once per press), `K` cycle body kit, `Esc` open/resume the pause menu.
+(once per press), `K` cycle body kit, **`C` / `Shift+C` change camera** (Bumper, Hood, Close, Far, and Super Far in drift events; the choice is remembered), hold **`B`** to look back, `Esc` open/resume the pause menu.
 While paused, arrow keys (or clicking the on-screen arrows) browse Resume / Quit Game and Enter selects; quitting
 requires confirmation. Controller Start opens/resumes, D-pad browses, A selects
 and B goes back. Gameplay and engine audio stop while the pause menu is open. Cars

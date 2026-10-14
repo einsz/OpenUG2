@@ -541,6 +541,9 @@ void pause_menu_draw(PauseMenu *p,int width,int height) {
  * the secondary button (Back). A press/pointer on a visible arrow steps (BEHAVIOR 4.7); rail_down/
  * rail_move/rail_up are accepted but inert (BEHAVIOR 4.4).
  * The normal gameplay adapter never calls these entry points. */
+int pause_menu_capture_duration_valid(float elapsed_ms) {
+    return isfinite(elapsed_ms) && elapsed_ms>=0 && elapsed_ms<=PAUSE_MENU_CAPTURE_MAX_MS;
+}
 static void pause_capture_tick(PauseMenu *p,float seconds) {
     FeAction a=pause_menu_update(p,seconds);
     if(a!=FE_ACTION_NONE){p->capture_actions++;p->capture_last_action=a;}
@@ -549,7 +552,7 @@ static void pause_capture_advance(PauseMenu *p,float ms) {
     while(ms>0) {float step=fminf(ms,10);pause_capture_tick(p,step*.001f);ms-=step;}
 }
 int pause_menu_capture_replay(PauseMenu *p,const char *events,float elapsed_ms,int w,int h) {
-    if(!p || elapsed_ms<0 || w<=0 || h<=0)return 0;
+    if(!p || !pause_menu_capture_duration_valid(elapsed_ms) || w<=0 || h<=0)return 0;
     float previous=0;p->capture_actions=0;p->capture_last_action=FE_ACTION_NONE;
     char *copy=events?strdup(events):NULL,*save=NULL;
     if(events && !copy)return 0;
@@ -744,7 +747,7 @@ static int pause_reference_event(PauseMenu *r,const char *event,float x,float y,
     return 1;
 }
 int pause_menu_draw_reference(PauseMenu *p,int width,int height,float elapsed_ms,const char *events) {
-    if(!p || !p->gl || !p->package.nobj || !isfinite(elapsed_ms) || elapsed_ms<0 || width<=0 || height<=0)return 0;
+    if(!p || !p->gl || !p->package.nobj || !pause_menu_capture_duration_valid(elapsed_ms) || width<=0 || height<=0)return 0;
     PauseMenu r={0};r.package=p->package;r.assets=p->assets;r.skin=p->skin;
     memcpy(r.item_tex,p->item_tex,sizeof r.item_tex);ug_ctx_init(&r.ctx);ug_cv_init(&r.canvas);
     pqd_init(&r.quit);r.quit.have_pkg=p->quit.have_pkg;r.quit.pkg=p->quit.pkg;

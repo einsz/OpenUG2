@@ -4,7 +4,9 @@
  * Uses a minimal shader with position + color uniforms and an embedded
  * 3×5 bitmap font (same glyph set as the main game's render.c, but
  * self-contained — no dependency on render.h). */
-#include "../gl_state.h"   /* GL headers + CPU state tracker (no glGet* readback) */
+#include "../rhi_gl_state.h"   /* GL headers + CPU state tracker (no glGet* readback) */
+#include "../rhi_gl.h"        /* GL names behind the buffer and shader handles */
+#include "../generated_shaders.h"   /* src/shaders/: make-embedded byte arrays */
 
 #include "frontend_draw.h"
 #include <stdlib.h>
@@ -12,60 +14,33 @@
 #include <math.h>
 #include <stdio.h>
 
-/* ---- minimal shader ---- */
-/* ponytail: GLES2-compatible, no version directive = desktop GL2 default */
-static const char *FE_VS =
-    "attribute vec2 aPos;\n"
-    "uniform mat4 uMVP;\n"
-    "void main() { gl_Position = uMVP * vec4(aPos, 0.0, 1.0); }\n";
-
-static const char *FE_FS =
-    "#ifdef GL_ES\n"
-    "precision mediump float;\n"
-    "#endif\n"
-    "uniform vec4 uColor;\n"
-    "void main() { gl_FragColor = uColor; }\n";
+/* ---- minimal shader: src/shaders/frontend.vert/.frag ---- */
+/* The embedded arrays are not NUL-terminated. */
+static char *fe_shader_text(const unsigned char *body, unsigned len) {
+    char *t = (char *)malloc(len + 1);
+    if (t) { memcpy(t, body, len); t[len] = 0; }
+    return t;
+}
 
 struct FeDraw {
-    unsigned prog;
+    RhiShader shader;
+    unsigned prog;   /* GL program behind shader */
     int uMVP, uColor;
-    unsigned vbo;
+    RhiBuffer vbo;
 };
-
-static unsigned fe_compile(unsigned type, const char *src) {
-    unsigned s = glCreateShader(type);
-    glShaderSource(s, 1, &src, 0);
-    glCompileShader(s);
-    int ok = 0;
-    glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
-    if (!ok) {
-        char log[512];
-        glGetShaderInfoLog(s, sizeof log, 0, log);
-        fprintf(stderr, "frontend shader compile: %s\n", log);
-    }
-    return s;
-}
 
 FeDraw *fed_init(void) {
     FeDraw *d = (FeDraw *)calloc(1, sizeof *d);
     if (!d) return 0;
 
-    unsigned vs = fe_compile(GL_VERTEX_SHADER, FE_VS);
-    unsigned fs = fe_compile(GL_FRAGMENT_SHADER, FE_FS);
-    d->prog = glCreateProgram();
-    glAttachShader(d->prog, vs);
-    glAttachShader(d->prog, fs);
-    glBindAttribLocation(d->prog, 0, "aPos");
-    glLinkProgram(d->prog);
-    glDeleteShader(vs);  /* mark for deletion; freed when program is deleted */
-    glDeleteShader(fs);
-    int ok = 0;
-    glGetProgramiv(d->prog, GL_LINK_STATUS, &ok);
-    if (!ok) {
-        char log[512];
-        glGetProgramInfoLog(d->prog, sizeof log, 0, log);
-        fprintf(stderr, "frontend shader link: %s\n", log);
-        glDeleteProgram(d->prog);
+    static const char *const attributes[] = { "aPos" };
+    char *vs = fe_shader_text(src_shaders_frontend_vert, src_shaders_frontend_vert_len);
+    char *fs = fe_shader_text(src_shaders_frontend_frag, src_shaders_frontend_frag_len);
+    if (vs && fs)
+        d->shader = rhi_shader_create(&(RhiShaderDesc){ vs, fs, attributes, 1, "frontend", NULL, 0 });
+    free(vs); free(fs);
+    d->prog = rhi_gl_shader_program(d->shader);
+    if (!d->prog) {
         free(d);
         return 0;
     }
@@ -74,9 +49,8 @@ FeDraw *fed_init(void) {
 
     /* unit quad: two triangles, (0,0)-(1,1) */
     float quad[] = { 0,0, 1,0, 1,1, 0,0, 1,1, 0,1 };
-    glGenBuffers(1, &d->vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, d->vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof quad, quad, GL_STATIC_DRAW);
+    d->vbo = rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC,
+                                                 sizeof quad, quad});
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     return d;
@@ -214,7 +188,7 @@ void fed_draw(FeDraw *d, const Fe *fe, int vp_w, int vp_h) {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     glUseProgram(d->prog);
-    glBindBuffer(GL_ARRAY_BUFFER, d->vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, rhi_gl_buffer_name(d->vbo));
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
 
@@ -365,7 +339,7 @@ void fed_draw(FeDraw *d, const Fe *fe, int vp_w, int vp_h) {
 
 void fed_free(FeDraw *d) {
     if (!d) return;
-    if (d->prog) glDeleteProgram(d->prog);
-    if (d->vbo) glDeleteBuffers(1, &d->vbo);
+    rhi_shader_destroy(d->shader);
+    rhi_buffer_destroy(d->vbo);
     free(d);
 }

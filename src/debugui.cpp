@@ -3,7 +3,7 @@
  * Backends: SDL2 + legacy OpenGL2 (matches the app's 2.1/compat GL context). */
 #include <cstdio>
 #include <SDL.h>
-#include "gl_state.h"   /* GL headers + CPU state tracker (no glGet* readback) */
+#include "rhi_gl_state.h"   /* GL headers + CPU state tracker (no glGet* readback) */
 #include "imgui.h"
 #include "backends/imgui_impl_sdl2.h"
 #include "backends/imgui_impl_opengl2.h"
@@ -527,6 +527,12 @@ extern "C" void dbgui_frame(void) {
                 ImGui::TextDisabled("World shadow caster draws: %d", g_dbg.headlight_shadow_draws);
         }
         if (ImGui::CollapsingHeader("Camera (3rd-person chase)", ImGuiTreeNodeFlags_DefaultOpen)) {
+            static const char *cam_opt[] = {"Bumper","Hood","Close","Far","Super Far"};
+            ImGui::Text("gameplay camera: %s%s", g_dbg.cam_option>=0 && g_dbg.cam_option<5 ? cam_opt[g_dbg.cam_option] : "?",
+                        g_dbg.cam_look_back ? " (look back)" : "");
+            ImGui::TextDisabled("C / Shift+C change camera, hold B look back (docs/CAMERA.md)");
+            ImGui::TextDisabled("sliders below drive the legacy spring: menu/orbit/capture views only");
+            ImGui::Separator();
             ImGui::SliderFloat("distance (back)", &g_dbg.chase_distance,  3.0f, 25.0f, "%.1f m");
             ImGui::SliderFloat("height (up)",     &g_dbg.chase_height,    1.0f, 15.0f, "%.1f m");
             ImGui::SliderFloat("stiffness (lerp)",&g_dbg.chase_stiffness, 0.02f, 1.0f, "%.2f/frame");

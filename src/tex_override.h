@@ -24,7 +24,7 @@
  *   - Formats: DXT1/BC1, DXT3/BC2 (+DXT2), DXT5/BC3 (+DXT4), DX10 BC1-3 incl.
  *     sRGB variants (uploaded linear, like the originals), RGBA8/BGRA8/BGRX8
  *     and 32-bit legacy masks. BC7 and everything else are rejected.
- *   - Width/height powers of two, <= min(4096, GL_MAX_TEXTURE_SIZE), exactly
+ *   - Width/height powers of two, <= min(4096, caps.max_texture_size), exactly
  *     1x, 2x or 4x the ORIGINAL on both axes.
  *   - Only whole mip levels inside the file are used (at most 16); no whole
  *     base level = reject. The file is re-read at upload and length-checked.
@@ -56,13 +56,13 @@
    g_tex_s3tc is set. budget_mib <= 0 selects the default (1536 MiB).
    Returns the number of indexed override files (0 = disabled). */
 int    tex_override_init(const char *dir, int budget_mib);
-/* Try the override for `key`. `pack` may be NULL. Returns a new bound GL
-   texture (GL_REPEAT, trilinear, aniso, tracked) or 0 = use the original. */
-GLuint tex_override_upload(uint32_t key, const char *pack, const N2Tex *orig);
+/* Try the override for `key`. `pack` may be NULL. Returns a new bound
+   texture (GL_REPEAT, trilinear, aniso, tracked) or {0} = use the original. */
+RhiTexture tex_override_upload(uint32_t key, const char *pack, const N2Tex *orig);
 /* One "TEXOVR stats" line: indexed / used / skipped / budget-reduced files
    and resident MiB. Prints nothing when disabled. */
 void   tex_override_stats(void);
-/* Free the index. GL texture names stay with the callers that own them. */
+/* Free the index. Textures stay with the callers that own them. */
 void   tex_override_shutdown(void);
 
 #endif

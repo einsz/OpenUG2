@@ -47,7 +47,7 @@ static void test_folder_index_vectors(void) {
 static void test_folder_cases(void) {
     char *txt=read_file("controller-glyph-folder-cases.json",NULL);CHECK(txt!=NULL);if(!txt)return;
     jp=txt;J *v=jparse();const J *cases=jget(v,"cases");CHECK(cases&&cases->n==14);
-    char root[]="/tmp/ugui_folder_XXXXXX";CHECK(mkdtemp(root)!=NULL);UgGlyphFolderEntry e[66];folder_fixture(root,e);
+    char root[512];temp_path(root,"ugui_folder_XXXXXX");CHECK(mkdtemp(root)!=NULL);UgGlyphFolderEntry e[66];folder_fixture(root,e);
     int cross=-1,xa=-1;for(int i=0;i<66;i++){if(e[i].family==UG_CONTROLLER_PS2&&e[i].key==0xe795717d)cross=i;if(e[i].family==UG_CONTROLLER_XBOX&&e[i].key==0x8522e0a0)xa=i;}
     CHECK(cross>=0&&xa>=0);
     for(int c=0;c<14;c++) {
@@ -85,7 +85,7 @@ static void test_folder_cases(void) {
     char extra[640];snprintf(extra,sizeof extra,"%s/unindexed.png",root);unlink(extra);CHECK(!rmdir(root));jfree(v);free(txt);
 }
 static void test_folder_rejections(void) {
-    char root[]="/tmp/ugui_folder_bad_XXXXXX";CHECK(mkdtemp(root)!=NULL);UgGlyphFolderEntry e[66];folder_fixture(root,e);
+    char root[512];temp_path(root,"ugui_folder_bad_XXXXXX");CHECK(mkdtemp(root)!=NULL);UgGlyphFolderEntry e[66];folder_fixture(root,e);
     UgGlyphFolderEntry bad[66];UgController p;UgTexLib lib;
     const char *badpaths[]={"/etc/passwd","../outside.png","ps2/../../outside.png","ps2//a.png","ps2/./a.png","ps2/"};
     for(size_t k=0;k<sizeof badpaths/sizeof badpaths[0];k++) {
