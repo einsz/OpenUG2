@@ -348,7 +348,7 @@ ai-drive-cli-test: nfsu2
 # OpenGL ES 2.0 (embedded/mobile). Cross-compile e.g.:
 #   CC=aarch64-linux-gnu-gcc make gles
 gles: $(SRC) $(HDRS) $(GEN)
-	$(CC) $(CFLAGS) -DN2_GLES $(SDL_CFLAGS) $(SRC) -o nfsu2 $(SDL_LIBS) -lGLESv2 -lz -lm
+	$(CC) $(CFLAGS) -DN2_GLES $(SDL_CFLAGS) $(SRC) -o nfsu2 $(SDL_LIBS) -lGLESv2 $(UGUI_IMAGE_LIBS) -lz -lm
 
 run: nfsu2
 	./nfsu2 $(DATA)
