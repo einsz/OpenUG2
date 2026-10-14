@@ -1904,9 +1904,7 @@ RhiTexture make_wheel_tex(void) {
     /* radial, single-sample cap texture (no tiling intended) — clamp so a
        filter footprint near u/v=0 or 1 can't wrap and bleed in colour from
        the opposite edge, same reasoning as the car atlas/vinyl clamps. */
-    glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(id));
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    render_texture_clamp(id);
     return id;
 }
 
@@ -2030,7 +2028,6 @@ int render_car_glass_order(const N2Scene *scene,const float mvp[16],int *order) 
 int g_tex_s3tc = 0;
 int   g_tex_aniso_max = 1;
 float g_tex_aniso     = 1.0f;
-#define GL_TEXTURE_MAX_ANISOTROPY_EXT_    0x84FE
 
 /* Every texture this renderer owns, so a detail change can re-apply to all of
  * them. Handles are recorded on upload and checked with rhi_texture_is_live
@@ -2047,10 +2044,32 @@ static void tex_track(RhiTexture id) {
     }
     g_tex_all[g_tex_all_n++] = id;
 }
-/* Caller has the texture bound; the id is only for symmetry with tex_track. */
-static void tex_apply_aniso(void) {
-    if (g_tex_aniso_max <= 1) return;
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT_, g_tex_aniso);
+/* Sampler of an uploaded texture: trilinear with the current anisotropy when
+ * it has a full mip chain, bilinear on level 0 when it has not. */
+static RhiSampler tex_sampler(int mipped) {
+    RhiSamplerDesc d = { RHI_FILTER_LINEAR, RHI_FILTER_LINEAR,
+                         mipped ? RHI_MIP_LINEAR : RHI_MIP_NONE,
+                         RHI_WRAP_REPEAT, RHI_WRAP_REPEAT, mipped ? g_tex_aniso : 1.0f };
+    return rhi_sampler_create(&d);
+}
+static void tex_change_sampler(RhiTexture tex, const RhiSamplerDesc *d) {
+    rhi_texture_set_sampler(tex, rhi_sampler_create(d));
+}
+void render_texture_clamp(RhiTexture tex) {
+    const RhiSamplerDesc *cur = rhi_sampler_desc(rhi_texture_sampler(tex));
+    if (!cur) return;
+    RhiSamplerDesc d = *cur;
+    d.wrap_u = d.wrap_v = RHI_WRAP_CLAMP;
+    tex_change_sampler(tex, &d);
+}
+void render_texture_clamp_linear(RhiTexture tex) {
+    const RhiSamplerDesc *cur = rhi_sampler_desc(rhi_texture_sampler(tex));
+    if (!cur) return;
+    RhiSamplerDesc d = *cur;
+    d.wrap_u = d.wrap_v = RHI_WRAP_CLAMP;
+    d.min_filter = d.mag_filter = RHI_FILTER_LINEAR;
+    d.mip_filter = RHI_MIP_NONE;
+    tex_change_sampler(tex, &d);
 }
 void render_texture_detail(float aniso) {
     if (g_tex_aniso_max <= 1) { g_tex_aniso = 1.0f; return; }
@@ -2063,15 +2082,19 @@ void render_texture_detail(float aniso) {
     for (int i = 0; i < g_tex_all_n; i++) {
         if (!rhi_texture_is_live(g_tex_all[i])) continue;   /* freed since upload */
         g_tex_all[live++] = g_tex_all[i];
-        glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(g_tex_all[i]));
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT_, g_tex_aniso);
+        RhiSamplerDesc d = *rhi_sampler_desc(rhi_texture_sampler(g_tex_all[i]));
+        d.max_anisotropy = g_tex_aniso;
+        tex_change_sampler(g_tex_all[i], &d);
     }
     g_tex_all_n = live;                                 /* compact away dead ids */
     glBindTexture(GL_TEXTURE_2D, (GLuint)bound);
 }
 
-/* tex_override.c: aniso + tracking for an override it has just bound. */
-void render_tex_finish_bound(RhiTexture id) { tex_apply_aniso(); tex_track(id); }
+/* tex_override.c: sampler + tracking for an override it has just uploaded. */
+void render_tex_finish(RhiTexture id, int mipped) {
+    rhi_texture_set_sampler(id, tex_sampler(mipped));
+    if (mipped) tex_track(id);
+}
 
 /* Keyed siblings of the two uploaders: try a user HD override first (only when
    --tex-overrides indexed one for this key), else the unchanged original path.
@@ -2108,12 +2131,8 @@ RhiTexture upload_tpk_texture_to_gpu(const N2Tex *t) {
             if (lw == 1 && lh == 1) { complete = 1; break; }
             if (lw > 1) lw /= 2; if (lh > 1) lh /= 2;
         }
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
-                        complete ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        if (complete) { tex_apply_aniso(); tex_track(id); }   /* needs a mip chain */
+        rhi_texture_set_sampler(id, tex_sampler(complete));
+        if (complete) tex_track(id);   /* anisotropy needs a mip chain */
         return id;
     }
     return upload_tex(t);   /* portable fallback: CPU-decoded RGBA + mipmaps */
@@ -2135,11 +2154,8 @@ RhiTexture upload_tex(const N2Tex *t) {
     } else
         rhi_texture_upload(id, 0, 0, t->rgb, 0);
     rhi_texture_generate_mips(id);
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
-    tex_apply_aniso(); tex_track(id);
+    rhi_texture_set_sampler(id, tex_sampler(1));
+    tex_track(id);
     return id;
 }
 

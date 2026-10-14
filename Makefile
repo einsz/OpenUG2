@@ -381,3 +381,11 @@ rhi-readback-test: tools/rhi_readback_test.c src/rhi_gl.c src/rhi_gl_state.c src
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/rhi_readback_test.c src/rhi_gl.c src/rhi_gl_state.c -o build/rhi_readback_test $(SDL_LIBS) $(GL_LIBS) -lm
 	./build/rhi_readback_test
 .PHONY: rhi-readback-test
+
+# The test includes rhi_gl.c to inject allocator failure into the real backend.
+rhi-sampler-test: tools/rhi_sampler_test.c src/render.c src/rhi_gl.c src/rhi_gl_state.c src/tex_override.c $(HDRS)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/rhi_sampler_test.c src/render.c src/rhi_gl_state.c src/tex_override.c -o build/rhi_sampler_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
+	./build/rhi_sampler_test
+
+.PHONY: rhi-sampler-test

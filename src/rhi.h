@@ -190,6 +190,38 @@ void       rhi_texture_destroy(RhiTexture tex);
 /* 1 while the handle refers to a texture that has not been destroyed. */
 int        rhi_texture_is_live(RhiTexture tex);
 
+/* ------------------------------------------------------------------------------ */
+/* Samplers                                                                       */
+/* ------------------------------------------------------------------------------ */
+/* Immutable sampling state, created by value: equal descriptions give the same
+ * handle, and samplers live as long as the backend. */
+typedef struct RhiSampler { uint32_t id; } RhiSampler;
+
+typedef enum RhiFilter    { RHI_FILTER_NEAREST = 0, RHI_FILTER_LINEAR = 1 } RhiFilter;
+typedef enum RhiMipFilter {
+    RHI_MIP_NONE    = 0,   /* sample level 0 only */
+    RHI_MIP_NEAREST = 1,
+    RHI_MIP_LINEAR  = 2
+} RhiMipFilter;
+typedef enum RhiWrap      { RHI_WRAP_REPEAT = 0, RHI_WRAP_CLAMP = 1 } RhiWrap;
+
+typedef struct RhiSamplerDesc {
+    RhiFilter    min_filter, mag_filter;
+    RhiMipFilter mip_filter;
+    RhiWrap      wrap_u, wrap_v;
+    float        max_anisotropy;   /* 1 = off; limited to caps.max_anisotropy */
+} RhiSamplerDesc;
+
+/* Returns {0} on failure (logged). */
+RhiSampler            rhi_sampler_create(const RhiSamplerDesc *desc);
+/* The description of a sampler; NULL for {0} or an unknown handle. */
+const RhiSamplerDesc *rhi_sampler_desc(RhiSampler sampler);
+
+/* The sampler a texture is sampled with. A new texture starts with
+ * { NEAREST min, LINEAR mag, LINEAR mip, REPEAT, anisotropy 1 }. */
+RhiResult  rhi_texture_set_sampler(RhiTexture tex, RhiSampler sampler);
+RhiSampler rhi_texture_sampler(RhiTexture tex);
+
 #ifdef __cplusplus
 }
 #endif

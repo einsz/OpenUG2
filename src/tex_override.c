@@ -12,8 +12,8 @@
 #include "tex_override.h"
 
 
-/* render.c: anisotropy + tracking for the currently bound texture */
-void render_tex_finish_bound(RhiTexture id);
+/* render.c: sampler + anisotropy tracking for an uploaded override */
+void render_tex_finish(RhiTexture id, int mipped);
 
 enum { TO_DXT1 = 1, TO_DXT3 = 3, TO_DXT5 = 5, TO_BGRA = 10, TO_RGBA = 11 };
 #define TO_MAX_LEVELS 16
@@ -384,11 +384,7 @@ RhiTexture tex_override_upload(uint32_t key, const char *pack, const N2Tex *orig
         return (RhiTexture){0};
     }
     int mipped = complete || !compressed;
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, mipped ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    if (mipped) render_tex_finish_bound(id);
+    render_tex_finish(id, mipped);   /* REPEAT; trilinear + anisotropy when mipped */
     live_add(id, bytes); g_used += bytes;
     if (!o->state) {
         printf("TEXOVR use %08X%s%s %dx%d (orig %dx%d, x%d%s) %s\n", key,
