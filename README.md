@@ -352,7 +352,10 @@ milestone.
 grip for drifts), hold **right mouse** and drag to orbit the car (press **F** for map free flight: **WASD**, **Q/E**, **Shift** for speed), `L` high beam, `J` headlight flash
 (racer invitations are not implemented yet), `N` nitro, **`1` developer menu** (the ImGui Master Inspector, in
 `make debug` builds), `F6` cycle rim style
-(once per press), `K` cycle body kit, **`C` / `Shift+C` change camera** (Bumper, Hood, Close, Far, and Super Far in drift events; the choice is remembered), hold **`B`** to look back, `Esc` quit. Cars
+(once per press), `K` cycle body kit, **`C` / `Shift+C` change camera** (Bumper, Hood, Close, Far, and Super Far in drift events; the choice is remembered), hold **`B`** to look back, `Esc` open/resume the pause menu.
+While paused, arrow keys (or clicking the on-screen arrows) browse Resume / Quit Game and Enter selects; quitting
+requires confirmation. Controller Start opens/resumes, D-pad browses, A selects
+and B goes back. Gameplay and engine audio stop while the pause menu is open. Cars
 collide and building contact is confirmed against source mesh faces before the
 car is pushed. The orbit camera stays above the car and retracts around scenery.
 `--shot out.png` renders one frame to a PNG and exits.

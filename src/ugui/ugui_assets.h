@@ -36,6 +36,8 @@ typedef struct UgAssets {
  * directory holds nothing usable (message in `msg`). Missing optional files
  * only add a warning to a->log. */
 int  ug_assets_open(UgAssets *a, const char *dir, const char *language, char *msg, size_t msglen);
+/* Also load the common in-game screens (pause menu, results and HUD). */
+int  ug_assets_open_ingame(UgAssets *a, const char *dir, const char *language, char *msg, size_t msglen);
 void ug_assets_close(UgAssets *a);
 
 /* Chooses the data directory: explicit argument, then $UGUI_DATA / $NFSU2_DATA,

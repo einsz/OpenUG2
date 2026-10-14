@@ -1,0 +1,417 @@
+{
+  "provenance": "synthetic calculations from normative transform; no retail asset payload",
+  "visual_edge_tolerance_virtual": 2,
+  "cases": [
+    {
+      "input": {
+        "viewport": [
+          1920,
+          1080
+        ],
+        "virtual_bounds": {
+          "outer_panel": [
+            24.4,
+            152,
+            622.7,
+            322.2
+          ],
+          "selected_frame": [
+            257.3,
+            195.6,
+            384.4,
+            257.3
+          ],
+          "back_button": [
+            30.7,
+            291.1,
+            177.3,
+            312.9
+          ],
+          "continue_button": [
+            466.7,
+            291.1,
+            613.3,
+            312.9
+          ]
+        },
+        "virtual_continue_click": [
+          540,
+          302
+        ]
+      },
+      "expected": {
+        "scale": 2.25,
+        "origin": [
+          240.0,
+          0.0
+        ],
+        "pixel_bounds": {
+          "outer_panel": [
+            294.9,
+            342.0,
+            1641.075,
+            724.95
+          ],
+          "selected_frame": [
+            818.925,
+            440.1,
+            1104.9,
+            578.925
+          ],
+          "back_button": [
+            309.075,
+            654.975,
+            638.925,
+            704.025
+          ],
+          "continue_button": [
+            1290.075,
+            654.975,
+            1619.925,
+            704.025
+          ]
+        },
+        "pixel_continue_click": [
+          1455.0,
+          679.5
+        ],
+        "inverse_click": [
+          540,
+          302
+        ],
+        "continue_hit": true,
+        "back_hit": false,
+        "selection_preserved": true
+      }
+    },
+    {
+      "input": {
+        "viewport": [
+          1280,
+          960
+        ],
+        "virtual_bounds": {
+          "outer_panel": [
+            24.4,
+            152,
+            622.7,
+            322.2
+          ],
+          "selected_frame": [
+            257.3,
+            195.6,
+            384.4,
+            257.3
+          ],
+          "back_button": [
+            30.7,
+            291.1,
+            177.3,
+            312.9
+          ],
+          "continue_button": [
+            466.7,
+            291.1,
+            613.3,
+            312.9
+          ]
+        },
+        "virtual_continue_click": [
+          540,
+          302
+        ]
+      },
+      "expected": {
+        "scale": 2.0,
+        "origin": [
+          0.0,
+          0.0
+        ],
+        "pixel_bounds": {
+          "outer_panel": [
+            48.8,
+            304.0,
+            1245.4,
+            644.4
+          ],
+          "selected_frame": [
+            514.6,
+            391.2,
+            768.8,
+            514.6
+          ],
+          "back_button": [
+            61.4,
+            582.2,
+            354.6,
+            625.8
+          ],
+          "continue_button": [
+            933.4,
+            582.2,
+            1226.6,
+            625.8
+          ]
+        },
+        "pixel_continue_click": [
+          1080.0,
+          604.0
+        ],
+        "inverse_click": [
+          540,
+          302
+        ],
+        "continue_hit": true,
+        "back_hit": false,
+        "selection_preserved": true
+      }
+    },
+    {
+      "input": {
+        "viewport": [
+          1280,
+          720
+        ],
+        "virtual_bounds": {
+          "outer_panel": [
+            24.4,
+            152,
+            622.7,
+            322.2
+          ],
+          "selected_frame": [
+            257.3,
+            195.6,
+            384.4,
+            257.3
+          ],
+          "back_button": [
+            30.7,
+            291.1,
+            177.3,
+            312.9
+          ],
+          "continue_button": [
+            466.7,
+            291.1,
+            613.3,
+            312.9
+          ]
+        },
+        "virtual_continue_click": [
+          540,
+          302
+        ]
+      },
+      "expected": {
+        "scale": 1.5,
+        "origin": [
+          160.0,
+          0.0
+        ],
+        "pixel_bounds": {
+          "outer_panel": [
+            196.6,
+            228.0,
+            1094.05,
+            483.3
+          ],
+          "selected_frame": [
+            545.95,
+            293.4,
+            736.6,
+            385.95
+          ],
+          "back_button": [
+            206.05,
+            436.65,
+            425.95,
+            469.35
+          ],
+          "continue_button": [
+            860.05,
+            436.65,
+            1079.95,
+            469.35
+          ]
+        },
+        "pixel_continue_click": [
+          970.0,
+          453.0
+        ],
+        "inverse_click": [
+          540,
+          302
+        ],
+        "continue_hit": true,
+        "back_hit": false,
+        "selection_preserved": true
+      }
+    },
+    {
+      "input": {
+        "viewport": [
+          640,
+          480
+        ],
+        "virtual_bounds": {
+          "outer_panel": [
+            24.4,
+            152,
+            622.7,
+            322.2
+          ],
+          "selected_frame": [
+            257.3,
+            195.6,
+            384.4,
+            257.3
+          ],
+          "back_button": [
+            30.7,
+            291.1,
+            177.3,
+            312.9
+          ],
+          "continue_button": [
+            466.7,
+            291.1,
+            613.3,
+            312.9
+          ]
+        },
+        "virtual_continue_click": [
+          540,
+          302
+        ]
+      },
+      "expected": {
+        "scale": 1.0,
+        "origin": [
+          0.0,
+          0.0
+        ],
+        "pixel_bounds": {
+          "outer_panel": [
+            24.4,
+            152.0,
+            622.7,
+            322.2
+          ],
+          "selected_frame": [
+            257.3,
+            195.6,
+            384.4,
+            257.3
+          ],
+          "back_button": [
+            30.7,
+            291.1,
+            177.3,
+            312.9
+          ],
+          "continue_button": [
+            466.7,
+            291.1,
+            613.3,
+            312.9
+          ]
+        },
+        "pixel_continue_click": [
+          540.0,
+          302.0
+        ],
+        "inverse_click": [
+          540,
+          302
+        ],
+        "continue_hit": true,
+        "back_hit": false,
+        "selection_preserved": true
+      }
+    },
+    {
+      "input": {
+        "viewport": [
+          900,
+          1200
+        ],
+        "virtual_bounds": {
+          "outer_panel": [
+            24.4,
+            152,
+            622.7,
+            322.2
+          ],
+          "selected_frame": [
+            257.3,
+            195.6,
+            384.4,
+            257.3
+          ],
+          "back_button": [
+            30.7,
+            291.1,
+            177.3,
+            312.9
+          ],
+          "continue_button": [
+            466.7,
+            291.1,
+            613.3,
+            312.9
+          ]
+        },
+        "virtual_continue_click": [
+          540,
+          302
+        ]
+      },
+      "expected": {
+        "scale": 1.40625,
+        "origin": [
+          0.0,
+          262.5
+        ],
+        "pixel_bounds": {
+          "outer_panel": [
+            34.312,
+            476.25,
+            875.672,
+            715.594
+          ],
+          "selected_frame": [
+            361.828,
+            537.562,
+            540.562,
+            624.328
+          ],
+          "back_button": [
+            43.172,
+            671.859,
+            249.328,
+            702.516
+          ],
+          "continue_button": [
+            656.297,
+            671.859,
+            862.453,
+            702.516
+          ]
+        },
+        "pixel_continue_click": [
+          759.375,
+          687.1875
+        ],
+        "inverse_click": [
+          540,
+          302
+        ],
+        "continue_hit": true,
+        "back_hit": false,
+        "selection_preserved": true
+      }
+    }
+  ],
+  "numeric_pixel_tolerance": 0.001
+}

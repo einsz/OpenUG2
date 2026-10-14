@@ -212,7 +212,7 @@ void ug_gl_destroy(UgGL *g) {
     free(g);
 }
 
-void ug_gl_render(UgGL *g, const UgCanvas *cv, int win_w, int win_h) {
+static void render_canvas(UgGL *g, const UgCanvas *cv, int win_w, int win_h, int overlay) {
     if (!g || cv->n == 0 || win_w <= 0 || win_h <= 0) return;
     UgView v = ug_view_fit(win_w, win_h);
 
@@ -246,8 +246,10 @@ void ug_gl_render(UgGL *g, const UgCanvas *cv, int win_w, int win_h) {
         glGetVertexAttribPointerv(i,GL_VERTEX_ATTRIB_ARRAY_POINTER,&prev_attr[i].pointer);
     }
 
-    glViewport(v.x0, win_h - v.y0 - v.h, v.w, v.h);
-    glScissor(v.x0, win_h - v.y0 - v.h, v.w, v.h);
+    glViewport(overlay ? 0 : v.x0, overlay ? 0 : win_h - v.y0 - v.h,
+               overlay ? win_w : v.w, overlay ? win_h : v.h);
+    glScissor(overlay ? 0 : v.x0, overlay ? 0 : win_h - v.y0 - v.h,
+              overlay ? win_w : v.w, overlay ? win_h : v.h);
     glEnable(GL_SCISSOR_TEST);
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
@@ -260,6 +262,7 @@ void ug_gl_render(UgGL *g, const UgCanvas *cv, int win_w, int win_h) {
                       0, -2.0f / UG_SCREEN_H, 0, 0,
                       0, 0, 1, 0,
                       0, 0, 0, 1};
+    if (overlay) { proj[0] = 2.0f * v.scale / win_w; proj[5] = -2.0f * v.scale / win_h; }
     glUniformMatrix4fv(g->uProj, 1, GL_FALSE, proj);
     glUniform1f(g->uPx, v.scale);
     glActiveTexture(GL_TEXTURE0);
@@ -312,4 +315,11 @@ void ug_gl_render(UgGL *g, const UgCanvas *cv, int win_w, int win_h) {
     if (prev_cull) glEnable(GL_CULL_FACE);
     if (!prev_scissor) glDisable(GL_SCISSOR_TEST);
     glViewport(prev_vp[0], prev_vp[1], prev_vp[2], prev_vp[3]);
+}
+
+void ug_gl_render(UgGL *g, const UgCanvas *cv, int win_w, int win_h) {
+    render_canvas(g, cv, win_w, win_h, 0);
+}
+void ug_gl_render_overlay(UgGL *g, const UgCanvas *cv, int win_w, int win_h) {
+    render_canvas(g, cv, win_w, win_h, 1);
 }

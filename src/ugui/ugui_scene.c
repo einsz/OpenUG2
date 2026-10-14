@@ -180,6 +180,7 @@ static void layout(UgScene *s) {
         node_local(n, m);
         UgColor c = UG_RGBA(ug_clamp8(n->props.w[0]), ug_clamp8(n->props.w[1]),
                             ug_clamp8(n->props.w[2]), ug_clamp8(n->props.w[3]));
+        if (n->app_opacity != 1.0f) c.a = ug_clamp8(c.a * n->app_opacity);
         int vis = !(n->obj->flags & UG_OF_INVISIBLE);
         if (s->pc_build) {
             if ((n->obj->flags & UG_OF_CONSOLE) && !s->console_strip) vis = 0;
@@ -253,6 +254,7 @@ int ug_scene_init(UgScene *s, const UgFngPackage *pk, const UgStrTab *strings) {
         UgNode *n = &s->nodes[i];
         const UgFngObject *o = &pk->obj[i];
         n->obj = o; n->scene = s; n->index = i;
+        n->app_opacity = 1.0f;
         n->parent = -1;
         if (o->has_parent) {
             for (int k = 0; k < i; k++)
