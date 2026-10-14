@@ -1,14 +1,14 @@
-/* frontend_draw.h — GL drawing adapter for the frontend state machine.
- * Requires an active GL context. Uses GLES2-compatible shaders.
+/* frontend_draw.h — drawing adapter for the frontend state machine.
+ * Requires a live rhi device.
  * Does NOT create a window or own the application loop.
  *
  * Lifecycle:
- *   fed_init()  → compile shader, upload quad VBO (call once, GL context live)
+ *   fed_init()  → compile shader, upload quad VBO (call once, rhi device live)
  *   fed_draw()  → render the current Fe state (call each frame)
- *   fed_free()  → release GL resources
+ *   fed_free()  → release the shader and buffer
  *
- * All GL state changes are delimited: viewport, blend, depth test and program
- * are saved and restored, so the caller's GL state is not corrupted. */
+ * fed_draw saves the caller's state (rhi_cmd_save_state) and restores it on
+ * exit, so a caller that draws with ambient state gets it back. */
 #ifndef OPENUG2_FRONTEND_DRAW_H
 #define OPENUG2_FRONTEND_DRAW_H
 
@@ -17,14 +17,14 @@
 /* Opaque drawing context. */
 typedef struct FeDraw FeDraw;
 
-/* Allocate and initialize GL resources. Returns NULL on failure. */
+/* Create the shader, pipeline and quad buffer. Returns NULL on failure. */
 FeDraw *fed_init(void);
 
 /* Draw the current Fe state into the current framebuffer.
  * vp_w/vp_h: viewport pixel size (for aspect-correct layout). */
 void fed_draw(FeDraw *d, const Fe *fe, int vp_w, int vp_h);
 
-/* Release GL resources and free memory. */
+/* Release the shader and buffer and free memory. */
 void fed_free(FeDraw *d);
 
 #endif

@@ -178,15 +178,14 @@ int render_road_reflections(const RProg *r,RoadReflections *s,
     int nearby=0;
     for(int i=0;i<count;i++)nearby+=road_reflection_receiver(&batches[i],cam);
     if(!nearby)return 0;
-    GLint viewport[4];
-    gls_get_integerv(GL_VIEWPORT,viewport);
+    int32_t viewport[4];
+    rhi_viewport(viewport);
     if(viewport[2]<=0 || viewport[3]<=0)return 0;
     RhiStateSnapshot saved_state; rhi_cmd_save_state(&saved_state);
     /* Copies of the frame drawn so far: colour (linear) on unit 3, depth
        (nearest, the main target's precision) on unit 4. */
     RhiTexture *textures[]={&s->color,&s->depth};
     int ok=1;
-    /* create both before binding either: creating binds on the active unit */
     for(int i=0;i<2 && ok;i++) if(!textures[i]->id) {
         *textures[i]=rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D,
             i?RHI_FORMAT_DEPTH:RHI_FORMAT_RGBA8,viewport[2],viewport[3],
@@ -211,7 +210,6 @@ int render_road_reflections(const RProg *r,RoadReflections *s,
     ug2_copy(matrix, r->p->uMVP, 16);ug2_copy(model, r->p->uModel, 16);
     ug2_copy(params, r->p->uReflectionParams, 4);
     rhi_cmd_bind_pipeline(pipelines_of(r)->world.reflect);
-    glDisable(GL_POLYGON_OFFSET_FILL);
     for(int i=0;i<7;i++)*loc[i] = 0;
     r->p->uWetness = wetness;r->p->uRoadReflection = 1;
     ug2_vec4(r->p->uReflectionParams, projection[10], projection[14], quality==1?16:32, 0);
@@ -363,7 +361,6 @@ int render_car_environment(const RProg *r,CarEnvironment *s,const N2Batch *world
     if(s->size!=size) {
         free_car_environment(s);s->size=size;s->capture=render_program();
         if(!s->capture.shader.id){free_car_environment(s);s->failed=1;draws=-1;goto restore;}
-        glActiveTexture(GL_TEXTURE5);   /* GL: the cubes are created on their own unit */
         const RhiSampler linear=rhi_sampler_create(&(RhiSamplerDesc){RHI_FILTER_LINEAR,RHI_FILTER_LINEAR,
             RHI_MIP_NONE,RHI_WRAP_CLAMP,RHI_WRAP_CLAMP,1.0f});
         int ok=1;
@@ -399,7 +396,6 @@ int render_car_environment(const RProg *r,CarEnvironment *s,const N2Batch *world
         free_car_environment(s);s->failed=1;draws=-1;goto restore;
     }
     rhi_cmd_bind_texture(5,s->cube[s->front]);
-    glActiveTexture(GL_TEXTURE0);
     const RProg *cr=&s->capture;float ambient,diffuse,fog,fc[3],sun[3];
     ug2_copy(&ambient, &r->p->uAmbient, 1);ug2_copy(&diffuse, &r->p->uDiffuse, 1);
     ug2_copy(&fog, &r->p->uFogDensity, 1);ug2_copy(fc, r->p->uFogColor, 3);
@@ -443,7 +439,6 @@ restore:
     /* The published cube is this helper's output (unit 5 for the car shader);
        cube bindings are not part of the snapshot, so it survives the restore. */
     if(s->cube[s->front].id)rhi_cmd_bind_texture(5,s->cube[s->front]);
-    else {glActiveTexture(GL_TEXTURE5);glBindTexture(GL_TEXTURE_CUBE_MAP,0);}
     rhi_cmd_restore_state(&saved);
     r->p->uEnvReady = s->ready?1:0;ug2_copy(r->p->uEnvOrigin, s->published, 3);
     return draws;
@@ -523,8 +518,7 @@ int render_rain(const RProg *r,RhiBuffer *vbo,float time,float intensity,int qua
     rhi_buffer_replace(*vbo,(size_t)n*sizeof *vertices,vertices);
     /* No normal input is consumed by the unlit rain branch: the layout leaves
        it without an array, so a preceding small mesh buffer cannot be indexed
-       beyond its allocation. GL: its current value is set explicitly. */
-    glVertexAttrib3f(2,0,0,1);
+       beyond its allocation. */
     rhi_cmd_bind_vertex_buffer(0,*vbo,0);
     rhi_cmd_draw((uint32_t)n,0);
     for(int i=0;i<7;i++)*loc[i] = saved[i];
@@ -755,7 +749,6 @@ int render_headlight_shadows(const RProg *r,HeadlightShadows *s,const N2Batch *b
         fprintf(stderr,"Headlight shadows unavailable; retaining unshadowed beams.\n");
         draws=-1;goto restore;
     }
-    glDisable(GL_DITHER);   /* GL: exact packed distances */
     rhi_cmd_bind_pipeline(s->pipeline);
     s->params->uRange=shape[3];
     for(int h=0;h<2;h++) {

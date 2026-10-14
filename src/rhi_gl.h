@@ -16,10 +16,9 @@ GLuint rhi_gl_buffer_name(RhiBuffer buf);
 
 /* GL texture object name behind a handle; 0 for {0} or a destroyed handle.
  * GL 2.1 / ES 2.0 have no sampler objects, so a texture's sampler is applied
- * as texture parameters (only the ones that change). Until texture binding is
- * part of rhi.h, rhi_texture_create, rhi_texture_upload,
- * rhi_texture_generate_mips and rhi_texture_set_sampler leave the texture
- * bound on the active texture unit, as the direct GL code did. */
+ * as texture parameters (only the ones that change). Texture work binds on
+ * unit RHI_TEXTURE_SLOTS, which rhi_cmd_bind_texture does not use, and leaves
+ * the caller's active unit and its bindings alone. */
 GLuint rhi_gl_texture_name(RhiTexture tex);
 
 /* GL program object behind a shader; 0 for {0} or a destroyed handle. Until
