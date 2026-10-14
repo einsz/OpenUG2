@@ -5,13 +5,15 @@
  *
  * Also the single home of the GL headers: desktop legacy GL 2.1 + GLSL 120, or
  * OpenGL ES 2.0 + GLSL 100 with -DN2_GLES — every module includes GL via here
- * (through gl_state.h, which also routes state-setting calls through the
+ * (through rhi_gl_state.h, which also routes state-setting calls through the
  * CPU-side tracker so helpers can save/restore without querying GL). */
 #ifndef OPENUG2_RENDER_H
 #define OPENUG2_RENDER_H
 
 #include <SDL.h>
-#include "gl_state.h"   /* GL headers + CPU state tracker (no glGet* readback) */
+#include "rhi_gl_state.h"   /* GL headers + CPU state tracker (no glGet* readback) */
+#include "rhi.h"
+#include "render_params.h"
 
 #include "nfsu2.h"
 
@@ -30,7 +32,7 @@
 
 /* per-mesh GPU buffers + computed normals */
 typedef struct {
-    GLuint vbo, nbo, cbo, ibo;
+    RhiBuffer vbo, nbo, cbo, ibo;
     int nidx, cat, trim;
     uint32_t texkey, car_material;
     unsigned char draw_mode;  /* Optional override; zero uses the caller's mode. */
@@ -49,8 +51,8 @@ typedef struct {
 typedef struct { int mesh,vertex;unsigned revision; } PropBatchRange;
 
 typedef struct {
-    GLuint vbo;               /* unified interleaved VBO */
-    GLuint ibo;               /* consolidated u16 IBO (<= 65535 verts/batch) */
+    RhiBuffer vbo;            /* unified interleaved VBO */
+    RhiBuffer ibo;            /* consolidated u16 IBO (<= 65535 verts/batch) */
     int index_count;
     uint32_t texkey;          /* first member mesh's TPK key -- DIAGNOSTIC ONLY.
                              Do not gate drawing on it: a batch's members can
@@ -62,7 +64,7 @@ typedef struct {
                              A batch that mixes the two draws (flat colour) --
                              an untextured mesh must not vanish because a
                              neighbour in its cell lost its texture. */
-    GLuint tex;               /* resolved GL texture (0 = untextured fallback) */
+    RhiTexture tex;           /* resolved texture ({0} = untextured fallback) */
     unsigned char wettable;  /* road-only batch; upward faces receive wet shading */
     int nmesh;                /* source meshes merged in (drawn-mesh metric) */
     int scen_count[8];        /* source N2_SC_* membership (visibility audit) */
@@ -81,52 +83,21 @@ typedef struct {
     int nprops;
 } N2Batch;
 
-/* the one shader program + its uniform handles */
+/* the one shader program + its parameter block (render_params.h) */
 typedef struct {
-    GLuint prog;
-    GLint uMVP, uModel, uUseTex, uColor, uUnlit, uAlpha, uSoft, uSpec, uAmbient, uDiffuse,
-          uLight,   /* sun direction in world space */
-          uVColor,  /* 0..1 strength of per-vertex prelight (world geometry only) */
-          uDecal,   /* 1 = texture is an alpha-masked decal over uColor paint */
-          uVista,                   /* >0.5: alpha-blended backdrop pass */
-          uAlphaTest,               /* >0.5: discard texels below 0.5 alpha
-                                       (N2_DRAW_CUTOUT world batches, M135) */
-          uTextureAlpha,            /* >0.5: output alpha = texture alpha *
-                                       uAlpha (N2_DRAW_BLEND/ADD world
-                                       batches only, M135-R) */
-          uEmissiveTex,             /* >0.5: texture-backed unlit RGB/alpha
-                                       (authored sky and point-light sprites) */
-          uFogColor, uFogDensity,   /* exp^2 distance fog (matches the sky) */
-          uCamPos,  /* camera in world space */
-          uEnvCube, uEnvReady, uEnvOrigin,
-          uEnv,     /* environment-reflection amount (cars only) */
-          uUVCheck, /* 1 = show the diagnostic UV-coordinate visualization
-                       instead of lighting/texture (toggle lives in the
-                       ImGui Session panel, make debug only) */
-          uFlipN,   /* 1 = negate the vertex normal (inspector diagnostic) */
-          uGloss,   /* specular pow() exponent: high = tight metallic-paint
-                       highlight, low = broad plastic/trim sheen (cars only) */
-          uFresnel, /* >0.5: alpha rides the fresnel term (car glass pass only) */
-          uClearcoat, /* >0: second tight specular lobe -- the lacquer over the
-                         coloured base coat (car body/trim only) */
-          uRimTint, /* 0 = raw rim texture, 1 = recolor toward uColor (rim paint) */
-          uEmissive; /* vec3 added AFTER lighting: a lamp lens that is lit AND
-                        glowing. Going fully uUnlit instead is what made every
-                        taillight a flat red sticker -- it discards the
-                        specular, the fresnel rim and the environment
-                        reflection, i.e. everything that reads as moulded
-                        plastic. Dome-weighted by dot(N,V) in the shader, so a
-                        curved lens is hottest where it faces the camera.
-                        Zero everywhere else; the car pass clears it. */
-    GLint uWetness, uWeatherTime, uRainIntensity, uWetLightPos, uWetLightColor, uPaintLights;
-    GLint uRoadReflection, uReflectionParams;
-    GLint uHeadPos, uHeadForward, uHeadRight, uHeadUp, uHeadShape, uHeadGain, uHeadLow;
-    GLint uHeadShadow, uHeadShadowMap[2], uHeadShadowMVP;
+    RhiShader shader;
+    GLuint prog;     /* GL program behind shader, for glUseProgram until pipelines */
+    UG2Params *p;    /* the shader's parameters; the next draw uses what is here */
 } RProg;
 
+typedef struct HeadlightShadowParams HeadlightShadowParams;
 typedef struct {
-    GLuint fbo, depth, texture[2], white, program;
-    GLint mvp, cutout, range;
+    RhiTexture map[2];   /* 512x512 RGBA8 colour targets: distance packed into RG */
+    RhiTexture depth;    /* shared D16 depth target */
+    RhiTexture white;    /* 1x1 for untextured casters */
+    RhiShader shader;
+    RhiPipeline pipeline;
+    HeadlightShadowParams *params;
     int failed;
 } HeadlightShadows;
 /* Returns caster draws, or -1 if offscreen rendering is unavailable. */
@@ -138,10 +109,10 @@ void render_headlights(const RProg *r, const float model[16], const float anchor
 
 /* Select the material for a proven rear lens. Texture presence must not
  * disable emission. Brake lamps work independently of night running lights. */
-void render_tail_lamp(const RProg *r,GLuint texture,int running,int braking,
+void render_tail_lamp(const RProg *r,RhiTexture texture,int running,int braking,
                       int boost,float gain);
 
-typedef struct { GLuint color, depth; int width, height, failed; } RoadReflections;
+typedef struct { RhiTexture color, depth; int width, height, failed; } RoadReflections;   /* frame copies */
 /* Copy the current world color/depth before rain/HUD, then reflect visible
  * geometry onto wet roads. 0 = disabled/no receivers, -1 = unavailable.
  * Restores pass state and texture bindings; next draw establishes mesh inputs. */
@@ -152,8 +123,10 @@ int render_road_reflections(const RProg *r,RoadReflections *s,
 void free_road_reflections(RoadReflections *s);
 
 typedef struct {
-    GLuint fbo, depth, cube[2];
-    RProg capture;
+    RhiTexture cube[2];   /* RGBA8 cube maps: one shown, one being captured */
+    RhiTexture depth;     /* D16 depth target, one face's size */
+    RProg capture;        /* a second UG2 shader for the capture views */
+    RhiPipeline sky, opaque, add;   /* capture pipelines (depth LESS) */
     int size, face, front, ready, failed, ticks;
     float origin[3], published[3];
 } CarEnvironment;
@@ -164,7 +137,7 @@ int render_car_environment(const RProg *r,CarEnvironment *s,const N2Batch *world
                            const N2Batch *sky,int nsky,const float pos[3],int quality);
 void free_car_environment(CarEnvironment *s);
 
-typedef struct { GLuint body, wheel, body_key, wheel_key; int body_count, wheel_count; } CarShadow;
+typedef struct { RhiBuffer body, wheel; uint32_t body_key, wheel_key; int body_count, wheel_count; } CarShadow;
 /* Caller clears the frame stencil and binds r. Leaves ordinary opaque state;
  * next draw establishes its material/model/attributes. Stencil prevents
  * overlapping caster triangles from darkening the same pixel twice. */
@@ -193,11 +166,11 @@ int render_batch_in_view(const N2Batch *b,const float mvp[16]);
 typedef struct { float pos[3], uv[2], fade; } RainVertex;
 int render_rain_exposed(const N2Scene *scene,const float (*bounds)[4],const float cam[3]);
 int render_rain_vertices(float time,float intensity,int quality,float aspect,RainVertex *out);
-int render_rain(const RProg *r,GLuint *vbo,float time,float intensity,int quality,float aspect);
+int render_rain(const RProg *r,RhiBuffer *vbo,float time,float intensity,int quality,float aspect);
 
 /* Diagnostic triangle fill + edges; caller supplies XYZ triples and owns vbo. */
 #define WALL_DEBUG_MAX_FACES 4096
-int render_collision_walls(const RProg *r,GLuint *vbo,const float *faces,int count,
+int render_collision_walls(const RProg *r,RhiBuffer *vbo,const float *faces,int count,
                           const float color[3],const float mvp[16],int through);
 
 /* world-space sun direction (night scene key light) */
@@ -224,16 +197,25 @@ void mat_lookat(const float *eye, const float *fwd, float *m);   /* up = world +
  * allowed), as supplied by mat_car and the wheel/brake hub transforms. */
 void render_model(const RProg *r,const float model[16]);
 RProg    render_program(void);          /* compile+link the shader, fetch uniforms */
+/* Build a shader from embedded source bodies (make: generated_shaders.h), each
+   prefixed with a header (GLSL_VS_HEADER / GLSL_FS_HEADER, or ""). Attribute i
+   is attributes[i]; blocks are its parameter layouts (may be NULL, 0).
+   Returns {0} on failure. */
+RhiShader render_shader_create(const char *label,
+                               const char *vs_header, const unsigned char *vs, unsigned vs_len,
+                               const char *fs_header, const unsigned char *fs, unsigned fs_len,
+                               const char *const *attributes, uint32_t count,
+                               const RhiParamLayout *const *blocks, uint32_t block_count);
 GpuMesh *upload_scene(N2Scene *s);      /* VBO/NBO/IBO per mesh, normals computed */
 void free_scene_gpu(GpuMesh *gm, int count);
 GpuMesh  make_wheel(float R, float halfW);  /* procedural tyre (see render.c) */
-GLuint   make_wheel_tex(void);          /* radial alloy-rim texture for it */
+RhiTexture make_wheel_tex(void);          /* radial alloy-rim texture for it */
 GpuMesh  make_quad(void);               /* unit quad for HUD / billboards */
 void     draw_gpumesh(GpuMesh *g);
 /* Wheel material draw: paint is restricted to proven metal; rubber, backing
  * and plastic suppress metallic lighting. All touched uniforms, texture,
  * alpha, blend and depth state are restored. Missing textures stay opaque. */
-void render_wheel_mesh(const RProg *r, GpuMesh *mesh, GLuint texture, int mode);
+void render_wheel_mesh(const RProg *r, GpuMesh *mesh, RhiTexture texture, int mode);
 /* Sort the four instances of a library's material slices by view depth.
  * order has space for 4 * scene->count entries (hub * count + slice). */
 void render_wheel_order(const N2Scene *scene, const float mvp[4][16], int *order);
@@ -247,7 +229,7 @@ int render_car_glass_order(const N2Scene *scene,const float mvp[16],int *order);
  * and fog on exit. Caller binds the program and texture unit zero. */
 int render_world_glows(const RProg *r,const N2Batch *batches,int count,
                         const float mvp[16]);
-int render_district_lights(const RProg *r, GpuMesh *quad, GLuint texture,
+int render_district_lights(const RProg *r, GpuMesh *quad, RhiTexture texture,
                            const N2LightSrc *lights, int nlights,
                            const float cam[3], const float look[3],
                            const float mvp[16], float viewdist,
@@ -271,7 +253,7 @@ int render_district_lights(const RProg *r, GpuMesh *quad, GLuint texture,
  * takes it from the first member. NULL leaves every batch N2_DRAW_OPAQUE,
  * unchanged from before this field existed. */
 int  upload_world_batches(const N2Scene *s, const float (*mbb)[4],
-                          const GLuint *mtex, GLuint texTerr, N2Batch **out,
+                          const RhiTexture *mtex, RhiTexture texTerr, N2Batch **out,
                           const char *audit, int *meshbatch,
                           const unsigned char *mtexmode);
 /* Same partition, resumed on the GL thread. Scene and mode arrays are borrowed
@@ -280,8 +262,8 @@ int  upload_world_batches(const N2Scene *s, const float (*mbb)[4],
  * failed steps leave outputs untouched. A quota is not a hard time deadline. */
 typedef struct WorldBatchUpload WorldBatchUpload;
 WorldBatchUpload *upload_world_batches_begin(const N2Scene *s,
-                          const float (*mbb)[4], const GLuint *mtex,
-                          GLuint texTerr, const char *audit,
+                          const float (*mbb)[4], const RhiTexture *mtex,
+                          RhiTexture texTerr, const char *audit,
                           const unsigned char *mtexmode);
 int upload_world_batches_step(WorldBatchUpload **job, int max_batches,
                           N2Batch **out, int *count, int *meshbatch);
@@ -291,24 +273,71 @@ void upload_world_batches_cancel(WorldBatchUpload **job);
  * since there are only ever a handful of skybox/neon meshes per city. Sky,
  * glow, vista and diagnostic-marker batches keep their own dedicated render
  * treatment, so their callers pass mtexmode = NULL (-> N2_DRAW_OPAQUE). */
-int  upload_cat_batches(const N2Scene *s, int cat, const GLuint *mtex, N2Batch **out,
+int  upload_cat_batches(const N2Scene *s, int cat, const RhiTexture *mtex, N2Batch **out,
                         const unsigned char *mtexmode);
 void render_batch_array_free(N2Batch **batches, int *count);
 /* Update only struck panels' existing VBO ranges; all passes share those buffers. */
 int render_world_prop_updates(const N2Scene *scene,N2Batch *batches,int count,
                              int (*update_mesh)(N2Mesh *));
 void draw_batch(const N2Batch *b);
-GLuint   upload_tex(const N2Tex *t);
+/* Pipelines of the sky, vista and ordinary world passes (one RProg). Several
+   names share a pipeline when their state is the same. */
+typedef struct {
+    RhiPipeline sky_dome,   /* opaque, depth test LEQUAL, no depth write */
+                sky_cap,    /* alpha blend, no depth write */
+                vista,      /* = sky_cap */
+                opaque,     /* depth write, no blend */
+                blend,      /* authored BLEND batches: alpha blend, no depth write */
+                add,        /* authored ADD batches: src alpha + one, no depth write */
+                reflect,    /* wet-road reflections: depth EQUAL, alpha blend, no write */
+                overlay;    /* restored-geometry diagnostic: = sky_dome */
+} UG2WorldPipelines;
+void render_world_pipelines(const RProg *r, UG2WorldPipelines *p);
+/* draw_batch through the bound pipeline (rhi_cmd_bind_pipeline) */
+void render_draw_batch(const N2Batch *b);
+/* Pipelines of the car passes (GpuMesh layout). */
+typedef struct {
+    RhiPipeline opaque[3],   /* by RhiCullMode: none, back, front; depth write */
+                glass,       /* alpha blend, no depth write, no culling */
+                glass_depth, /* the same with depth write (Mesh Inspector option) */
+                halo;        /* lamp halos: src alpha + one, no depth write */
+} UG2CarPipelines;
+void render_car_pipelines(const RProg *r, UG2CarPipelines *p);
+/* Screen-space quads (GpuMesh layout, no depth test, no culling): the
+   diagnostic HUD, menu overlay and text, and the HUD art / nitro overlay. */
+typedef struct {
+    RhiPipeline screen,         /* opaque; depth write stays on (inert without the test) */
+                screen_blend;   /* alpha blend, no depth write */
+} UG2OverlayPipelines;
+/* The overlay pipelines of r's shader (created on first use). */
+const UG2OverlayPipelines *render_overlay_pipelines(const RProg *r);
+/* Pipelines of the overlay effects: position-only car shadow and collision
+   walls, and the screen-space rain. */
+typedef struct {
+    RhiPipeline car_shadow,      /* blend, no depth write, stencil EQUAL 0 / INCR */
+                walls[2][2],     /* [depth test][lines]: blend, no depth write */
+                rain;            /* no depth test, blend, RainVertex layout */
+} UG2EffectPipelines;
+void render_effect_pipelines(const RProg *r, UG2EffectPipelines *p);
+/* draw_gpumesh through the bound pipeline */
+void render_draw_gpumesh(const GpuMesh *g);
+RhiTexture upload_tex(const N2Tex *t);
 /* Upload a decoded TPK texture, preferring a direct glCompressedTexImage2D of
    its raw S3TC blocks when the driver supports the format; falls back to the
-   portable CPU-decoded RGBA path (upload_tex) otherwise. Leaves the texture
-   bound (callers may override wrap/filter after). */
-GLuint   upload_tpk_texture_to_gpu(const N2Tex *t);
+   portable CPU-decoded RGBA path (upload_tex) otherwise. Both give the texture
+   a REPEAT sampler (trilinear + anisotropy with a full mip chain) and leave it
+   bound. */
+RhiTexture upload_tpk_texture_to_gpu(const N2Tex *t);
 /* Same as upload_tex / upload_tpk_texture_to_gpu, but first try a user HD
    override for `key` (tex_override.h; `pack` = source stem or NULL). With no
    override directory these are exactly the original uploaders. */
-GLuint   upload_tex_keyed(uint32_t key, const char *pack, const N2Tex *t);
-GLuint   upload_tpk_keyed(uint32_t key, const char *pack, const N2Tex *t);
+RhiTexture upload_tex_keyed(uint32_t key, const char *pack, const N2Tex *t);
+RhiTexture upload_tpk_keyed(uint32_t key, const char *pack, const N2Tex *t);
+/* Atlases and sprites: keep the texture's filtering but clamp both axes, so a
+   filter footprint at u/v = 0 or 1 cannot wrap in the opposite edge. The
+   _linear variant also samples level 0 only (bilinear), for 2D overlays. */
+void render_texture_clamp(RhiTexture tex);
+void render_texture_clamp_linear(RhiTexture tex);
 /* Anisotropic filtering, the one texture-detail knob this renderer was missing.
  * Trilinear alone samples a square footprint, so any surface seen at a grazing
  * angle -- which is most of a road, a kerb and a car's own flanks -- drops to a
@@ -322,16 +351,16 @@ void render_texture_detail(float aniso);
 extern int g_tex_s3tc;   /* 1 = GL_EXT_texture_compression_s3tc present; set once at GL init */
 
 /* ---- 3x5 bitmap font (uppercase, digits, _ - /) ---- */
-void  draw_text(GpuMesh *quad, GLint uMVP, const char *s,
+void  draw_text(GpuMesh *quad, const RProg *r, const char *s,
                 float x, float y, float px, float py);
 float text_width(const char *s, float px);
 
 /* dev screenshot: rgb is top-left origin, w*h*3 */
 void write_png(const char *path, int w, int h, const unsigned char *rgb);
 
-/* Read the current framebuffer's bottom w*h pixels into rgb (w*h*3, top-left
- * origin, ready for write_png). Reads GL_RGBA, the one format ES2 guarantees,
- * and drops alpha. Returns 0 if the buffer could not be allocated. */
+/* Read the top-left w*h pixels of the current frame into rgb (w*h*3, top-left
+ * origin, ready for write_png) through rhi_read_pixels. Call it between
+ * rhi_frame_begin and rhi_frame_end. Returns 0 on failure. */
 int  render_read_rgb(int w, int h, unsigned char *rgb);
 
 #endif

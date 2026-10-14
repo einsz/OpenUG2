@@ -1,0 +1,204 @@
+{
+  "provenance": "Fresh synthetic format data written independently for parser tests.",
+  "synthetic_object": {
+    "file": "synthetic-object.bin",
+    "expected": {
+      "type": 5,
+      "name_id": 123,
+      "identity": 17,
+      "color_rgba": [
+        10,
+        20,
+        30,
+        255
+      ],
+      "position": [
+        12,
+        -8,
+        3
+      ],
+      "parent": null
+    }
+  },
+  "hierarchy": {
+    "nodes": [
+      {
+        "identity": 7,
+        "name_id": 99,
+        "parent": null,
+        "position": [
+          10,
+          20
+        ],
+        "scale": [
+          2,
+          2
+        ]
+      },
+      {
+        "identity": 8,
+        "name_id": 99,
+        "parent": 7,
+        "position": [
+          3,
+          4
+        ]
+      }
+    ],
+    "expected_child_position": [
+      16,
+      28
+    ],
+    "note": "Repeated name ID must not collapse instances."
+  },
+  "malformed": [
+    {
+      "description": "Record declares 100 bytes but containing payload has 4",
+      "expected": "reject safely"
+    },
+    {
+      "description": "Parent links 1 to 2 and 2 to 1",
+      "expected": "reject cycle safely"
+    },
+    {
+      "description": "Resource name offset exceeds pool extent",
+      "expected": "reject resource safely"
+    }
+  ],
+  "synthetic_glyph": {
+    "char_code": 53,
+    "width": 6,
+    "height": 9,
+    "atlas_xy": [
+      20,
+      30
+    ],
+    "advance": 8,
+    "atlas_size": [
+      128,
+      64
+    ],
+    "expected_uv_before_inset": [
+      0.15625,
+      0.46875,
+      0.203125,
+      0.609375
+    ],
+    "bearing_x": 0,
+    "top_offset": 1,
+    "encoding": "char:u16 at0,width:u8 at2,height:u8 at3,x:u16 at4,y:u16 at6,opaque:u8 at8,bearing_x:i8 at9,top_offset:u8 at10,opaque bytes11..13,advance:u16 at14",
+    "negative_bearing_case": {
+      "byte9_hex": "fe",
+      "expected_horizontal_offset": -2,
+      "note": "Synthetic provisional placement vector, not retail baseline evidence."
+    }
+  },
+  "synthetic_font_header": {
+    "glyph_count": 2,
+    "header24_byte_offset": 160,
+    "header28_byte_extent": 168,
+    "enclosing_fntf_extent": 168,
+    "expected": "two glyph records fit; extra area remains opaque"
+  },
+  "package_selection": {
+    "provenance": "Fresh independent header values, names and padding; not copied original data.",
+    "payload_size": 48,
+    "ignored_first16_bytes": "00000000000000000000000000000000",
+    "name_count": 10,
+    "path_count": 10,
+    "name_bytes_ascii": "SYNTH.fng\u0000",
+    "path_bytes_ascii": "demo/path\u0000",
+    "name_offset": 24,
+    "path_offset": 34,
+    "expected_name": "SYNTH.fng",
+    "remaining_padding_bytes": 4
+  },
+  "image_resolution": {
+    "provenance": "Synthetic keys exercise the general name transform; the special original map-key whitelist is a format requirement, not a copied image sample.",
+    "cases": [
+      {
+        "alias": "synthetic_meter.tga",
+        "request_id": 17,
+        "expected_texture_key": "synthetic_meter",
+        "expected_texture_hash": 4115562550
+      },
+      {
+        "alias": "SYNTHETIC_MASK.BMP",
+        "request_id": 23,
+        "expected_texture_key": "SYNTHETIC_MASK",
+        "expected_texture_hash": 2076967493
+      },
+      {
+        "alias": "Track4000_map.tga",
+        "expected_texture_key": "TRACKMAP4000",
+        "expected_texture_hash": 4150266166
+      }
+    ]
+  },
+  "multi_package_catalog": {
+    "provenance": "Independently authored catalog inputs exercising package search, not original texture metadata.",
+    "source_archive": "synthetic-source",
+    "packages": [
+      {
+        "textures": [
+          {
+            "texture_id": 101,
+            "supported": true
+          }
+        ]
+      },
+      {
+        "textures": [
+          {
+            "texture_id": 202,
+            "supported": true
+          },
+          {
+            "texture_id": 303,
+            "supported": true
+          }
+        ]
+      }
+    ],
+    "required_texture_ids": [
+      202,
+      303
+    ],
+    "parsed_font_table": {
+      "atlas_texture_id": 303
+    },
+    "expected": {
+      "resolved_texture_ids": [
+        202,
+        303
+      ],
+      "font_atlas_resolved": true,
+      "missing_texture_ids": []
+    },
+    "missing_atlas_variant": {
+      "packages": [
+        {
+          "textures": [
+            {
+              "texture_id": 101,
+              "supported": true
+            }
+          ]
+        },
+        {
+          "textures": [
+            {
+              "texture_id": 202,
+              "supported": true
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "font_table_present": true,
+        "font_atlas_resolved": false,
+        "font_fallback_reported": true
+      }
+    }
+  }
+}

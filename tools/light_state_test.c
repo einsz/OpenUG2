@@ -4,9 +4,10 @@
 #include <math.h>
 #include <stdio.h>
 #include "render.h"
+#include "rhi_gl.h"
 
-static void eq_uniform(const RProg *r, GLint loc, const float *want, int n) {
-    float got[16]; glGetUniformfv(r->prog, loc, got);
+/* got: a field of the shader's parameter block (what the next draw sees) */
+static void eq_uniform(const float *got, const float *want, int n) {
     for (int i=0; i<n; i++) assert(fabsf(got[i]-want[i]) < 1e-6f);
 }
 
@@ -54,19 +55,20 @@ int main(void) {
     float clip[]={2,0,0,0,0,2,0,0,0,0,1,0,-1,-1,0,1};
     glViewport(0,0,32,32);glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
-    glUniformMatrix4fv(r.uMVP,1,GL_FALSE,clip);
-    glUniform1f(r.uUnlit,1);glUniform1f(r.uUseTex,0);glUniform1f(r.uAlpha,.5f);
-    glUniform1f(r.uFogDensity,0);glUniform3f(r.uColor,0,0,0);
+    ug2_copy(r.p->uMVP, clip, 16);
+    r.p->uUnlit = 1;r.p->uUseTex = 0;r.p->uAlpha = .5f;
+    r.p->uFogDensity = 0;ug2_vec3(r.p->uColor, 0, 0, 0);
     for(int soft=1;soft<=2;soft++) {
         glClearColor(1,1,1,1);glClear(GL_COLOR_BUFFER_BIT);
-        glUniform1f(r.uSoft,(float)soft);draw_gpumesh(&quad);
+        r.p->uSoft = (float)soft;draw_gpumesh(&quad);
         unsigned char inside[4],edge[4];
         glReadPixels(28,27,1,1,GL_RGBA,GL_UNSIGNED_BYTE,inside);
         glReadPixels(0,0,1,1,GL_RGBA,GL_UNSIGNED_BYTE,edge);
         assert(soft==1?inside[0]>250:inside[0]<210);
         assert(edge[0]>250);
     }
-    GLuint tex[2]; glGenTextures(2, tex);
+    RhiTexture light_tex = rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D,RHI_FORMAT_RGBA8,1,1, RHI_TEXTURE_SAMPLED});
+    GLuint tex[2] = {rhi_gl_texture_name(light_tex), 0}; glGenTextures(1, tex + 1);
     const unsigned char pixel[4] = {128,64,32,255};
     glBindTexture(GL_TEXTURE_2D, tex[0]);
     glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,1,1,0,GL_RGBA,GL_UNSIGNED_BYTE,pixel);
@@ -78,14 +80,14 @@ int main(void) {
     N2LightSrc lights[2] = {{{0,0,0},2,30,0xff4080ffu},
                             {{1000,1000,1000},2,30,0xffffffffu}};
     const float color[3]={0.2f,0.4f,0.6f};
-    const GLint scalars[]={r.uAlpha,r.uUnlit,r.uEmissiveTex,r.uUseTex,r.uSoft};
+    float *const scalars[]={&r.p->uAlpha,&r.p->uUnlit,&r.p->uEmissiveTex,&r.p->uUseTex,&r.p->uSoft};
     const float values[]={0.3f,0.4f,0.2f,0.3f,0.4f};
     glViewport(0,0,32,32); glClearColor(0,0,0,0);
     for (int mode=0; mode<3; mode++) {
         int blocked = mode==1, black_in_fog = mode==2;
         const float fog_color[3]={0.3f,0.2f,0.1f};
-        glUniform3fv(r.uFogColor,1,fog_color);
-        glUniform1f(r.uFogDensity,black_in_fog ? 1.0f : 0.0f);
+        ug2_copy(r.p->uFogColor, fog_color, 3);
+        r.p->uFogDensity = black_in_fog ? 1.0f : 0.0f;
         if (black_in_fog) {
             const unsigned char black[4]={0,0,0,255};
             glBindTexture(GL_TEXTURE_2D,tex[0]);
@@ -97,14 +99,14 @@ int main(void) {
         if (blocked) glEnable(GL_BLEND); else glDisable(GL_BLEND);
         glBlendFuncSeparate(GL_ONE,GL_ZERO,GL_ZERO,GL_ONE);
         glBindTexture(GL_TEXTURE_2D,tex[1]);
-        glUniform3fv(r.uColor,1,color);
-        glUniformMatrix4fv(r.uMVP,1,GL_FALSE,saved);
-        for (int i=0;i<5;i++) glUniform1f(scalars[i],values[i]);
-        assert(render_district_lights(&r,&quad,tex[0],lights,2,cam,look,mvp,10,1.0f,1.0f)==1);
-        eq_uniform(&r,r.uColor,color,3);
-        eq_uniform(&r,r.uMVP,saved,16);
-        eq_uniform(&r,r.uFogColor,fog_color,3);
-        for (int i=0;i<5;i++) eq_uniform(&r,scalars[i],values+i,1);
+        ug2_copy(r.p->uColor, color, 3);
+        ug2_copy(r.p->uMVP, saved, 16);
+        for (int i=0;i<5;i++) *scalars[i]=values[i];
+        assert(render_district_lights(&r,&quad,light_tex,lights,2,cam,look,mvp,10,1.0f,1.0f)==1);
+        eq_uniform(r.p->uColor,color,3);
+        eq_uniform(r.p->uMVP,saved,16);
+        eq_uniform(r.p->uFogColor,fog_color,3);
+        for (int i=0;i<5;i++) eq_uniform(scalars[i],values+i,1);
         GLint v; glGetIntegerv(GL_TEXTURE_BINDING_2D,&v); assert((GLuint)v==tex[1]);
         glGetIntegerv(GL_BLEND_SRC_RGB,&v); assert(v==GL_ONE);
         glGetIntegerv(GL_BLEND_DST_RGB,&v); assert(v==GL_ZERO);
@@ -122,7 +124,7 @@ int main(void) {
        A size-scaled camera offset used to pull the sprite through that wall. */
     glBindTexture(GL_TEXTURE_2D,tex[0]);
     glTexSubImage2D(GL_TEXTURE_2D,0,0,0,1,1,GL_RGBA,GL_UNSIGNED_BYTE,pixel);
-    glUniform1f(r.uFogDensity,0);
+    r.p->uFogDensity = 0;
     for(int angle=0;angle<4;angle++)for(int far=0;far<2;far++)for(int blocked=0;blocked<2;blocked++) {
         float co=cosf(angle*1.570796327f),sn=sinf(angle*1.570796327f);
         float distance=far?30:3;
@@ -135,13 +137,13 @@ int main(void) {
             float wall[]={-sn*4,co*4,0,0, 0,0,4,0, co,sn,0,0,
                           -co*.2f+sn*2,-sn*.2f-co*2,-2,1};
             float wall_mvp[16];mat_mul(world,wall,wall_mvp);
-            glUniformMatrix4fv(r.uMVP,1,GL_FALSE,wall_mvp);
-            glUniform1f(r.uUseTex,0);glUniform1f(r.uUnlit,1);glUniform1f(r.uEmissiveTex,0);
-            glUniform1f(r.uSoft,0);glUniform1f(r.uAlpha,1);glUniform3f(r.uColor,0,0,0);
+            ug2_copy(r.p->uMVP, wall_mvp, 16);
+            r.p->uUseTex = 0;r.p->uUnlit = 1;r.p->uEmissiveTex = 0;
+            r.p->uSoft = 0;r.p->uAlpha = 1;ug2_vec3(r.p->uColor, 0, 0, 0);
             draw_gpumesh(&quad);
         }
         N2LightSrc lamp={{0,0,0},10,50,0xffffffffu};
-        assert(render_district_lights(&r,&quad,tex[0],&lamp,1,eye,direction,world,100,1,1)==1);
+        assert(render_district_lights(&r,&quad,light_tex,&lamp,1,eye,direction,world,100,1,1)==1);
         unsigned char out[4];glReadPixels(16,16,1,1,GL_RGBA,GL_UNSIGNED_BYTE,out);
         assert(blocked?(out[0]==0 && out[1]==0 && out[2]==0):out[0]>50);
     }
@@ -152,31 +154,41 @@ int main(void) {
         bv[i].pos[0]=(i==1||i==2)?1:-1;bv[i].pos[1]=i>=2?1:-1;
         memset(bv[i].col,255,4);
     }
-    N2Batch batch={.index_count=6,.tex=tex[0]};
-    glGenBuffers(1,&batch.vbo);glBindBuffer(GL_ARRAY_BUFFER,batch.vbo);
-    glBufferData(GL_ARRAY_BUFFER,sizeof bv,bv,GL_STATIC_DRAW);
-    glGenBuffers(1,&batch.ibo);glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,batch.ibo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER,sizeof bi,bi,GL_STATIC_DRAW);
+    N2Batch batch={.index_count=6,.tex=light_tex};
+    batch.vbo=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX,RHI_UPDATE_STATIC,sizeof bv,bv});
+    batch.ibo=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_INDEX,RHI_UPDATE_STATIC,sizeof bi,bi});
     float identity[16],wrong[16];mat_trans(0,0,0,identity);mat_trans(100,100,100,wrong);
     for(int mode=0;mode<4;mode++) {
         unsigned char px[]={mode==2?0:128,0,0,255};
         glBindTexture(GL_TEXTURE_2D,tex[0]);
         glTexSubImage2D(GL_TEXTURE_2D,0,0,0,1,1,GL_RGBA,GL_UNSIGNED_BYTE,px);
         glDepthMask(GL_TRUE);glClearDepth(mode==1?0:1);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
-        glDisable(GL_DEPTH_TEST);glUniformMatrix4fv(r.uMVP,1,GL_FALSE,wrong);
-        render_model(&r,wrong);glUniform1f(r.uAlpha,0);glUniform1f(r.uSoft,1);
-        const float fog[]={.3f,.2f,.1f};glUniform3fv(r.uFogColor,1,fog);
-        glUniform1f(r.uFogDensity,mode==2?1:0);batch.unresolved=mode==3;
+        glDisable(GL_DEPTH_TEST);ug2_copy(r.p->uMVP, wrong, 16);
+        render_model(&r,wrong);r.p->uAlpha = 0;r.p->uSoft = 1;
+        const float fog[]={.3f,.2f,.1f};ug2_copy(r.p->uFogColor, fog, 3);
+        r.p->uFogDensity = mode==2?1:0;batch.unresolved=mode==3;
         assert(render_world_glows(&r,&batch,1,identity)==(mode==3?0:1));
-        eq_uniform(&r,r.uMVP,identity,16);eq_uniform(&r,r.uFogColor,fog,3);
+        eq_uniform(r.p->uMVP,identity,16);eq_uniform(r.p->uFogColor,fog,3);
         unsigned char out[4];glReadPixels(16,16,1,1,GL_RGBA,GL_UNSIGNED_BYTE,out);
         if(mode==0)assert(out[0]>100 && out[1]==0 && out[2]==0);
         else assert(out[0]==0 && out[1]==0 && out[2]==0);
         assert(glGetError()==GL_NO_ERROR);
     }
-    glDeleteBuffers(1,&batch.vbo);glDeleteBuffers(1,&batch.ibo);
-    glDeleteTextures(2,tex); glDeleteProgram(r.prog);
-    glDeleteBuffers(1,&quad.vbo); glDeleteBuffers(1,&quad.nbo); glDeleteBuffers(1,&quad.ibo);
+    /* Both helper layouts restore the caller's compare/cull/channel state. */
+    batch.unresolved=0;
+    for(int world=0;world<2;world++) {
+        glDepthFunc(GL_GREATER);glEnable(GL_CULL_FACE);glEnable(GL_STENCIL_TEST);
+        glColorMask(GL_FALSE,GL_TRUE,GL_FALSE,GL_TRUE);
+        if(world)assert(render_world_glows(&r,&batch,1,identity)==1);
+        else assert(render_district_lights(&r,&quad,light_tex,lights,2,cam,look,mvp,10,1,1)==1);
+        GLint depth_func;GLboolean cm[4];
+        glGetIntegerv(GL_DEPTH_FUNC,&depth_func);glGetBooleanv(GL_COLOR_WRITEMASK,cm);
+        assert(depth_func==GL_GREATER && glIsEnabled(GL_CULL_FACE) && glIsEnabled(GL_STENCIL_TEST));
+        assert(!cm[0] && cm[1] && !cm[2] && cm[3]);
+    }
+    rhi_buffer_destroy(batch.vbo);rhi_buffer_destroy(batch.ibo);
+    rhi_texture_destroy(light_tex); glDeleteTextures(1,tex+1); rhi_shader_destroy(r.shader);
+    rhi_buffer_destroy(quad.vbo); rhi_buffer_destroy(quad.nbo); rhi_buffer_destroy(quad.ibo);
     SDL_GL_DeleteContext(ctx); SDL_DestroyWindow(win); SDL_Quit();
     puts("light_state_test: PASS (vehicle footprints, soft shadow coverage, state isolation, depth occlusion, distance culling, additive fog, world-glow transform isolation)");
     return 0;

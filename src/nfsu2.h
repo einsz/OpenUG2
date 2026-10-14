@@ -3514,10 +3514,10 @@ static int n2_car_tex_name_by_key(const unsigned char *d, long len, uint32_t key
 }
 
 /* Decode ONE car texture through its offset-slot table and embedded header. */
-static int n2_load_car_tex_by_key(const unsigned char *d, long len, uint32_t key, N2Tex *t) {
-    memset(t, 0, sizeof *t);   /* all outputs defined on success AND failure */
-    uint32_t sz; const unsigned char *p = n2_tpk_slots(d, len, &sz);
-    if (!p) return 0;
+static int n2_load_car_tex_from_slots(const unsigned char *d,long len,
+        const unsigned char *p,uint32_t sz,uint32_t key,N2Tex *t) {
+    memset(t,0,sizeof *t);
+    if(!p) return 0;
     int absoff = 0, enc = 0, dec = 0; uint32_t hfe = 0;
     for (uint32_t i = 0; i + 0x18 <= sz; i += 0x18)
         if (n2_u32(p + i) == key) {
@@ -3526,7 +3526,7 @@ static int n2_load_car_tex_by_key(const unsigned char *d, long len, uint32_t key
             hfe = n2_u32(p + i + 16);   /* +0x10: header_from_end (was mis-read as RefCount) */
             break;
         }
-    if (dec <= 0 || absoff < 0 || (long)absoff + enc > len) return 0;
+    if (dec <= 0 || dec > 256*1024*1024 || enc < 0 || absoff < 0 || (long)absoff + enc > len) return 0;
     unsigned char *raw = (unsigned char *)malloc(dec);
     if (!raw) return 0;
     if (enc >= 20 && memcmp(d + absoff, "HUFF", 4) == 0) {
@@ -3646,6 +3646,12 @@ static int n2_load_car_tex_by_key(const unsigned char *d, long len, uint32_t key
     memcpy(t->dxt, raw, t->dxtlen);
     free(raw);
     return 1;
+}
+
+/* Existing public helper retains its original first-package contract. */
+static int n2_load_car_tex_by_key(const unsigned char*d,long len,uint32_t key,N2Tex*t) {
+    uint32_t size=0;const unsigned char*slots=n2_tpk_slots(d,len,&size);
+    return n2_load_car_tex_from_slots(d,len,slots,size,key,t);
 }
 
 /* Find a named texture in the file's local TPK and decode it. Returns 1 on hit. */

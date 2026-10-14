@@ -35,6 +35,11 @@ static const char *g_vec_dir = UG_VECTOR_DIR;
 /* ------------------------------------------------------------------ */
 /* file helpers                                                        */
 /* ------------------------------------------------------------------ */
+static void temp_path(char path[512],const char *name) {
+    const char *tmp=getenv("TMPDIR");if(!tmp || !*tmp)tmp="/tmp";
+    int n=snprintf(path,512,"%s/%s",tmp,name);
+    if(n<0 || n>=512){fprintf(stderr,"test temporary path is too long\n");exit(1);}
+}
 static char *read_file(const char *name, size_t *len) {
     char path[512];
     snprintf(path, sizeof path, "%s/%s", g_vec_dir, name);

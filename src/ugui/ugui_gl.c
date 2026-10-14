@@ -4,7 +4,7 @@
  * distance functions (rounded boxes, rings, glows, quarter discs, spinner)
  * and samples the generated font atlas for text. GLES2 compatible: no
  * fixed function, no immediate mode, no VAOs. */
-#include "../gl_state.h"   /* GL headers + CPU state tracker (no glGet* readback) */
+#include "../rhi_gl_state.h"   /* GL headers + shared CPU state tracker */
 
 #include "ugui_gl.h"
 #include "ugui_tex.h"
@@ -216,19 +216,35 @@ void ug_gl_render(UgGL *g, const UgCanvas *cv, int win_w, int win_h) {
     if (!g || cv->n == 0 || win_w <= 0 || win_h <= 0) return;
     UgView v = ug_view_fit(win_w, win_h);
 
-    /* save the few states we touch (CPU tracker, no GL readback) */
-    int prev_prog = 0, prev_buf = 0, prev_tex = 0, prev_blend_src = 0, prev_blend_dst = 0;
-    int prev_vp[4];
+    /* Preserve every state this legacy GL/GLES2 renderer changes. */
+    int prev_prog = 0, prev_buf = 0, prev_tex = 0, prev_tex0 = 0, prev_active = 0, prev_unpack = 0;
+    int prev_vp[4], prev_scissor_box[4], prev_blend_factors[4], prev_equation[2];
     int prev_blend = gls_is_enabled(GL_BLEND), prev_depth = gls_is_enabled(GL_DEPTH_TEST);
     int prev_cull = gls_is_enabled(GL_CULL_FACE), prev_scissor = gls_is_enabled(GL_SCISSOR_TEST);
     gls_get_integerv(GL_CURRENT_PROGRAM, &prev_prog);
     gls_get_integerv(GL_VIEWPORT, prev_vp);
-    gls_get_integerv(GL_BLEND_SRC_RGB, &prev_blend_src);
-    gls_get_integerv(GL_BLEND_DST_RGB, &prev_blend_dst);
+    gls_get_integerv(GL_BLEND_SRC_RGB, &prev_blend_factors[0]);
+    gls_get_integerv(GL_BLEND_DST_RGB, &prev_blend_factors[1]);
+    gls_get_integerv(GL_BLEND_SRC_ALPHA, &prev_blend_factors[2]);
+    gls_get_integerv(GL_BLEND_DST_ALPHA, &prev_blend_factors[3]);
+    glGetIntegerv(GL_BLEND_EQUATION_RGB, &prev_equation[0]);
+    glGetIntegerv(GL_BLEND_EQUATION_ALPHA, &prev_equation[1]);
+    glGetIntegerv(GL_SCISSOR_BOX, prev_scissor_box);
+    glGetIntegerv(GL_UNPACK_ALIGNMENT, &prev_unpack);
+    gls_get_integerv(GL_ACTIVE_TEXTURE, &prev_active);
     gls_get_integerv(GL_ARRAY_BUFFER_BINDING, &prev_buf);
     gls_get_integerv(GL_TEXTURE_BINDING_2D, &prev_tex);
-    int prev_attr[5];
-    for (int i = 0; i < 5; i++) prev_attr[i] = gls_attrib_enabled((unsigned)i);
+    glActiveTexture(GL_TEXTURE0);gls_get_integerv(GL_TEXTURE_BINDING_2D, &prev_tex0);
+    struct { GLint enabled, buffer, size, type, normalized, stride; void *pointer; } prev_attr[5];
+    for (unsigned i = 0; i < 5; i++) {
+        glGetVertexAttribiv(i,GL_VERTEX_ATTRIB_ARRAY_ENABLED,&prev_attr[i].enabled);
+        glGetVertexAttribiv(i,GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING,&prev_attr[i].buffer);
+        glGetVertexAttribiv(i,GL_VERTEX_ATTRIB_ARRAY_SIZE,&prev_attr[i].size);
+        glGetVertexAttribiv(i,GL_VERTEX_ATTRIB_ARRAY_TYPE,&prev_attr[i].type);
+        glGetVertexAttribiv(i,GL_VERTEX_ATTRIB_ARRAY_NORMALIZED,&prev_attr[i].normalized);
+        glGetVertexAttribiv(i,GL_VERTEX_ATTRIB_ARRAY_STRIDE,&prev_attr[i].stride);
+        glGetVertexAttribPointerv(i,GL_VERTEX_ATTRIB_ARRAY_POINTER,&prev_attr[i].pointer);
+    }
 
     glViewport(v.x0, win_h - v.y0 - v.h, v.w, v.h);
     glScissor(v.x0, win_h - v.y0 - v.h, v.w, v.h);
@@ -237,6 +253,7 @@ void ug_gl_render(UgGL *g, const UgCanvas *cv, int win_w, int win_h) {
     glDisable(GL_CULL_FACE);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glBlendEquationSeparate(GL_FUNC_ADD,GL_FUNC_ADD);
 
     glUseProgram(g->prog);
     float proj[16] = {2.0f / UG_SCREEN_W, 0, 0, 0,
@@ -276,12 +293,20 @@ void ug_gl_render(UgGL *g, const UgCanvas *cv, int win_w, int win_h) {
         i = j;
     }
 
-    for (int i = 0; i < 5; i++)
-        if (!prev_attr[i]) glDisableVertexAttribArray((unsigned)i);
+    for (unsigned i = 0; i < 5; i++) {
+        glBindBuffer(GL_ARRAY_BUFFER,(unsigned)prev_attr[i].buffer);
+        glVertexAttribPointer(i,prev_attr[i].size,(GLenum)prev_attr[i].type,
+            (GLboolean)prev_attr[i].normalized,prev_attr[i].stride,prev_attr[i].pointer);
+        if(prev_attr[i].enabled)glEnableVertexAttribArray(i);else glDisableVertexAttribArray(i);
+    }
     glBindBuffer(GL_ARRAY_BUFFER, (unsigned)prev_buf);
-    glBindTexture(GL_TEXTURE_2D, (unsigned)prev_tex);
+    glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D, (unsigned)prev_tex0);
+    glActiveTexture((unsigned)prev_active);glBindTexture(GL_TEXTURE_2D, (unsigned)prev_tex);
+    glPixelStorei(GL_UNPACK_ALIGNMENT,prev_unpack);
     glUseProgram((unsigned)prev_prog);
-    glBlendFunc((unsigned)prev_blend_src, (unsigned)prev_blend_dst);
+    glBlendFuncSeparate(prev_blend_factors[0],prev_blend_factors[1],prev_blend_factors[2],prev_blend_factors[3]);
+    glBlendEquationSeparate(prev_equation[0],prev_equation[1]);
+    glScissor(prev_scissor_box[0],prev_scissor_box[1],prev_scissor_box[2],prev_scissor_box[3]);
     if (!prev_blend) glDisable(GL_BLEND);
     if (prev_depth) glEnable(GL_DEPTH_TEST);
     if (prev_cull) glEnable(GL_CULL_FACE);

@@ -14,14 +14,14 @@
 
 typedef struct {
     GLuint   vao;          /* reserved: 0 on GL 2.1 core (no VAO); attribs bound per draw */
-    GLuint   vbo, ibo;
+    RhiBuffer vbo, ibo;
     uint32_t index_count;
     uint32_t chunk_id;
     char     section_name[64];
 } WorldMeshBatch;
 
 /* Upload one section's interleaved BatchedVertex array + u16 index array into a
-   static VBO/IBO. Returns a batch with vbo==0 (skipped at draw) on empty input. */
+   static VBO/IBO. Returns a batch with vbo=={0} (skipped at draw) on empty input. */
 WorldMeshBatch upload_world_mesh_to_gpu(const BatchedVertex *verts, uint32_t vcount,
                                         const uint16_t *indices, uint32_t icount,
                                         const char *section_name, uint32_t chunk_id);
@@ -34,8 +34,8 @@ void render_world_map(const WorldMeshBatch *batches, uint32_t n,
 /* Free the batch's GL objects and zero it. */
 void destroy_world_mesh_batch(WorldMeshBatch *b);
 
-/* Compile world_debug_120.vert/.frag into a linked program (0 on failure).
+/* Compile world_debug_120.vert/.frag into a shader ({0} on failure).
    Binds a_Position/a_Normal/a_UV0/a_Color to locations 0..3. */
-GLuint world_debug_program_load(const char *vert_path, const char *frag_path);
+RhiShader world_debug_shader_load(const char *vert_path, const char *frag_path);
 
 #endif /* OPENUG2_WORLD_MESH_H */

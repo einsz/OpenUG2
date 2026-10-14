@@ -1,0 +1,358 @@
+{
+  "provenance": "Independently authored synthetic cases for SPEC.md 'Project policy: widescreen HUD fitment (not original behaviour)'. Values computed by the reviewer from the stated formulas X = W/2 + s*(x+t). Group positions are invented. Project policy, not retail behaviour; no captures or original assets. Tolerance 1e-2 px for rounded values.",
+  "cases": [
+    {
+      "name": "identical-640x480-wide-x-224",
+      "input": {
+        "viewport": [
+          640,
+          480
+        ],
+        "policy": "wide",
+        "group_centre_logical_x": -224
+      },
+      "expected": {
+        "output_x_px": 96.0
+      }
+    },
+    {
+      "name": "identical-640x480-wide-x0",
+      "input": {
+        "viewport": [
+          640,
+          480
+        ],
+        "policy": "wide",
+        "group_centre_logical_x": 0
+      },
+      "expected": {
+        "output_x_px": 320.0
+      }
+    },
+    {
+      "name": "identical-640x480-wide-x216",
+      "input": {
+        "viewport": [
+          640,
+          480
+        ],
+        "policy": "wide",
+        "group_centre_logical_x": 216
+      },
+      "expected": {
+        "output_x_px": 536.0
+      }
+    },
+    {
+      "name": "identical-1440x1080-wide-x-224",
+      "input": {
+        "viewport": [
+          1440,
+          1080
+        ],
+        "policy": "wide",
+        "group_centre_logical_x": -224
+      },
+      "expected": {
+        "output_x_px": 216.0
+      }
+    },
+    {
+      "name": "identical-1440x1080-wide-x0",
+      "input": {
+        "viewport": [
+          1440,
+          1080
+        ],
+        "policy": "wide",
+        "group_centre_logical_x": 0
+      },
+      "expected": {
+        "output_x_px": 720.0
+      }
+    },
+    {
+      "name": "identical-1440x1080-wide-x216",
+      "input": {
+        "viewport": [
+          1440,
+          1080
+        ],
+        "policy": "wide",
+        "group_centre_logical_x": 216
+      },
+      "expected": {
+        "output_x_px": 1206.0
+      }
+    },
+    {
+      "name": "identical-640x480-4:3-x-224",
+      "input": {
+        "viewport": [
+          640,
+          480
+        ],
+        "policy": "4:3",
+        "group_centre_logical_x": -224
+      },
+      "expected": {
+        "output_x_px": 96.0
+      }
+    },
+    {
+      "name": "identical-640x480-4:3-x0",
+      "input": {
+        "viewport": [
+          640,
+          480
+        ],
+        "policy": "4:3",
+        "group_centre_logical_x": 0
+      },
+      "expected": {
+        "output_x_px": 320.0
+      }
+    },
+    {
+      "name": "identical-640x480-4:3-x216",
+      "input": {
+        "viewport": [
+          640,
+          480
+        ],
+        "policy": "4:3",
+        "group_centre_logical_x": 216
+      },
+      "expected": {
+        "output_x_px": 536.0
+      }
+    },
+    {
+      "name": "identical-1440x1080-4:3-x-224",
+      "input": {
+        "viewport": [
+          1440,
+          1080
+        ],
+        "policy": "4:3",
+        "group_centre_logical_x": -224
+      },
+      "expected": {
+        "output_x_px": 216.0
+      }
+    },
+    {
+      "name": "identical-1440x1080-4:3-x0",
+      "input": {
+        "viewport": [
+          1440,
+          1080
+        ],
+        "policy": "4:3",
+        "group_centre_logical_x": 0
+      },
+      "expected": {
+        "output_x_px": 720.0
+      }
+    },
+    {
+      "name": "identical-1440x1080-4:3-x216",
+      "input": {
+        "viewport": [
+          1440,
+          1080
+        ],
+        "policy": "4:3",
+        "group_centre_logical_x": 216
+      },
+      "expected": {
+        "output_x_px": 1206.0
+      }
+    },
+    {
+      "name": "1920x1080-wide-x-224",
+      "input": {
+        "viewport": [
+          1920,
+          1080
+        ],
+        "policy": "wide",
+        "group_centre_logical_x": -224
+      },
+      "expected": {
+        "output_x_px": 216.0
+      }
+    },
+    {
+      "name": "1920x1080-4:3-x-224",
+      "input": {
+        "viewport": [
+          1920,
+          1080
+        ],
+        "policy": "4:3",
+        "group_centre_logical_x": -224
+      },
+      "expected": {
+        "output_x_px": 456.0
+      }
+    },
+    {
+      "name": "1920x1080-wide-x216",
+      "input": {
+        "viewport": [
+          1920,
+          1080
+        ],
+        "policy": "wide",
+        "group_centre_logical_x": 216
+      },
+      "expected": {
+        "output_x_px": 1686.0
+      }
+    },
+    {
+      "name": "1920x1080-4:3-x216",
+      "input": {
+        "viewport": [
+          1920,
+          1080
+        ],
+        "policy": "4:3",
+        "group_centre_logical_x": 216
+      },
+      "expected": {
+        "output_x_px": 1446.0
+      }
+    },
+    {
+      "name": "1920x1080-wide-x0",
+      "input": {
+        "viewport": [
+          1920,
+          1080
+        ],
+        "policy": "wide",
+        "group_centre_logical_x": 0
+      },
+      "expected": {
+        "output_x_px": 960.0
+      }
+    },
+    {
+      "name": "1920x1080-4:3-x0",
+      "input": {
+        "viewport": [
+          1920,
+          1080
+        ],
+        "policy": "4:3",
+        "group_centre_logical_x": 0
+      },
+      "expected": {
+        "output_x_px": 960.0
+      }
+    },
+    {
+      "name": "1920x1080-scale-and-extra",
+      "input": {
+        "viewport": [
+          1920,
+          1080
+        ],
+        "policy": "wide"
+      },
+      "expected": {
+        "s": 2.25,
+        "D": 106.667
+      }
+    },
+    {
+      "name": "2560x1080-scale-and-extra",
+      "input": {
+        "viewport": [
+          2560,
+          1080
+        ],
+        "policy": "wide"
+      },
+      "expected": {
+        "s": 2.25,
+        "D": 248.889
+      }
+    },
+    {
+      "name": "threshold-exact-not-moved",
+      "input": {
+        "viewport": [
+          1920,
+          1080
+        ],
+        "policy": "wide",
+        "group_centre_logical_x": -106.66666666666667
+      },
+      "expected": {
+        "output_x_px": 720.0,
+        "translation": 0
+      }
+    },
+    {
+      "name": "threshold-just-beyond-moved",
+      "input": {
+        "viewport": [
+          1920,
+          1080
+        ],
+        "policy": "wide",
+        "group_centre_logical_x": -107
+      },
+      "expected": {
+        "output_x_px": 479.25,
+        "translation_logical": -106.667
+      }
+    },
+    {
+      "name": "descendants-move-with-group",
+      "input": {
+        "viewport": [
+          1920,
+          1080
+        ],
+        "policy": "wide",
+        "group_centre_logical_x": -224,
+        "descendant_local_offset_x": 30
+      },
+      "expected": {
+        "descendant_output_x_px": 283.49924999999996
+      }
+    },
+    {
+      "name": "minimap-pick-roundtrip-wide",
+      "input": {
+        "viewport": [
+          1920,
+          1080
+        ],
+        "policy": "wide",
+        "click": "rendered map centre"
+      },
+      "expected": {
+        "world_position": "the supplied world centre"
+      }
+    },
+    {
+      "name": "minimap-pick-roundtrip-4:3",
+      "input": {
+        "viewport": [
+          1920,
+          1080
+        ],
+        "policy": "4:3",
+        "click": "rendered map centre"
+      },
+      "expected": {
+        "world_position": "the supplied world centre"
+      }
+    }
+  ]
+}

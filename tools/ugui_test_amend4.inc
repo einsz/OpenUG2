@@ -99,7 +99,7 @@ static void test_ps2_container_bounds(void){
     size_t ilen=30*2048+len;uint8_t *iso=calloc(1,ilen);uint8_t *vd=iso+16*2048;
     vd[0]=1;memcpy(vd+1,"CD001",5);vd[6]=1;vd[129]=8;a4_u32(vd+158,20);a4_u32(vd+166,2048);
     a4_dir_record(iso+20*2048,"NFSUNDER",21,2048,1);a4_dir_record(iso+21*2048,"ZZDATA1.BIN;1",30,(uint32_t)len,0);
-    memcpy(iso+30*2048,pack,len);char path[]="/tmp/ugui_iso_test_XXXXXX";int fd=mkstemp(path);CHECK(fd>=0);
+    memcpy(iso+30*2048,pack,len);char path[512];temp_path(path,"ugui_iso_test_XXXXXX");int fd=mkstemp(path);CHECK(fd>=0);
     if(fd>=0){FILE *file=fdopen(fd,"wb");CHECK(fwrite(iso,1,ilen,file)==ilen);fclose(file);
         ug_controller_init(&p);ug_texlib_init(&lib);CHECK(ug_controller_load_ps2(&p,&lib,path));CHECK(lib.n==19);ug_texlib_free(&lib);
         /* declared ISO file extent excludes the candidate's final byte */

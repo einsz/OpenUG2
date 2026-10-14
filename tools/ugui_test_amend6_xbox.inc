@@ -104,7 +104,7 @@ static void test_xbox_pack_and_iso(void){
     size_t ilen=42*2048+n;uint8_t *iso=calloc(1,ilen);CHECK(iso!=NULL);if(!iso){free(b);return;}
     a4_u32(iso+32*2048+20,33);a4_u32(iso+32*2048+24,24);x6_entry(iso+33*2048,"NFSUNDER",34,28,1);
     x6_entry(iso+34*2048,"ZZDATA5.BIN",40,(uint32_t)n,0);memcpy(iso+40*2048,b,n);
-    char path[]="/tmp/ugui_xbox_test_XXXXXX";int fd=mkstemp(path);CHECK(fd>=0);
+    char path[512];temp_path(path,"ugui_xbox_test_XXXXXX");int fd=mkstemp(path);CHECK(fd>=0);
     if(fd>=0){FILE *f=fdopen(fd,"wb");CHECK(fwrite(iso,1,ilen,f)==ilen);fclose(f);
         CHECK(ug_controller_load_xbox(&p,&lib,path));CHECK(lib.n==1);CHECK(strstr(p.xbox_source,path)!=NULL);ug_texlib_free(&lib);
         /* Approved outside_member vector; follows the exact 1000/900/200 bounds. */

@@ -1,4 +1,4 @@
-/* gl_state.h — CPU-side GL state tracker + per-program uniform mirror.
+/* rhi_gl_state.h — CPU-side GL state tracker + per-program uniform mirror.
  *
  * Renderer-boundary migration steps 2 and 3 (issue #14). Helpers used to
  * save/restore the caller's state by reading it back from GL (glIsEnabled,
@@ -21,7 +21,12 @@
  * before returning, as it already does.
  *
  * Build with -DGLS_VERIFY to cross-check every getter against the real GL
- * query and abort on the first mismatch. */
+ * query and abort on the first mismatch.
+ *
+ * This tracker belongs to the GL backend of rhi.h (rhi_gl.c creates the
+ * context through it). It is still included by render.h, frontend_draw.c and
+ * debugui.cpp because those files issue GL calls directly; later rhi steps
+ * move those calls behind rhi.h and make this header private to the backend. */
 #ifndef OPENUG2_GL_STATE_H
 #define OPENUG2_GL_STATE_H
 

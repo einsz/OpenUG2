@@ -2,6 +2,7 @@
 #include "world.h"
 #include "ai.h"
 #include "world_scenery.h"
+#include "rhi_gl.h"
 #include <assert.h>
 
 static void group_role_test(void) {
@@ -63,11 +64,11 @@ int main(int argc,char **argv) {
     N2Batch *batches=NULL;int count=0,map[2];BatchedVertex before[8],after[8];
     int panel_batch=-1,other_batch=-1;
     if(gpu) {
-        GLuint textures[2]={0};count=upload_world_batches(&scene,bounds,textures,0,&batches,NULL,map,NULL);assert(count==2);
+        RhiTexture textures[2]={{0}};count=upload_world_batches(&scene,bounds,textures,(RhiTexture){0},&batches,NULL,map,NULL);assert(count==2);
         /* upload returns count; the scene deliberately separates ROAD and OTHER. */
         assert(batches);panel_batch=map[1];other_batch=map[0];
         assert(panel_batch!=other_batch && batches[panel_batch].nprops==1);
-        glBindBuffer(GL_ARRAY_BUFFER,batches[panel_batch].vbo);glGetBufferSubData(GL_ARRAY_BUFFER,0,sizeof before[0]*4,before);
+        glBindBuffer(GL_ARRAY_BUFFER,rhi_gl_buffer_name(batches[panel_batch].vbo));glGetBufferSubData(GL_ARRAY_BUFFER,0,sizeof before[0]*4,before);
     }
     /* A normal physics-driven racer approaches, strikes and finishes. */
     float xy[]={0,0,20,0,40,0,60,0,80,0};N2Path path={xy,5};
@@ -90,12 +91,12 @@ int main(int argc,char **argv) {
     for(int v=0;v<4;v++){assert(fabsf(panel[5*v+2])<.001f);assert(!memcmp(panel+5*v+3,original+5*v+3,8));}
     if(gpu) {
         assert(!render_world_prop_updates(&scene,batches,count,world_prop_update_mesh));
-        glBindBuffer(GL_ARRAY_BUFFER,batches[panel_batch].vbo);glGetBufferSubData(GL_ARRAY_BUFFER,0,sizeof after[0]*4,after);
+        glBindBuffer(GL_ARRAY_BUFFER,rhi_gl_buffer_name(batches[panel_batch].vbo));glGetBufferSubData(GL_ARRAY_BUFFER,0,sizeof after[0]*4,after);
         for(int v=0;v<4;v++) {
             assert(!memcmp(after[v].pos,panel+5*v,12));assert(!memcmp(after[v].uv,before[v].uv,8));
             assert(!memcmp(after[v].col,before[v].col,4));assert(fabsf(after[v].normal[2])>.99f);
         }
-        glBindBuffer(GL_ARRAY_BUFFER,batches[other_batch].vbo);glGetBufferSubData(GL_ARRAY_BUFFER,0,sizeof after[0]*4,after);
+        glBindBuffer(GL_ARRAY_BUFFER,rhi_gl_buffer_name(batches[other_batch].vbo));glGetBufferSubData(GL_ARRAY_BUFFER,0,sizeof after[0]*4,after);
         for(int v=0;v<4;v++)assert(!memcmp(after[v].pos,road+5*v,12));
         assert(glGetError()==GL_NO_ERROR);
     }
@@ -108,9 +109,9 @@ int main(int argc,char **argv) {
     assert(vel[0]==.02f && meshes[1].prop_broken);
     if(gpu) {
         render_batch_array_free(&batches,&count);
-        GLuint textures[2]={0};count=upload_world_batches(&scene,bounds,textures,0,&batches,NULL,map,NULL);assert(count==2);
+        RhiTexture textures[2]={{0}};count=upload_world_batches(&scene,bounds,textures,(RhiTexture){0},&batches,NULL,map,NULL);assert(count==2);
         assert(render_world_prop_updates(&scene,batches,count,world_prop_update_mesh)>0);
-        glBindBuffer(GL_ARRAY_BUFFER,batches[map[1]].vbo);glGetBufferSubData(GL_ARRAY_BUFFER,0,sizeof after[0]*4,after);
+        glBindBuffer(GL_ARRAY_BUFFER,rhi_gl_buffer_name(batches[map[1]].vbo));glGetBufferSubData(GL_ARRAY_BUFFER,0,sizeof after[0]*4,after);
         for(int v=0;v<4;v++)assert(!memcmp(after[v].pos,panel+5*v,12));
         render_batch_array_free(&batches,&count);
     } else assert(world_prop_update_mesh(meshes+1));

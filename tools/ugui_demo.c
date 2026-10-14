@@ -22,7 +22,7 @@
  *
  * The virtual screen is shown in a centred 4:3 viewport at any window size (scale min(W/640, H/480));
  * the side bars are black and nothing, not even the cursor, is drawn into them. */
-#include "../src/gl_state.h"
+#include "../src/rhi_gl_state.h"
 
 #include "ugui_demo_app.h"
 #include "ugui_gl.h"
