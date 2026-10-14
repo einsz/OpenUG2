@@ -159,6 +159,15 @@ int main(void) {
     glReadPixels(28,16,1,1,GL_RGBA,GL_UNSIGNED_BYTE,face);
     assert(corner[0]<5 && corner[2]>245 && face[2]<25);
     float vcolor;ug2_copy(&vcolor, &r.p->uVColor, 1);assert(vcolor==.25f);
+    /* Pipeline helpers must preserve state they previously left untouched. */
+    for(int blend=0;blend<2;blend++) {
+        glDepthFunc(GL_GREATER);glEnable(GL_CULL_FACE);glColorMask(GL_FALSE,GL_TRUE,GL_FALSE,GL_TRUE);
+        render_wheel_mesh(&r,&q,wtex,blend?N2_DRAW_BLEND:N2_DRAW_OPAQUE);
+        GLint depth_func;GLboolean cm[4];
+        glGetIntegerv(GL_DEPTH_FUNC,&depth_func);glGetBooleanv(GL_COLOR_WRITEMASK,cm);
+        assert(depth_func==GL_GREATER && glIsEnabled(GL_CULL_FACE));
+        assert(!cm[0] && cm[1] && !cm[2] && cm[3]);
+    }
     rhi_buffer_destroy(q.cbo);q.cbo=(RhiBuffer){0};
     assert(glGetError()==GL_NO_ERROR);
     rhi_texture_destroy(wtex);rhi_buffer_destroy(q.vbo);rhi_buffer_destroy(q.nbo);rhi_buffer_destroy(q.ibo);

@@ -174,6 +174,17 @@ int main(void) {
         else assert(out[0]==0 && out[1]==0 && out[2]==0);
         assert(glGetError()==GL_NO_ERROR);
     }
+    /* Both helper layouts restore the caller's compare/cull/channel state. */
+    batch.unresolved=0;
+    for(int world=0;world<2;world++) {
+        glDepthFunc(GL_GREATER);glEnable(GL_CULL_FACE);glColorMask(GL_FALSE,GL_TRUE,GL_FALSE,GL_TRUE);
+        if(world)assert(render_world_glows(&r,&batch,1,identity)==1);
+        else assert(render_district_lights(&r,&quad,light_tex,lights,2,cam,look,mvp,10,1,1)==1);
+        GLint depth_func;GLboolean cm[4];
+        glGetIntegerv(GL_DEPTH_FUNC,&depth_func);glGetBooleanv(GL_COLOR_WRITEMASK,cm);
+        assert(depth_func==GL_GREATER && glIsEnabled(GL_CULL_FACE));
+        assert(!cm[0] && cm[1] && !cm[2] && cm[3]);
+    }
     rhi_buffer_destroy(batch.vbo);rhi_buffer_destroy(batch.ibo);
     rhi_texture_destroy(light_tex); glDeleteTextures(1,tex+1); rhi_shader_destroy(r.shader);
     rhi_buffer_destroy(quad.vbo); rhi_buffer_destroy(quad.nbo); rhi_buffer_destroy(quad.ibo);
