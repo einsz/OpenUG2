@@ -1,0 +1,27 @@
+{
+ "tv02_container_small.bin": {
+  "size": 47,
+  "header": {
+   "magic": "20CM",
+   "total": 47,
+   "sizeA": 5,
+   "sizeB": 14,
+   "crcA": "0xB73559F9",
+   "crcB": "0xF66C9245",
+   "crcHeader": "0x96236C56"
+  },
+  "blockA_hex": "0102030405",
+  "blockB_ascii": "hello-settings"
+ },
+ "tv03_synthetic_profile_defaults.bin": {
+  "size": 54966,
+  "crcA": "0xF287C0BB",
+  "crcB": "0x327BBF36",
+  "crcHeader": "0x67E51DD6",
+  "settings_section_file_offset": 50247,
+  "expected_parse": "all SPEC section 5 defaults; language English (units MPH); profile name TESTPROFILE; autosave on; no input-device records"
+ },
+ "tv03b_synthetic_profile_bad_payload_crc.bin": {
+  "expected": "reject: block B checksum mismatch (corrupt). Header and block A checks pass."
+ }
+}

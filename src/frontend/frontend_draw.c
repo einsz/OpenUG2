@@ -235,6 +235,7 @@ void fed_draw(FeDraw *d, const Fe *fe, int vp_w, int vp_h) {
         break;
     }
 
+    case FE_SCREEN_PAUSE:
     case FE_SCREEN_MAIN: {
         /* Left-side panel — translucent dark green, covers LEFT half only
          * so the 3D car showcase on the right stays visible */
@@ -243,7 +244,7 @@ void fed_draw(FeDraw *d, const Fe *fe, int vp_w, int vp_h) {
 
         /* Logo — upper-left, smaller than title screen */
         fe_color(d, 0.55f, 0.72f, 0.48f, 0.85f);
-        fe_text(d, "NEED FOR SPEED", SAFE_L+.02f, 0.80f,
+        fe_text(d, fe->pause_menu ? "PAUSED" : "NEED FOR SPEED", SAFE_L+.02f, 0.80f,
                 px_small*0.52f, py_small*0.52f);
         fe_color(d, 0.72f, 0.90f, 0.55f, 0.95f);
         fe_text(d, "UNDERGROUND 2", SAFE_L+.02f, 0.68f,

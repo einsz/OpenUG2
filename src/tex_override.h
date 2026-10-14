@@ -24,7 +24,7 @@
  *   - Formats: DXT1/BC1, DXT3/BC2 (+DXT2), DXT5/BC3 (+DXT4), DX10 BC1-3 incl.
  *     sRGB variants (uploaded linear, like the originals), RGBA8/BGRA8/BGRX8
  *     and 32-bit legacy masks. BC7 and everything else are rejected.
- *   - Width/height powers of two, <= min(4096, GL_MAX_TEXTURE_SIZE), exactly
+ *   - Width/height powers of two, <= min(4096, caps.max_texture_size), exactly
  *     1x, 2x or 4x the ORIGINAL on both axes.
  *   - Only whole mip levels inside the file are used (at most 16); no whole
  *     base level = reject. The file is re-read at upload and length-checked.

@@ -365,6 +365,15 @@ void gls_get_floatv(GLenum pname, GLfloat *out) {
 #endif
 }
 
+GLint gls_texture_2d(int unit) {
+    GlsState *s = st();
+    if (unit >= 0 && unit < GLS_UNITS && unit == s->active) {
+        GLint v; gls_get_integerv(GL_TEXTURE_BINDING_2D, &v); return v;   /* verified there */
+    }
+    if (unit < 0 || unit >= GLS_UNITS) return 0;
+    return s->tex2d[unit];
+}
+
 GLint gls_attrib_enabled(GLuint index) {
     if (index >= GLS_ATTRIBS) { GLint v = 0; g_fallback++;
         glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &v); return v; }

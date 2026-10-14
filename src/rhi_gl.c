@@ -29,6 +29,30 @@
 #endif
 
 #define RHI_GL_MAX_TEXTURE_MAX_ANISOTROPY 0x84FF   /* EXT_texture_filter_anisotropic */
+#define RHI_GL_TIME_ELAPSED 0x88BF                 /* EXT_timer_query */
+#define RHI_GL_QUERY_RESULT 0x8866
+#define RHI_GL_QUERY_RESULT_AVAILABLE 0x8867
+
+/* EXT_timer_query entry points, loaded with the caps (GL 2.1 headers lack them). */
+static struct {
+    void (*gen)(GLsizei, GLuint *);
+    void (*del)(GLsizei, const GLuint *);
+    void (*begin)(GLenum, GLuint);
+    void (*end)(GLenum);
+    void (*get_uiv)(GLuint, GLenum, GLuint *);
+    void (*get_ui64v)(GLuint, GLenum, unsigned long long *);
+} g_timer_gl;
+
+/* Timer handle id = generation << 24 | (slot + 1), like buffers and textures.
+ * Queries belong to the context, so the table is reset with the device. */
+#define RHI_GL_MAX_TIMERS 64u
+
+static struct {
+    GLuint  name[RHI_GL_MAX_TIMERS];
+    uint8_t generation[RHI_GL_MAX_TIMERS];
+    uint8_t ended[RHI_GL_MAX_TIMERS];   /* measured at least once: has a result */
+    int     open;   /* slot + 1 of the running timer, 0 = none */
+} g_timers;
 
 static struct {
     SDL_Window   *window;
@@ -84,6 +108,31 @@ static void query_caps(RhiCaps *c) {
         glGetFloatv(RHI_GL_MAX_TEXTURE_MAX_ANISOTROPY, &mx);
         if (mx > 1.0f) c->max_anisotropy = mx;
     }
+    GLint max_texture = 0;
+    glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_texture);
+    c->max_texture_size = max_texture;
+    memset(&g_timer_gl, 0, sizeof g_timer_gl);
+    if (has_extension(ext, "GL_EXT_timer_query")) {
+        g_timer_gl.gen = (void (*)(GLsizei, GLuint *))SDL_GL_GetProcAddress("glGenQueries");
+        g_timer_gl.del = (void (*)(GLsizei, const GLuint *))SDL_GL_GetProcAddress("glDeleteQueries");
+        g_timer_gl.begin = (void (*)(GLenum, GLuint))SDL_GL_GetProcAddress("glBeginQuery");
+        g_timer_gl.end = (void (*)(GLenum))SDL_GL_GetProcAddress("glEndQuery");
+        g_timer_gl.get_uiv = (void (*)(GLuint, GLenum, GLuint *))SDL_GL_GetProcAddress("glGetQueryObjectuiv");
+        g_timer_gl.get_ui64v = (void (*)(GLuint, GLenum, unsigned long long *))
+            SDL_GL_GetProcAddress("glGetQueryObjectui64vEXT");
+        c->gpu_timer = g_timer_gl.gen && g_timer_gl.del && g_timer_gl.begin && g_timer_gl.end &&
+                       g_timer_gl.get_uiv && g_timer_gl.get_ui64v;
+    }
+}
+
+/* GL reports allocation and upload failures through glGetError. An error left
+ * by an earlier call is reported here too, as the callers' own checks did.
+ * Bounded: some drivers report errors forever without a context. */
+static RhiResult gl_result(void) {
+    GLenum first = glGetError();
+    if (first == GL_NO_ERROR) return RHI_OK;
+    for (int i = 0; i < 16 && glGetError() != GL_NO_ERROR; i++) {}
+    return first == GL_OUT_OF_MEMORY ? RHI_ERR_OUT_OF_MEMORY : RHI_ERR_UNSUPPORTED;
 }
 
 RhiResult rhi_device_create(const RhiDeviceDesc *desc) {
@@ -106,6 +155,7 @@ void rhi_device_destroy(void) {
     if (!g_rhi.context) return;
     SDL_GL_DeleteContext(g_rhi.context);
     memset(&g_rhi, 0, sizeof g_rhi);
+    memset(&g_timers, 0, sizeof g_timers);
 }
 
 void rhi_drawable_size(int32_t *width, int32_t *height) {
@@ -262,6 +312,11 @@ RhiBuffer rhi_buffer_create(const RhiBufferDesc *desc) {
         glBindBuffer(b->target, name);
         glBufferData(b->target, (GLsizeiptr)desc->size, desc->data, b->hint);
         b->size = desc->size;
+        if (desc->update == RHI_UPDATE_STATIC && gl_result() != RHI_OK) {
+            fprintf(stderr, "rhi: buffer_create: %zu bytes could not be allocated\n", desc->size);
+            rhi_buffer_destroy(out);
+            return (RhiBuffer){0};
+        }
     }
     return out;
 }
@@ -271,7 +326,7 @@ RhiResult rhi_buffer_update(RhiBuffer buf, size_t offset, size_t size, const voi
     if (!b || !data || offset > b->size || size > b->size - offset) return RHI_ERR_INVALID;
     glBindBuffer(b->target, b->name);
     glBufferSubData(b->target, (GLintptr)offset, (GLsizeiptr)size, data);
-    return RHI_OK;
+    return b->hint == GL_STATIC_DRAW ? gl_result() : RHI_OK;
 }
 
 RhiResult rhi_buffer_replace(RhiBuffer buf, size_t size, const void *data) {
@@ -280,7 +335,7 @@ RhiResult rhi_buffer_replace(RhiBuffer buf, size_t size, const void *data) {
     glBindBuffer(b->target, b->name);
     glBufferData(b->target, (GLsizeiptr)size, data, b->hint);
     b->size = size;
-    return RHI_OK;
+    return b->hint == GL_STATIC_DRAW ? gl_result() : RHI_OK;
 }
 
 void rhi_buffer_destroy(RhiBuffer buf) {
@@ -426,6 +481,12 @@ RhiTexture rhi_texture_create(const RhiTextureDesc *desc) {
     if (depth) {
         glBindRenderbuffer(GL_RENDERBUFFER, name);
         glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, desc->width, desc->height);
+        if (gl_result() != RHI_OK) {
+            fprintf(stderr, "rhi: texture_create: %dx%d depth target could not be allocated\n",
+                    (int)desc->width, (int)desc->height);
+            rhi_texture_destroy(out);
+            return (RhiTexture){0};
+        }
         return out;
     }
     glBindTexture(t->target, name);
@@ -454,7 +515,7 @@ RhiResult rhi_texture_upload(RhiTexture tex, int32_t face, int32_t level,
         GLenum fmt = t->format == RHI_FORMAT_RGB8 ? GL_RGB : GL_RGBA;
         glTexImage2D(target, level, (GLint)fmt, w, h, 0, fmt, GL_UNSIGNED_BYTE, data);
     }
-    return RHI_OK;
+    return gl_result();
 }
 
 RhiResult rhi_texture_generate_mips(RhiTexture tex) {
@@ -463,7 +524,7 @@ RhiResult rhi_texture_generate_mips(RhiTexture tex) {
         (t->format != RHI_FORMAT_RGB8 && t->format != RHI_FORMAT_RGBA8)) return RHI_ERR_INVALID;
     glBindTexture(GL_TEXTURE_2D, t->name);
     glGenerateMipmap(GL_TEXTURE_2D);
-    return RHI_OK;
+    return gl_result();
 }
 
 void rhi_texture_destroy(RhiTexture tex) {
@@ -1113,6 +1174,47 @@ static void rhi_gl_forget_framebuffers(RhiTexture tex) {
     }
 }
 
+/* Clears `bits` of the bound framebuffer with every colour channel and depth
+ * writable, then puts the write masks back. Stencil is cleared to 0 with all
+ * bits writable, then both stencil write masks are restored too. */
+static void clear_target(GLbitfield bits, const float color[4], float depth) {
+    GLboolean cm[4] = {GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE}, dm = GL_TRUE;
+    GLint stencil_mask = 0, stencil_back_mask = 0;
+    if (!bits) return;
+    if (bits & GL_COLOR_BUFFER_BIT) {
+        GLfloat cc[4];
+        gls_get_booleanv(GL_COLOR_WRITEMASK, cm);
+        if (!cm[0] || !cm[1] || !cm[2] || !cm[3]) glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        gls_get_floatv(GL_COLOR_CLEAR_VALUE, cc);
+        if (memcmp(cc, color, sizeof cc)) glClearColor(color[0], color[1], color[2], color[3]);
+    }
+    if (bits & GL_DEPTH_BUFFER_BIT) {
+        GLfloat cd;
+        gls_get_booleanv(GL_DEPTH_WRITEMASK, &dm);
+        if (!dm) glDepthMask(GL_TRUE);
+        gls_get_floatv(GL_DEPTH_CLEAR_VALUE, &cd);
+        if (cd != depth) {
+#ifdef N2_GLES
+            glClearDepthf(depth);
+#else
+            glClearDepth(depth);
+#endif
+        }
+    }
+    if (bits & GL_STENCIL_BUFFER_BIT) {
+        glGetIntegerv(GL_STENCIL_WRITEMASK, &stencil_mask);
+        glGetIntegerv(GL_STENCIL_BACK_WRITEMASK, &stencil_back_mask);
+        glStencilMask(0xFF); glClearStencil(0);
+    }
+    glClear(bits);
+    if (!cm[0] || !cm[1] || !cm[2] || !cm[3]) glColorMask(cm[0], cm[1], cm[2], cm[3]);
+    if (!dm) glDepthMask(GL_FALSE);
+    if (bits & GL_STENCIL_BUFFER_BIT) {
+        glStencilMaskSeparate(GL_FRONT, (GLuint)stencil_mask);
+        glStencilMaskSeparate(GL_BACK, (GLuint)stencil_back_mask);
+    }
+}
+
 RhiResult rhi_cmd_begin_pass(const RhiPassDesc *desc) {
     if (!desc || g_in_pass) return RHI_ERR_INVALID;
     const RhiGlTexture *color = texture_lookup(desc->color.texture, "begin_pass");
@@ -1152,41 +1254,112 @@ RhiResult rhi_cmd_begin_pass(const RhiPassDesc *desc) {
     }
     glViewport(0, 0, color->width, color->height);
     set_cap(GL_SCISSOR_TEST, 0);
-    GLbitfield clear = 0;
-    GLboolean cm[4] = {GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE}, dm = GL_TRUE;
-    if (desc->color_load == RHI_LOAD_CLEAR) {
-        GLfloat cc[4];
-        gls_get_booleanv(GL_COLOR_WRITEMASK, cm);
-        if (!cm[0] || !cm[1] || !cm[2] || !cm[3]) glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-        gls_get_floatv(GL_COLOR_CLEAR_VALUE, cc);
-        if (memcmp(cc, desc->clear_color, sizeof cc))
-            glClearColor(desc->clear_color[0], desc->clear_color[1], desc->clear_color[2], desc->clear_color[3]);
-        clear |= GL_COLOR_BUFFER_BIT;
-    }
-    if (desc->depth_load == RHI_LOAD_CLEAR && depth) {
-        GLfloat cd;
-        gls_get_booleanv(GL_DEPTH_WRITEMASK, &dm);
-        if (!dm) glDepthMask(GL_TRUE);
-        gls_get_floatv(GL_DEPTH_CLEAR_VALUE, &cd);
-        if (cd != desc->clear_depth) {
-#ifdef N2_GLES
-            glClearDepthf(desc->clear_depth);
-#else
-            glClearDepth(desc->clear_depth);
-#endif
-        }
-        clear |= GL_DEPTH_BUFFER_BIT;
-    }
-    if (clear) {
-        glClear(clear);
-        if (!cm[0] || !cm[1] || !cm[2] || !cm[3]) glColorMask(cm[0], cm[1], cm[2], cm[3]);
-        if (!dm) glDepthMask(GL_FALSE);
-    }
+    clear_target((desc->color_load == RHI_LOAD_CLEAR ? GL_COLOR_BUFFER_BIT : 0) |
+                 (desc->depth_load == RHI_LOAD_CLEAR && depth ? GL_DEPTH_BUFFER_BIT : 0),
+                 desc->clear_color, desc->clear_depth);
     g_in_pass = 1;
     return RHI_OK;
 }
 
 void rhi_cmd_end_pass(void) { g_in_pass = 0; }
+
+/* ------------------------------------------------------------------------------ */
+/* State snapshots                                                                */
+/* ------------------------------------------------------------------------------ */
+/* GL: the tracked context state. Read from the tracker, so state set with raw
+ * GL calls is included. */
+static const GLenum k_snapshot_caps[] = { GL_DEPTH_TEST, GL_BLEND, GL_CULL_FACE, GL_SCISSOR_TEST,
+                                          GL_STENCIL_TEST, GL_DITHER, GL_POLYGON_OFFSET_FILL };
+#define RHI_GL_SNAPSHOT_CAPS (sizeof k_snapshot_caps / sizeof k_snapshot_caps[0])
+
+typedef struct {
+    int32_t   pipeline;
+    GLint     blend[4], depth_func, viewport[4], program, framebuffer, renderbuffer, active;
+    GLint     texture[RHI_STATE_TEXTURE_SLOTS];
+    GLfloat   clear_color[4], clear_depth;
+    GLboolean caps[RHI_GL_SNAPSHOT_CAPS], depth_mask, color_mask[4];
+} RhiGlSnapshot;
+typedef char rhi_gl_snapshot_fits[sizeof(RhiGlSnapshot) <= sizeof(RhiStateSnapshot) ? 1 : -1];
+
+void rhi_cmd_save_state(RhiStateSnapshot *out) {
+    RhiGlSnapshot g;
+    if (!out) return;
+    memset(&g, 0, sizeof g);
+    g.pipeline = g_cmd.pipeline;
+    gls_get_integerv(GL_BLEND_SRC_RGB, &g.blend[0]); gls_get_integerv(GL_BLEND_DST_RGB, &g.blend[1]);
+    gls_get_integerv(GL_BLEND_SRC_ALPHA, &g.blend[2]); gls_get_integerv(GL_BLEND_DST_ALPHA, &g.blend[3]);
+    gls_get_integerv(GL_DEPTH_FUNC, &g.depth_func);
+    gls_get_integerv(GL_VIEWPORT, g.viewport);
+    gls_get_integerv(GL_CURRENT_PROGRAM, &g.program);
+    gls_get_integerv(GL_FRAMEBUFFER_BINDING, &g.framebuffer);
+    gls_get_integerv(GL_RENDERBUFFER_BINDING, &g.renderbuffer);
+    gls_get_integerv(GL_ACTIVE_TEXTURE, &g.active);
+    for (int i = 0; i < RHI_STATE_TEXTURE_SLOTS; i++) g.texture[i] = gls_texture_2d(i);
+    gls_get_floatv(GL_COLOR_CLEAR_VALUE, g.clear_color);
+    gls_get_floatv(GL_DEPTH_CLEAR_VALUE, &g.clear_depth);
+    for (size_t i = 0; i < RHI_GL_SNAPSHOT_CAPS; i++) g.caps[i] = gls_is_enabled(k_snapshot_caps[i]);
+    gls_get_booleanv(GL_DEPTH_WRITEMASK, &g.depth_mask);
+    gls_get_booleanv(GL_COLOR_WRITEMASK, g.color_mask);
+    memset(out, 0, sizeof *out);
+    memcpy(out, &g, sizeof g);
+}
+
+void rhi_state_set_texture(RhiStateSnapshot *state, uint32_t slot, RhiTexture texture) {
+    RhiGlSnapshot g;
+    const RhiGlTexture *t = texture_lookup(texture, "state_set_texture");
+    if (!state || slot >= RHI_STATE_TEXTURE_SLOTS || (t && t->target != GL_TEXTURE_2D)) return;
+    memcpy(&g, state, sizeof g);
+    g.texture[slot] = t ? (GLint)t->name : 0;
+    memcpy(state, &g, sizeof g);
+}
+
+void rhi_cmd_restore_state(const RhiStateSnapshot *state) {
+    RhiGlSnapshot g, now;
+    if (!state) return;
+    memcpy(&g, state, sizeof g);
+    RhiStateSnapshot current;
+    rhi_cmd_save_state(&current);
+    memcpy(&now, &current, sizeof now);
+    g_cmd.pipeline = g.pipeline;
+    if (now.framebuffer != g.framebuffer) glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)g.framebuffer);
+    if (now.renderbuffer != g.renderbuffer) glBindRenderbuffer(GL_RENDERBUFFER, (GLuint)g.renderbuffer);
+    if (memcmp(now.viewport, g.viewport, sizeof g.viewport))
+        glViewport(g.viewport[0], g.viewport[1], g.viewport[2], g.viewport[3]);
+    if (now.program != g.program) glUseProgram((GLuint)g.program);
+    if (memcmp(now.clear_color, g.clear_color, sizeof g.clear_color))
+        glClearColor(g.clear_color[0], g.clear_color[1], g.clear_color[2], g.clear_color[3]);
+    if (now.clear_depth != g.clear_depth) {
+#ifdef N2_GLES
+        glClearDepthf(g.clear_depth);
+#else
+        glClearDepth(g.clear_depth);
+#endif
+    }
+    if (memcmp(now.color_mask, g.color_mask, sizeof g.color_mask))
+        glColorMask(g.color_mask[0], g.color_mask[1], g.color_mask[2], g.color_mask[3]);
+    if (now.depth_func != g.depth_func) glDepthFunc((GLenum)g.depth_func);
+    if (!now.depth_mask != !g.depth_mask) glDepthMask(g.depth_mask);
+    if (memcmp(now.blend, g.blend, sizeof g.blend))
+        glBlendFuncSeparate((GLenum)g.blend[0], (GLenum)g.blend[1], (GLenum)g.blend[2], (GLenum)g.blend[3]);
+    for (size_t i = 0; i < RHI_GL_SNAPSHOT_CAPS; i++) set_cap(k_snapshot_caps[i], g.caps[i]);
+    GLint active = now.active;
+    for (int i = 0; i < RHI_STATE_TEXTURE_SLOTS; i++) {
+        if (now.texture[i] == g.texture[i]) continue;
+        if (active != (GLint)GL_TEXTURE0 + i) glActiveTexture(GL_TEXTURE0 + (GLenum)i);
+        active = (GLint)GL_TEXTURE0 + i;
+        glBindTexture(GL_TEXTURE_2D, (GLuint)g.texture[i]);
+    }
+    if (active != g.active) glActiveTexture((GLenum)g.active);
+}
+
+RhiResult rhi_cmd_clear_main(const float color[4], float depth) {
+    if (!color || !g_rhi.in_frame || g_in_pass) return RHI_ERR_INVALID;
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, g_rhi.frame_w, g_rhi.frame_h);
+    set_cap(GL_SCISSOR_TEST, 0);
+    clear_target(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT, color, depth);
+    return RHI_OK;
+}
 
 /* ------------------------------------------------------------------------------ */
 /* Copies from the main target                                                    */
@@ -1235,4 +1408,67 @@ RhiResult rhi_cmd_set_wireframe(int on) {
     glPolygonMode(GL_FRONT_AND_BACK, on ? GL_LINE : GL_FILL);
 #endif
     return RHI_OK;
+}
+
+/* ------------------------------------------------------------------------------ */
+/* GPU timers                                                                     */
+/* ------------------------------------------------------------------------------ */
+static GLuint timer_lookup(RhiTimer timer) {
+    uint32_t slot = timer.id & RHI_GL_SLOT_MASK;
+    if (!slot || slot > RHI_GL_MAX_TIMERS || !g_timers.name[slot - 1] ||
+        g_timers.generation[slot - 1] != (uint8_t)(timer.id >> RHI_GL_SLOT_BITS)) return 0;
+    return g_timers.name[slot - 1];
+}
+
+RhiTimer rhi_timer_create(void) {
+    RhiTimer out = {0};
+    if (!g_rhi.caps.gpu_timer) return out;
+    for (uint32_t i = 0; i < RHI_GL_MAX_TIMERS; i++) {
+        if (g_timers.name[i] || g_timers.generation[i] == UINT8_MAX) continue;
+        g_timer_gl.gen(1, &g_timers.name[i]);
+        if (!g_timers.name[i]) return out;
+        g_timers.ended[i] = 0;
+        out.id = ((uint32_t)g_timers.generation[i] << RHI_GL_SLOT_BITS) | (i + 1);
+        return out;
+    }
+    fprintf(stderr, "rhi: timer_create: out of timers\n");
+    return out;
+}
+
+void rhi_timer_destroy(RhiTimer timer) {
+    GLuint name = timer_lookup(timer);
+    if (!name) return;
+    uint32_t slot = (timer.id & RHI_GL_SLOT_MASK) - 1;
+    if (g_timers.open == (int)slot + 1) rhi_cmd_timer_end();
+    g_timer_gl.del(1, &name);
+    g_timers.name[slot] = 0;
+    g_timers.generation[slot]++;   /* a slot at UINT8_MAX is retired */
+}
+
+RhiResult rhi_cmd_timer_begin(RhiTimer timer) {
+    GLuint name = timer_lookup(timer);
+    if (!name || g_timers.open) return RHI_ERR_INVALID;
+    g_timer_gl.begin(RHI_GL_TIME_ELAPSED, name);
+    g_timers.open = (int)(timer.id & RHI_GL_SLOT_MASK);
+    return RHI_OK;
+}
+
+RhiResult rhi_cmd_timer_end(void) {
+    if (!g_timers.open) return RHI_ERR_INVALID;
+    g_timer_gl.end(RHI_GL_TIME_ELAPSED);
+    g_timers.ended[g_timers.open - 1] = 1;
+    g_timers.open = 0;
+    return RHI_OK;
+}
+
+int rhi_timer_read(RhiTimer timer, uint64_t *ns) {
+    GLuint name = timer_lookup(timer), ready = 0;
+    unsigned long long elapsed = 0;
+    uint32_t slot = (timer.id & RHI_GL_SLOT_MASK) - 1;
+    if (!name || !ns || !g_timers.ended[slot] || g_timers.open == (int)slot + 1) return 0;
+    g_timer_gl.get_uiv(name, RHI_GL_QUERY_RESULT_AVAILABLE, &ready);
+    if (!ready) return 0;
+    g_timer_gl.get_ui64v(name, RHI_GL_QUERY_RESULT, &elapsed);
+    *ns = elapsed;
+    return 1;
 }

@@ -1,0 +1,2288 @@
+{
+ "provenance": "Round 2 (amended with user decisions 2026-10-13 and the 2026-10-14 arrow-click observation). Authored samples evaluated by analyst script cleanroom/analysis/pause-menu/round2/scripts/write_vectors.py from decoded original data (package key 0x32124083); slide/marker/arrow/pointer/resume cases follow the user's authoritative decisions (slide = documented demo behaviour, declared by the user to match the original). Not original runtime captures; no original payload.",
+ "coordinates": "top-left 640x480 virtual unless stated",
+ "position_tolerance_virtual": 1,
+ "time_tolerance_ms": 1,
+ "alpha_tolerance_bytes": 1,
+ "scroll_position_tolerance_items": 0.003,
+ "cases": [
+  {
+   "id": "authored_right_arrow_blink",
+   "confidence": "observed-data (evaluated)",
+   "object_guid": "0xde087",
+   "trigger": "successful navigation step in this arrow's direction",
+   "duration_ms": 400,
+   "samples": [
+    {
+     "t_ms": 0,
+     "rgba": [
+      202,
+      244,
+      138,
+      150
+     ],
+     "size": [
+      26.0,
+      26.0
+     ]
+    },
+    {
+     "t_ms": 100,
+     "rgba": [
+      202.0,
+      244.0,
+      138.0,
+      202.5
+     ],
+     "size": [
+      29.0,
+      29.0
+     ]
+    },
+    {
+     "t_ms": 200,
+     "rgba": [
+      202.0,
+      244.0,
+      138.0,
+      255.0
+     ],
+     "size": [
+      32.0,
+      32.0
+     ]
+    },
+    {
+     "t_ms": 300,
+     "rgba": [
+      202.0,
+      244.0,
+      138.0,
+      202.5
+     ],
+     "size": [
+      29.0,
+      29.0
+     ]
+    },
+    {
+     "t_ms": 400,
+     "rgba": [
+      202,
+      244,
+      138,
+      150
+     ],
+     "size": [
+      26.0,
+      26.0
+     ]
+    }
+   ],
+   "after_blink_static": {
+    "rgba": [
+     255,
+     255,
+     255,
+     150
+    ],
+    "size": [
+     26.0,
+     26.0
+    ],
+    "duration_ms": 0
+   },
+   "hidden_state": {
+    "alpha": 0,
+    "duration_ms": 0
+   },
+   "center_top_left_virtual": [
+    579.14,
+    227.231
+   ],
+   "in_plane_rotation_quaternion": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  {
+   "id": "authored_left_arrow_blink",
+   "confidence": "observed-data (evaluated)",
+   "object_guid": "0xde06d",
+   "trigger": "successful navigation step in this arrow's direction",
+   "duration_ms": 400,
+   "samples": [
+    {
+     "t_ms": 0,
+     "rgba": [
+      202,
+      244,
+      138,
+      150
+     ],
+     "size": [
+      26.0,
+      26.0
+     ]
+    },
+    {
+     "t_ms": 100,
+     "rgba": [
+      202.0,
+      244.0,
+      138.0,
+      202.5
+     ],
+     "size": [
+      29.0,
+      29.0
+     ]
+    },
+    {
+     "t_ms": 200,
+     "rgba": [
+      202.0,
+      244.0,
+      138.0,
+      255.0
+     ],
+     "size": [
+      32.0,
+      32.0
+     ]
+    },
+    {
+     "t_ms": 300,
+     "rgba": [
+      202.0,
+      244.0,
+      138.0,
+      202.5
+     ],
+     "size": [
+      29.0,
+      29.0
+     ]
+    },
+    {
+     "t_ms": 400,
+     "rgba": [
+      202,
+      244,
+      138,
+      150
+     ],
+     "size": [
+      26.0,
+      26.0
+     ]
+    }
+   ],
+   "after_blink_static": {
+    "rgba": [
+     255,
+     255,
+     255,
+     150
+    ],
+    "size": [
+     26.0,
+     26.0
+    ],
+    "duration_ms": 0
+   },
+   "hidden_state": {
+    "alpha": 0,
+    "duration_ms": 0
+   },
+   "center_top_left_virtual": [
+    69.709,
+    227.231
+   ],
+   "in_plane_rotation_quaternion": [
+    0.0,
+    0.0,
+    1.0,
+    -0.0
+   ]
+  },
+  {
+   "id": "authored_exit_fade",
+   "confidence": "observed-data (evaluated)",
+   "note": "Object alpha bytes before parent modulation/texture alpha. Visual only; never delays resume.",
+   "fade": {
+    "presentation_group": {
+     "script_length_ms": 100,
+     "alpha": {
+      "0": 255,
+      "25": 191.25,
+      "50": 127.5,
+      "75": 63.75,
+      "80": 51.0,
+      "100": 0,
+      "140": 0
+     }
+    },
+    "pool_item": {
+     "script_length_ms": 100,
+     "alpha": {
+      "0": 255,
+      "25": 191.25,
+      "50": 127.5,
+      "75": 63.75,
+      "80": 51.0,
+      "100": 0,
+      "140": 0
+     }
+    },
+    "rail_marker": {
+     "script_length_ms": 140,
+     "alpha": {
+      "0": 150,
+      "25": 112.5,
+      "50": 75.0,
+      "75": 37.5,
+      "80": 30.0,
+      "100": 0,
+      "140": 0
+     }
+    },
+    "rail": {
+     "script_length_ms": 100,
+     "alpha": {
+      "0": 100,
+      "25": 75.0,
+      "50": 50.0,
+      "75": 25.0,
+      "80": 20.0,
+      "100": 0,
+      "140": 0
+     }
+    },
+    "right_arrow": {
+     "script_length_ms": 140,
+     "alpha": {
+      "0": 150,
+      "25": 112.5,
+      "50": 75.0,
+      "75": 37.5,
+      "80": 30.0,
+      "100": 0,
+      "140": 0
+     }
+    },
+    "left_arrow": {
+     "script_length_ms": 140,
+     "alpha": {
+      "0": 150,
+      "25": 112.5,
+      "50": 75.0,
+      "75": 37.5,
+      "80": 30.0,
+      "100": 0,
+      "140": 0
+     }
+    },
+    "package_root_group": {
+     "script_length_ms": 300,
+     "alpha": {
+      "0": 255,
+      "25": 175.312,
+      "50": 95.625,
+      "75": 15.938,
+      "80": 0,
+      "100": 0,
+      "140": 0
+     }
+    }
+   },
+   "item_activation_sequence": {
+    "fade_broadcast_at_ms": 0,
+    "exit_complete_event_at_ms": 320,
+    "exit_complete_event_hash": "0xE1FDE1D1"
+   }
+  },
+  {
+   "id": "marker_snap_2_items",
+   "confidence": "user-decision (snap) + D (mapping)",
+   "catalogue_N": 2,
+   "start_i": 0,
+   "input": "Right at t=0",
+   "expected_marker_center": {
+    "-1": [
+     50.0,
+     188.4
+    ],
+    "0": [
+     596.0,
+     188.4
+    ],
+    "16": [
+     596.0,
+     188.4
+    ],
+    "80": [
+     596.0,
+     188.4
+    ],
+    "234": [
+     596.0,
+     188.4
+    ]
+   },
+   "rule": "marker equals target at the first presented frame after the input; no intermediate x, although the icon row is still sliding"
+  },
+  {
+   "id": "marker_snap_5_items_rapid",
+   "confidence": "user-decision (snap) + D (mapping)",
+   "catalogue_N": 5,
+   "start_i": 0,
+   "inputs": [
+    [
+     "Right",
+     0
+    ],
+    [
+     "Right",
+     30
+    ],
+    [
+     "Left",
+     60
+    ]
+   ],
+   "expected_marker_center": {
+    "0": [
+     186.5,
+     188.4
+    ],
+    "29": [
+     186.5,
+     188.4
+    ],
+    "30": [
+     323.0,
+     188.4
+    ],
+    "59": [
+     323.0,
+     188.4
+    ],
+    "60": [
+     186.5,
+     188.4
+    ],
+    "300": [
+     186.5,
+     188.4
+    ]
+   }
+  },
+  {
+   "id": "arrow_visibility_table",
+   "confidence": "user-decision",
+   "rows": [
+    {
+     "N": 1,
+     "i": 0,
+     "left": false,
+     "right": false
+    },
+    {
+     "N": 2,
+     "i": 0,
+     "left": false,
+     "right": true
+    },
+    {
+     "N": 2,
+     "i": 1,
+     "left": true,
+     "right": false
+    },
+    {
+     "N": 3,
+     "i": 0,
+     "left": false,
+     "right": true
+    },
+    {
+     "N": 3,
+     "i": 1,
+     "left": true,
+     "right": true
+    },
+    {
+     "N": 3,
+     "i": 2,
+     "left": true,
+     "right": false
+    },
+    {
+     "N": 5,
+     "i": 0,
+     "left": false,
+     "right": true
+    },
+    {
+     "N": 5,
+     "i": 1,
+     "left": true,
+     "right": true
+    },
+    {
+     "N": 5,
+     "i": 2,
+     "left": true,
+     "right": true
+    },
+    {
+     "N": 5,
+     "i": 3,
+     "left": true,
+     "right": true
+    },
+    {
+     "N": 5,
+     "i": 4,
+     "left": true,
+     "right": false
+    }
+   ],
+   "rule": "visibility switches on the input frame; hidden alpha 0 at once (no fade)"
+  },
+  {
+   "id": "arrow_hides_on_reaching_end",
+   "confidence": "user-decision",
+   "catalogue_N": 3,
+   "start_i": 1,
+   "inputs": [
+    [
+     "Right",
+     0
+    ]
+   ],
+   "expected": {
+    "i": 2,
+    "right_arrow_alpha_at_ms": {
+     "-1": 150,
+     "0": 0,
+     "16": 0,
+     "200": 0
+    },
+    "left_arrow_visible": true
+   }
+  },
+  {
+   "id": "boundary_no_wrap_right",
+   "confidence": "user-decision",
+   "catalogue_N": 2,
+   "start_i": 1,
+   "input": "Right",
+   "expected": {
+    "i": 1,
+    "slide_started": false,
+    "marker_center": [
+     596.0,
+     188.4
+    ],
+    "right_arrow_visible": false,
+    "left_arrow_visible": true,
+    "blink_started": false,
+    "caption_changed": false,
+    "actions_invoked": 0
+   }
+  },
+  {
+   "id": "boundary_no_wrap_left",
+   "confidence": "user-decision",
+   "catalogue_N": 3,
+   "start_i": 0,
+   "input": "Left",
+   "expected": {
+    "i": 0,
+    "slide_started": false,
+    "marker_center": [
+     50.0,
+     188.4
+    ],
+    "left_arrow_visible": false,
+    "right_arrow_visible": true,
+    "blink_started": false,
+    "caption_changed": false,
+    "actions_invoked": 0
+   }
+  },
+  {
+   "id": "singleton",
+   "confidence": "user-decision",
+   "catalogue_N": 1,
+   "start_i": 0,
+   "inputs": [
+    "Left",
+    "Right"
+   ],
+   "expected": {
+    "i": 0,
+    "left_arrow_visible": false,
+    "right_arrow_visible": false,
+    "marker_center": [
+     50.0,
+     188.4
+    ],
+    "slide_started": false
+   }
+  },
+  {
+   "id": "slide_one_step_table",
+   "confidence": "user-decision (demo behaviour declared equal to original)",
+   "tau_ms": 37.639,
+   "snap_threshold_items": 0.002,
+   "pitch_virtual": 158.0,
+   "formula": "remaining(t) = remaining(0) * exp(-t / tau); snap to target when |remaining| < 0.002 item",
+   "rows": [
+    {
+     "t_ms": 0,
+     "fraction_covered": 0.0,
+     "offset_virtual": 0.0,
+     "outgoing_icon_size": [
+      118.0,
+      59.0
+     ],
+     "incoming_icon_size": [
+      96.0,
+      48.0
+     ]
+    },
+    {
+     "t_ms": 16,
+     "fraction_covered": 0.3463,
+     "offset_virtual": 54.71,
+     "outgoing_icon_size": [
+      110.382,
+      55.191
+     ],
+     "incoming_icon_size": [
+      103.618,
+      51.809
+     ]
+    },
+    {
+     "t_ms": 33,
+     "fraction_covered": 0.5839,
+     "offset_virtual": 92.25,
+     "outgoing_icon_size": [
+      105.155,
+      52.577
+     ],
+     "incoming_icon_size": [
+      108.845,
+      54.423
+     ]
+    },
+    {
+     "t_ms": 50,
+     "fraction_covered": 0.7351,
+     "offset_virtual": 116.15,
+     "outgoing_icon_size": [
+      101.828,
+      50.914
+     ],
+     "incoming_icon_size": [
+      112.172,
+      56.086
+     ]
+    },
+    {
+     "t_ms": 66,
+     "fraction_covered": 0.8268,
+     "offset_virtual": 130.64,
+     "outgoing_icon_size": [
+      99.81,
+      49.905
+     ],
+     "incoming_icon_size": [
+      114.19,
+      57.095
+     ]
+    },
+    {
+     "t_ms": 83,
+     "fraction_covered": 0.8898,
+     "offset_virtual": 140.58,
+     "outgoing_icon_size": [
+      98.425,
+      49.213
+     ],
+     "incoming_icon_size": [
+      115.575,
+      57.787
+     ]
+    },
+    {
+     "t_ms": 100,
+     "fraction_covered": 0.9298,
+     "offset_virtual": 146.91,
+     "outgoing_icon_size": [
+      97.544,
+      48.772
+     ],
+     "incoming_icon_size": [
+      116.456,
+      58.228
+     ]
+    },
+    {
+     "t_ms": 133,
+     "fraction_covered": 0.9708,
+     "offset_virtual": 153.39,
+     "outgoing_icon_size": [
+      96.642,
+      48.321
+     ],
+     "incoming_icon_size": [
+      117.358,
+      58.679
+     ]
+    },
+    {
+     "t_ms": 166,
+     "fraction_covered": 0.9878,
+     "offset_virtual": 156.08,
+     "outgoing_icon_size": [
+      96.267,
+      48.134
+     ],
+     "incoming_icon_size": [
+      117.733,
+      58.866
+     ]
+    },
+    {
+     "t_ms": 200,
+     "fraction_covered": 0.9951,
+     "offset_virtual": 157.22,
+     "outgoing_icon_size": [
+      96.108,
+      48.054
+     ],
+     "incoming_icon_size": [
+      117.892,
+      58.946
+     ]
+    },
+    {
+     "t_ms": 233,
+     "fraction_covered": 0.998,
+     "offset_virtual": 157.68,
+     "outgoing_icon_size": [
+      96.045,
+      48.023
+     ],
+     "incoming_icon_size": [
+      117.955,
+      58.977
+     ]
+    },
+    {
+     "t_ms": 234,
+     "fraction_covered": 1.0,
+     "offset_virtual": 158.0,
+     "outgoing_icon_size": [
+      96.0,
+      48.0
+     ],
+     "incoming_icon_size": [
+      118.0,
+      59.0
+     ]
+    },
+    {
+     "t_ms": 260,
+     "fraction_covered": 1.0,
+     "offset_virtual": 158.0,
+     "outgoing_icon_size": [
+      96.0,
+      48.0
+     ],
+     "incoming_icon_size": [
+      118.0,
+      59.0
+     ]
+    }
+   ],
+   "snap_time_ms_one_step": 233.9
+  },
+  {
+   "id": "icon_alpha_vs_distance",
+   "confidence": "user-decision (demo behaviour)",
+   "rows": [
+    {
+     "distance_items": 0,
+     "alpha": 1.0,
+     "size": [
+      118,
+      59
+     ]
+    },
+    {
+     "distance_items": 0.5,
+     "alpha": 1.0,
+     "size": [
+      107.0,
+      53.5
+     ]
+    },
+    {
+     "distance_items": 1.0,
+     "alpha": 1.0,
+     "size": [
+      96.0,
+      48.0
+     ]
+    },
+    {
+     "distance_items": 1.2,
+     "alpha": 0.75,
+     "size": [
+      96.0,
+      48.0
+     ]
+    },
+    {
+     "distance_items": 1.4,
+     "alpha": 0.5,
+     "size": [
+      96.0,
+      48.0
+     ]
+    },
+    {
+     "distance_items": 1.6,
+     "alpha": 0.25,
+     "size": [
+      96.0,
+      48.0
+     ]
+    },
+    {
+     "distance_items": 1.8,
+     "alpha": 0.0,
+     "size": [
+      96.0,
+      48.0
+     ]
+    },
+    {
+     "distance_items": 2.0,
+     "alpha": 0.0,
+     "size": [
+      96.0,
+      48.0
+     ]
+    }
+   ]
+  },
+  {
+   "id": "slide_right_one_step_items",
+   "confidence": "user-decision",
+   "catalogue_N": 4,
+   "start_i": 0,
+   "inputs": [
+    [
+     "Right",
+     0
+    ]
+   ],
+   "expected_scroll_position_s": {
+    "0": 0.0,
+    "16": 0.3463,
+    "50": 0.7351,
+    "100": 0.9298,
+    "200": 0.9951,
+    "234": 1.0,
+    "300": 1.0
+   },
+   "expected_item_center_x": {
+    "0": {
+     "item0": 320.388,
+     "item1": 478.388,
+     "item2": 636.388,
+     "item3": 794.388
+    },
+    "16": {
+     "item0": 265.673,
+     "item1": 423.673,
+     "item2": 581.673,
+     "item3": 739.673
+    },
+    "50": {
+     "item0": 204.242,
+     "item1": 362.242,
+     "item2": 520.242,
+     "item3": 678.242
+    },
+    "100": {
+     "item0": 173.48,
+     "item1": 331.48,
+     "item2": 489.48,
+     "item3": 647.48
+    },
+    "200": {
+     "item0": 163.162,
+     "item1": 321.162,
+     "item2": 479.162,
+     "item3": 637.162
+    },
+    "234": {
+     "item0": 162.388,
+     "item1": 320.388,
+     "item2": 478.388,
+     "item3": 636.388
+    },
+    "300": {
+     "item0": 162.388,
+     "item1": 320.388,
+     "item2": 478.388,
+     "item3": 636.388
+    }
+   },
+   "expected_item_size": {
+    "0": {
+     "item0": [
+      118.0,
+      59.0
+     ],
+     "item1": [
+      96.0,
+      48.0
+     ],
+     "item2": [
+      96.0,
+      48.0
+     ],
+     "item3": [
+      96.0,
+      48.0
+     ]
+    },
+    "16": {
+     "item0": [
+      110.381,
+      55.191
+     ],
+     "item1": [
+      103.619,
+      51.809
+     ],
+     "item2": [
+      96.0,
+      48.0
+     ],
+     "item3": [
+      96.0,
+      48.0
+     ]
+    },
+    "50": {
+     "item0": [
+      101.828,
+      50.914
+     ],
+     "item1": [
+      112.172,
+      56.086
+     ],
+     "item2": [
+      96.0,
+      48.0
+     ],
+     "item3": [
+      96.0,
+      48.0
+     ]
+    },
+    "100": {
+     "item0": [
+      97.544,
+      48.772
+     ],
+     "item1": [
+      116.456,
+      58.228
+     ],
+     "item2": [
+      96.0,
+      48.0
+     ],
+     "item3": [
+      96.0,
+      48.0
+     ]
+    },
+    "200": {
+     "item0": [
+      96.108,
+      48.054
+     ],
+     "item1": [
+      117.892,
+      58.946
+     ],
+     "item2": [
+      96.0,
+      48.0
+     ],
+     "item3": [
+      96.0,
+      48.0
+     ]
+    },
+    "234": {
+     "item0": [
+      96.0,
+      48.0
+     ],
+     "item1": [
+      118.0,
+      59.0
+     ],
+     "item2": [
+      96.0,
+      48.0
+     ],
+     "item3": [
+      96.0,
+      48.0
+     ]
+    },
+    "300": {
+     "item0": [
+      96.0,
+      48.0
+     ],
+     "item1": [
+      118.0,
+      59.0
+     ],
+     "item2": [
+      96.0,
+      48.0
+     ],
+     "item3": [
+      96.0,
+      48.0
+     ]
+    }
+   },
+   "expected_item_alpha": {
+    "0": {
+     "item0": 1.0,
+     "item1": 1.0,
+     "item2": 0.0,
+     "item3": 0.0
+    },
+    "16": {
+     "item0": 1.0,
+     "item1": 1.0,
+     "item2": 0.1829,
+     "item3": 0.0
+    },
+    "50": {
+     "item0": 1.0,
+     "item1": 1.0,
+     "item2": 0.6689,
+     "item3": 0.0
+    },
+    "100": {
+     "item0": 1.0,
+     "item1": 1.0,
+     "item2": 0.9123,
+     "item3": 0.0
+    },
+    "200": {
+     "item0": 1.0,
+     "item1": 1.0,
+     "item2": 0.9939,
+     "item3": 0.0
+    },
+    "234": {
+     "item0": 1.0,
+     "item1": 1.0,
+     "item2": 1.0,
+     "item3": 0.0
+    },
+    "300": {
+     "item0": 1.0,
+     "item1": 1.0,
+     "item2": 1.0,
+     "item3": 0.0
+    }
+   },
+   "item_center_y": 225.704,
+   "caption_marker_arrows_change_at_ms": 0
+  },
+  {
+   "id": "visible_at_rest",
+   "confidence": "user-decision",
+   "rows": [
+    {
+     "N": 5,
+     "i": 0,
+     "visible_items": [
+      0,
+      1
+     ]
+    },
+    {
+     "N": 5,
+     "i": 2,
+     "visible_items": [
+      1,
+      2,
+      3
+     ]
+    },
+    {
+     "N": 5,
+     "i": 4,
+     "visible_items": [
+      3,
+      4
+     ]
+    },
+    {
+     "N": 1,
+     "i": 0,
+     "visible_items": [
+      0
+     ]
+    }
+   ],
+   "rule": "visible iff alpha > 0, i.e. |k - s| < 1.8"
+  },
+  {
+   "id": "slide_retarget_mid_animation",
+   "confidence": "user-decision",
+   "catalogue_N": 3,
+   "start_i": 0,
+   "inputs": [
+    [
+     "Right",
+     0
+    ],
+    [
+     "Right",
+     50
+    ]
+   ],
+   "expected_scroll_position_s": {
+    "0": 0.0,
+    "49": 0.728,
+    "50": 0.7351,
+    "100": 1.6649,
+    "200": 1.9765,
+    "300": 2.0
+   },
+   "final_i": 2,
+   "rule": "no jump at the second input; continues from the current fractional position toward the new target"
+  },
+  {
+   "id": "slide_reversal_mid_animation",
+   "confidence": "user-decision",
+   "catalogue_N": 3,
+   "start_i": 0,
+   "inputs": [
+    [
+     "Right",
+     0
+    ],
+    [
+     "Left",
+     50
+    ]
+   ],
+   "expected_scroll_position_s": {
+    "0": 0.0,
+    "50": 0.7351,
+    "100": 0.1947,
+    "200": 0.0137,
+    "400": 0.0
+   },
+   "final_i": 0
+  },
+  {
+   "id": "slide_frame_rate_independence",
+   "confidence": "user-decision",
+   "rule": "stepping 0->100 ms in 6 frames of 16.667 ms or 1 frame of 100 ms gives the same s (before snapping)",
+   "s_at_100ms": 0.9298,
+   "s_by_6_substeps": 0.9298
+  },
+  {
+   "id": "pointer_center_item_activates_on_release",
+   "confidence": "user-decision + inferred (hit rect)",
+   "center_hit_rect_top_left_virtual": [
+    261.388,
+    196.204,
+    379.388,
+    255.204
+   ],
+   "catalogue": [
+    "resume",
+    "options",
+    "quit"
+   ],
+   "start_i": 1,
+   "gesture": {
+    "press": [
+     [
+      320,
+      226
+     ],
+     0
+    ],
+    "release": [
+     [
+      320,
+      226
+     ],
+     120
+    ]
+   },
+   "expected": {
+    "invoked_at_press": [],
+    "invoked_at_release": [
+     "options"
+    ],
+    "invocations": 1,
+    "selection_changed": false
+   }
+  },
+  {
+   "id": "pointer_press_outside_release_center",
+   "confidence": "user-decision",
+   "catalogue": [
+    "resume",
+    "options",
+    "quit"
+   ],
+   "start_i": 1,
+   "gesture": {
+    "press": [
+     [
+      320,
+      300
+     ],
+     0
+    ],
+    "release": [
+     [
+      320,
+      226
+     ],
+     120
+    ]
+   },
+   "expected": {
+    "invoked": [],
+    "i": 1,
+    "slide_started": false,
+    "marker_center": [
+     323.0,
+     188.4
+    ],
+    "caption": "options",
+    "paused": true
+   }
+  },
+  {
+   "id": "pointer_press_center_release_outside",
+   "confidence": "D (release position not stated by user)",
+   "catalogue": [
+    "resume",
+    "options",
+    "quit"
+   ],
+   "start_i": 1,
+   "gesture": {
+    "press": [
+     [
+      320,
+      226
+     ],
+     0
+    ],
+    "release": [
+     [
+      320,
+      300
+     ],
+     120
+    ]
+   },
+   "expected": {
+    "invoked": [],
+    "i": 1,
+    "slide_started": false,
+    "marker_center": [
+     323.0,
+     188.4
+    ],
+    "caption": "options",
+    "paused": true
+   }
+  },
+  {
+   "id": "pointer_click_inert_right_neighbor_icon",
+   "confidence": "user-decision",
+   "catalogue": [
+    "resume",
+    "options",
+    "quit"
+   ],
+   "start_i": 1,
+   "gesture": {
+    "press": [
+     [
+      478.388,
+      226
+     ],
+     0
+    ],
+    "release": [
+     [
+      478.388,
+      226
+     ],
+     80
+    ]
+   },
+   "expected": {
+    "invoked": [],
+    "i": 1,
+    "slide_started": false,
+    "marker_center": [
+     323.0,
+     188.4
+    ],
+    "caption": "options",
+    "paused": true,
+    "arrow_blink_started": false
+   }
+  },
+  {
+   "id": "pointer_click_inert_left_neighbor_icon",
+   "confidence": "user-decision",
+   "catalogue": [
+    "resume",
+    "options",
+    "quit"
+   ],
+   "start_i": 1,
+   "gesture": {
+    "press": [
+     [
+      162.388,
+      226
+     ],
+     0
+    ],
+    "release": [
+     [
+      162.388,
+      226
+     ],
+     80
+    ]
+   },
+   "expected": {
+    "invoked": [],
+    "i": 1,
+    "slide_started": false,
+    "marker_center": [
+     323.0,
+     188.4
+    ],
+    "caption": "options",
+    "paused": true,
+    "arrow_blink_started": false
+   }
+  },
+  {
+   "id": "pointer_click_inert_rail",
+   "confidence": "user-decision",
+   "catalogue": [
+    "resume",
+    "options",
+    "quit"
+   ],
+   "start_i": 1,
+   "gesture": {
+    "press": [
+     [
+      400.0,
+      188.4
+     ],
+     0
+    ],
+    "release": [
+     [
+      400.0,
+      188.4
+     ],
+     80
+    ]
+   },
+   "expected": {
+    "invoked": [],
+    "i": 1,
+    "slide_started": false,
+    "marker_center": [
+     323.0,
+     188.4
+    ],
+    "caption": "options",
+    "paused": true,
+    "arrow_blink_started": false
+   }
+  },
+  {
+   "id": "pointer_click_inert_rail_marker",
+   "confidence": "user-decision",
+   "catalogue": [
+    "resume",
+    "options",
+    "quit"
+   ],
+   "start_i": 1,
+   "gesture": {
+    "press": [
+     [
+      323.0,
+      188.4
+     ],
+     0
+    ],
+    "release": [
+     [
+      323.0,
+      188.4
+     ],
+     80
+    ]
+   },
+   "expected": {
+    "invoked": [],
+    "i": 1,
+    "slide_started": false,
+    "marker_center": [
+     323.0,
+     188.4
+    ],
+    "caption": "options",
+    "paused": true,
+    "arrow_blink_started": false
+   }
+  },
+  {
+   "id": "pointer_hover_inert",
+   "confidence": "user-decision",
+   "catalogue": [
+    "resume",
+    "options",
+    "quit"
+   ],
+   "start_i": 1,
+   "gesture": {
+    "move_over": [
+     [
+      478.388,
+      226
+     ],
+     [
+      579.14,
+      227.231
+     ],
+     [
+      320,
+      226
+     ]
+    ]
+   },
+   "expected": {
+    "invoked": [],
+    "i": 1,
+    "slide_started": false,
+    "marker_center": [
+     323.0,
+     188.4
+    ],
+    "caption": "options",
+    "paused": true,
+    "visual_change": false
+   }
+  },
+  {
+   "id": "pointer_right_button_is_back",
+   "confidence": "user-decision + observed-data (package response)",
+   "catalogue": [
+    "resume",
+    "options",
+    "quit"
+   ],
+   "start_i": 2,
+   "gesture": {
+    "secondary_click": [
+     100,
+     100
+    ]
+   },
+   "expected": {
+    "paused_after_input_frame": false,
+    "invoked": [
+     "back/resume"
+    ],
+    "selected_item_invoked": false
+   }
+  },
+  {
+   "id": "pointer_center_during_slide",
+   "confidence": "D (fixed slot hit rect, logical selection)",
+   "catalogue": [
+    "resume",
+    "options",
+    "quit"
+   ],
+   "start_i": 0,
+   "inputs": [
+    [
+     "Right",
+     0
+    ]
+   ],
+   "gesture": {
+    "press": [
+     [
+      320,
+      226
+     ],
+     50
+    ],
+    "release": [
+     [
+      320,
+      226
+     ],
+     90
+    ]
+   },
+   "expected": {
+    "invoked": [
+     "options"
+    ],
+    "invocations": 1
+   }
+  },
+  {
+   "id": "pointer_click_right_arrow_steps",
+   "confidence": "user-observation + D (press timing, hit box)",
+   "catalogue": [
+    "resume",
+    "options",
+    "quit"
+   ],
+   "start_i": 0,
+   "arrow_hit_rects_top_left_virtual": {
+    "left": [
+     56.709,
+     214.231,
+     82.709,
+     240.231
+    ],
+    "right": [
+     566.14,
+     214.231,
+     592.14,
+     240.231
+    ],
+    "confidence": "observed-data centres + D box (26x26 object square, edges inclusive, fixed during blink/slide)"
+   },
+   "gesture": {
+    "press": [
+     [
+      579.14,
+      227.231
+     ],
+     0
+    ],
+    "release": [
+     [
+      579.14,
+      227.231
+     ],
+     80
+    ]
+   },
+   "expected": {
+    "i": 1,
+    "caption": "options",
+    "marker_center_at_input_frame": [
+     323.0,
+     188.4
+    ],
+    "left_arrow_visible": true,
+    "right_arrow_visible": true,
+    "blink_started_on": "right",
+    "invoked": [],
+    "paused": true,
+    "step_at_ms": 0,
+    "step_at": "press",
+    "expected_scroll_position_s": {
+     "0": 0.0,
+     "16": 0.3463,
+     "50": 0.7351,
+     "100": 0.9298,
+     "234": 1.0
+    },
+    "equivalent_key_input": [
+     [
+      "Right",
+      0
+     ]
+    ],
+    "release_effect": null
+   }
+  },
+  {
+   "id": "pointer_click_left_arrow_steps",
+   "confidence": "user-observation + D (press timing, hit box)",
+   "catalogue": [
+    "resume",
+    "options",
+    "quit"
+   ],
+   "start_i": 1,
+   "arrow_hit_rects_top_left_virtual": {
+    "left": [
+     56.709,
+     214.231,
+     82.709,
+     240.231
+    ],
+    "right": [
+     566.14,
+     214.231,
+     592.14,
+     240.231
+    ],
+    "confidence": "observed-data centres + D box (26x26 object square, edges inclusive, fixed during blink/slide)"
+   },
+   "gesture": {
+    "press": [
+     [
+      69.709,
+      227.231
+     ],
+     0
+    ],
+    "release": [
+     [
+      69.709,
+      227.231
+     ],
+     80
+    ]
+   },
+   "expected": {
+    "i": 0,
+    "caption": "resume",
+    "marker_center_at_input_frame": [
+     50.0,
+     188.4
+    ],
+    "left_arrow_visible": false,
+    "right_arrow_visible": true,
+    "blink_started_on": null,
+    "invoked": [],
+    "paused": true,
+    "step_at_ms": 0,
+    "step_at": "press",
+    "expected_scroll_position_s": {
+     "0": 1.0,
+     "16": 0.6537,
+     "50": 0.2649,
+     "100": 0.0702,
+     "234": 0.0
+    },
+    "marker_center_by_ms": {
+     "0": [
+      50.0,
+      188.4
+     ],
+     "80": [
+      50.0,
+      188.4
+     ],
+     "160": [
+      50.0,
+      188.4
+     ]
+    },
+    "note": "left arrow becomes hidden at the press frame (hidden wins over blink, R3.6)",
+    "equivalent_key_input": [
+     [
+      "Left",
+      0
+     ]
+    ]
+   }
+  },
+  {
+   "id": "pointer_click_arrow_box_edges",
+   "confidence": "D (hit box)",
+   "catalogue": [
+    "resume",
+    "options",
+    "quit"
+   ],
+   "start_i": 1,
+   "probes": [
+    {
+     "point": [
+      566.14,
+      227.231
+     ],
+     "steps": "right"
+    },
+    {
+     "point": [
+      592.14,
+      240.231
+     ],
+     "steps": "right"
+    },
+    {
+     "point": [
+      565.14,
+      227.231
+     ],
+     "steps": null
+    },
+    {
+     "point": [
+      82.709,
+      214.231
+     ],
+     "steps": "left"
+    },
+    {
+     "point": [
+      55.709,
+      227.231
+     ],
+     "steps": null
+    },
+    {
+     "point": [
+      69.709,
+      241.231
+     ],
+     "steps": null
+    }
+   ],
+   "rule": "each probe is an independent press from start_i=1; inside box (inclusive) = one step in that direction; outside = inert"
+  },
+  {
+   "id": "pointer_click_hidden_arrows_singleton",
+   "confidence": "user-observation",
+   "catalogue": [
+    "resume"
+   ],
+   "start_i": 0,
+   "gestures": [
+    {
+     "press": [
+      [
+       69.709,
+       227.231
+      ],
+      0
+     ],
+     "release": [
+      [
+       69.709,
+       227.231
+      ],
+      80
+     ]
+    },
+    {
+     "press": [
+      [
+       579.14,
+       227.231
+      ],
+      200
+     ],
+     "release": [
+      [
+       579.14,
+       227.231
+      ],
+      280
+     ]
+    }
+   ],
+   "expected": {
+    "i": 0,
+    "slide_started": false,
+    "marker_center": [
+     50.0,
+     188.4
+    ],
+    "left_arrow_visible": false,
+    "right_arrow_visible": false,
+    "blink_started": false,
+    "invoked": [],
+    "paused": true
+   }
+  },
+  {
+   "id": "pointer_click_right_arrow_at_last_inert",
+   "confidence": "user-observation",
+   "catalogue": [
+    "resume",
+    "options",
+    "quit"
+   ],
+   "start_i": 2,
+   "gesture": {
+    "press": [
+     [
+      579.14,
+      227.231
+     ],
+     0
+    ],
+    "release": [
+     [
+      579.14,
+      227.231
+     ],
+     80
+    ]
+   },
+   "expected": {
+    "invoked": [],
+    "i": 2,
+    "slide_started": false,
+    "marker_center": [
+     596.0,
+     188.4
+    ],
+    "caption": "quit",
+    "paused": true,
+    "right_arrow_visible": false,
+    "left_arrow_visible": true,
+    "arrow_blink_started": false
+   }
+  },
+  {
+   "id": "pointer_click_left_arrow_at_first_inert",
+   "confidence": "user-observation",
+   "catalogue": [
+    "resume",
+    "options",
+    "quit"
+   ],
+   "start_i": 0,
+   "gesture": {
+    "press": [
+     [
+      69.709,
+      227.231
+     ],
+     0
+    ],
+    "release": [
+     [
+      69.709,
+      227.231
+     ],
+     80
+    ]
+   },
+   "expected": {
+    "invoked": [],
+    "i": 0,
+    "slide_started": false,
+    "marker_center": [
+     50.0,
+     188.4
+    ],
+    "caption": "resume",
+    "paused": true,
+    "left_arrow_visible": false,
+    "right_arrow_visible": true,
+    "arrow_blink_started": false
+   }
+  },
+  {
+   "id": "pointer_click_arrow_after_it_hid_mid_slide_inert",
+   "confidence": "user-observation + R1.8",
+   "catalogue": [
+    "resume",
+    "options",
+    "quit"
+   ],
+   "start_i": 1,
+   "gestures": [
+    {
+     "press": [
+      [
+       579.14,
+       227.231
+      ],
+      0
+     ],
+     "release": [
+      [
+       579.14,
+       227.231
+      ],
+      40
+     ]
+    },
+    {
+     "press": [
+      [
+       579.14,
+       227.231
+      ],
+      60
+     ],
+     "release": [
+      [
+       579.14,
+       227.231
+      ],
+      100
+     ]
+    }
+   ],
+   "expected": {
+    "i": 2,
+    "steps_taken": 1,
+    "right_arrow_alpha_from_ms": {
+     "0": 0
+    },
+    "blink_started": false,
+    "expected_scroll_position_s": {
+     "0": 1.0,
+     "60": 1.7969,
+     "100": 1.9298,
+     "234": 2.0
+    },
+    "invoked": []
+   }
+  },
+  {
+   "id": "pointer_click_arrow_mid_slide_retargets",
+   "confidence": "user-observation + D (press timing)",
+   "catalogue": [
+    "resume",
+    "options",
+    "quit"
+   ],
+   "start_i": 0,
+   "inputs": [
+    [
+     "Right",
+     0
+    ]
+   ],
+   "gesture": {
+    "press": [
+     [
+      579.14,
+      227.231
+     ],
+     50
+    ],
+    "release": [
+     [
+      579.14,
+      227.231
+     ],
+     90
+    ]
+   },
+   "expected": {
+    "final_i": 2,
+    "marker_center_by_ms": {
+     "49": [
+      323.0,
+      188.4
+     ],
+     "50": [
+      596.0,
+      188.4
+     ],
+     "300": [
+      596.0,
+      188.4
+     ]
+    },
+    "right_arrow_visible_by_ms": {
+     "49": true,
+     "50": false
+    },
+    "expected_scroll_position_s": {
+     "0": 0.0,
+     "49": 0.728,
+     "50": 0.7351,
+     "100": 1.6649,
+     "200": 1.9765,
+     "300": 2.0
+    },
+    "rule": "identical to slide_retarget_mid_animation: continues from the fractional s at 50 ms, no jump, no restart"
+   }
+  },
+  {
+   "id": "pointer_click_arrow_mixed_with_keys_reversal",
+   "confidence": "user-observation + D (press timing)",
+   "catalogue": [
+    "resume",
+    "options",
+    "quit"
+   ],
+   "start_i": 0,
+   "inputs": [
+    [
+     "Right",
+     0
+    ]
+   ],
+   "gesture": {
+    "press": [
+     [
+      69.709,
+      227.231
+     ],
+     50
+    ],
+    "release": [
+     [
+      69.709,
+      227.231
+     ],
+     90
+    ]
+   },
+   "expected": {
+    "final_i": 0,
+    "expected_scroll_position_s": {
+     "0": 0.0,
+     "50": 0.7351,
+     "100": 0.1947,
+     "200": 0.0137,
+     "400": 0.0
+    },
+    "rule": "identical to slide_reversal_mid_animation"
+   }
+  },
+  {
+   "id": "pointer_arrow_press_does_not_activate",
+   "confidence": "user-observation + D (gesture arming)",
+   "catalogue": [
+    "resume",
+    "options",
+    "quit"
+   ],
+   "start_i": 0,
+   "gestures": [
+    {
+     "press": [
+      [
+       579.14,
+       227.231
+      ],
+      0
+     ],
+     "release": [
+      [
+       320,
+       226
+      ],
+      120
+     ]
+    },
+    {
+     "press": [
+      [
+       579.14,
+       227.231
+      ],
+      400
+     ],
+     "release": [
+      [
+       579.14,
+       227.231
+      ],
+      480
+     ]
+    }
+   ],
+   "expected": {
+    "i_after_gesture": [
+     1,
+     2
+    ],
+    "invoked": [],
+    "invocations": 0,
+    "paused": true,
+    "rule": "arrow press steps only; releasing over the centred item does not activate it (press did not begin there)"
+   }
+  },
+  {
+   "id": "pointer_arrow_hold_no_repeat",
+   "confidence": "D",
+   "catalogue": [
+    "resume",
+    "options",
+    "quit"
+   ],
+   "start_i": 0,
+   "gesture": {
+    "press": [
+     [
+      579.14,
+      227.231
+     ],
+     0
+    ],
+    "hold_until_ms": 1500,
+    "release": [
+     [
+      579.14,
+      227.231
+     ],
+     1500
+    ]
+   },
+   "expected": {
+    "i": 1,
+    "steps_taken": 1
+   }
+  },
+  {
+   "id": "pointer_release_on_arrow_inert",
+   "confidence": "D",
+   "catalogue": [
+    "resume",
+    "options",
+    "quit"
+   ],
+   "start_i": 1,
+   "gesture": {
+    "press": [
+     [
+      400,
+      400
+     ],
+     0
+    ],
+    "release": [
+     [
+      579.14,
+      227.231
+     ],
+     80
+    ]
+   },
+   "expected": {
+    "invoked": [],
+    "i": 1,
+    "slide_started": false,
+    "marker_center": [
+     323.0,
+     188.4
+    ],
+    "caption": "options",
+    "paused": true,
+    "arrow_blink_started": false
+   }
+  },
+  {
+   "id": "resume_immediate_Escape",
+   "confidence": "user-decision",
+   "input_frame": 100,
+   "frame_ms": 16.667,
+   "trigger": "Escape",
+   "expected": {
+    "paused_after_processing_frame": {
+     "99": true,
+     "100": false
+    },
+    "simulation_advances_from_frame": 101,
+    "gameplay_clock_advances_from_frame": 101,
+    "gameplay_input_accepted_from_frame": 101,
+    "audio_resumed_from_frame": 101,
+    "triggering_input_forwarded_to_gameplay": false,
+    "overlay_alpha_zero_by_ms_after_input": 100,
+    "menu_accepts_input_after_resume": false,
+    "max_resume_latency_frames": 1
+   }
+  },
+  {
+   "id": "resume_immediate_controller_Back",
+   "confidence": "user-decision",
+   "input_frame": 100,
+   "frame_ms": 16.667,
+   "trigger": "controller_Back",
+   "expected": {
+    "paused_after_processing_frame": {
+     "99": true,
+     "100": false
+    },
+    "simulation_advances_from_frame": 101,
+    "gameplay_clock_advances_from_frame": 101,
+    "gameplay_input_accepted_from_frame": 101,
+    "audio_resumed_from_frame": 101,
+    "triggering_input_forwarded_to_gameplay": false,
+    "overlay_alpha_zero_by_ms_after_input": 100,
+    "menu_accepts_input_after_resume": false,
+    "max_resume_latency_frames": 1
+   }
+  },
+  {
+   "id": "resume_immediate_controller_Start",
+   "confidence": "user-decision",
+   "input_frame": 100,
+   "frame_ms": 16.667,
+   "trigger": "controller_Start",
+   "expected": {
+    "paused_after_processing_frame": {
+     "99": true,
+     "100": false
+    },
+    "simulation_advances_from_frame": 101,
+    "gameplay_clock_advances_from_frame": 101,
+    "gameplay_input_accepted_from_frame": 101,
+    "audio_resumed_from_frame": 101,
+    "triggering_input_forwarded_to_gameplay": false,
+    "overlay_alpha_zero_by_ms_after_input": 100,
+    "menu_accepts_input_after_resume": false,
+    "max_resume_latency_frames": 1
+   }
+  },
+  {
+   "id": "resume_immediate_right_mouse_button",
+   "confidence": "user-decision",
+   "input_frame": 100,
+   "frame_ms": 16.667,
+   "trigger": "right_mouse_button",
+   "expected": {
+    "paused_after_processing_frame": {
+     "99": true,
+     "100": false
+    },
+    "simulation_advances_from_frame": 101,
+    "gameplay_clock_advances_from_frame": 101,
+    "gameplay_input_accepted_from_frame": 101,
+    "audio_resumed_from_frame": 101,
+    "triggering_input_forwarded_to_gameplay": false,
+    "overlay_alpha_zero_by_ms_after_input": 100,
+    "menu_accepts_input_after_resume": false,
+    "max_resume_latency_frames": 1
+   }
+  },
+  {
+   "id": "resume_immediate_Back_pill_click",
+   "confidence": "user-decision",
+   "input_frame": 100,
+   "frame_ms": 16.667,
+   "trigger": "Back_pill_click",
+   "expected": {
+    "paused_after_processing_frame": {
+     "99": true,
+     "100": false
+    },
+    "simulation_advances_from_frame": 101,
+    "gameplay_clock_advances_from_frame": 101,
+    "gameplay_input_accepted_from_frame": 101,
+    "audio_resumed_from_frame": 101,
+    "triggering_input_forwarded_to_gameplay": false,
+    "overlay_alpha_zero_by_ms_after_input": 100,
+    "menu_accepts_input_after_resume": false,
+    "max_resume_latency_frames": 1
+   }
+  },
+  {
+   "id": "resume_immediate_Resume_item_Enter",
+   "confidence": "user-decision",
+   "input_frame": 100,
+   "frame_ms": 16.667,
+   "trigger": "Resume_item_Enter",
+   "expected": {
+    "paused_after_processing_frame": {
+     "99": true,
+     "100": false
+    },
+    "simulation_advances_from_frame": 101,
+    "gameplay_clock_advances_from_frame": 101,
+    "gameplay_input_accepted_from_frame": 101,
+    "audio_resumed_from_frame": 101,
+    "triggering_input_forwarded_to_gameplay": false,
+    "overlay_alpha_zero_by_ms_after_input": 100,
+    "menu_accepts_input_after_resume": false,
+    "max_resume_latency_frames": 1
+   }
+  },
+  {
+   "id": "resume_immediate_Resume_item_click",
+   "confidence": "user-decision",
+   "input_frame": 100,
+   "frame_ms": 16.667,
+   "trigger": "Resume_item_click",
+   "expected": {
+    "paused_after_processing_frame": {
+     "99": true,
+     "100": false
+    },
+    "simulation_advances_from_frame": 101,
+    "gameplay_clock_advances_from_frame": 101,
+    "gameplay_input_accepted_from_frame": 101,
+    "audio_resumed_from_frame": 101,
+    "triggering_input_forwarded_to_gameplay": false,
+    "overlay_alpha_zero_by_ms_after_input": 100,
+    "menu_accepts_input_after_resume": false,
+    "max_resume_latency_frames": 1
+   }
+  },
+  {
+   "id": "resume_immediate_Continue_pill_with_Resume_selected",
+   "confidence": "user-decision",
+   "input_frame": 100,
+   "frame_ms": 16.667,
+   "trigger": "Continue_pill_with_Resume_selected",
+   "expected": {
+    "paused_after_processing_frame": {
+     "99": true,
+     "100": false
+    },
+    "simulation_advances_from_frame": 101,
+    "gameplay_clock_advances_from_frame": 101,
+    "gameplay_input_accepted_from_frame": 101,
+    "audio_resumed_from_frame": 101,
+    "triggering_input_forwarded_to_gameplay": false,
+    "overlay_alpha_zero_by_ms_after_input": 100,
+    "menu_accepts_input_after_resume": false,
+    "max_resume_latency_frames": 1
+   }
+  }
+ ]
+}

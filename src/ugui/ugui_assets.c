@@ -182,7 +182,7 @@ static int cmp_pkg(const void *x, const void *y) {
     return strcasecmp(((const UgAssetPackage *)x)->name, ((const UgAssetPackage *)y)->name);
 }
 
-int ug_assets_open(UgAssets *a, const char *dir, const char *language, char *msg, size_t msglen) {
+static int assets_open(UgAssets *a, const char *dir, const char *language, char *msg, size_t msglen, int ingame) {
     memset(a, 0, sizeof *a);
     a->main_face = -1;
     ug_texlib_init(&a->tex);
@@ -210,6 +210,11 @@ int ug_assets_open(UgAssets *a, const char *dir, const char *language, char *msg
     static const char *LT[] = {"LANGUAGES/LanguageTextures.bin"};
     if (load_first(a, LT, 1, "LANGUAGES/LanguageTextures.bin", &b, used, sizeof used)) walk_file(a, &b, used);
 
+    if (ingame) {
+        static const char *COMMON[] = {"GLOBAL/InGameCommon.lzc", "GLOBAL/InGameCommon.bun"};
+        if (load_first(a, COMMON, 2, "GLOBAL/InGameCommon", &b, used, sizeof used)) walk_file(a, &b, used);
+    }
+
     ug_texlib_index(&a->tex);
     for (int i = 0; i < a->nface; i++) {
         UgFace *f = &a->face[i];
@@ -232,6 +237,14 @@ int ug_assets_open(UgAssets *a, const char *dir, const char *language, char *msg
     }
     if (msg && msglen) snprintf(msg, msglen, "%s", sum);
     return 1;
+}
+
+int ug_assets_open(UgAssets *a, const char *dir, const char *language, char *msg, size_t msglen) {
+    return assets_open(a, dir, language, msg, msglen, 0);
+}
+
+int ug_assets_open_ingame(UgAssets *a, const char *dir, const char *language, char *msg, size_t msglen) {
+    return assets_open(a, dir, language, msg, msglen, 1);
 }
 
 void ug_assets_close(UgAssets *a) {

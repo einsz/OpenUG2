@@ -28,9 +28,13 @@ else
   GL_LIBS := -lGL
 endif
 
+UGUI_IMAGE_LIBS := $(shell pkg-config --libs libpng libcrypto)
+override CFLAGS += $(shell pkg-config --cflags libpng libcrypto)
 # engine modules: orchestrator + Renderer/Physics/AI/Audio/Resources/World
-SRC  := src/main.c src/render.c src/render_params.c src/physics.c src/ai.c src/audio.c src/resource.c src/world.c src/world_instance.c src/world_resident.c src/world_mesh.c src/hud.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/rhi_gl_state.c src/rhi_gl.c src/camera.c src/tex_override.c
+GAME_UI_SRC := $(wildcard src/ugui/*.c) src/pause_menu.c src/frontend/frontend.c src/frontend/frontend_draw.c
+SRC  := src/main.c src/render.c src/render_params.c src/physics.c src/ai.c src/audio.c src/resource.c src/world.c src/world_instance.c src/world_resident.c src/world_mesh.c src/hud.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/rhi_gl_state.c src/rhi_gl.c src/camera.c src/tex_override.c $(GAME_UI_SRC)
 HDRS := src/world_collision_rules.h src/world_collision.h src/race_log.h src/race.h src/traffic_heatmap.h src/asset_chunks.h src/car_config.h src/car_mod.h src/nfsu2.h src/render.h src/physics.h src/ai.h src/audio.h src/resource.h src/debug.h src/world.h src/world_instance.h src/world_resident.h src/world_mesh.h src/world_capture_policy.h src/world_group_reader.h src/world_scenery.h src/ground_motion.h src/hud.h src/hud_asset.h src/hud_texture.h src/hud_baseline.h src/hud_host.h src/rhi_gl_state.h src/rhi.h src/rhi_gl.h src/render_params.h src/camera.h src/tex_override.h
+HDRS += src/pause_menu_binding.h src/pause_menu_quit.h src/pause_menu.h src/pause_menu_layout.h src/frontend/frontend.h src/frontend/frontend_draw.h $(wildcard src/ugui/*.h)
 
 .DEFAULT_GOAL := nfsu2   # keep `make` building the binary, not the generated header
 
@@ -52,18 +56,17 @@ src/generated_shaders.h: $(SHADERS)
 	@for f in $(SHADERS); do xxd -i $$f | sed 's/^unsigned/static const unsigned/' >> $@; done
 
 nfsu2: $(SRC) $(HDRS) $(GEN)
-	$(CC) $(CFLAGS) $(SDL_CFLAGS) $(SRC) -o nfsu2 $(SDL_LIBS) $(GL_LIBS) -lz -lm
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) $(SRC) -o nfsu2 $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lz -lm
 
 # Explicit build variants. Both write the same `nfsu2` executable; the last
 # target built is the one that is currently on disk.
 normal: $(SRC) $(HDRS) $(GEN)
-	$(CC) $(CFLAGS) $(SDL_CFLAGS) $(SRC) -o nfsu2 $(SDL_LIBS) $(GL_LIBS) -lz -lm
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) $(SRC) -o nfsu2 $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lz -lm
 
-menu: $(SRC) $(HDRS) src/frontend/frontend.c src/frontend/frontend_draw.c \
-	      src/frontend/frontend.h src/frontend/frontend_draw.h $(GEN)
+menu: $(SRC) $(HDRS) $(GEN)
 	$(CC) $(CFLAGS) -DOPENUG2_MENU $(SDL_CFLAGS) $(SRC) \
-		src/frontend/frontend.c src/frontend/frontend_draw.c -o nfsu2 \
-		$(SDL_LIBS) $(GL_LIBS) -lz -lm
+		-o nfsu2 \
+		$(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lz -lm
 
 # Dev build with the Dear ImGui debug overlay + freecam controls (`make debug`).
 # The engine stays C; ImGui + the wrapper compile as C++ and link together.
@@ -88,7 +91,7 @@ build/%.dbg.o: src/%.c $(HDRS) $(GEN)
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -DDEBUG_UI -c $< -o $@
 
 debug: $(DBG_OBJ) $(IMGUI_OBJ)
-	$(CXX) -O2 $(DBG_OBJ) $(IMGUI_OBJ) -o nfsu2 $(SDL_LIBS) $(GL_LIBS) -lz -lm
+	$(CXX) -O2 $(DBG_OBJ) $(IMGUI_OBJ) -o nfsu2 $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lz -lm
 
 # Gameplay camera vs docs/cleanroom-camera/test-vectors (docs/CAMERA.md). DATA may point
 # at an install to also check the real GLOBALB through the loader (structure only);
@@ -218,7 +221,7 @@ wheel-render-test: tools/wheel_render_test.c src/render.c src/render_params.c sr
 
 wheel-reload-test: tools/wheel_reload_test.c $(SRC) $(HDRS) $(GEN)
 	@mkdir -p build
-	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/wheel_reload_test.c $(filter-out src/main.c,$(SRC)) -o build/wheel_reload_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/wheel_reload_test.c $(filter-out src/main.c,$(SRC)) -o build/wheel_reload_test $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lz -lm
 	./build/wheel_reload_test
 
 .PHONY: wheel-reload-test
@@ -345,7 +348,7 @@ ai-drive-cli-test: nfsu2
 # OpenGL ES 2.0 (embedded/mobile). Cross-compile e.g.:
 #   CC=aarch64-linux-gnu-gcc make gles
 gles: $(SRC) $(HDRS) $(GEN)
-	$(CC) $(CFLAGS) -DN2_GLES $(SDL_CFLAGS) $(SRC) -o nfsu2 $(SDL_LIBS) -lGLESv2 -lz -lm
+	$(CC) $(CFLAGS) -DN2_GLES $(SDL_CFLAGS) $(SRC) -o nfsu2 $(SDL_LIBS) -lGLESv2 $(UGUI_IMAGE_LIBS) -lz -lm
 
 run: nfsu2
 	./nfsu2 $(DATA)
@@ -418,6 +421,32 @@ rhi-readback-test: tools/rhi_readback_test.c src/rhi_gl.c src/rhi_gl_state.c src
 	./build/rhi_readback_test
 .PHONY: rhi-readback-test
 
+# Settings backend vs docs/cleanroom-settings/test-vectors (synthetic vectors, no retail data).
+# Profile/INI scratch files go to build/settings_test_tmp.
+SETTINGS_SPEC ?= docs/cleanroom-settings
+ifeq ($(OS),Windows_NT)
+SETTINGS_LIBS := -ladvapi32
+endif
+settings-test: tools/settings_test.c src/settings.c src/settings.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Isrc tools/settings_test.c src/settings.c -o build/settings_test $(SETTINGS_LIBS) -lm
+	./build/settings_test "$(SETTINGS_SPEC)/test-vectors" build/settings_test_tmp
+.PHONY: settings-test
+
+# Malformed input, allocation failures and synthetic file/link boundaries.
+settings-boundary-test: tools/settings_boundary_test.c src/settings.c src/settings.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Isrc tools/settings_boundary_test.c -o build/settings_boundary_test $(SETTINGS_LIBS) -lm
+	./build/settings_boundary_test
+.PHONY: settings-boundary-test
+
+# RHI main-target clear, upload results, texture limit, state snapshots and GPU timers.
+rhi-frame-test: tools/rhi_frame_test.c src/rhi_gl.c src/rhi_gl_state.c src/rhi.h src/rhi_gl.h src/rhi_gl_state.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/rhi_frame_test.c src/rhi_gl.c src/rhi_gl_state.c -o build/rhi_frame_test $(SDL_LIBS) $(GL_LIBS) -lm
+	./build/rhi_frame_test
+.PHONY: rhi-frame-test
+
 # The test includes rhi_gl.c to inject allocator failure into the real backend.
 rhi-sampler-test: tools/rhi_sampler_test.c src/render.c src/render_params.c src/rhi_gl.c src/rhi_gl_state.c src/tex_override.c $(HDRS) $(GEN)
 	@mkdir -p build
@@ -459,3 +488,20 @@ ugui-gl-state-test: tools/ugui_gl_state_test.c $(UGUI_SRC) src/ugui/ugui_gl.c sr
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(UGUI_FLAGS) $(SDL_CFLAGS) -Isrc tools/ugui_gl_state_test.c $(UGUI_SRC) src/ugui/ugui_gl.c src/rhi_gl_state.c -o build/ugui_gl_state_test $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lm
 	./build/ugui_gl_state_test
+
+build/pause_menu_test: tools/pause_menu_test.c tools/pause_menu_authored_test.inc tools/pause_menu_binding_test.inc tools/pause_menu_behavior_test.inc tools/pause_menu_quit_test.inc src/pause_menu.c $(HDRS) $(UGUI_SRC)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/pause_menu_test.c src/frontend/frontend.c $(UGUI_SRC) src/ugui/ugui_gl.c src/rhi_gl_state.c -o $@ $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lm
+pause-menu-test: build/pause_menu_test
+	env -u UGUI_DATA -u NFSU2_DATA python3 tools/pause_menu_vector_check.py build/pause_menu_test tools/pause_menu_vectors
+	env -u UGUI_DATA -u NFSU2_DATA python3 tools/pause_menu_supplement_check.py build/pause_menu_test tools/pause_menu_vectors
+	env -u UGUI_DATA -u NFSU2_DATA python3 tools/pause_menu_behavior_check.py build/pause_menu_test tools/pause_menu_vectors
+	env -u UGUI_DATA -u NFSU2_DATA python3 tools/pause_menu_quit_check.py build/pause_menu_test tools/pause_menu_vectors
+.PHONY: pause-menu-test
+
+build/pause_menu_gl_test: tools/pause_menu_gl_test.c $(HDRS) $(UGUI_SRC)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc $< $(UGUI_SRC) src/ugui/ugui_gl.c src/rhi_gl_state.c -o $@ $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lm
+pause-menu-gl-test: build/pause_menu_gl_test
+	SDL_VIDEODRIVER=$(if $(filter Darwin,$(UNAME)),cocoa,offscreen) ./build/pause_menu_gl_test
+.PHONY: pause-menu-gl-test

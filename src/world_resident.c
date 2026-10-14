@@ -187,7 +187,6 @@ static int resident_resources_step(WorldResidentResources *resources,
                       (neighborhood->nlights > 0 ? 1 : 0);
 
     if (!resources->mesh_count) {
-        while (glGetError() != GL_NO_ERROR) {}
         resources->texture_keys = (uint32_t *)calloc(
             (size_t)texture_cap, sizeof *resources->texture_keys);
         resources->textures = (RhiTexture *)calloc(
@@ -237,9 +236,11 @@ static int resident_resources_step(WorldResidentResources *resources,
                     break;
                 }
         }
-        if (neighborhood->have_grass)
+        if (neighborhood->have_grass) {
             resources->terrain_texture = upload_tex_keyed(
                 0x5671B2B5u /* TRN_GRASSC */, NULL, &neighborhood->grass);
+            if (!resources->terrain_texture.id) goto fail;
+        }
         resources->texture_ticks += SDL_GetPerformanceCounter() - texture_begin;
         if (timing) timing->textures_ms = (uint32_t)(
             resources->texture_ticks * 1000 / SDL_GetPerformanceFrequency());
@@ -315,7 +316,6 @@ static int resident_resources_step(WorldResidentResources *resources,
     if (timing) timing->collision_ms = (uint32_t)(
         resources->collision_ticks * 1000 / SDL_GetPerformanceFrequency());
     if (resources->collision_mesh < mesh_count) return 0;
-    if (glGetError() != GL_NO_ERROR) goto fail;
     return 1;
 
 fail:

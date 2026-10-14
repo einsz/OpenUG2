@@ -45,6 +45,8 @@
 #include "ground_motion.h"
 #include "debug.h"
 #include "camera.h"      /* gameplay camera (docs/CAMERA.md) */
+#include "pause_menu.h"
+#include "ugui/ugui_gl.h"
 #ifdef OPENUG2_MENU
 #include "frontend/frontend.h"
 #include "frontend/frontend_draw.h"
@@ -268,10 +270,9 @@ static int load_rim_style(const unsigned char *wldata, long wllen,
     long ar=0, ag=0, ab=0, bmn=255, bmx=0;
     if (!tk || !wtdata || !n2_load_car_tex_by_key(wtdata, wtlen, tk, &rt) ||
         !rt.rgb || rt.w <= 0 || rt.h <= 0) goto failed;
-    /* Do not commit resources after a failed GPU upload (or a pending GL error). */
-    if (glGetError() != GL_NO_ERROR) goto failed;
+    /* Do not commit resources after a failed GPU upload. */
     gm = upload_scene(lib);
-    if (!gm || glGetError() != GL_NO_ERROR) goto failed;
+    if (!gm) goto failed;
     for (int i = 0; i < n; i++)
         if (!gm[i].vbo.id || !gm[i].nbo.id || !gm[i].ibo.id) goto failed;
     {
@@ -287,7 +288,7 @@ static int load_rim_style(const unsigned char *wldata, long wllen,
             if (b < bmn) bmn = b; if (b > bmx) bmx = b; }
         if (np) { ar/=np; ag/=np; ab/=np; }
     }
-    if (!rimtex.id || glGetError() != GL_NO_ERROR) goto failed;
+    if (!rimtex.id) goto failed;
     free(rt.rgb); free(rt.alpha); free(rt.dxt);
     free_scene_gpu(*active_gm, *ngm);
     n2_free_scene(active);
@@ -440,7 +441,7 @@ static int prepare_car_switch(CarSwitchCandidate *candidate,
     candidate->nmesh = candidate->scene.count;
     candidate->stock_wheel = n2_car_prepare_wheels(&candidate->scene);
     candidate->gpu = upload_scene(&candidate->scene);
-    if (!candidate->gpu || glGetError() != GL_NO_ERROR) {
+    if (!candidate->gpu) {
         car_switch_release(candidate); return 0;
     }
     n2_car_profile(&candidate->scene, name, WHEEL_SEED_FRONTF, WHEEL_SEED_REARF,
@@ -476,7 +477,7 @@ static int prepare_car_switch(CarSwitchCandidate *candidate,
         candidate->alpha[slot] = tex.alpha != NULL && tex.dxtfmt != 1;
         candidate->mode[slot] = (char)n2_tex_mode(&tex);
         free(tex.rgb); free(tex.alpha); free(tex.dxt);
-        if (!candidate->textures[slot].id || glGetError() != GL_NO_ERROR) {
+        if (!candidate->textures[slot].id) {
             car_switch_release(candidate); return 0;
         }
         render_texture_clamp(candidate->textures[slot]);
@@ -528,8 +529,8 @@ static int car_body_metrics(const N2Scene *car, float bb[6], float bloom[4][4]) 
    here; collision keeps using the full AABB. */
 /* ---- optional frame profiler (--perf-csv FILE) -----------------------------
  * CPU time is split by sequential marks: each pf_mark(s) charges the time since
- * the previous mark to section s. GPU spans use EXT_timer_query elapsed queries
- * read back PF_GPU_LAG frames later without waiting; no glFinish is issued.
+ * the previous mark to section s. GPU spans use rhi timers read back
+ * PF_GPU_LAG frames later without waiting; nothing waits for the GPU.
  * Every entry point is a no-op unless the CSV is open. */
 enum { PF_FRAME_TOP, PF_PLAYER_SIM, PF_AI_FOLLOW, PF_AI_STEP, PF_AI_CONTACT,
        PF_AI_SPAWN, PF_CAMERA, PF_WORLD_DRAW, PF_CAR_SHADOW, PF_PLAYER_DRAW,
@@ -540,11 +541,7 @@ static const char *const pf_name[PF_N] = { "top","player_sim","ai_follow","ai_st
 #define PF_GPU_N 3      /* scene before AI cars | AI car meshes | rest to swap */
 #define PF_GPU_LAG 4
 static FILE *pf_csv; static Uint64 pf_last; static double pf_ms[PF_N];
-static int pf_gpu_ok; static GLuint pf_q[PF_GPU_LAG][PF_GPU_N]; static int pf_gpu_open=-1;
-static void (*pf_GenQueries)(GLsizei,GLuint*);
-static void (*pf_BeginQuery)(GLenum,GLuint), (*pf_EndQuery)(GLenum);
-static void (*pf_GetQueryObjectuiv)(GLuint,GLenum,GLuint*);
-static void (*pf_GetQueryObjectui64v)(GLuint,GLenum,unsigned long long*);
+static int pf_gpu_ok; static RhiTimer pf_q[PF_GPU_LAG][PF_GPU_N]; static int pf_gpu_open=-1;
 static void pf_mark(int s) {
     if(!pf_csv)return;
     Uint64 now=SDL_GetPerformanceCounter();
@@ -553,24 +550,17 @@ static void pf_mark(int s) {
 }
 static void pf_gpu(long frame,int span) {   /* close the open span, open `span` (-1: none) */
     if(!pf_csv || !pf_gpu_ok)return;
-    if(pf_gpu_open>=0)pf_EndQuery(0x88BF);
-    if(span>=0)pf_BeginQuery(0x88BF,pf_q[frame%PF_GPU_LAG][span]);
+    if(pf_gpu_open>=0)rhi_cmd_timer_end();
+    if(span>=0)rhi_cmd_timer_begin(pf_q[frame%PF_GPU_LAG][span]);
     pf_gpu_open=span;
 }
 static void pf_open(const char *path) {
     pf_csv=fopen(path,"w");
     if(!pf_csv){fprintf(stderr,"--perf-csv: cannot open %s\n",path);return;}
-    const char *ext=(const char *)glGetString(GL_EXTENSIONS);
-    pf_GenQueries=(void(*)(GLsizei,GLuint*))SDL_GL_GetProcAddress("glGenQueries");
-    pf_BeginQuery=(void(*)(GLenum,GLuint))SDL_GL_GetProcAddress("glBeginQuery");
-    pf_EndQuery=(void(*)(GLenum))SDL_GL_GetProcAddress("glEndQuery");
-    pf_GetQueryObjectuiv=(void(*)(GLuint,GLenum,GLuint*))SDL_GL_GetProcAddress("glGetQueryObjectuiv");
-    pf_GetQueryObjectui64v=(void(*)(GLuint,GLenum,unsigned long long*))
-        SDL_GL_GetProcAddress("glGetQueryObjectui64vEXT");
-    pf_gpu_ok=ext && strstr(ext,"GL_EXT_timer_query") && pf_GenQueries && pf_BeginQuery &&
-              pf_EndQuery && pf_GetQueryObjectuiv && pf_GetQueryObjectui64v;
-    if(pf_gpu_ok)pf_GenQueries(PF_GPU_LAG*PF_GPU_N,&pf_q[0][0]);
-    printf("perf csv %s: gpu timer %s\n",path,pf_gpu_ok?"EXT_timer_query":"unavailable (CPU only)");
+    pf_gpu_ok=rhi_caps()->gpu_timer;
+    for(int i=0;i<PF_GPU_LAG*PF_GPU_N && pf_gpu_ok;i++)
+        pf_gpu_ok=(pf_q[i/PF_GPU_N][i%PF_GPU_N]=rhi_timer_create()).id!=0;
+    printf("perf csv %s: gpu timer %s\n",path,pf_gpu_ok?"on":"unavailable (CPU only)");
     fprintf(pf_csv,"frame,traffic,racers,target,ai_visible,draws,contact_passes,pair_checks,"
                    "pair_hits,world_fixes,wall_candidates,spawn_attempts");
     for(int s=0;s<PF_N;s++)fprintf(pf_csv,",cpu_%s",pf_name[s]);
@@ -588,9 +578,8 @@ static void pf_row(long frame,const int counts[12]) {
     if(pf_gpu_ok && frame>=PF_GPU_LAG-1) {   /* oldest ring slot: written PF_GPU_LAG-1 frames ago */
         long old=frame-(PF_GPU_LAG-1);have=1;
         for(int k=0;k<PF_GPU_N;k++) {
-            GLuint ready=0;pf_GetQueryObjectuiv(pf_q[old%PF_GPU_LAG][k],0x8867,&ready);
-            if(!ready){have=0;break;}
-            unsigned long long ns=0;pf_GetQueryObjectui64v(pf_q[old%PF_GPU_LAG][k],0x8866,&ns);
+            uint64_t ns=0;
+            if(!rhi_timer_read(pf_q[old%PF_GPU_LAG][k],&ns)){have=0;break;}
             g[k]=ns/1e6;
         }
         if(have)fprintf(pf_csv,",%ld,%.4f,%.4f,%.4f,%.4f\n",old,g[0],g[1],g[2],g[0]+g[1]+g[2]);
@@ -799,9 +788,8 @@ static int prepare_body_kit(BodyKitCandidate *kit,
         if(!found)goto failed;
     }
     kit->stock_wheel=n2_car_prepare_wheels(&kit->scene);
-    if(glGetError()!=GL_NO_ERROR)goto failed;
     kit->gpu=upload_scene(&kit->scene);
-    if(!kit->gpu || glGetError()!=GL_NO_ERROR)goto failed;
+    if(!kit->gpu)goto failed;
     for(int i=0;i<kit->scene.count;i++) {
         if(!kit->gpu[i].vbo.id || !kit->gpu[i].nbo.id || !kit->gpu[i].ibo.id)goto failed;
         uint32_t tk=kit->scene.meshes[i].texkey;int seen=!tk;
@@ -825,7 +813,7 @@ static int prepare_body_kit(BodyKitCandidate *kit,
         kit->mode[j]=(char)n2_tex_mode(&t);
         render_texture_clamp(kit->textures[j]);
         free(t.rgb);free(t.alpha);free(t.dxt);
-        if(!kit->textures[j].id || glGetError()!=GL_NO_ERROR)goto failed;
+        if(!kit->textures[j].id)goto failed;
     }
     return 1;
 failed:
@@ -2051,7 +2039,7 @@ static int select_car_vinyl(int choice) {
                                                         g_vinyl_keys[choice-1],&tex);
         if(loaded)next=upload_tex_keyed(g_vinyl_keys[choice-1],"VINYLS",&tex);
         free(tex.rgb);free(tex.alpha);free(tex.dxt);
-        if(!next.id || glGetError()!=GL_NO_ERROR) {
+        if(!next.id) {
             if(next.id)rhi_texture_destroy(next);
             snprintf(g_dbg.vinyl_status,sizeof g_dbg.vinyl_status,
                      "Could not load this vinyl. The current design was kept.");
@@ -2077,6 +2065,11 @@ int main(int argc, char **argv) {
                           not a supported playable open-world composition.
          --circuit PATH   circuit Paths .bin under TRACKS/ (default ROUTESL4RF/Paths4602.bin)
          --shot out.png   render one frame and exit
+         --pause-shot     include authored pause UI in --shot (requires genuine UI resources)
+         --pause-ui-ms T  UI-only elapsed phase for capture (default 800 ms)
+         --pause-events S deterministic timed UI events, e.g. 800:Right,880:Left
+         --pause-off FILE save same-frame frozen scene-only pair before UI
+         --pause-reference capture independent populated authored reference with UI replay
          --resolution WxH window/render size (default 1920x1080; also used by audits)
          --carinfo CAR    dump CAR's part list + texture catalog and exit (GL-free)
          --world2         legacy alias; instance world is automatic for one STREAM
@@ -2241,11 +2234,19 @@ int main(int argc, char **argv) {
     int want_event_id = 0;   /* --event <id>: boot straight into a race event */
     int shotframes = 40;     /* --frames N: how long --shot drives before the grab */
     int shotframes_set = 0;
+    int pause_shot = 0, pause_reference=0;
+    float pause_ui_ms=800;
+    const char *pause_off=NULL,*pause_events=NULL;
     const char *tex_override_dir = NULL;   /* --tex-overrides DIR: HD DDS overrides (off by default) */
     int tex_override_off = 0, tex_override_budget = 0;
     int want_laps = 2;       /* --laps N: race distance for --event */
     for (int i = 1; i < argc; i++) {
         if      (!strcmp(argv[i], "--shot")    && i+1 < argc) shot      = argv[++i];
+        else if (!strcmp(argv[i], "--pause-shot")) pause_shot = 1;
+        else if (!strcmp(argv[i], "--pause-ui-ms") && i+1<argc) pause_ui_ms=(float)atof(argv[++i]);
+        else if (!strcmp(argv[i], "--pause-events") && i+1<argc) pause_events=argv[++i];
+        else if (!strcmp(argv[i], "--pause-off") && i+1<argc) pause_off=argv[++i];
+        else if (!strcmp(argv[i], "--pause-reference")) {pause_reference=1;pause_shot=1;}
         else if (!strcmp(argv[i], "--resolution")) {
             char extra;
             if (i+1 >= argc ||
@@ -2729,6 +2730,13 @@ int main(int argc, char **argv) {
         shotyaw = world2_heading_deg * 3.14159265f / 180.0f;
     if (shot_empty && !shot) {
         fprintf(stderr, "--shot-empty requires --shot\n");
+        return 2;
+    }
+    if(!pause_menu_capture_duration_valid(pause_ui_ms) || ((pause_off || pause_events) && !pause_shot)) {
+        fprintf(stderr,"pause capture requires --pause-shot and a finite UI phase in [0,60000] ms\n");return 2;
+    }
+    if (pause_shot && !shot) {
+        fprintf(stderr, "--pause-shot requires --shot\n");
         return 2;
     }
     if (carinfo) return dump_car_info(dataroot, carinfo);   /* inspect one car, GL-free, exit */
@@ -6192,6 +6200,8 @@ int main(int argc, char **argv) {
     char heat_context[160]={0};
     RaceLog race_log={0};g_dbg.race_log=&race_log;
     unsigned log_serial=0;int log_event=-1;
+    PauseMenu *pause_menu = NULL;
+    int pause_cursor = SDL_ENABLE;
     while (running) {
         pf_mark(PF_FRAME_TOP);
         uint32_t resident_frame_begin = SDL_GetTicks();
@@ -6200,6 +6210,7 @@ int main(int argc, char **argv) {
         sim_counter=resident_frame_counter;
         float frame_scale=deterministic_sim?1:(float)fmin(frame_seconds*PHYS_TICKRATE,8);
         int sim_reset=0;
+        int pause_frame = pause_menu_is_open(pause_menu);
         if (retired_resident) {
             uint32_t begin = SDL_GetTicks();
             /* ponytail: work quota, not a hard millisecond deadline. Keep GL
@@ -6237,6 +6248,39 @@ int main(int argc, char **argv) {
         traffic_world.traffic_target=g_dbg.traffic_target;
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
+            if (e.type == SDL_QUIT) { running = 0; continue; }
+            int pause_allowed = 1;
+#ifdef OPENUG2_MENU
+            pause_allowed = !frontend_open;
+#endif
+            int pause_key = e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE;
+            int pause_start = e.type == SDL_CONTROLLERBUTTONDOWN &&
+                              e.cbutton.button == SDL_CONTROLLER_BUTTON_START;
+            if (pause_allowed && (pause_key || pause_start) && !pause_menu_is_open(pause_menu)) {
+                if (pause_key && e.key.repeat) continue;
+                /* Consume the whole opening frame so no queued input reaches driving. */
+                pause_frame = 1;
+                if (!pause_menu) pause_menu = pause_menu_create(dataroot);
+                if (pause_menu) {
+                    pause_menu_open(pause_menu);
+                    pause_cursor = SDL_ShowCursor(SDL_QUERY);
+                    SDL_ShowCursor(SDL_ENABLE);
+                    SDL_SetRelativeMouseMode(SDL_FALSE); mlook = 0;
+                    if (adev) SDL_PauseAudioDevice(adev, 1);
+                    printf("pause: opened at (%.3f %.3f %.3f), speed %.3f\n",
+                           carpos[0], carpos[1], carpos[2], speed);
+                } else fprintf(stderr, "pause: unable to create menu\n");
+                continue;
+            }
+            if (pause_menu_is_open(pause_menu)) {
+#ifdef DEBUG_UI
+                /* Finish held inspector input without forwarding pause-menu presses. */
+                if (g_devui && (e.type == SDL_KEYUP || e.type == SDL_MOUSEBUTTONUP)) dbgui_event(&e);
+#endif
+                pause_menu_event(pause_menu, &e, win);
+                continue;
+            }
+            if (pause_frame) continue;
             if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_1 &&
                 !e.key.repeat) {
                 g_devui = !g_devui;
@@ -6335,8 +6379,7 @@ int main(int argc, char **argv) {
                 }
                 else
 #endif
-                if (k == SDLK_ESCAPE) running = 0;
-                else if (k == SDLK_g && hud && !e.key.repeat) {
+                if (k == SDLK_g && hud && !e.key.repeat) {
                     g_dbg.gps_n = 0; g_dbg.gps_request = 0;   /* cancel guidance */
                     printf("HUD: destination cleared\n");
                 }
@@ -6482,6 +6525,21 @@ int main(int argc, char **argv) {
                 }
             }
         }
+
+        FeAction pause_action = pause_menu_update(pause_menu, (float)fmin(frame_seconds, .1));
+        if (pause_action == FE_ACTION_QUIT) running = 0;
+        else if (pause_action == FE_ACTION_RESUME) {
+            /* Immediate (BEHAVIOR 5): the adapter returns RESUME on the input frame; no fade,
+             * exit event or timer gates it. The paused frame above never simulated, and the
+             * next frame simulates and accepts driving input again. */
+            SDL_ShowCursor(pause_cursor);
+            SDL_SetRelativeMouseMode(g_dbg.freecam && race_state != 3 ? SDL_TRUE : SDL_FALSE);
+            if (adev) SDL_PauseAudioDevice(adev, 0);
+            sim_reset = 1;
+            printf("pause: resumed at (%.3f %.3f %.3f), speed %.3f\n",
+                   carpos[0], carpos[1], carpos[2], speed);
+        }
+        if (pause_frame) frame_scale = 0;
 
 #ifdef OPENUG2_MENU
         if (frontend_open) {
@@ -7263,14 +7321,16 @@ int main(int argc, char **argv) {
         /* Inputs and rendering remain per frame; vehicle motion, contacts,
            race timers and effects advance together at PHYS_TICKRATE. */
         if(sim_reset){sim_clock=(PhysClock){0};frame_seconds=0;sim_counter=SDL_GetPerformanceCounter();}
-        int sim_steps=deterministic_sim?1:phys_clock_steps(&sim_clock,frame_seconds);
+        /* Drop paused wall time rather than simulating it when the menu closes. */
+        if (pause_frame) sim_clock = (PhysClock){0};
+        int sim_steps=pause_frame?0:deterministic_sim?1:phys_clock_steps(&sim_clock,frame_seconds);
         int pf_spawns=0;
         float sim_wheel_scale=g_dbg.wheel_scale>0.05f?g_dbg.wheel_scale:1.0f;
         float car_ride=carprof.ride*sim_wheel_scale;
         float car_body_ride=body_ride_height(car_ride,car_floor,g_dbg.body_drop);
-        int beam_keys=1,driving_keys=!g_dbg.freecam;
+        int beam_keys=!pause_frame,driving_keys=!g_dbg.freecam && !pause_frame;
 #ifdef DEBUG_UI
-        beam_keys=!dbgui_want_keyboard();
+        beam_keys=beam_keys && !dbgui_want_keyboard();
         driving_keys=driving_keys && !(g_devui && dbgui_want_text());
 #endif
         int beam_high=g_dbg.headlight_mode==1 || (beam_keys && ks[SDL_SCANCODE_L]);
@@ -8343,7 +8403,7 @@ int main(int argc, char **argv) {
                 ai_pose_before[k]=ai_pose_now[k]; /* births/respawns snap, never sweep through the world */
         }
         }
-        float render_alpha=deterministic_sim || sstatic || capture_policy.freeze_motion
+        float render_alpha=pause_frame || deterministic_sim || sstatic || capture_policy.freeze_motion
             ?1:(float)(sim_clock.remainder*PHYS_TICKRATE);
         AiCar render_player,render_ais[N_WORLD_AI];
         ai_render_pose(&render_player,&pose_before,&pose_now,render_alpha);
@@ -8379,7 +8439,7 @@ int main(int argc, char **argv) {
         }
         int free_active=g_dbg.freecam && race_state!=3 && shotyaw>=1e8f;
         int orbit_active=!free_active && (mlook || perf_orbit!=0.0f) && race_state!=3 && shotyaw>=1e8f;
-        if(orbit_active && orbit_was_active && perf_orbit!=0.0f)orbit_yaw+=perf_orbit;
+        if(orbit_active && orbit_was_active && perf_orbit!=0.0f && !pause_frame)orbit_yaw+=perf_orbit;
         if(orbit_active) {
             if(!orbit_was_active) {
                 orbit_yaw=atan2f(render_player.pos[1]-cam[1],render_player.pos[0]-cam[0])-render_player.head;
@@ -8402,6 +8462,11 @@ int main(int argc, char **argv) {
         if(pose_snap || camera_history_mode!=camera_mode) {
             memcpy(camera_want_before,want,sizeof want);
             memcpy(camera_target_before,idealtgt,sizeof idealtgt);
+        }
+        /* Escape can be queued during loading, before the first chase frame. */
+        if (pause_frame && camera_history_mode < 0 && !free_active) {
+            memcpy(cam, want, sizeof want);
+            memcpy(camtgt, idealtgt, sizeof idealtgt);
         }
         if(deterministic_sim) { /* Keep existing fixed-tick captures/audits exact. */
             if(!free_active)for(int c=0;c<3;c++)cam[c]+=(want[c]-cam[c])*k;
@@ -8461,13 +8526,10 @@ int main(int argc, char **argv) {
         RhiFrameInfo frame;
         rhi_frame_begin(&frame);
         int W = frame.width, H = frame.height;
-        glViewport(0, 0, W, H);
+        pf_mark(PF_CAMERA); pf_gpu(pf_frame,0);
         /* the sky is cleared to the fog colour: distant geometry dissolves
            into exactly what the horizon shows */
-        glClearColor(g_dbg.fog_r, g_dbg.fog_g, g_dbg.fog_b, 1);
-        pf_mark(PF_CAMERA); pf_gpu(pf_frame,0);
-        glStencilMask(0xff);glClearStencil(0);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        rhi_cmd_clear_main((const float[4]){g_dbg.fog_r, g_dbg.fog_g, g_dbg.fog_b, 1}, 1.0f);
         ug2_vec3(rp.p->uFogColor, g_dbg.fog_r, g_dbg.fog_g, g_dbg.fog_b);
         rp.p->uFogDensity = g_dbg.fog_density;
         rp.p->uUVCheck = (float)g_dbg.show_uv_checker;
@@ -11058,6 +11120,37 @@ int main(int argc, char **argv) {
             rda_frame++;
         }
         if (shot && ++shotframe >= shotframes) {
+            /* Verification-only capture: the same production pause compositor
+             * over the final engine scene, before framebuffer readback. */
+            if (pause_shot) {
+                if (!pause_menu) pause_menu = pause_menu_create(dataroot);
+                pause_menu_open(pause_menu);
+                if (!pause_reference && !pause_menu_visual_available(pause_menu)) {
+                    fprintf(stderr, "pause-shot: genuine UI resources unavailable\n");
+                    final_status = 1;
+                    running = 0;
+                    continue;
+                }
+                if (pause_off && !capture_frame_png(pause_off,W,H)) {final_status=1;running=0;continue;}
+                if(pause_reference) {
+                    if(!pause_menu_draw_reference(pause_menu,W,H,pause_ui_ms,pause_events)) {
+                        fprintf(stderr,"pause-reference: authored populated reference unavailable or replay invalid\n");
+                        final_status=1;running=0;continue;
+                    }
+                } else {
+                    if(!pause_menu_capture_replay(pause_menu,pause_events,pause_ui_ms,W,H)) {
+                        fprintf(stderr,"pause-shot: invalid replay syntax/timestamps\n");final_status=1;running=0;continue;
+                    }
+                    pause_menu_draw(pause_menu, W, H);
+                    if(!pause_menu_visual_available(pause_menu)) {final_status=1;running=0;continue;}
+                    /* A replay that ends in the quit dialog must show it; never save a capture without it. */
+                    if(pause_menu_quit_dialog_open(pause_menu) && !pause_menu_quit_dialog_visual_available(pause_menu)) {
+                        fprintf(stderr,"pause-shot: %s\n",pause_menu_quit_dialog_status(pause_menu));
+                        final_status=1;running=0;continue;
+                    }
+                }
+                if (ug_gl_errors("pause-shot")) final_status = 1;
+            }
             unsigned char *px = malloc((size_t)W*H*3);
             if (px && render_read_rgb(W, H, px)) write_png(shot, W, H, px);
             free(px);
@@ -11225,6 +11318,11 @@ int main(int argc, char **argv) {
             fed_draw(frontend_draw, &frontend, fw, fh);
         }
 #endif
+        if (pause_menu_is_open(pause_menu)) {
+            int pw, ph;
+            SDL_GL_GetDrawableSize(win, &pw, &ph);
+            pause_menu_draw(pause_menu, pw, ph);
+        }
         pf_mark(PF_POST_DRAW); pf_gpu(pf_frame,-1);
         rhi_frame_end();
         pf_mark(PF_SWAP);
@@ -11250,6 +11348,7 @@ int main(int argc, char **argv) {
     }
 
     race_log_stop(&race_log);g_dbg.race_log=NULL;
+    pause_menu_destroy(pause_menu);
 #ifdef DEBUG_UI
     dbgui_shutdown();
 #endif

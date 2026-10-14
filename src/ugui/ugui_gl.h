@@ -17,6 +17,9 @@ void  ug_gl_destroy(UgGL *g);
 /* Draws the canvas into the window's letterboxed 4:3 area. The caller clears
  * the window and swaps buffers. */
 void  ug_gl_render(UgGL *g, const UgCanvas *cv, int win_w, int win_h);
+/* Uniform exact 640x480 transform over an existing full-viewport scene.
+ * Avoid integer viewport rounding changing the UI aspect ratio. */
+void  ug_gl_render_overlay(UgGL *g, const UgCanvas *cv, int win_w, int win_h);
 /* Library whose textures UG_M_IMAGE quads refer to (uploaded on first use,
  * decoded lazily). The library must outlive the backend. */
 void  ug_gl_set_texlib(UgGL *g, UgTexLib *lib);

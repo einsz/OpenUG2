@@ -12,6 +12,17 @@ void fe_init(Fe *fe) {
     fe->screen = FE_SCREEN_TITLE;
 }
 
+void fe_pause_init(Fe *fe) {
+    static const FeMenuEntry entries[] = {
+        {"Resume", FE_ACTION_RESUME, 1},
+        {"Quit Game", FE_ACTION_QUIT, 1},
+    };
+    fe_init(fe);
+    fe->pause_menu = 1;
+    fe->screen = FE_SCREEN_PAUSE;
+    fe_set_entries(fe, entries, 2);
+}
+
 void fe_set_entries(Fe *fe, const FeMenuEntry *entries, int count) {
     if (count > FE_MENU_MAX) count = FE_MENU_MAX;
     fe->entry_count = count;
@@ -49,6 +60,7 @@ void fe_input(Fe *fe, FeInput input) {
         }
         break;
 
+    case FE_SCREEN_PAUSE:
     case FE_SCREEN_MAIN:
         if (fe->confirm_consumed) {
             /* eat the first confirm after a screen transition */
@@ -65,14 +77,17 @@ void fe_input(Fe *fe, FeInput input) {
                 if (act == FE_ACTION_QUIT) {
                     fe->screen = FE_SCREEN_QUIT_CONFIRM;
                     fe->quit_sel = 0;  /* default to NO */
-                    fe->confirm_consumed = 1;
+                    fe->confirm_consumed = !fe->pause_menu;
                 } else {
                     fe->pending = act;
                 }
             }
         } else if (input == FE_INPUT_BACK) {
-            fe->screen = FE_SCREEN_QUIT_CONFIRM;
-            fe->quit_sel = 0;
+            if (fe->pause_menu) fe->pending = FE_ACTION_RESUME;
+            else {
+                fe->screen = FE_SCREEN_QUIT_CONFIRM;
+                fe->quit_sel = 0;
+            }
         }
         break;
 
@@ -85,9 +100,9 @@ void fe_input(Fe *fe, FeInput input) {
             fe->quit_sel = !fe->quit_sel;
         else if (input == FE_INPUT_CONFIRM) {
             if (fe->quit_sel) fe->pending = FE_ACTION_QUIT;
-            else { fe->screen = FE_SCREEN_MAIN; fe->confirm_consumed = 1; }
+            else { fe->screen = fe->pause_menu ? FE_SCREEN_PAUSE : FE_SCREEN_MAIN; fe->confirm_consumed = !fe->pause_menu; }
         } else if (input == FE_INPUT_BACK) {
-            fe->screen = FE_SCREEN_MAIN;
+            fe->screen = fe->pause_menu ? FE_SCREEN_PAUSE : FE_SCREEN_MAIN;
         }
         break;
     }
