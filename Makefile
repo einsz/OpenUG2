@@ -418,6 +418,13 @@ rhi-readback-test: tools/rhi_readback_test.c src/rhi_gl.c src/rhi_gl_state.c src
 	./build/rhi_readback_test
 .PHONY: rhi-readback-test
 
+# RHI main-target clear, upload results, texture limit and GPU timers.
+rhi-frame-test: tools/rhi_frame_test.c src/rhi_gl.c src/rhi_gl_state.c src/rhi.h src/rhi_gl.h src/rhi_gl_state.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/rhi_frame_test.c src/rhi_gl.c src/rhi_gl_state.c -o build/rhi_frame_test $(SDL_LIBS) $(GL_LIBS) -lm
+	./build/rhi_frame_test
+.PHONY: rhi-frame-test
+
 # The test includes rhi_gl.c to inject allocator failure into the real backend.
 rhi-sampler-test: tools/rhi_sampler_test.c src/render.c src/render_params.c src/rhi_gl.c src/rhi_gl_state.c src/tex_override.c $(HDRS) $(GEN)
 	@mkdir -p build

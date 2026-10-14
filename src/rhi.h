@@ -27,6 +27,7 @@ typedef enum RhiResult {
     RHI_OK = 0,
     RHI_ERR_UNSUPPORTED = -1,   /* backend not compiled in or not available */
     RHI_ERR_INVALID = -2,       /* bad argument or wrong call order */
+    RHI_ERR_OUT_OF_MEMORY = -3, /* the device could not allocate the resource */
     RHI_ERR_DEVICE_LOST = -4,
     RHI_ERR_SKIP_FRAME = -5     /* nothing can be presented this frame: skip drawing */
 } RhiResult;
@@ -77,6 +78,8 @@ typedef struct RhiCaps {
     float      max_anisotropy;   /* 1.0 = anisotropic filtering unavailable */
     uint8_t    tex_bc1, tex_bc2, tex_bc3;  /* S3TC DXT1/3/5 uploads supported */
     uint8_t    wireframe;        /* rhi_cmd_set_wireframe works (debug views) */
+    uint8_t    gpu_timer;        /* RhiTimer measurements work (profiling) */
+    int32_t    max_texture_size; /* largest texture width/height, pixels */
 } RhiCaps;
 
 const RhiCaps *rhi_caps(void);   /* valid after rhi_device_create */
@@ -139,6 +142,11 @@ typedef struct RhiBufferDesc {
                                rhi_buffer_replace */
     const void     *data;   /* size bytes, or NULL = undefined contents */
 } RhiBufferDesc;
+
+/* Allocation failures are reported for STATIC buffers and for textures (by
+ * {0} or RHI_ERR_OUT_OF_MEMORY / RHI_ERR_UNSUPPORTED), so loaders can reject a
+ * resource. STREAM buffers do not report them: checking would make every
+ * per-frame update wait for the driver (GL: glGetError). */
 
 /* Returns {0} on failure (logged to stderr). */
 RhiBuffer rhi_buffer_create(const RhiBufferDesc *desc);
@@ -421,9 +429,31 @@ void      rhi_cmd_end_pass(void);
 RhiResult rhi_cmd_copy_main_to_texture(RhiTexture texture, int32_t x, int32_t y,
                                        int32_t w, int32_t h);
 
+/* Clears the whole main target: colour to `color`, depth to `depth`, stencil
+ * to 0. Like rhi_cmd_begin_pass, the viewport becomes the frame size, the
+ * scissor test goes off and the last pipeline's write masks do not apply.
+ * Only inside a frame and outside a pass. */
+RhiResult rhi_cmd_clear_main(const float color[4], float depth);
+
 /* Debug views: draw triangles as their edges, whatever pipeline is bound,
  * until switched off again. RHI_ERR_UNSUPPORTED without caps.wireframe. */
 RhiResult rhi_cmd_set_wireframe(int on);
+
+/* ------------------------------------------------------------------------------ */
+/* GPU timers                                                                     */
+/* ------------------------------------------------------------------------------ */
+/* Measure the GPU time of the commands between begin and end, for profiling.
+ * The result arrives some frames later and is read without waiting. Only with
+ * caps.gpu_timer; one timer runs at a time. */
+typedef struct RhiTimer { uint32_t id; } RhiTimer;
+
+RhiTimer  rhi_timer_create(void);   /* {0} without caps.gpu_timer */
+void      rhi_timer_destroy(RhiTimer timer);
+RhiResult rhi_cmd_timer_begin(RhiTimer timer);
+RhiResult rhi_cmd_timer_end(void);   /* ends the running timer */
+/* 1 with *ns set once the timer's last measurement has finished on the GPU;
+ * 0 while it has not (or for an invalid timer). */
+int       rhi_timer_read(RhiTimer timer, uint64_t *ns);
 
 #ifdef __cplusplus
 }

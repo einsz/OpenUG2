@@ -10,7 +10,6 @@ static int test_body_kit;
 static int test_real_assets;
 static GLuint next_handle = 1;
 static unsigned char handles[65536];
-static GLenum pending_error;
 static GLuint new_handle(int type) {
     assert(next_handle < sizeof handles);
     handles[next_handle] = (unsigned char)type;
@@ -61,6 +60,7 @@ static int test_load_texture(const unsigned char *d, long len, uint32_t key, N2T
     t->rgb = malloc(3); memset(t->rgb, 127, 3);
     return test_stage != 5; /* partial decode must also be released */
 }
+static void test_free_scene_gpu(GpuMesh *gm, int n);
 static GpuMesh *test_upload_scene(N2Scene *s) {
     if (test_stage == 6) return NULL;
     GpuMesh *gm = calloc(s->count, sizeof *gm);
@@ -68,7 +68,8 @@ static GpuMesh *test_upload_scene(N2Scene *s) {
         gm[i].vbo.id = new_handle(1); gm[i].nbo.id = new_handle(1);
         if (test_stage != 7) gm[i].ibo.id = new_handle(1);
     }
-    if (test_stage == 8) pending_error = GL_OUT_OF_MEMORY;
+    /* The device runs out part-way: upload_scene releases what it made. */
+    if (test_stage == 8) { test_free_scene_gpu(gm, s->count); return NULL; }
     return gm;
 }
 static void test_free_scene_gpu(GpuMesh *gm, int n) {
@@ -81,11 +82,10 @@ static void test_free_scene_gpu(GpuMesh *gm, int n) {
 static RhiTexture test_upload_texture(const N2Tex *t) {
     (void)t;
     if (test_stage == 9) return (RhiTexture){0};
-    if (test_stage == 10) pending_error = GL_OUT_OF_MEMORY;
-    return (RhiTexture){new_handle(2)};
-}
-static GLenum test_gl_error(void) {
-    GLenum err = pending_error; pending_error = GL_NO_ERROR; return err;
+    RhiTexture made = {new_handle(2)};
+    /* An upload the device rejects: the texture is released, {0} returned. */
+    if (test_stage == 10) { drop_handle(made.id, 2); return (RhiTexture){0}; }
+    return made;
 }
 static void test_destroy_texture(RhiTexture t) {
     drop_handle(t.id, 2);
@@ -105,7 +105,6 @@ static void test_tex_parameter(GLenum target, GLenum name, GLint value) {
 #define upload_tex test_upload_texture
 #define upload_tpk_keyed(key, name, t) test_upload_texture(t)
 #define upload_tex_keyed(key, name, t) test_upload_texture(t)
-#define glGetError test_gl_error
 #define rhi_texture_destroy test_destroy_texture
 #define rhi_gl_texture_name test_texture_name
 #define render_texture_clamp(t) ((void)(t))   /* simulated textures have no sampler */
@@ -314,8 +313,7 @@ int main(int argc,char **argv) {
         N2Scene before = scene; GpuMesh *old_gm = gm; RhiTexture old_tex = tex;
         int old_mode = mode;
         float vertices[20]; memcpy(vertices, scene.meshes[0].verts, sizeof vertices);
-        for (test_stage = 1; test_stage <= 11; test_stage++) {
-            if (test_stage == 11) pending_error = GL_INVALID_OPERATION;
+        for (test_stage = 1; test_stage <= 10; test_stage++) {
             assert(!load_rim_style(archive, 1, NULL, 0, 2, &scene, &gm, &n,
                                    archive, 1, &tex, &mode, .35f));
             assert(!memcmp(&scene, &before, sizeof scene));
@@ -335,15 +333,14 @@ int main(int argc,char **argv) {
     }
     test_free_scene_gpu(gm, n); n2_free_scene(&scene); test_destroy_texture(tex);
     assert(!live_buffers && !live_textures);
-    puts("wheel_reload_test: PASS (rollback at 11 boundaries; 20 repeated swaps)");
+    puts("wheel_reload_test: PASS (rollback at 10 boundaries; 20 repeated swaps)");
     test_body_kit=1;
     N2Mesh original={.famkey=42,.vkind=0,.texkey=7};
     N2Scene active={.meshes=&original,.count=1};
     N2CarConfig config={.body_kit=1};
     for(int round=0;round<20;round++) {
-        for(test_stage=1;test_stage<=11;test_stage++) {
+        for(test_stage=1;test_stage<=10;test_stage++) {
             BodyKitCandidate candidate={0};
-            if(test_stage==11)pending_error=GL_INVALID_OPERATION;
             assert(!prepare_body_kit(&candidate,archive,1,NULL,0,&config,
                                      archive,1,&active,NULL,0,NULL));
             assert(!candidate.scene.meshes && !candidate.gpu && !candidate.ntextures);
@@ -364,7 +361,7 @@ int main(int argc,char **argv) {
         body_kit_release(&candidate);
         assert(!live_buffers && !live_textures);
     }
-    puts("body_kit_reload_test: PASS (rollback at 11 boundaries; 20 repeated preparations; cached textures retained)");
+    puts("body_kit_reload_test: PASS (rollback at 10 boundaries; 20 repeated preparations; cached textures retained)");
     test_vinyl_selection();
     if(argc>2 && !strcmp(argv[2],"--vinyls")) {
         test_vinyl_archives(argv[1]);
