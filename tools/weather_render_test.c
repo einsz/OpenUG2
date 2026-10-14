@@ -360,6 +360,13 @@ static void collision_wall_render_test(const RProg *r) {
         glGetIntegerv(GL_BLEND_DST_ALPHA,&blend);assert(blend==GL_ONE);
         assert(glGetError()==GL_NO_ERROR);
     }
+    glDepthFunc(GL_GREATER);glEnable(GL_STENCIL_TEST);glColorMask(GL_FALSE,GL_TRUE,GL_FALSE,GL_TRUE);
+    assert(render_collision_walls(r,&vbo,faces,1,color,identity,0)==2);
+    GLint depth_func;GLboolean cm[4];
+    glGetIntegerv(GL_DEPTH_FUNC,&depth_func);glGetBooleanv(GL_COLOR_WRITEMASK,cm);
+    assert(depth_func==GL_GREATER && glIsEnabled(GL_STENCIL_TEST));
+    assert(!cm[0] && cm[1] && !cm[2] && cm[3]);
+    glDepthFunc(GL_LESS);glDisable(GL_STENCIL_TEST);glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
     assert(!render_collision_walls(r,&vbo,faces,0,color,identity,1));
     rhi_buffer_destroy(vbo);glClearDepth(1);
     puts("collision drawing: depth/through views, visible faces/edges and preserved GL state PASS");
@@ -436,6 +443,11 @@ int main(void) {
         assert(glGetError()==GL_NO_ERROR);
     }
     assert(lit>10);
+    glEnable(GL_STENCIL_TEST);glColorMask(GL_FALSE,GL_TRUE,GL_FALSE,GL_TRUE);
+    assert(render_rain(&r,&rain,2,1,2,1)==1);
+    GLboolean cm[4];glGetBooleanv(GL_COLOR_WRITEMASK,cm);
+    assert(glIsEnabled(GL_STENCIL_TEST) && !cm[0] && cm[1] && !cm[2] && cm[3]);
+    glDisable(GL_STENCIL_TEST);glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
     assert(!render_rain(&r,&rain,2,0,2,1));
     rhi_buffer_destroy(rain);rhi_buffer_destroy(quad.vbo);rhi_buffer_destroy(quad.nbo);rhi_buffer_destroy(quad.ibo);
     reflection_test(&r);
