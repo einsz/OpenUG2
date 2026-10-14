@@ -5951,7 +5951,6 @@ int main(int argc, char **argv) {
        Shared GL handles (owned by wbatch) -> no extra VRAM, no separate upload. */
     RhiShader dbgshader = world_debug_shader_load("src/world_debug_120.vert",
                                                   "src/world_debug_120.frag");
-    GLuint dbgprog = rhi_gl_shader_program(dbgshader);
     WorldMeshBatch *wmbatch = world2 ? active_resident->resources.debug_batches
         : (WorldMeshBatch *)calloc((size_t)(nbatch > 0 ? nbatch : 1),
                                    sizeof *wmbatch);
@@ -5964,7 +5963,7 @@ int main(int argc, char **argv) {
     int g_debug_mode = rendermode;   /* F3 cycles: 0 default, 1 prelight, 2 normals, 3 wireframe */
     if (daylight) g_dbg.night_mode = 0;   /* --daylight: headless mode matrix needs light */
     if (shot_empty) g_dbg.show_track = 0; /* isolated vehicle capture */
-    if (!dbgprog) fprintf(stderr, "world_debug shaders failed to load; F3 disabled\n");
+    if (!dbgshader.id) fprintf(stderr, "world_debug shaders failed to load; F3 disabled\n");
 
     /* unit-quad for the 2D HUD (drawn in NDC via uMVP) */
     GpuMesh quad = make_quad();
@@ -6352,7 +6351,7 @@ int main(int argc, char **argv) {
                     if(!e.key.repeat){g_dbg.freecam ^= 1;mlook=0;}
                 }
                 else if (k == SDLK_F3) {   /* cycle world render debug view */
-                    if (dbgprog) {
+                    if (dbgshader.id) {
                         g_debug_mode = (g_debug_mode + 1) & 3;
                         static const char *dm[4] = { "default", "prelight",
                                                      "normals", "wireframe" };
@@ -8827,7 +8826,7 @@ int main(int argc, char **argv) {
             } else { defblend = nb2; defadd = na2; defdist = nd2; defcap = nbatch; }
         }
         int ndefblend = 0, ndefadd = 0;
-        if (g_debug_mode == 0 || !dbgprog) {   /* --- default textured world pass --- */
+        if (g_debug_mode == 0 || !dbgshader.id) {   /* --- default textured world pass --- */
         RhiTexture lasttex = {UINT32_MAX};
         int lastmode = -1;
         rp.p->uVColor = g_dbg.vcolor;   /* apply source prelight to world geom */
@@ -8953,8 +8952,7 @@ int main(int argc, char **argv) {
         } else if (g_dbg.show_track) {   /* --- F3 debug view: prelight/normals/wire --- */
             /* draw every world batch with the debug shader (no distance cull),
                then restore the main program for the car/glow/HUD passes below. */
-            render_world_map(wmbatch, (uint32_t)nbatch, dbgprog, MVP, g_debug_mode - 1);
-            glUseProgram(rp.prog);
+            render_world_map(wmbatch, (uint32_t)nbatch, dbgshader, MVP, g_debug_mode - 1);
             rp.p->uVColor = 0.0f;
             ndrawn += nbatch; g_dbg.drawn += nbatch; wbdrawn += nbatch;
         }
@@ -9273,7 +9271,7 @@ int main(int argc, char **argv) {
                     rp.p->uEnv = dark_trim?.04f:chrome?.85f:.30f;
                     rp.p->uClearcoat = 0.0f;
                     rp.p->uUseTex = tex.id?1.0f:0.0f;
-                    if(tex.id)glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(tex));
+                    if(tex.id)rhi_cmd_bind_texture(0, tex);
                 } else if (c == N2_CAR_LIGHT) {
                     float gain=light_variant_gain(carcfg.parts[N2_PART_HEADLIGHT])*g_dbg.headlight_gain;
                     float level=emitting?gain*((beam_high || beam_flash)?1.0f:0.78f):0.65f;
@@ -9284,7 +9282,7 @@ int main(int argc, char **argv) {
                     } else
                         ug2_vec3(rp.p->uColor, level, level, level);
                     rp.p->uUseTex = tex.id?1.0f:0.0f;
-                    if(tex.id)glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(tex));
+                    if(tex.id)rhi_cmd_bind_texture(0, tex);
                 } else if (c == N2_CAR_BRAKELIGHT && n2_car_tail_lens(&car,i)) {
                     render_tail_lamp(&rp,tex,g_dbg.night_mode,brake_lights,nitro_active,
                                      light_variant_gain(carcfg.parts[N2_PART_TAILLIGHT]));
@@ -9309,21 +9307,21 @@ int main(int argc, char **argv) {
                     ug2_vec3(rp.p->uColor, pnt[0], pnt[1], pnt[2]);
                     if (tex.id && !hasalpha) {
                         rp.p->uUseTex = 1.0f;
-                        glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(tex));
+                        rhi_cmd_bind_texture(0, tex);
                     } else {
                         if (tex.id) {
                             rp.p->uUseTex = 1.0f; rp.p->uDecal = 1.0f;
-                            glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(tex));
+                            rhi_cmd_bind_texture(0, tex);
                         } else if (g_car_vinyl_tex.id) {
                             /* vinyl over paint: uDecal mixes uColor with the
                                texture by its own alpha, so the paint shows
                                everywhere the design is cut away. */
                             rp.p->uUseTex = 1.0f; rp.p->uDecal = 1.0f;
-                            glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(g_car_vinyl_tex));
+                            rhi_cmd_bind_texture(0, g_car_vinyl_tex);
                         } else rp.p->uUseTex = 0.0f;
                     }
                 } else if (tex.id) {
-                    rp.p->uUseTex = 1.0f; glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(tex));  /* wheel/brake */
+                    rp.p->uUseTex = 1.0f; rhi_cmd_bind_texture(0, tex);  /* wheel/brake */
                 } else {
                     rp.p->uUseTex = 0.0f;
                     if (c == N2_CAR_BRAKELIGHT && !n2_car_tail_lens(&car,i)) {
@@ -9347,7 +9345,7 @@ int main(int argc, char **argv) {
                     ug2_vec3(rp.p->uColor, 1.0f, 0.08f, 0.85f);   /* neon magenta */
                 }
                 if (insp_on && g_dbg.insp_wire)
-                    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+                    rhi_cmd_set_wireframe(1);
                 if (insp_on && g_dbg.insp_flipn) rp.p->uFlipN = 1.0f;
                 if (insp_on && g_dbg.insp_cull) {
                     /* culling is OFF engine-wide, so glFrontFace alone would be
@@ -9379,7 +9377,7 @@ int main(int argc, char **argv) {
                     render_draw_gpumesh(&cgm[i]); g_dbg.drawn++;
                 }
 #ifdef DEBUG_UI
-                if (insp_on && g_dbg.insp_wire) glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+                if (insp_on && g_dbg.insp_wire) rhi_cmd_set_wireframe(0);
                 if (insp_on && g_dbg.insp_highlight) rp.p->uUnlit = 0.0f;
                 if (insp_on && g_dbg.insp_flipn) rp.p->uFlipN = 0.0f;
                 if (insp_on && g_dbg.insp_cull) { if (g_dbg.car_cull) glCullFace(GL_BACK); else glDisable(GL_CULL_FACE); }
@@ -9495,7 +9493,7 @@ int main(int argc, char **argv) {
                         else if(c==N2_CAR_INTERIOR)ug2_vec3(rp.p->uColor, .055f, .052f, .050f);
                         else ug2_vec3(rp.p->uColor, .055f, .055f, .058f);
                     }
-                    rp.p->uUseTex = tex.id?1.0f:0.0f;if(tex.id)glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(tex));
+                    rp.p->uUseTex = tex.id?1.0f:0.0f;if(tex.id)rhi_cmd_bind_texture(0, tex);
                     if (mount==N2_MOUNT_FRONT_BRAKE || mount==N2_MOUNT_REAR_BRAKE) {
                         int first=mount==N2_MOUNT_FRONT_BRAKE?0:2;
                         for(int w=first;w<first+2;w++){float MB[16];mat_mul(AIWheelMVP,aiBrakeT[w],MB);
@@ -9524,7 +9522,7 @@ int main(int argc, char **argv) {
                             render_wheel_mesh(&rp,&draw_gpu[i],tex,mode);g_dbg.drawn++;}
                     }
                     if(!authored&&have_wheel){
-                        rp.p->uUseTex = 1.0f;glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(texWheel));
+                        rp.p->uUseTex = 1.0f;rhi_cmd_bind_texture(0, texWheel);
                         for(int w=0;w<4;w++){float MW[16];mat_mul(AIWheelMVP,aiWheelT[w],MW);
                             ug2_copy(rp.p->uMVP, MW, 16);render_model(&rp,aiWheelWorld[w]);
                             rhi_cmd_bind_pipeline(cpipe.opaque[RHI_CULL_NONE]);
@@ -9583,11 +9581,11 @@ int main(int argc, char **argv) {
                         rp.p->uUnlit = 1.0f;rp.p->uAlpha = 1.0f;
                         ug2_vec3(rp.p->uColor, 1.0f, .08f, .85f);
                     }
-                    if(selected && g_dbg.insp_wire)glPolygonMode(GL_FRONT_AND_BACK,GL_LINE);
+                    if(selected && g_dbg.insp_wire)rhi_cmd_set_wireframe(1);
 #endif
                     render_draw_gpumesh(cgm+i);g_dbg.drawn++;
 #ifdef DEBUG_UI
-                    if(selected && g_dbg.insp_wire)glPolygonMode(GL_FRONT_AND_BACK,GL_FILL);
+                    if(selected && g_dbg.insp_wire)rhi_cmd_set_wireframe(0);
 #endif
                 }
                 rp.p->uUnlit = 0.0f;rp.p->uAlpha = 1.0f;
@@ -9687,7 +9685,7 @@ int main(int argc, char **argv) {
                         rp.p->uSpec = inner?0.04f:0.5f;
                         if(cgm[i].cbo.id)ug2_vec3(rp.p->uColor, 1, 1, 1);
                         else ug2_vec3(rp.p->uColor, 0.05f, 0.05f, 0.06f);
-                        if(stex.id) glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(stex));
+                        if(stex.id) rhi_cmd_bind_texture(0, stex);
                         for(int k=0;k<4;k++){float MW[16];mat_mul(MVPwheel,wheelT[k],MW);
                             ug2_copy(rp.p->uMVP, MW, 16);render_model(&rp,wheelWorld[k]);render_wheel_mesh(&rp,&cgm[i],stex,smode);}
                         g_dbg.drawn+=4;
@@ -9751,11 +9749,11 @@ int main(int argc, char **argv) {
                     rp.p->uEnv = 0.0f; rp.p->uSpec = 0.85f;
                     ug2_copy(rp.p->uColor, g_dbg.rim_color, 3);
                     rp.p->uRimTint = rimtex.id && g_dbg.rim_paint ? 1.0f : 0.0f;
-                    if (rimtex.id) glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(rimtex));
+                    if (rimtex.id) rhi_cmd_bind_texture(0, rimtex);
                 } else {
                     rp.p->uUseTex = 1.0f; rp.p->uEnv = 0.3f;
                     rp.p->uSpec = 0.4f;
-                    glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(texWheel));
+                    rhi_cmd_bind_texture(0, texWheel);
                 }
                 float wmvp[4][16];for(int k=0;k<4;k++)mat_mul(MVPwheel,wheelT[k],wmvp[k]);
                 if(geo) {

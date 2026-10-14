@@ -86,7 +86,7 @@ typedef struct {
 /* the one shader program + its parameter block (render_params.h) */
 typedef struct {
     RhiShader shader;
-    GLuint prog;     /* GL program behind shader, for glUseProgram until pipelines */
+    GLuint prog;     /* GL program behind shader, for tools that draw by hand */
     UG2Params *p;    /* the shader's parameters; the next draw uses what is here */
 } RProg;
 
@@ -211,7 +211,6 @@ void free_scene_gpu(GpuMesh *gm, int count);
 GpuMesh  make_wheel(float R, float halfW);  /* procedural tyre (see render.c) */
 RhiTexture make_wheel_tex(void);          /* radial alloy-rim texture for it */
 GpuMesh  make_quad(void);               /* unit quad for HUD / billboards */
-void     draw_gpumesh(GpuMesh *g);
 /* Wheel material draw: paint is restricted to proven metal; rubber, backing
  * and plastic suppress metallic lighting. All touched uniforms, texture,
  * alpha, blend and depth state are restored. Missing textures stay opaque. */
@@ -222,8 +221,7 @@ void render_wheel_order(const N2Scene *scene, const float mvp[4][16], int *order
 /* Caller provides scene->count indices; returns glass/cover count in draw order. */
 int render_car_glass_order(const N2Scene *scene,const float mvp[16],int *order);
 
-/* Caller binds r->prog on texture unit zero. Like draw_gpumesh, this sets mesh
- * attributes/buffers; pass uniforms, texture/blend/depth state are restored. */
+/* Sets mesh attributes/buffers; pass uniforms, texture/blend/depth state are restored. */
 /* halo: sprite size multiplier (1 = tuned default); gain: emission multiplier. */
 /* Establish world transform/depth/additive state; restore ordinary depth writes
  * and fog on exit. Caller binds the program and texture unit zero. */
@@ -279,7 +277,6 @@ void render_batch_array_free(N2Batch **batches, int *count);
 /* Update only struck panels' existing VBO ranges; all passes share those buffers. */
 int render_world_prop_updates(const N2Scene *scene,N2Batch *batches,int count,
                              int (*update_mesh)(N2Mesh *));
-void draw_batch(const N2Batch *b);
 /* Pipelines of the sky, vista and ordinary world passes (one RProg). Several
    names share a pipeline when their state is the same. */
 typedef struct {
@@ -293,7 +290,7 @@ typedef struct {
                 overlay;    /* restored-geometry diagnostic: = sky_dome */
 } UG2WorldPipelines;
 void render_world_pipelines(const RProg *r, UG2WorldPipelines *p);
-/* draw_batch through the bound pipeline (rhi_cmd_bind_pipeline) */
+/* BatchedVertex batch through the bound pipeline (rhi_cmd_bind_pipeline) */
 void render_draw_batch(const N2Batch *b);
 /* Pipelines of the car passes (GpuMesh layout). */
 typedef struct {
@@ -319,7 +316,7 @@ typedef struct {
                 rain;            /* no depth test, blend, RainVertex layout */
 } UG2EffectPipelines;
 void render_effect_pipelines(const RProg *r, UG2EffectPipelines *p);
-/* draw_gpumesh through the bound pipeline */
+/* GpuMesh through the bound pipeline */
 void render_draw_gpumesh(const GpuMesh *g);
 RhiTexture upload_tex(const N2Tex *t);
 /* Upload a decoded TPK texture, preferring a direct glCompressedTexImage2D of

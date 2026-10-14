@@ -422,7 +422,7 @@ static void hud_baseline_blit(const HudDC *dc, RhiTexture tex, float w, float h,
     hud_baseline_xform(dc->asp, w, h, cx, cy, rot, M);
     ug2_copy(dc->rp->p->uMVP, M, 16);
     if (tex.id) {
-        glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(tex));
+        rhi_cmd_bind_texture(0, tex);
         dc->rp->p->uUseTex = 1.0f;
         dc->rp->p->uEmissiveTex = 1.0f;
         dc->rp->p->uUnlit = 0.0f;

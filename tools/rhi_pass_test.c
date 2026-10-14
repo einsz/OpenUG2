@@ -126,6 +126,13 @@ int main(void) {
 #endif
     rhi_texture_destroy(depth);rhi_texture_destroy(color);rhi_texture_destroy(plain);rhi_texture_destroy(copy);
     copy_tests(w);
+    /* Wireframe is a debug command gated by caps. */
+    g_rhi.caps.wireframe=0;assert(rhi_cmd_set_wireframe(1)==RHI_ERR_UNSUPPORTED);
+#ifndef N2_GLES
+    g_rhi.caps.wireframe=1;GLint mode[2];
+    assert(rhi_cmd_set_wireframe(1)==RHI_OK);glGetIntegerv(GL_POLYGON_MODE,mode);assert(mode[0]==GL_LINE);
+    assert(rhi_cmd_set_wireframe(0)==RHI_OK);glGetIntegerv(GL_POLYGON_MODE,mode);assert(mode[0]==GL_FILL);
+#endif
     assert(glGetError()==GL_NO_ERROR);
-    SDL_GL_DeleteContext(ctx);SDL_DestroyWindow(w);SDL_Quit();puts("rhi_pass_test: PASS (ownership, roles, validation, allocation rollback and recovery, frame copies)");
+    SDL_GL_DeleteContext(ctx);SDL_DestroyWindow(w);SDL_Quit();puts("rhi_pass_test: PASS (ownership, roles, validation, allocation rollback and recovery, frame copies, wireframe)");
 }
