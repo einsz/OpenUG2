@@ -671,8 +671,7 @@ static int world_bind_key(World *w, const WRegion *g, uint32_t tk, int pass,
     int ok = world_texture_decode(w, g, tk, &tt, pass, &pack);
     if (ok && !n2_tex_noise(&tt)) {   /* noise gate stays on the original */
         RhiTexture id = upload_tex_keyed(tk, pack, &tt);
-        if (!id.id || glGetError() != GL_NO_ERROR) {
-            rhi_texture_destroy(id);
+        if (!id.id) {
             free(tt.rgb); free(tt.alpha); free(tt.dxt);
             *n = -1;
             return 1; /* do not cache a failed upload */

@@ -102,7 +102,7 @@ static int dds_parse(TexOvr *o, const char **why) {
         o->alpha = (pff & 1) && am == 0xFF000000u;
     } else { *why = "unsupported pixel format"; return 0; }
     if (!is_pot(w) || !is_pot(h)) { *why = "not power of two"; return 0; }
-    if (w > g_maxsize || h > g_maxsize) { *why = "larger than GL_MAX_TEXTURE_SIZE/4096"; return 0; }
+    if (w > g_maxsize || h > g_maxsize) { *why = "larger than the device texture limit/4096"; return 0; }
     if (mips < 1) mips = 1;
     if (mips > TO_MAX_LEVELS) mips = TO_MAX_LEVELS;
     o->w = w; o->h = h; o->levels = 0;
@@ -190,7 +190,7 @@ int tex_override_init(const char *dir, int budget_mib) {
     if (env && !strcmp(env, "0")) { printf("TEXOVR disabled by OPENUG2_TEX_OVERRIDES=0\n"); return 0; }
     const char *cpu = getenv("OPENUG2_TEX_OVERRIDES_CPU");
     g_force_cpu = cpu && !strcmp(cpu, "1");
-    GLint mx = 0; glGetIntegerv(GL_MAX_TEXTURE_SIZE, &mx);
+    int mx = rhi_caps()->max_texture_size;
     g_maxsize = (mx > 0 && mx < 4096) ? mx : 4096;
     g_budget = (long long)(budget_mib > 0 ? budget_mib : 1536) << 20;
     scan_dir(dir, 0);
@@ -351,24 +351,21 @@ RhiTexture tex_override_upload(uint32_t key, const char *pack, const N2Tex *orig
     int complete = last_w == 1 && last_h == 1;
     int keep_alpha = needs_alpha;
 
-    /* Drain errors left by unrelated earlier calls so they are not blamed on
-       this file (bounded: some drivers report forever without a context). */
-    for (int i = 0; i < 16 && glGetError() != GL_NO_ERROR; i++) {}
     RhiFormat format = !compressed ? RHI_FORMAT_RGBA8
                      : o->fmt == TO_DXT1 ? RHI_FORMAT_BC1
                      : o->fmt == TO_DXT3 ? RHI_FORMAT_BC2 : RHI_FORMAT_BC3;
     RhiTexture id = rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D, format, lw, lh, RHI_TEXTURE_SAMPLED});
     if (!id.id) { free(buf); reject(o, "GL upload error"); return (RhiTexture){0}; }
-    int ok = 1;
+    int ok = 1, gpu_ok = 1;
     int uplevels = complete ? nlev : 1;
-    for (int l = 0; l < uplevels && ok; l++) {
+    for (int l = 0; l < uplevels && ok && gpu_ok; l++) {
         const unsigned char *src = buf + o->off[base + l];
         if (compressed) {
-            rhi_texture_upload(id, 0, l, src, (size_t)o->size[base + l]);
+            if (rhi_texture_upload(id, 0, l, src, (size_t)o->size[base + l]) != RHI_OK) gpu_ok = 0;
         } else {
             unsigned char *px = decode_level(o, src, lw, lh, keep_alpha);
             if (!px) { ok = 0; break; }
-            rhi_texture_upload(id, 0, l, px, 0);
+            if (rhi_texture_upload(id, 0, l, px, 0) != RHI_OK) gpu_ok = 0;
             free(px);
         }
         if (lw > 1) lw /= 2;
@@ -377,8 +374,8 @@ RhiTexture tex_override_upload(uint32_t key, const char *pack, const N2Tex *orig
     free(buf);
     /* A partial chain is re-mipped on the RGBA path; a compressed base cannot
        be re-mipped portably, so it stays base-only with LINEAR filtering. */
-    if (ok && !complete && !compressed) rhi_texture_generate_mips(id);
-    if (!ok || glGetError() != GL_NO_ERROR) {
+    if (ok && gpu_ok && !complete && !compressed && rhi_texture_generate_mips(id) != RHI_OK) gpu_ok = 0;
+    if (!ok || !gpu_ok) {
         rhi_texture_destroy(id);
         reject(o, ok ? "GL upload error" : "out of memory");
         return (RhiTexture){0};
