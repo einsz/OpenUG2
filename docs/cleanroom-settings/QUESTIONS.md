@@ -92,3 +92,60 @@ Each item was implemented with the stated interim choice; none blocks the vector
     (row pitch 36, label/arrow/slider x, title anchors, scrollbar) with plain ugui primitives, not by
     evaluating the authored packages, scripts and textures; the blink/pulse/fade tracks are not
     reproduced. Package names and keys are exposed for a later loader.
+
+## Implementer questions (2026-10-14, authored-art pass, SPEC_GUI_ART.md)
+
+Items 3, 7, 9 and 12 of the previous GUI list are answered by SPEC_GUI_ART (dialog focus/no wrap: 6;
+in-game focus: 4.7; the pause Options entry and hub: 2.2, 2.5; visuals: authored packages, 8). The old
+text above is kept as history. New points, each implemented as stated and each easy to change:
+
+1. **Conflict with earlier user decisions (BEHAVIOR R1.5-R1.7, R5; QUIT_DIALOG Q4/Q6).** SPEC_GUI_ART
+   2.4/3.2/6 replaces the pause screen's exponential slide with a 0.3 s cubic Hermite scroll, makes
+   Return to Explore Mode / Back / Start resume only at exit-complete (320 ms), and replaces the
+   Yes/No quit dialog (`IG_GenericDialog_SMALL`) by `UI_InGameDialog` OK/Cancel. Implemented as the
+   approved SPEC_GUI_ART says. The earlier vectors in `tools/pause_menu_vectors` that state the old
+   rules are skipped by name in the checkers (list in IMPL_DESIGN_GUI.md); `quit_dialog.json` and its
+   checker were removed. Confirm the user wants the SPEC_GUI_ART behaviour (it came from a static
+   reading of the same executable, the older rules from the user's observation).
+2. **Pause exit script when an immediate entry opens a dialog (2.4, 10.2).** The spec says the exit
+   script is also started and that the visual result together with the dim is unknown. Starting it
+   would fade the whole pause screen out with no way back after Cancel. Implemented: DIM only (and
+   UNDIM on cancel); the exit script is started only by the "after exit" entries, Back and Start.
+3. **Audio / Gameplay / Player hub entries.** The hub shows all four entries (2.5) but only Display has
+   a screen in this project: activating the others does nothing (no exit, stays on the hub). What the
+   other pages' rows are is outside SPEC_GUI / SPEC_GUI_ART.
+4. **Start on Display (5.2, 2.5).** Only the hub's Start is specified as "exit, then close and resume".
+   Start on the in-game Display screen now also runs the 320 ms exit first (no registry write).
+5. **Dialog result timing (6).** "Plays the dialog's exit (140 ms) and delivers the button's message":
+   implemented as delivery when the exit completes, for OK, Cancel, Back and the pointer alike.
+6. **Online texts (2.4).** `session_test` is taken as "session state > 2" (inferred) and the "extra online
+   flag" is a plain input (`PauseContext.online_flag`); their real meaning is unknown (10.3).
+7. **Scroll retarget (3.2).** "Start and end velocity 0 when starting from rest" says nothing about a
+   move that starts while the scroll is still running. Implemented: the new Hermite segment starts at the
+   current offset with the current velocity (no jump, no stall).
+8. **Host context (2.2, 2.3).** The game host passes the career free-roam context (race 0, replay data
+   absent, Options available): it has no race lifecycle hooks (restart, leave race, world map) and no
+   replay recorder. The catalogue, dialogs and actions for race contexts exist and are tested; the
+   adapter reports them as `FE_ACTION_RESTART/EXPLORE/WORLD_MAP/REPLAY` and `main.c` resumes the game
+   if one ever arrives.
+9. **Pointer on dialogs and rows (4.6, 6).** Dialog buttons use the authored extents (6); hover does not
+   change the focus (unspecified). A button row's "name object" rectangle is taken as the label column
+   (TITLE_MASTER x range, row height) because text extents are not specified; arrow boxes use 24 x 24
+   (the authored size is read from the package for drawing, the constant only serves hit tests).
+10. **Row slots without a list row (4.2).** Objects of unused slots (e.g. slots 5-11 on Display) are hidden
+    and parked at y = 6969 like rows outside the window; the spec only names the latter.
+11. **Highlight timing (4.4, SPEC 3.6.2).** Highlight/UnHighlight scripts of the rows start after the
+    package's enter-complete message (or 600 ms) so the enter fade is not cut; before that the name object
+    is already the scene focus. Arrows and backing of a row that lost the focus stay visible 150 ms while
+    UnHighlight plays and are hidden afterwards.
+12. **`--pause-reference`.** The separately coded reference evaluator of the old pause is gone: the
+    reference now replays on the production adapter, because both evaluate the same authored packages.
+13. **SLIDER_VALUE_n placement (4.1).** Absent in all three packages; if a package had one its text would
+    be the integer value at its authored position.
+14. **AMEND1 B2, dialog opened while the exit script already runs.** B2 says the exit script is started
+    "unless it is already running" but does not say whether DIM is still sent first in that case (which
+    would replace the running exit script as the handler's current script). Implemented: if the exit script
+    is already the handler's current script, opening a dialog changes nothing. Only reachable when a
+    dialog-opening request arrives during a running exit (a second request in the same fade).
+15. **AMEND1 A6, anchor sampling for a master inside a group.** No covered package nests a master. Implemented:
+    top-level masters use their stored position; a nested one would use its composed centre at creation.

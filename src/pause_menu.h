@@ -4,6 +4,8 @@
 #include <SDL.h>
 #include "frontend/frontend.h"
 #include "options_menu.h"
+#include "pause_entries.h"
+#include "pause_screen.h"
 /* Verification captures are bounded to 6,000 ten-millisecond UI substeps. */
 #define PAUSE_MENU_CAPTURE_MAX_MS 60000.0f
 int pause_menu_capture_duration_valid(float elapsed_ms);
@@ -16,25 +18,36 @@ int pause_menu_is_open(const PauseMenu *p);
 void pause_menu_event(PauseMenu *p, const SDL_Event *e, SDL_Window *win);
 /* Window-point input; dimensions are logical window units, as in SDL events. */
 void pause_menu_pointer(PauseMenu *p, float x, float y, int width, int height);
-/* Options entry (SPEC_GUI): off until the host lends the graphics settings it edits. With it on, the pause
- * row is Resume / Options / Quit Game. The lent objects must outlive the menu; the store may be NULL. */
+/* Describes the situation the pause is opened in (game mode, race activity, ...); applied at the next
+ * pause_menu_open. Default: career free roam (Return to Explore Mode, Options, Replay, Quit to Main
+ * Menu, SPEC_GUI_ART 2.2). NULL restores the default. */
+void pause_menu_set_context(PauseMenu *p, const PauseContext *ctx);
+/* Options entry (SPEC_GUI): the entry exists once the host lends the graphics settings it edits (the
+ * Options availability condition also needs PauseContext.options_ok). Options opens the hub
+ * (UI_PauseOptionsMain.fng) -> Display (page 1) -> Customize. The lent objects must outlive the menu;
+ * the store may be NULL. */
 void pause_menu_set_options(PauseMenu *p, StGraphics *gfx, const StGfxCaps *caps, StRegStore *store);
 int pause_menu_options_open(const PauseMenu *p);
 /* The options state machine, for the apply/re-init hook (om_take_reinit_request ...). NULL if p is NULL. */
 OptionsMenu *pause_menu_options(PauseMenu *p);
 const char *pause_menu_caption(const PauseMenu *p);
+/* The pause screen state machine (entries, focus), for inspection. */
+const PauseScreen *pause_menu_screen(const PauseMenu *p);
 /* Resources may be unavailable while state/input remains usable. */
 int pause_menu_visual_available(const PauseMenu *p);
 const char *pause_menu_status(const PauseMenu *p);
-/* Quit confirmation (QUIT_DIALOG.md): the authored dialog, or logic only when its resources are unavailable. */
-int pause_menu_quit_dialog_open(const PauseMenu *p);
-int pause_menu_quit_dialog_visual_available(const PauseMenu *p);
-const char *pause_menu_quit_dialog_status(const PauseMenu *p);
-/* Empty unless the pause quit caption could not come from the string table (QUIT_DIALOG Q4.3). */
+/* Confirmation dialog over the pause screen or the options screens (UI_InGameDialog.fng OK/Cancel,
+ * GenericDialog_SMALL.fng Yes/No): the authored dialog, or logic only when its resources are unavailable. */
+int pause_menu_dialog_open(const PauseMenu *p);
+int pause_menu_dialog_visual_available(const PauseMenu *p);
+const char *pause_menu_dialog_status(const PauseMenu *p);
+/* Empty unless the language table is unavailable (English fallback captions are used). */
 const char *pause_menu_caption_status(const PauseMenu *p);
 FeAction pause_menu_update(PauseMenu *p, float seconds);
 void pause_menu_draw(PauseMenu *p, int width, int height);
-/* Deterministic verification-only UI replay and independent populated authored reference. */
+/* Deterministic verification-only UI replay and populated authored reference. Replay events are
+ * absolute-time `ms:Name[:x:y]` items: open Left Right Up Down Enter Continue Back Escape Start right_click
+ * pointer press release hover. */
 int pause_menu_capture_replay(PauseMenu *p,const char *events,float elapsed_ms,int width,int height);
 int pause_menu_draw_reference(PauseMenu *p,int width,int height,float elapsed_ms,const char *events);
 #endif

@@ -81,7 +81,7 @@
      "0x0000F770",
      "0x0000061C"
     ],
-    "initial_dialog_focus": "button 1 (first label, Yes)",
+    "initial_dialog_focus": "button 2 (second label, No); superseded earlier value button 1 per review 2026-10-14, SPEC_GUI_ART 6; Left/Right does not wrap; Yes path = user moves focus to Yes then Accept",
     "on_yes": [
      "auto-detect (SPEC 4.2)",
      "request display re-init",

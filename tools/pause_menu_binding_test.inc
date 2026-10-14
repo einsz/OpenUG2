@@ -1,4 +1,6 @@
-/* Synthetic declarative fixture from approved binding.json; no retail payload. */
+/* Synthetic declarative fixture from approved binding.json; no retail payload. The same objects stand in
+ * for UI_pause.fng (serialized by synth_fng.h and loaded through the adapter's real path) and are bound
+ * directly by the binding checks. */
 static UgFngObject binding_objects[] = {
  {.type=1,.guid=0xDE087u,.name_hash=0x444969FEu,.parent_guid=0x0u,.has_parent=0,.res_index=2,.pos={259.139648,-12.7694931,20},.size={26,26,0},.color={202,244,138,137},.uv={0,0,1,1}},
  {.type=1,.guid=0xDE06Du,.name_hash=0x444969FDu,.parent_guid=0x0u,.has_parent=0,.res_index=2,.pos={-250.29071,-12.7694931,20},.size={26,26,0},.color={202,244,138,137},.uv={0,0,1,1}},
@@ -27,123 +29,172 @@ static UgFngObject binding_objects[] = {
  {.type=5,.guid=0xE24A1u,.parent_guid=0xDDF11u,.has_parent=1,.color={255,255,255,255},.size={1,1,1}},
 };
 
-static void binding_fixture_init(PauseMenu *p,UgFngPackage *pk) {
-    memset(p,0,sizeof *p);pause_menu_open(p);
-    *pk=(UgFngPackage){.obj=binding_objects,.nobj=(int)(sizeof binding_objects/sizeof *binding_objects)};
-    assert(ug_scene_init(&p->scene,pk,NULL));p->loaded=1;
-    ug_scene_set_assets(&p->scene,NULL);
-    assert(pause_bind_detect(p));
-    /* The authored slot has evaluated hidden/offscreen properties: never use these for role lookup/placement. */
-    p->scene.nodes[p->slot].props.w[UG_P_COLOR+3]=0;
-    ug_scene_set_world_pos(&p->scene,p->slot,0,170);
-    p->item_tex[0]=1;p->item_tex[1]=2;
-    pause_bind_apply(p);
+
+/* ---- synthetic assets for the adapter ------------------------------------------------------------------ */
+#define FX_ICON_BASE 0x100u      /* icon keys of synthetic catalogue entries: FX_ICON_BASE + k */
+static void fx_add_pkg(UgAssets *a, const char *name, Pkg *p) {
+    size_t len = 0;
+    uint8_t *bin = synth_fng(&p->pk, name, &len);
+    a->pk = (UgAssetPackage *)realloc(a->pk, sizeof(UgAssetPackage) * (size_t)(a->npk + 1));
+    a->pk[a->npk++] = (UgAssetPackage){ .key = hn(name), .name = strdup(name), .data = bin, .len = len };
+}
+/* UI_pause.fng: the declarative object table plus the event-handler object */
+static void fx_build_pause(Pkg *p) {
+    memset(p, 0, sizeof *p);
+    int n = (int)(sizeof binding_objects / sizeof *binding_objects);
+    memcpy(p->obj, binding_objects, sizeof binding_objects);
+    p->n = n;
+    handler(p, "Forward", 320, 320);
+    finish(p);
+}
+/* Installs the six packages, the textures every entry may ask for, and a tiny string table. */
+static const uint32_t fx_extra_keys[] = {
+    0x9943D584u, 0x62AA0DF6u, 0x520DE4E3u, 0x84D1D864u, 0x4C9E34E6u, 0x12BB5EA2u, 0xB295A6B6u, 0x3109913Cu, 0xB8038AC0u,
+    0xF37AF144u, 0x8A006328u, 0x4DF98FB2u, 0xD708EFEFu,
+    FX_ICON_BASE, FX_ICON_BASE + 1, FX_ICON_BASE + 2, FX_ICON_BASE + 3, FX_ICON_BASE + 4, FX_ICON_BASE + 5,
+    FX_ICON_BASE + 6, FX_ICON_BASE + 7, FX_ICON_BASE + 8, FX_ICON_BASE + 9
+};
+static StGraphics fx_gfx;
+static StGfxCaps fx_caps;
+static StRegStore fx_store;
+static void fx_install(PauseMenu *p) {
+    UgAssets *a = &p->assets;
+    st_gfx_defaults(&fx_gfx);
+    st_gfx_caps_full(&fx_caps, 5);
+    st_reg_open_memory(&fx_store);
+    pause_menu_set_options(p, &fx_gfx, &fx_caps, &fx_store);
+    Pkg *pk = (Pkg *)calloc(1, sizeof *pk);
+    fx_build_pause(pk);          fx_add_pkg(a, "UI_pause.fng", pk);
+    memset(pk, 0, sizeof *pk);
+    build_carousel_pkg(pk, 564, 1); fx_add_pkg(a, "UI_PauseOptionsMain.fng", pk);
+    memset(pk, 0, sizeof *pk);
+    build_list_pkg(pk, 11, 0, 0);   fx_add_pkg(a, "UI_PauseOptions.fng", pk);
+    memset(pk, 0, sizeof *pk);
+    build_list_pkg(pk, 24, 1, 0);   fx_add_pkg(a, "UI_PC_Customize_Options.fng", pk);
+    memset(pk, 0, sizeof *pk);
+    build_dialog_pkg(pk);           fx_add_pkg(a, "UI_InGameDialog.fng", pk);
+    memset(pk, 0, sizeof *pk);
+    build_dialog_pkg(pk);           fx_add_pkg(a, "GenericDialog_SMALL.fng", pk);
+    free(pk);
+    int nk = (int)(sizeof fx_extra_keys / sizeof *fx_extra_keys);
+    a->tex.t = (UgTexture *)calloc((size_t)nk, sizeof(UgTexture));
+    a->tex.n = a->tex.cap = nk;
+    for (int i = 0; i < nk; i++) {
+        a->tex.t[i].key = fx_extra_keys[i];
+        a->tex.t[i].w = a->tex.t[i].h = 1;
+        a->tex.t[i].rgba = (uint8_t *)malloc(4);
+        memset(a->tex.t[i].rgba, 255, 4);
+    }
+    ug_texlib_index(&a->tex);
+    ug_strtab_init(&a->strings);
+    a->have_strings = 1;
+    strtab_put(&a->strings, 0xB34993C9u, "Options (table)");
+    a->main_face = -1;
+    p->assets_open = 1;
+    p->compatible = 1;
+}
+static void fx_remove(PauseMenu *p) {
+    pause_drop_view(p);
+    if (p->pill_initialized) { ug_anim_free(&p->pill_pulse); ug_anim_free(&p->pill_glow); }
+    ug_assets_close(&p->assets);
+    st_reg_close(&fx_store);
+}
+
+/* ---- binding checks (SPEC_GUI_ART 3.1, BINDING identities) ---------------------------------------------------- */
+static int fx_tex_key(const PauseMenu *p, int tex) { return tex > 0 ? (int)p->assets.tex.t[tex - 1].key : 0; }
+
+/* The adapter's own load path on the declarative fixture: UI_pause.fng from the assets, bound by name,
+ * identities verified. */
+static void binding_fixture_init(PauseMenu *p) {
+    memset(p, 0, sizeof *p);
+    fx_install(p);
+    pause_menu_open(p);
+}
+static int unused_slot_visible(const PauseMenu *p, int n) {
+    for (int k = n; k < GC_MAX; k++) {
+        const UgNode *nd = &p->scr.scene.nodes[p->car_v.slot[k]];
+        if (nd->visible && fabsf(nd->wf) < 270 && fabsf(nd->we) < 380) return 1;
+    }
+    return 0;
 }
 static void binding_checks(void) {
-    PauseMenu p;UgFngPackage pk;binding_fixture_init(&p,&pk);
-    assert(p.npool==10 && p.slot>=0 && p.caption>=0 && p.marker>=0);
-    assert(p.scene.nodes[p.slot].app_hidden);
-    int selected=p.pool[0],neighbor=p.pool[1];
-    assert(!p.scene.nodes[selected].app_hidden && p.scene.nodes[selected].tex_override==1);
-    assert(!p.scene.nodes[neighbor].app_hidden && p.scene.nodes[neighbor].tex_override==2);
-    assert(p.scene.nodes[selected].props.w[UG_P_COLOR+3]==119);
-    assert(fabsf(p.scene.nodes[selected].we-.38835144f)<.001f);
-    assert(fabsf(p.scene.nodes[selected].wf+14.296134f)<.001f);
-    assert(p.scene.nodes[selected].props.w[UG_P_SIZE]==118);
-    assert(fabsf(p.scene.nodes[neighbor].we-p.scene.nodes[selected].we-158)<.001f);
-    assert(p.scene.nodes[neighbor].props.w[UG_P_SIZE]==96);
-    assert(p.scene.nodes[neighbor].props.w[UG_P_COLOR+3]==119);
-    for(int k=2;k<10;k++)assert(p.scene.nodes[p.pool[k]].app_hidden);
-    assert(!strcmp(p.scene.nodes[p.caption].text_override,"Return to Explore Mode"));
-    assert(p.scene.nodes[p.roles[PAUSE_ROLE_HEADING]].text_override && !strcmp(p.scene.nodes[p.roles[PAUSE_ROLE_HEADING]].text_override,"Pause"));
-    assert(p.scene.nodes[24].app_hidden);
-    float alpha=p.scene.nodes[p.roles[PAUSE_ROLE_GLOW]].props.w[UG_P_COLOR+3];
-    pause_dispatch(&p,FE_INPUT_DOWN);pause_menu_update(&p,.3f); /* slide has settled */
-    assert(p.state.selected==1 && !strcmp(p.scene.nodes[p.caption].text_override,"Quit Game"));
-    assert(p.scene.nodes[p.pool[1]].tex_override==2 && p.scene.nodes[p.pool[1]].props.w[UG_P_SIZE]==118);
-    assert(fabsf(p.scene.nodes[p.pool[0]].we-p.scene.nodes[p.pool[1]].we+158)<.001f);
-    assert(p.scene.nodes[p.roles[PAUSE_ROLE_GLOW]].props.w[UG_P_COLOR+3]==alpha);
-    assert(fabsf(p.scene.nodes[p.marker].we+320-596)<.001f); /* snapped, not halfway */
-    /* Empty catalogues suppress placeholders/caption; real pool scripts survive rebinding. */
-    p.state.entry_count=0;pause_bind_apply(&p);
-    for(int k=0;k<10;k++)assert(p.scene.nodes[p.pool[k]].app_hidden);
-    assert(!strcmp(p.scene.nodes[p.caption].text_override,""));
-    ug_scene_free(&p.scene);p.loaded=0;
-    /* Exact identity survives object order and evaluated position changes; duplicate identities reject. */
-    UgFngObject tmp=binding_objects[0];binding_objects[0]=binding_objects[23];binding_objects[23]=tmp;
-    binding_fixture_init(&p,&pk);assert(p.right==23);ug_scene_free(&p.scene);
-    tmp=binding_objects[0];binding_objects[0]=binding_objects[23];binding_objects[23]=tmp;
-    uint32_t saved=binding_objects[23].guid;binding_objects[23].guid=binding_objects[0].guid;
-    assert(ug_scene_init(&p.scene,&pk,NULL));assert(!pause_bind_detect(&p));ug_scene_free(&p.scene);
-    binding_objects[23].guid=saved;
+    PauseMenu *p = (PauseMenu *)calloc(1, sizeof *p);
+    binding_fixture_init(p);
+    assert(p->visual && p->view == PM_PAUSE && p->car_v.bound && p->car_v.nslots == 10);
+    const UgScene *sc = &p->scr.scene;
+    assert(pause_verify_identities(sc));
+    assert(sc->nodes[p->car_v.master].app_hidden && !sc->nodes[p->car_v.master].visible);
+    /* default catalogue: four entries; the first is focused at the authored master */
+    assert(p->ps.n == 4);
+    const UgNode *selected = &sc->nodes[p->car_v.slot[0]], *neighbor = &sc->nodes[p->car_v.slot[1]];
+    assert(fx_tex_key(p, selected->tex_override) == 0x62AA0DF6 && fx_tex_key(p, neighbor->tex_override) == 0x520DE4E3);
+    assert(!selected->app_hidden && !neighbor->app_hidden);
+    assert(fabsf(selected->we - .38835144f) < .001f && fabsf(selected->wf + 14.296134f) < .001f);
+    assert(selected->props.w[UG_P_SIZE] == 118 && fabsf(neighbor->props.w[UG_P_SIZE] - 94.4f) < .001f);
+    assert(fabsf(neighbor->we - selected->we - 158) < .001f);
+    assert(!unused_slot_visible(p, p->ps.n));
+    assert(!strcmp(sc->nodes[p->car_v.title].text_override, "Return to Explore Mode"));
+    assert(sc->nodes[p->car_v.header].text_override && !strcmp(sc->nodes[p->car_v.header].text_override, "Pause"));
+    assert(sc->nodes[ug_scene_find_guid(sc, 0x000E24A1u)].app_hidden);
+    /* the focused slot is the scene focus; the glow and backing objects keep their authored placement */
+    assert(sc->focus == p->car_v.slot[0]);
+    /* Right: caption, focus size and the tab change at once, the scroll follows over 0.3 s */
+    pause_key(p, PMK_RIGHT);
+    pause_menu_update(p, 0);
+    assert(p->ps.car.cur == 1 && !strcmp(sc->nodes[p->car_v.title].text_override, "Options (table)"));
+    assert(fabsf(sc->nodes[p->car_v.tab].we - (-88.0f)) < .01f);
+    pause_menu_update(p, .3f);
+    assert(fabsf(sc->nodes[p->car_v.slot[1]].we - sc->nodes[p->car_v.master].we) < .001f);
+    assert(fabsf(sc->nodes[p->car_v.slot[0]].we - sc->nodes[p->car_v.slot[1]].we + 158) < .001f);
+    /* exact identity survives object order; duplicates and mismatching metadata are rejected */
+    fx_remove(p);
+    free(p);
+    UgFngObject tmp = binding_objects[0];
+    binding_objects[0] = binding_objects[23]; binding_objects[23] = tmp;
+    p = (PauseMenu *)calloc(1, sizeof *p);
+    binding_fixture_init(p);
+    assert(p->visual && p->car_v.arrow_r == 23);
+    fx_remove(p); free(p);
+    tmp = binding_objects[0]; binding_objects[0] = binding_objects[23]; binding_objects[23] = tmp;
+    uint32_t saved = binding_objects[23].guid;
+    binding_objects[23].guid = binding_objects[0].guid;                /* reused guid: not uniquely resolved */
+    p = (PauseMenu *)calloc(1, sizeof *p);
+    binding_fixture_init(p);
+    assert(!p->visual && p->open);                                      /* input stays usable, nothing drawn */
+    assert(strstr(p->status, "identities") != NULL);
+    fx_remove(p); free(p);
+    binding_objects[23].guid = saved;
 }
-static void binding_track_checks(void) {
-    PauseMenu p;UgFngPackage pk;binding_fixture_init(&p,&pk);
-    UgKey keys[2]={{.t=0,.v={255,255,255,0}},{.t=100,.v={255,255,255,100}}};
-    UgTrack track={.type=UG_VT_COLOR,.vsize=4,.interp=UG_INTERP_LINEAR,.length=100,.prop=UG_P_COLOR,.keys=keys,.nkeys=2};
-    UgScript script={.id=1,.length=100,.tracks=&track,.ntracks=1};
-    UgNode *icon=&p.scene.nodes[p.pool[0]];
-    ug_player_start_script(&icon->pl,&script,&icon->props);
-    pause_bind_apply(&p);assert(icon->props.w[UG_P_COLOR+3]==0);
-    pause_menu_update(&p,.05f);assert(icon->props.w[UG_P_COLOR+3]==50);
-    pause_menu_update(&p,.05f);assert(icon->props.w[UG_P_COLOR+3]==100);
-    /* BINDING 5's authored glow curve, independently encoded from reviewed data facts. */
-    UgKey glowkeys[4]={{.t=0,.v={72,54,-117,-80}},{.t=260,.v={72,54,-117,-215}},
-                      {.t=540,.v={72,54,-117,-215}},{.t=840,.v={72,54,-117,-80}}};
-    UgTrack glow={.type=UG_VT_COLOR,.vsize=4,.interp=UG_INTERP_LINEAR,.action=UG_ACT_WRAP,.length=1000,
-        .prop=UG_P_COLOR,.has_base=1,.base={.t=-1,.v={130,190,255,305}},.keys=glowkeys,.nkeys=4};
-    float value[4];
-    for(int i=0;i<4;i++) {
-        ug_track_eval(&glow,glowkeys[i].t,value);
-        assert(value[0]==202 && value[1]==244 && value[2]==138 && value[3]==(i==0 || i==3?225:90));
-    }
-    ug_scene_free(&p.scene);ug_anim_free(&p.pill_pulse);ug_anim_free(&p.pill_glow);
-    uint8_t pixel[4]={1,2,3,4};
-    const uint32_t artkeys[]={0x62AA0DF6u,0x520DE4E3u,0x4C9E34E6u,0x9943D584u,0xDA10B4A1u};
-    UgTexture textures[5]={0};
-    for(int i=0;i<5;i++)textures[i]=(UgTexture){.key=artkeys[i],.w=1,.h=1,.rgba=pixel};
-    PauseMenu assets={0};assets.assets.tex.t=textures;assets.assets.tex.n=5;ug_texlib_index(&assets.assets.tex);
-    pause_resolve_art(&assets);
-    assert(assets.item_tex[0]==1 && assets.item_tex[1]==3 && assets.arrow_tex==4 && assets.marker_tex==5);
-    free(assets.assets.tex.order);
-}
-static void binding_reference_checks(void) {
-    PauseMenu p;UgFngPackage pk;binding_fixture_init(&p,&pk);
-    PauseMenu r={.package=pk,.item_tex={1,2}};
-    assert(pause_reference_open(&r));pause_reference_advance(&r,800);
-    assert(r.state.selected==0 && r.ui_ms==800);
-    assert(pause_reference_event(&r,"Right",0,0,0));
-    assert(r.state.selected==1 && fabsf(r.marker_x-596)<.001f); /* snapped on the input frame */
-    pause_reference_advance(&r,80);
-    assert(fabsf(r.marker_x-596)<.001f && r.scroll>0.8f && r.scroll<1);
-    assert(!strcmp(r.scene.nodes[r.caption].text_override,"Quit Game"));
-    assert(r.scene.nodes[r.pool[1]].props.w[UG_P_COLOR+3]==119);
-    assert(p.state.selected==0 && p.ui_ms==0); /* reference never advances/mutates production */
-    assert(pause_reference_event(&r,"Left",0,0,0));
-    assert(r.state.selected==0 && fabsf(r.marker_x-50)<.001f);
-    assert(pause_reference_event(&r,"Left",0,0,0) && r.state.selected==0); /* no wrap */
-    pause_reference_advance(&r,300);assert(r.scroll==0);
-    assert(pause_reference_event(&r,"Back",0,0,0));pause_reference_advance(&r,1000);
-    assert(!r.open && r.capture_actions==1);
-    assert(pause_reference_event(&r,"open",0,0,0));
-    assert(r.ui_ms==0 && r.state.selected==0 && r.marker_x==50);
-    assert(!pause_reference_event(&r,"unknown",0,0,0));
-    ug_scene_free(&r.scene);ug_anim_free(&r.pill_pulse);ug_anim_free(&r.pill_glow);
-    ug_scene_free(&p.scene);ug_anim_free(&p.pill_pulse);ug_anim_free(&p.pill_glow);
-}
+/* binding mode: the two-action catalogues of binding.json through the adapter's binder */
 static void binding_vector(const char *name) {
-    binding_checks();PauseMenu p;UgFngPackage pk;binding_fixture_init(&p,&pk);
-    if(!strcmp(name,"two_supported_actions_select_quit"))pause_dispatch(&p,FE_INPUT_DOWN);
-    if(!strcmp(name,"unpopulated"))p.state.entry_count=0;
-    if(!strcmp(name,"reopen")) {
-        pause_dispatch(&p,FE_INPUT_DOWN);pause_menu_update(&p,.1f);
-        ug_scene_free(&p.scene);p.loaded=0;binding_fixture_init(&p,&pk);
-        assert(p.ui_ms==0 && p.state.selected==0 && p.marker_x==50);
+    binding_checks();
+    PauseMenu *p = (PauseMenu *)calloc(1, sizeof *p);
+    binding_fixture_init(p);
+    PauseEntry e[2] = { { .id = PE_EXPLORE_FREE, .action = PE_ACT_RESUME_EXPLORE, .icon_key = 0x62AA0DF6u, .label_key = 0xC3E5BCDCu, .label = "Return to Explore Mode" },
+                        { .id = PE_QUIT_MAIN, .action = PE_ACT_CONFIRM_QUIT, .immediate = 1, .icon_key = 0x4C9E34E6u, .label_key = 0xC7E1420Cu, .label = "Quit to Main Menu" } };
+    int n = !strcmp(name, "unpopulated") ? 0 : 2;
+    PauseContext c;
+    pe_context_default(&c);
+    ps_open_entries(&p->ps, &c, e, n);
+    p->ps.fresh = 0;
+    if (!strcmp(name, "two_supported_actions_select_quit")) { ps_input(&p->ps, PS_IN_RIGHT); }
+    if (!strcmp(name, "reopen")) {
+        ps_input(&p->ps, PS_IN_RIGHT);
+        pause_menu_update(p, .1f);
+        pause_menu_open(p);
+        assert(p->ui_ms == 0 && p->ps.car.cur == 0);
     }
-    pause_bind_apply(&p);
-    int selected=p.state.selected;
-    printf("{\"caption\":\"%s\",\"selected_texture\":\"0x%08X\",\"neighbor_texture\":\"0x%08X\",\"unused_pool_visible\":false,\"slot_visible\":%s,\"pool_alpha\":%.0f}\n",p.scene.nodes[p.caption].text_override,
-      p.state.entry_count?(selected?0x4C9E34E6u:0x62AA0DF6u):0,p.state.entry_count?(selected?0x62AA0DF6u:0x4C9E34E6u):0,
-      p.scene.nodes[p.slot].visible?"true":"false",p.scene.nodes[p.pool[0]].props.w[UG_P_COLOR+3]);
-    ug_scene_free(&p.scene);
+    pause_drop_view(p);
+    pause_views_update(p, 0);
+    pause_menu_update(p, .4f);
+    const UgScene *sc = &p->scr.scene;
+    int selected = p->ps.car.cur;
+    printf("{\"caption\":\"%s\",\"selected_texture\":\"0x%08X\",\"neighbor_texture\":\"0x%08X\",\"unused_pool_visible\":%s,\"slot_visible\":%s,\"pool_alpha\":%.0f}\n",
+           sc->nodes[p->car_v.title].text_override,
+           p->ps.n ? (unsigned)fx_tex_key(p, sc->nodes[p->car_v.slot[selected]].tex_override) : 0u,
+           p->ps.n > 1 ? (unsigned)fx_tex_key(p, sc->nodes[p->car_v.slot[selected ? 0 : 1]].tex_override) : 0u,
+           unused_slot_visible(p, p->ps.n) ? "true" : "false", sc->nodes[p->car_v.master].visible ? "true" : "false",
+           sc->nodes[p->car_v.slot[0]].props.w[UG_P_COLOR + 3]);
+    fx_remove(p);
+    free(p);
 }

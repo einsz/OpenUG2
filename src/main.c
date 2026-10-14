@@ -2054,6 +2054,27 @@ static int select_car_vinyl(int choice) {
     return 1;
 }
 
+/* Creates the pause menu with everything it needs: the genuine pause resources and the graphics
+ * settings the Options entry edits (SPEC_GUI). Every place that creates the menu goes through here, so
+ * the normal game path and the --pause-shot capture show the same entries (SPEC_GUI_ART 2.2).
+ * The situation is the career free-roam pause (Return to Explore Mode, Options, Replay, Quit to Main
+ * Menu): this host exposes no race lifecycle (restart / leave race) and no replay data, so the race
+ * entries and an enabled Replay are not offered; the catalogue itself covers every context. */
+static PauseMenu *pause_menu_build(const char *dataroot, StGraphics *gfx, StGfxCaps *caps, StRegStore *store, int *store_open) {
+    PauseMenu *pm = pause_menu_create(dataroot);
+    if (!pm) return NULL;
+    st_gfx_defaults(gfx);
+    st_gfx_caps_full(caps, 1);                           /* FSAA levels unknown until the renderer reports them */
+    *store_open = st_reg_open_default(store) == ST_OK;
+    if (*store_open) st_gfx_load(store, gfx);
+    st_gfx_clamp(gfx, caps);
+    pause_menu_set_options(pm, gfx, caps, *store_open ? store : NULL);
+    PauseContext pc;
+    pe_context_default(&pc);
+    pause_menu_set_context(pm, &pc);
+    return pm;
+}
+
 int main(int argc, char **argv) {
     collide_walls_selftest();
     phys_selftest();
@@ -6265,17 +6286,7 @@ int main(int argc, char **argv) {
                 if (pause_key && e.key.repeat) continue;
                 /* Consume the whole opening frame so no queued input reaches driving. */
                 pause_frame = 1;
-                if (!pause_menu) {
-                    pause_menu = pause_menu_create(dataroot);
-                    if (pause_menu) {
-                        st_gfx_defaults(&opt_gfx);
-                        st_gfx_caps_full(&opt_caps, 1);        /* FSAA levels unknown until the renderer reports them */
-                        opt_store_open = st_reg_open_default(&opt_store) == ST_OK;
-                        if (opt_store_open) st_gfx_load(&opt_store, &opt_gfx);
-                        st_gfx_clamp(&opt_gfx, &opt_caps);
-                        pause_menu_set_options(pause_menu, &opt_gfx, &opt_caps, opt_store_open ? &opt_store : NULL);
-                    }
-                }
+                if (!pause_menu) pause_menu = pause_menu_build(dataroot, &opt_gfx, &opt_caps, &opt_store, &opt_store_open);
                 if (pause_menu) {
                     pause_menu_open(pause_menu);
                     pause_cursor = SDL_ShowCursor(SDL_QUERY);
@@ -6555,10 +6566,14 @@ int main(int argc, char **argv) {
             }
         }
         if (pause_action == FE_ACTION_QUIT) running = 0;
-        else if (pause_action == FE_ACTION_RESUME) {
-            /* Immediate (BEHAVIOR 5): the adapter returns RESUME on the input frame; no fade,
-             * exit event or timer gates it. The paused frame above never simulated, and the
-             * next frame simulates and accepts driving input again. */
+        else if (pause_action != FE_ACTION_NONE) {
+            /* The adapter returns RESUME when the screen's exit script has finished (SPEC_GUI_ART 2.4:
+             * 320 ms after Return to Explore Mode / Back / Start). The paused frames never simulated, and
+             * the next frame simulates and accepts driving input again. Race actions (restart, leave the
+             * race, world map) and Replay are not offered by this host's pause context; if one arrives
+             * anyway the game resumes. */
+            if (pause_action != FE_ACTION_RESUME)
+                fprintf(stderr, "pause: action %d is not supported by this host; resuming\n", (int)pause_action);
             SDL_ShowCursor(pause_cursor);
             SDL_SetRelativeMouseMode(g_dbg.freecam && race_state != 3 ? SDL_TRUE : SDL_FALSE);
             if (adev) SDL_PauseAudioDevice(adev, 0);
@@ -11150,7 +11165,7 @@ int main(int argc, char **argv) {
             /* Verification-only capture: the same production pause compositor
              * over the final engine scene, before framebuffer readback. */
             if (pause_shot) {
-                if (!pause_menu) pause_menu = pause_menu_create(dataroot);
+                if (!pause_menu) pause_menu = pause_menu_build(dataroot, &opt_gfx, &opt_caps, &opt_store, &opt_store_open);
                 pause_menu_open(pause_menu);
                 if (!pause_reference && !pause_menu_visual_available(pause_menu)) {
                     fprintf(stderr, "pause-shot: genuine UI resources unavailable\n");
@@ -11171,8 +11186,8 @@ int main(int argc, char **argv) {
                     pause_menu_draw(pause_menu, W, H);
                     if(!pause_menu_visual_available(pause_menu)) {final_status=1;running=0;continue;}
                     /* A replay that ends in the quit dialog must show it; never save a capture without it. */
-                    if(pause_menu_quit_dialog_open(pause_menu) && !pause_menu_quit_dialog_visual_available(pause_menu)) {
-                        fprintf(stderr,"pause-shot: %s\n",pause_menu_quit_dialog_status(pause_menu));
+                    if(pause_menu_dialog_open(pause_menu) && !pause_menu_dialog_visual_available(pause_menu)) {
+                        fprintf(stderr,"pause-shot: %s\n",pause_menu_dialog_status(pause_menu));
                         final_status=1;running=0;continue;
                     }
                 }

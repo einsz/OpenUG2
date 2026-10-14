@@ -25,3 +25,32 @@
   directory; content not displayed). No implementer notes or conversation were seen.
 - Outputs: docs/cleanroom-settings/SPEC_GUI.md, docs/cleanroom-settings/test-vectors-gui/.
   Private evidence: analysis/settings-gui/ (not for commit).
+
+## Authored-art supplement (SPEC_GUI_ART.md) — analyst intake, 2026-10-14
+
+- Role: analyst (clean-room), same binary and project purpose as above. No implementation code
+  written; `src/` and `tools/` not touched.
+- Task: pause-menu entry catalogue, Options route and quit confirmation; data needed to render the
+  Display, Customize, pause and pause-options-hub screens from the retail FEng packages.
+- Retail data used (original 2004 files only): `GLOBAL/InGameCommon.bun`/`.lzc` (`UI_pause.fng`,
+  `UI_PauseOptionsMain.fng`, `UI_PauseOptions.fng`, `UI_InGameDialog.fng`,
+  `IG_GenericDialog_SMALL.fng`, `UI_PC_Customize_Options.fng`), `FRONTEND/FRONTB.LZC.bacc`
+  (`UI_Options.fng`, `UI_PC_Customize_Options.fng`), `GLOBAL/GLOBALB.BUN` (`GenericDialog_SMALL.fng`),
+  `LANGUAGES/English.bin` (via the settings analyst's label table); texture-name lists from the
+  earlier GUI analyst's evidence (names/keys only).
+- Observation data reused (no new captures): the Audio-page screenshot measurements (SPEC_GUI) and
+  the pause-screen / frontend-quit-dialog screenshot facts recorded in the earlier pause-menu
+  analyst spec (`bkup/OpenUG2-gui/cleanroom/spec/pause-menu/{SPEC,BINDING,QUIT_DIALOG}.md`).
+- Public source: FEngLib message-response command enumeration (local copy in the earlier analyst
+  workspace `bkup/OpenUG2-gui/cleanroom/analysis/public/FEngLib`).
+- Method: static examination of the executable in the settings analyst's Ghidra project
+  (decompilation/disassembly of the pause, hub, carousel, list-row, slider, dialog and property
+  setter routines; a few function boundaries were created in the analyst's Ghidra database);
+  package parsing with analyst-only scripts. The game was not run.
+- Exposure log: a directory listing of `docs/cleanroom-settings/` and a `wc -l` over its `*.md`
+  files printed the file names and line counts of `IMPL_DESIGN.md` and `IMPL_DESIGN_GUI.md`;
+  their content was not opened or displayed. No implementer notes, `impl/` trees or `src/` were read.
+- Outputs: `docs/cleanroom-settings/SPEC_GUI_ART.md`; test vectors
+  `docs/cleanroom-settings/test-vectors-gui/tvg07…tvg11` and README section; private evidence under
+  `analysis/settings-gui/` (`evidence/decomp/`, `evidence/json2/`, `evidence/art/`,
+  `scripts/objdump.py`, `scripts/gen_vectors_art.py`, `notes/evidence-index-art.md`; not for commit).

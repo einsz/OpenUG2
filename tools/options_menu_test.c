@@ -3,8 +3,9 @@
  *   options_menu_test [VECTOR_DIR]
  *
  * Every vector file (tvg02..tvg06, tvg01 for package keys) is read at run time (a small JSON
- * reader is built in). Beyond the vectors the test drives the screens through the public API:
- * persistence, dialog, exit animation, pointer input, re-init hook, drawing smoke test.
+ * reader, test_json.h). Beyond the vectors the test drives the screens through the public API:
+ * persistence, dialog, exit animation, hub, pointer input, re-init hook. The state machine draws
+ * nothing; the authored presentation is covered by gui_view_test.
  * Exit code is nonzero if any check fails. See docs/cleanroom-settings/IMPL_DESIGN_GUI.md. */
 #include <math.h>
 #include <stdio.h>
@@ -12,98 +13,16 @@
 #include <string.h>
 
 #include "options_menu.h"
+#include "gui_timing.h"
 
 static int g_checks, g_fail;
+#define NEAR(a, b, tol) (fabs((double)(a) - (double)(b)) <= (tol))
 #define CHECK(cond, ...) do { g_checks++; if (!(cond)) { g_fail++; \
     if (g_fail <= 60) { printf("FAIL %s:%d: ", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\n"); } } } while (0)
 
 static const char *g_dir = "docs/cleanroom-settings/test-vectors-gui";
 
-/* ---- minimal JSON DOM ------------------------------------------------------------ */
-enum { J_NULL, J_BOOL, J_NUM, J_STR, J_ARR, J_OBJ };
-typedef struct J { int t; double num; char *s; struct J **kid; char **key; int n, cap; } J;
-static const char *jp;
-static void jws(void) { while (*jp == ' ' || *jp == '\n' || *jp == '\r' || *jp == '\t') jp++; }
-static J *jnew(int t) { J *j = (J *)calloc(1, sizeof *j); j->t = t; return j; }
-static void jadd(J *c, char *key, J *v) {
-    if (c->n == c->cap) {
-        c->cap = c->cap ? c->cap * 2 : 8;
-        c->kid = (J **)realloc(c->kid, (size_t)c->cap * sizeof *c->kid);
-        c->key = (char **)realloc(c->key, (size_t)c->cap * sizeof *c->key);
-    }
-    c->kid[c->n] = v; c->key[c->n] = key; c->n++;
-}
-static char *jstr(void) {
-    char *out = (char *)malloc(strlen(jp) + 1), *w = out;
-    jp++;
-    while (*jp && *jp != '"') {
-        if (*jp == '\\' && jp[1]) { jp++; *w++ = *jp == 'n' ? '\n' : *jp == 't' ? '\t' : *jp; jp++; }
-        else *w++ = *jp++;
-    }
-    if (*jp == '"') jp++;
-    *w = 0;
-    return out;
-}
-static J *jparse(void) {
-    jws();
-    if (*jp == '{' || *jp == '[') {
-        int obj = *jp == '{';
-        J *c = jnew(obj ? J_OBJ : J_ARR);
-        char close = obj ? '}' : ']';
-        jp++; jws();
-        while (*jp && *jp != close) {
-            char *k = NULL;
-            if (obj) { jws(); k = jstr(); jws(); if (*jp == ':') jp++; }
-            jadd(c, k, jparse());
-            jws();
-            if (*jp == ',') jp++;
-            jws();
-        }
-        if (*jp == close) jp++;
-        return c;
-    }
-    if (*jp == '"') { J *j = jnew(J_STR); j->s = jstr(); return j; }
-    if (!strncmp(jp, "null", 4)) { jp += 4; return jnew(J_NULL); }
-    if (!strncmp(jp, "true", 4)) { jp += 4; J *j = jnew(J_BOOL); j->num = 1; return j; }
-    if (!strncmp(jp, "false", 5)) { jp += 5; return jnew(J_BOOL); }
-    J *j = jnew(J_NUM);
-    char *e;
-    j->num = strtod(jp, &e);
-    if (e == jp) e++;                       /* never loop on garbage */
-    jp = e;
-    return j;
-}
-static J *jload(const char *name) {
-    char path[1024];
-    snprintf(path, sizeof path, "%s/%s", g_dir, name);
-    FILE *f = fopen(path, "rb");
-    if (!f) { printf("FAIL cannot read %s\n", path); g_fail++; return NULL; }
-    fseek(f, 0, SEEK_END);
-    long n = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    char *d = (char *)malloc((size_t)n + 1);
-    size_t got = fread(d, 1, (size_t)n, f);
-    fclose(f);
-    d[got] = 0;
-    jp = d;
-    J *j = jparse();
-    free(d);
-    return j;
-}
-static J *jget(const J *o, const char *k) {
-    if (!o || o->t != J_OBJ) return NULL;
-    for (int i = 0; i < o->n; i++) if (!strcmp(o->key[i], k)) return o->kid[i];
-    return NULL;
-}
-static const char *jstrv(const J *o, const char *k) { J *v = jget(o, k); return v && v->t == J_STR ? v->s : NULL; }
-static double jnum(const J *o, const char *k, double def) { J *v = jget(o, k); return v && v->t == J_NUM ? v->num : def; }
-static int jbool(const J *o, const char *k) { J *v = jget(o, k); return v && v->t == J_BOOL && v->num != 0; }
-static void jfree(J *j) {
-    if (!j) return;
-    for (int i = 0; i < j->n; i++) { jfree(j->kid[i]); free(j->key ? j->key[i] : NULL); }
-    free(j->kid); free(j->key); free(j->s); free(j);
-}
-static uint32_t hexkey(const char *s) { return (uint32_t)strtoul(s, NULL, 16); }
+#include "test_json.h"
 
 /* ---- harness ----------------------------------------------------------------------- */
 typedef struct Fx {
@@ -205,7 +124,8 @@ static void test_tvg02(void) {
     jfree(j);
 }
 
-/* ---- tvg03: navigation (list engine) ------------------------------------------------ */
+/* ---- tvg03: navigation (list engine, then the real screens) ----------------------------- */
+static int sl_at(const J *sel, int i) { return i < sel->n ? (int)sel->kid[i]->num : 0; }
 static void test_tvg03(void) {
     J *j = jload("tvg03_navigation.json");
     if (!j) return;
@@ -232,6 +152,25 @@ static void test_tvg03(void) {
             int first = l.top, last = l.top + OM_VISIBLE_ROWS - 1 < n - 1 ? l.top + OM_VISIBLE_ROWS - 1 : n - 1;
             CHECK(vis->n == last - first + 1 && (int)vis->kid[0]->num == first + 1 &&
                   (int)vis->kid[vis->n - 1]->num == last + 1, "%s step %d: visible window", id, k);
+        }
+        /* the same trace through the real screens (both contexts) where the vector describes one */
+        int on_display = !strncmp(id, "display_", 8), on_customize = !strncmp(id, "customize_", 10);
+        if ((on_display || on_customize) && (int)jnum(in, "initial_focus", 1) == 1) {
+            for (int ctx = 0; ctx < 2; ctx++) {
+                Fx f;
+                fx_open(&f, ctx ? OM_CTX_INGAME : OM_CTX_FRONTEND, sj->n == 23 && !sj->kid[1]->num);
+                if (on_customize) fx_customize(&f);
+                CHECK(om_row_count(&f.m) == n && om_screen(&f.m) == (on_customize ? OM_SCREEN_CUSTOMIZE : OM_SCREEN_DISPLAY), "%s: screen rows %d", id, om_row_count(&f.m));
+                for (int i = 0; i < n && i < om_row_count(&f.m); i++)
+                    CHECK(om_row(&f.m, i)->selectable == (sl_at(sj, i) != 0), "%s: row %d selectable", id, i);
+                CHECK(om_top(&f.m) + 1 == (int)jnum(ex, "initial_top", -1), "%s: screen initial top", id);
+                for (int k = 0; k < evs->n && k < trace->n; k++) {
+                    om_input(&f.m, !strcmp(evs->kid[k]->s, "Up") ? OM_IN_UP : OM_IN_DOWN);
+                    CHECK(om_focus(&f.m) + 1 == (int)jnum(trace->kid[k], "focus", -1) && om_top(&f.m) + 1 == (int)jnum(trace->kid[k], "top", -1),
+                          "%s ctx %d step %d: screen focus %d top %d", id, ctx, k, om_focus(&f.m) + 1, om_top(&f.m) + 1);
+                }
+                fx_close(&f);
+            }
         }
     }
     jfree(j);
@@ -345,21 +284,32 @@ static void test_tvg06(void) {
             f.g.v[ST_GFX_RESOLUTION] = 2;         /* distinguish written values from absent ones */
 
             if (!strcmp(id, "fe_back_from_display") || !strcmp(id, "ig_back_from_display")) {
+                int exit_ms = ctx == OM_CTX_INGAME ? 320 : 140;          /* SPEC_GUI_ART 1.4 */
+                CHECK(om_exit_ms(ctx, OM_SCREEN_DISPLAY) == exit_ms, "%s: exit length %d", id, om_exit_ms(ctx, OM_SCREEN_DISPLAY));
                 om_input(&f.m, OM_IN_BACK);
                 CHECK(om_poll_event(&f.m) == OM_EV_NONE && !reg_has_gfx(&f.store), "%s: left before the exit animation ended", id);
                 om_input(&f.m, OM_IN_BACK);       /* second Back is ignored while it runs */
                 om_update(&f.m, 0.01f);
                 CHECK(om_poll_event(&f.m) == OM_EV_NONE, "%s: left early", id);
-                settle(&f);
+                om_update(&f.m, (exit_ms - 11) / 1000.0f);
+                CHECK(om_poll_event(&f.m) == OM_EV_NONE && !reg_has_gfx(&f.store), "%s: left 1 ms early", id);
+                om_update(&f.m, 0.002f);
                 CHECK(om_poll_event(&f.m) == OM_EV_LEAVE_TO_HUB, "%s: no leave event", id);
                 CHECK(om_poll_event(&f.m) == OM_EV_NONE, "%s: leave event delivered twice", id);
                 CHECK(jbool(ex, "graphics_written_to_registry") == reg_has_gfx(&f.store) && f.m.registry_writes == 1, "%s: writes %d", id, f.m.registry_writes);
                 uint32_t v = 0;
                 CHECK(st_reg_get_dword(&f.store, "g_RacingResolution", &v) && v == 2, "%s: stored resolution", id);
                 CHECK(!strcmp(om_hub_package_name(ctx), jstrv(ex, "next_package")), "%s: hub %s", id, om_hub_package_name(ctx));
-                CHECK(!om_is_open(&f.m), "%s: still open", id);
+                if (ctx == OM_CTX_INGAME)         /* the in-game hub is a screen of this menu */
+                    CHECK(om_screen(&f.m) == OM_SCREEN_HUB && !strcmp(om_package_name(ctx, om_screen(&f.m)), jstrv(ex, "next_package")), "%s: not on the hub", id);
+                else
+                    CHECK(!om_is_open(&f.m), "%s: still open", id);
             } else if (!strcmp(id, "ig_start_from_display")) {
                 om_input(&f.m, OM_IN_START);
+                CHECK(om_poll_event(&f.m) == OM_EV_NONE && om_is_open(&f.m), "%s: resumed before the exit script ended", id);
+                om_update(&f.m, 0.3f);
+                CHECK(om_poll_event(&f.m) == OM_EV_NONE, "%s: resumed 20 ms early", id);
+                om_update(&f.m, 0.03f);
                 CHECK(om_poll_event(&f.m) == OM_EV_RESUME_GAME, "%s: no resume", id);
                 CHECK(reg_has_gfx(&f.store) == jbool(ex, "graphics_written_to_registry") && f.m.registry_writes == 0, "%s: wrote", id);
                 CHECK(!om_is_open(&f.m), "%s: still open", id);
@@ -368,6 +318,8 @@ static void test_tvg06(void) {
                 press(&f, OM_IN_DOWN, 2);
                 om_input(&f.m, OM_IN_ACCEPT);
                 CHECK(om_screen(&f.m) == OM_SCREEN_DISPLAY, "%s: switched before the exit animation ended", id);
+                om_update(&f.m, (om_exit_ms(ctx, OM_SCREEN_DISPLAY) - 5) / 1000.0f);
+                CHECK(om_screen(&f.m) == OM_SCREEN_DISPLAY, "%s: switched 5 ms early", id);
                 settle(&f);
                 CHECK(om_screen(&f.m) == OM_SCREEN_CUSTOMIZE, "%s: not on Customize", id);
                 CHECK(!strcmp(om_package_name(ctx, om_screen(&f.m)), jstrv(ex, "next_package")), "%s: package", id);
@@ -397,9 +349,21 @@ static void test_tvg06(void) {
                 J *bt = jget(ex, "buttons");
                 CHECK(om_dialog_button_key(0) == hexkey(bt->kid[0]->s) && om_dialog_button_key(1) == hexkey(bt->kid[1]->s), "%s: buttons", id);
                 CHECK(OM_KEY_DEFAULTS_MESSAGE == hexkey(jstrv(ex, "message_key")), "%s: message", id);
-                CHECK(om_dialog_focus(&f.m) == 0, "%s: initial dialog focus %d", id, om_dialog_focus(&f.m));
+                /* corrected by review 2026-10-14 (SPEC_GUI_ART 6): focus starts on the second button (No) */
+                CHECK(strstr(jstrv(ex, "initial_dialog_focus"), "button 2") != NULL, "%s: vector states button 2", id);
+                CHECK(om_dialog_focus(&f.m) == 1, "%s: initial dialog focus %d", id, om_dialog_focus(&f.m));
                 CHECK(f.g.v[ST_GFX_LIGHT_GLOW] == 1, "%s: changed before Yes", id);
+                om_input(&f.m, OM_IN_RIGHT);
+                CHECK(om_dialog_focus(&f.m) == 1, "%s: no wrap on the second button", id);
+                om_input(&f.m, OM_IN_LEFT);        /* the Yes path: the user moves the focus to Yes */
+                CHECK(om_dialog_focus(&f.m) == 0, "%s: Left focuses Yes", id);
+                om_input(&f.m, OM_IN_LEFT);
+                CHECK(om_dialog_focus(&f.m) == 0, "%s: no wrap on the first button", id);
                 om_input(&f.m, OM_IN_ACCEPT);     /* Yes */
+                CHECK(om_dialog_is_open(&f.m) && f.g.v[ST_GFX_LIGHT_GLOW] == 1, "%s: the dialog plays its exit first", id);
+                om_update(&f.m, 0.139f);
+                CHECK(om_dialog_is_open(&f.m) && f.g.v[ST_GFX_LIGHT_GLOW] == 1, "%s: result before the 140 ms exit completed", id);
+                om_update(&f.m, 0.002f);
                 CHECK(!om_dialog_is_open(&f.m), "%s: dialog stays", id);
                 /* auto-detect for modern hardware (SPEC 4.5): P = 4 */
                 StGraphics ref;
@@ -416,15 +380,19 @@ static void test_tvg06(void) {
             } else if (!strcmp(id, "defaults_no")) {
                 f.g.v[ST_GFX_LIGHT_GLOW] = 1;
                 press(&f, OM_IN_DOWN, 3);
-                for (int variant = 0; variant < 3; variant++) {
+                for (int variant = 0; variant < 4; variant++) {
                     StGraphics before = f.g;
                     om_take_reinit_request(&f.m);
                     om_take_apply_request(&f.m);
                     om_input(&f.m, OM_IN_ACCEPT);
-                    CHECK(om_dialog_is_open(&f.m), "%s: no dialog", id);
-                    if (variant == 0) { om_input(&f.m, OM_IN_RIGHT); CHECK(om_dialog_focus(&f.m) == 1, "%s: Right", id); om_input(&f.m, OM_IN_ACCEPT); }
-                    else if (variant == 1) om_input(&f.m, OM_IN_BACK);
-                    else { om_input(&f.m, OM_IN_RIGHT); om_input(&f.m, OM_IN_RIGHT); CHECK(om_dialog_focus(&f.m) == 1, "%s: wrapped", id); om_input(&f.m, OM_IN_ACCEPT); }
+                    CHECK(om_dialog_is_open(&f.m) && om_dialog_focus(&f.m) == 1, "%s: no dialog on No", id);
+                    if (variant == 0) om_input(&f.m, OM_IN_ACCEPT);                       /* Accept on the default focus = No */
+                    else if (variant == 1) om_input(&f.m, OM_IN_BACK);                    /* Back = No */
+                    else if (variant == 2) { om_input(&f.m, OM_IN_LEFT); om_input(&f.m, OM_IN_RIGHT); om_input(&f.m, OM_IN_RIGHT);
+                                             CHECK(om_dialog_focus(&f.m) == 1, "%s: wrapped", id); om_input(&f.m, OM_IN_ACCEPT); }
+                    else { om_input(&f.m, OM_IN_LEFT); om_input(&f.m, OM_IN_BACK); }      /* Back cancels whatever has the focus */
+                    CHECK(om_dialog_is_open(&f.m), "%s v%d: closes only after its exit", id, variant);
+                    settle(&f);
                     CHECK(!om_dialog_is_open(&f.m), "%s v%d: dialog stays", id, variant);
                     CHECK(!memcmp(&before, &f.g, sizeof before) == !jbool(ex, "settings_changed"), "%s v%d: settings changed", id, variant);
                     CHECK(om_focus(&f.m) == 3 && !om_reinit_pending(&f.m) && !om_apply_pending(&f.m), "%s v%d: focus %d / requests", id, variant, om_focus(&f.m) + 1);
@@ -579,10 +547,10 @@ static void test_behaviour(void) {
     CHECK(om_screen(&f.m) == OM_SCREEN_CUSTOMIZE && om_poll_event(&f.m) == OM_EV_NONE, "Start on Customize is inert");
     fx_close(&f);
 
-    /* in game: remembered focus, falling back to the first selectable row */
+    /* in game the Display screen always opens on row 1: every path leaving it resets the remembered row (SPEC_GUI_ART 4.7) */
     fx_open(&f, OM_CTX_INGAME, 0);
     om_open(&f.m, &f.cfg, &f.g, &f.caps, &f.store, 3);
-    CHECK(om_focus(&f.m) == 2, "in-game remembered focus");
+    CHECK(om_focus(&f.m) == 0, "in-game Display opens on row 1 whatever the remembered row");
     om_open(&f.m, &f.cfg, &f.g, &f.caps, &f.store, 9);
     CHECK(om_focus(&f.m) == 0, "remembered focus out of range");
     fx_close(&f);
@@ -664,29 +632,40 @@ static void test_behaviour(void) {
       CHECK(t && !strcmp(t, "1280x1024") && om_focus(&f.m) == 2, "in-game Display is not refreshed"); }
     fx_close(&f);
 
-    /* pointer: focused row arrows and value text, button labels, dialog is modal */
+    /* pointer: focused row arrows and value text, button labels, dialog is modal (SPEC_GUI_ART 4.6) */
     fx_open(&f, OM_CTX_FRONTEND, 0);
     {
-        float y0 = om_row_center_y(0);
+        float y0 = om_row_center_y(&f.m, 0);
+        CHECK(NEAR(y0, -120.0f, 0.001f) && NEAR(om_row_center_y(&f.m, 3), -12.0f, 0.001f), "row centres follow TITLE_MASTER: %.2f", y0);
         om_pointer_click(&f.m, 246.2f, y0);                 /* right arrow */
         CHECK(f.g.v[ST_GFX_RESOLUTION] == 1, "right arrow click = Right");
         om_pointer_click(&f.m, 127.8f, y0);                 /* value text */
         CHECK(f.g.v[ST_GFX_RESOLUTION] == 2, "value text click = Right");
         om_pointer_click(&f.m, 6.2f, y0);                   /* left arrow */
         CHECK(f.g.v[ST_GFX_RESOLUTION] == 1, "left arrow click = Left");
+        om_pointer_click(&f.m, 6.0f - 12.0f, y0 - 12.0f);   /* edges are inclusive */
+        CHECK(f.g.v[ST_GFX_RESOLUTION] == 0, "arrow hit box edges are inclusive");
+        om_pointer_click(&f.m, 6.0f - 12.1f, y0);
+        CHECK(f.g.v[ST_GFX_RESOLUTION] == 0, "just outside the arrow");
         om_pointer_click(&f.m, -100.0f, y0);                /* label of a choice row */
-        CHECK(f.g.v[ST_GFX_RESOLUTION] == 1, "choice label click is inert");
-        om_pointer_click(&f.m, 246.2f, om_row_center_y(5)); /* outside the rows */
+        CHECK(f.g.v[ST_GFX_RESOLUTION] == 0, "choice label click is inert");
+        om_pointer_click(&f.m, 246.2f, om_row_center_y(&f.m, 5)); /* outside the rows */
         om_pointer_click(&f.m, 400.0f, y0);
-        CHECK(f.g.v[ST_GFX_RESOLUTION] == 1, "clicks outside the controls are inert");
-        om_pointer_click(&f.m, -100.0f, om_row_center_y(3));/* Default Settings label */
+        CHECK(f.g.v[ST_GFX_RESOLUTION] == 0, "clicks outside the controls are inert");
+        om_pointer_click(&f.m, -100.0f, om_row_center_y(&f.m, 3));/* Default Settings label */
         CHECK(om_dialog_is_open(&f.m) && om_focus(&f.m) == 3, "button label click opens the confirmation");
         om_pointer_click(&f.m, 246.2f, y0);
-        CHECK(om_dialog_is_open(&f.m) && f.g.v[ST_GFX_RESOLUTION] == 1, "dialog is modal for the pointer");
+        CHECK(om_dialog_is_open(&f.m) && f.g.v[ST_GFX_RESOLUTION] == 0, "dialog is modal for the pointer");
         om_input(&f.m, OM_IN_UP);
         CHECK(om_focus(&f.m) == 3, "Up/Down do not reach the dialog");
-        om_input(&f.m, OM_IN_BACK);
-        om_pointer_click(&f.m, -100.0f, om_row_center_y(2));/* Customize Display Settings label */
+        om_pointer_click(&f.m, 150.0f, 74.0f);               /* No button (centre +150, y 53..95) */
+        settle(&f);
+        CHECK(!om_dialog_is_open(&f.m) && f.g.v[ST_GFX_PERF_LEVEL] == f.g.v[ST_GFX_PERF_LEVEL], "pointer on No closes the dialog");
+        om_pointer_click(&f.m, -100.0f, om_row_center_y(&f.m, 3));
+        om_pointer_click(&f.m, -150.0f, 74.0f);              /* Yes */
+        settle(&f);
+        CHECK(!om_dialog_is_open(&f.m) && om_reinit_pending(&f.m), "pointer on Yes resets the defaults");
+        om_pointer_click(&f.m, -100.0f, om_row_center_y(&f.m, 2));/* Customize Display Settings label */
         settle(&f);
         CHECK(om_screen(&f.m) == OM_SCREEN_CUSTOMIZE, "label click activates Customize");
     }
@@ -694,38 +673,126 @@ static void test_behaviour(void) {
 
     /* title and package queries */
     fx_open(&f, OM_CTX_INGAME, 0);
-    { uint32_t k; const char *t = om_title(&f.m, &k); CHECK(k == OM_KEY_TITLE_PAUSE_DISPLAY && t && !strcmp(t, "DISPLAY"), "in-game title"); }
+    { uint32_t k; const char *t = om_header(OM_CTX_INGAME, OM_SCREEN_DISPLAY, 0, &k); CHECK(k == OM_KEY_TITLE_PAUSE && t && !strcmp(t, "PAUSE OPTIONS"), "in-game Header_text");
+      t = om_header(OM_CTX_INGAME, OM_SCREEN_DISPLAY, 1, &k); CHECK(k == OM_KEY_TITLE_PAUSE_DISPLAY && t && !strcmp(t, "DISPLAY"), "in-game Header_text2");
+      t = om_header(OM_CTX_INGAME, OM_SCREEN_CUSTOMIZE, 0, &k); CHECK(k == OM_KEY_TITLE_CUSTOMIZE && t && !strcmp(t, "Customize Display Settings"), "Customize header");
+      CHECK(om_header(OM_CTX_INGAME, OM_SCREEN_CUSTOMIZE, 1, &k) == NULL && k == 0, "Customize has no second header");
+      t = om_header(OM_CTX_INGAME, OM_SCREEN_HUB, 0, &k); CHECK(k == OM_KEY_TITLE_PAUSE && t && !strcmp(t, "PAUSE OPTIONS"), "hub header"); }
     fx_close(&f);
     fx_open(&f, OM_CTX_FRONTEND, 0);
-    { uint32_t k; const char *t = om_title(&f.m, &k); CHECK(k == OM_KEY_TITLE_DISPLAY && t && !strcmp(t, "Display"), "frontend title"); }
+    { uint32_t k; const char *t = om_header(OM_CTX_FRONTEND, OM_SCREEN_DISPLAY, 0, &k); CHECK(k == OM_KEY_TITLE_DISPLAY && t && !strcmp(t, "Display"), "frontend title");
+      CHECK(om_header(OM_CTX_FRONTEND, OM_SCREEN_DISPLAY, 1, &k) == NULL, "frontend Display has one header"); }
     fx_close(&f);
 
-    /* drawing smoke test: all screens and the dialog append geometry and never crash */
-    fx_open(&f, OM_CTX_INGAME, 0);
-    {
-        UgCanvas cv;
-        ug_cv_init(&cv);
-        options_menu_draw(&f.m, &cv);
-        int n_display = cv.n;
-        CHECK(n_display > 0, "Display draws geometry");
-        press(&f, OM_IN_DOWN, 3);
-        om_input(&f.m, OM_IN_ACCEPT);
-        ug_cv_clear(&cv);
-        options_menu_draw(&f.m, &cv);
-        CHECK(cv.n > 0, "dialog draws geometry");
-        om_input(&f.m, OM_IN_BACK);
-        press(&f, OM_IN_UP, 1);
-        om_input(&f.m, OM_IN_ACCEPT); settle(&f);
-        ug_cv_clear(&cv);
-        options_menu_draw(&f.m, &cv);
-        CHECK(cv.n > 0 && om_screen(&f.m) == OM_SCREEN_CUSTOMIZE, "Customize draws geometry");
-        om_close(&f.m);
-        ug_cv_clear(&cv);
-        options_menu_draw(&f.m, &cv);
-        CHECK(cv.n == 0, "closed menu draws nothing");
-        ug_cv_free(&cv);
+}
+
+/* ---- hub (SPEC_GUI_ART 2.5) ---------------------------------------------------------------- */
+static void hub_open(Fx *f) {
+    memset(f, 0, sizeof *f);
+    st_gfx_defaults(&f->g);
+    st_gfx_caps_full(&f->caps, 5);
+    st_reg_open_memory(&f->store);
+    om_config_default(&f->cfg, OM_CTX_INGAME);
+    om_open_hub(&f->m, &f->cfg, &f->g, &f->caps, &f->store);
+}
+static void test_hub(void) {
+    Fx f;
+    hub_open(&f);
+    CHECK(om_screen(&f.m) == OM_SCREEN_HUB && !strcmp(om_package_name(OM_CTX_INGAME, OM_SCREEN_HUB), "UI_PauseOptionsMain.fng") &&
+          om_package_key(OM_CTX_INGAME, OM_SCREEN_HUB) == 0x73F51C74u, "hub package");
+    CHECK(om_exit_ms(OM_CTX_INGAME, OM_SCREEN_HUB) == 320, "hub exit 320 ms");
+    CHECK(om_hub_focus(&f.m) == 0 && om_hub_remembered(&f.m) == 0, "hub opens on Audio");
+    const char *names[4] = { "Audio", "Display", "Gameplay", "Player" };
+    const uint32_t keys[4] = { 0xE76CD783u, 0x4204D527u, 0xD0CF6EE1u, 0xF760EABEu };
+    const uint32_t icons[4] = { 0xF37AF144u, 0x8A006328u, 0x4DF98FB2u, 0xD708EFEFu };
+    for (int i = 0; i < OM_HUB_ENTRIES; i++) {
+        const OmHubEntry *e = om_hub_entry(i);
+        CHECK(e && !strcmp(e->label, names[i]) && e->label_key == keys[i] && e->icon_key == icons[i] && e->page == i, "hub entry %d", i);
     }
-    fx_close(&f);
+    CHECK(om_hub_entry(4) == NULL && om_hub_entry(-1) == NULL, "hub entry bounds");
+    CHECK(f.m.hub.n == 4 && !gc_left_arrow_visible(&f.m.hub) && gc_right_arrow_visible(&f.m.hub), "hub carousel of 4");
+    CHECK(NEAR(f.m.hub.rail_w, 564.0f, 0), "hub rail width");
+    om_input(&f.m, OM_IN_UP); om_input(&f.m, OM_IN_DOWN);
+    CHECK(om_hub_focus(&f.m) == 0, "Up/Down are ignored");
+    om_input(&f.m, OM_IN_LEFT);
+    CHECK(om_hub_focus(&f.m) == 0, "no wrap on the left end");
+    unsigned b0 = f.m.blink_serial;
+    om_input(&f.m, OM_IN_RIGHT);
+    CHECK(om_hub_focus(&f.m) == 1 && om_hub_remembered(&f.m) == 2 && f.m.blink_serial == b0 + 1 && f.m.blink_dir == 1, "Right moves and is remembered");
+    om_input(&f.m, OM_IN_RIGHT); om_input(&f.m, OM_IN_RIGHT); om_input(&f.m, OM_IN_RIGHT);
+    CHECK(om_hub_focus(&f.m) == 3 && om_hub_remembered(&f.m) == 4, "no wrap on the right end");
+    om_input(&f.m, OM_IN_LEFT); om_input(&f.m, OM_IN_LEFT);
+    CHECK(om_hub_focus(&f.m) == 1, "back on Display");
+    /* Accept on Display: 320 ms exit, then Display page 1 (rebuilt, row 1) */
+    om_input(&f.m, OM_IN_ACCEPT);
+    CHECK(om_screen(&f.m) == OM_SCREEN_HUB && f.m.exiting && f.m.page == 1, "Accept starts the exit and sets the page index");
+    om_input(&f.m, OM_IN_LEFT); om_input(&f.m, OM_IN_BACK);
+    CHECK(om_hub_focus(&f.m) == 1, "input ignored while the exit runs");
+    om_update(&f.m, 0.319f);
+    CHECK(om_screen(&f.m) == OM_SCREEN_HUB, "switch waits for exit-complete");
+    om_update(&f.m, 0.002f);
+    CHECK(om_screen(&f.m) == OM_SCREEN_DISPLAY && om_focus(&f.m) == 0 && om_row_count(&f.m) == 4, "Display after 320 ms");
+    /* Display -> Back writes and returns to the hub on the remembered entry */
+    f.g.v[ST_GFX_RESOLUTION] = 2;
+    om_input(&f.m, OM_IN_BACK);
+    om_update(&f.m, 0.319f);
+    CHECK(om_screen(&f.m) == OM_SCREEN_DISPLAY && f.m.registry_writes == 0, "Display exit takes 320 ms in game");
+    om_update(&f.m, 0.002f);
+    CHECK(om_screen(&f.m) == OM_SCREEN_HUB && om_hub_focus(&f.m) == 1 && f.m.registry_writes == 1, "hub reopens on Display");
+    CHECK(om_poll_event(&f.m) == OM_EV_LEAVE_TO_HUB && om_poll_event(&f.m) == OM_EV_NONE, "leave-to-hub event once");
+    /* Audio/Gameplay/Player are outside this project's scope: activation does nothing */
+    om_input(&f.m, OM_IN_LEFT);
+    om_input(&f.m, OM_IN_ACCEPT);
+    CHECK(om_screen(&f.m) == OM_SCREEN_HUB && !f.m.exiting, "Audio page is not implemented: stays on the hub");
+    /* Back leaves to the pause screen and forgets the remembered entry */
+    om_input(&f.m, OM_IN_BACK);
+    CHECK(om_is_open(&f.m) && f.m.exiting, "Back starts the exit");
+    om_update(&f.m, 0.35f);
+    CHECK(!om_is_open(&f.m) && om_poll_event(&f.m) == OM_EV_LEAVE_TO_PAUSE && om_hub_remembered(&f.m) == 0, "hub Back: pause screen next, remembered entry reset");
+    CHECK(f.m.registry_writes == 1, "hub Back writes nothing");
+    /* Start: exit, then resume, remembered reset, nothing written */
+    om_open_hub(&f.m, &f.cfg, &f.g, &f.caps, &f.store);
+    om_input(&f.m, OM_IN_RIGHT);
+    om_input(&f.m, OM_IN_START);
+    om_update(&f.m, 0.1f);
+    CHECK(om_is_open(&f.m) && om_poll_event(&f.m) == OM_EV_NONE, "Start waits for the exit");
+    om_update(&f.m, 0.3f);
+    CHECK(!om_is_open(&f.m) && om_poll_event(&f.m) == OM_EV_RESUME_GAME && om_hub_remembered(&f.m) == 0 && f.m.registry_writes == 1, "hub Start resumes");
+    /* the pause screen resets the remembered entry when it is built */
+    om_open_hub(&f.m, &f.cfg, &f.g, &f.caps, &f.store);
+    om_input(&f.m, OM_IN_RIGHT);
+    om_close(&f.m);
+    CHECK(om_hub_remembered(&f.m) == 2, "closing keeps the remembered entry");
+    om_open_hub(&f.m, &f.cfg, &f.g, &f.caps, &f.store);
+    CHECK(om_hub_focus(&f.m) == 1, "reopened on the remembered entry");
+    om_close(&f.m);
+    om_reset_session(&f.m);
+    om_open_hub(&f.m, &f.cfg, &f.g, &f.caps, &f.store);
+    CHECK(om_hub_focus(&f.m) == 0, "session reset forgets it");
+    /* Start on Display: exit 320 ms then resume, remembered reset */
+    om_input(&f.m, OM_IN_RIGHT);
+    om_input(&f.m, OM_IN_ACCEPT); om_update(&f.m, 0.4f);
+    om_input(&f.m, OM_IN_START);
+    om_update(&f.m, 0.3f);
+    CHECK(om_is_open(&f.m), "Display Start waits for its 320 ms exit");
+    om_update(&f.m, 0.03f);
+    CHECK(!om_is_open(&f.m) && om_poll_event(&f.m) == OM_EV_RESUME_GAME && om_hub_remembered(&f.m) == 0, "Start on Display resumes and resets the remembered entry");
+    /* pointer: arrows step at once, a centred click activates */
+    om_open_hub(&f.m, &f.cfg, &f.g, &f.caps, &f.store);
+    om_pointer_click(&f.m, GC_ARROW_L_X, GC_ARROW_Y);
+    CHECK(om_hub_focus(&f.m) == 0, "hidden left arrow is inert");
+    om_pointer_click(&f.m, GC_ARROW_R_X, GC_ARROW_Y);
+    CHECK(om_hub_focus(&f.m) == 1, "right arrow steps");
+    om_pointer_click(&f.m, GC_ARROW_R_X - 13.0f, GC_ARROW_Y + 13.0f);
+    CHECK(om_hub_focus(&f.m) == 2, "arrow box edges are inclusive");
+    om_pointer_click(&f.m, GC_ARROW_L_X, GC_ARROW_Y);
+    CHECK(om_hub_focus(&f.m) == 1, "left arrow steps");
+    om_pointer_click(&f.m, 158.0f, GC_ARROW_Y);              /* the neighbouring slot is inert */
+    CHECK(om_hub_focus(&f.m) == 1 && !f.m.exiting, "neighbour click is inert");
+    om_pointer_click(&f.m, 0.388f, -14.296f);                /* the selection slot */
+    CHECK(f.m.exiting && f.m.page == 1, "click on the slot activates Display");
+    st_reg_close(&f.store);
+    puts("hub checks done");
 }
 
 int main(int argc, char **argv) {
@@ -737,6 +804,7 @@ int main(int argc, char **argv) {
     test_tvg05();
     test_tvg06();
     test_behaviour();
+    test_hub();
     printf("options_menu_test: %d checks, %d failed -> %s\n", g_checks, g_fail, g_fail ? "FAIL" : "PASS");
     return g_fail ? 1 : 0;
 }

@@ -373,7 +373,11 @@ Customize also builds it fresh (frontend focus row 1).
 * Dialog package: `GenericDialog_SMALL.fng` (key `0x6962C0CD`, global, available in both
   contexts). Message `0x2BBCCA6B` "Reset to default settings?". Buttons: first `0x0000F770` "Yes"
   (object `button1`, left, centre x −150), second `0x0000061C` "No" (`button2`, right, x +150).
-  Initial focus: the **first button ("Yes")**. [static: default index 0; data: button positions]
+  Initial focus: the **second button ("No")**. [static; data: button positions]
+  **Superseded (review 2026-10-14):** the earlier statement "first button (Yes), default index 0"
+  was wrong; the dialog-call default index is not used for focus. Left/Right do **not** wrap
+  (Right on the first button focuses the second, Left on the second focuses the first, outward
+  presses do nothing); Back/cancel = No. See SPEC_GUI_ART.md §6 and §9.1.
 * Yes: run auto-detect (SPEC §4.2), request display re-initialisation (§5.4), rebuild the Display
   list (§5.6). The registry is not written at this point (only on Back, §5.1).
 * No, or cancel/Back: nothing changes; the Display screen keeps its focus.
@@ -381,8 +385,8 @@ Customize also builds it fresh (frontend focus row 1).
   to play `DIM` while the dialog is open (authored 100 ms scripts exist). [static for UNDIM;
   inferred for DIM]
 * The dialog's own presentation and input (button layout, focus movement, cancel) are those of the
-  generic small dialog; see the pause-menu QUIT_DIALOG work for that package family. Whether Left/Right
-  wraps between the two buttons was not examined.
+  generic two-button dialog described in SPEC_GUI_ART.md §6 (button geometry, focus movement,
+  cancel). Left/Right does not wrap.
 
 ## 7. Hint bar and help
 
@@ -451,9 +455,9 @@ Fonts: all texts use `ConduitMdITC_TT21i.ffn`.
 2. Scrollbar tab end positions and size; whether clicking scrollbar arrows or the track does
    anything; mouse wheel; hover-to-focus on rows.
 3. Help-bar pill labels in game and the trigger of its `PAUSE_OPTIONS` layout (§7).
-4. Initial focus of the in-game Display screen (remembered index semantics).
-5. Whether the Default Settings dialog's Left/Right wraps, and its exact default focus at runtime
-   (code passes index 0 = first button).
+4. ~~Initial focus of the in-game Display screen~~ Resolved by SPEC_GUI_ART.md §4.7: row 1.
+5. ~~Default Settings dialog wrap/default focus~~ Resolved by SPEC_GUI_ART.md §6: default focus
+   is the second button (No); no wrap. Runtime still not captured.
 6. Exact meaning of the "online session" condition that swaps the frontend help text key.
 7. Authored animation timings are data; their evaluation (track interpolation) follows the base GUI
    semantics already used for the pause menu and was not re-verified for these packages.
@@ -468,7 +472,7 @@ Fonts: all texts use `ConduitMdITC_TT21i.ffn`.
    Display and Customize screens, mouse visible but not over the list.
 2. Video: hold Down through Customize from top to bottom and press Down again at the end; then Up at
    the top (confirms §2.5 and the tab motion).
-3. Still of the Default Settings dialog right after it opens (default focus) and after Left/Right.
+3. Still of the Default Settings dialog right after it opens (expect focus on No) and after Left/Right (expect no wrap).
 4. Video: change Resolution on the Display page (confirms the immediate re-init, §5.4).
 5. In game: press Start on the Display page after a change, quit, and export the registry key
    (confirms §5.2).

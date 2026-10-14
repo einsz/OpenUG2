@@ -1,9 +1,12 @@
-/* options_menu.c -- graphics Display / Customize option screens (SPEC_GUI.md). See options_menu.h
- * and docs/cleanroom-settings/IMPL_DESIGN_GUI.md. The state machine part has no GL/SDL dependency;
- * options_menu_draw only appends triangles to a UgCanvas. */
+/* options_menu.c -- graphics option screens: hub, Display, Customize and the Default Settings
+ * confirmation (SPEC_GUI.md, SPEC_GUI_ART.md). See options_menu.h and
+ * docs/cleanroom-settings/IMPL_DESIGN_GUI.md. No GL, SDL or drawing: the screens are the authored
+ * packages, evaluated by gui_view. */
 #include "options_menu.h"
 
 #include <string.h>
+
+#include "gui_timing.h"
 
 /* ---- static tables --------------------------------------------------------------------------- */
 
@@ -46,35 +49,49 @@ static const char *const k_resolution[6] = {            /* SPEC_GUI 3.1 (functio
     "640x480", "800x600", "1024x768", "1280x960", "1280x1024", "1600x1200"
 };
 
-/* Layout, SPEC_GUI 2.3 (measured on the Audio page; centred virtual units). */
-#define OM_ROW0_Y (-127.0f)
-#define OM_BACK_X0 (-286.2f)
-#define OM_BACK_X1 261.8f
-#define OM_LABEL_X (-268.9f)
-#define OM_VALUE_X 127.8f
-#define OM_ARROW_LX 6.2f
-#define OM_ARROW_RX 246.2f
-#define OM_ARROW_HIT 14.0f           /* half width of an arrow's click area */
-#define OM_SLIDER_X0 54.6f
-#define OM_SLIDER_KNOB_X1 196.6f
-#define OM_SLIDER_TRACK_X1 202.9f
+
+/* Hub entries, SPEC_GUI_ART 2.5 (icon texture keys, labels, page indices). */
+static const OmHubEntry k_hub[OM_HUB_ENTRIES] = {
+    { 0xF37AF144u, 0xE76CD783u, "Audio", 0 },
+    { 0x8A006328u, 0x4204D527u, "Display", 1 },
+    { 0x4DF98FB2u, 0xD0CF6EE1u, "Gameplay", 2 },
+    { 0xD708EFEFu, 0xF760EABEu, "Player", 3 },
+};
+#define HUB_PAGE_DISPLAY 1
 
 /* ---- packages (SPEC_GUI 1.2) ------------------------------------------------------------------- */
 
 const char *om_package_name(OmContext ctx, OmScreen screen) {
     if (screen == OM_SCREEN_CUSTOMIZE) return "UI_PC_Customize_Options.fng";
     if (screen == OM_SCREEN_DISPLAY) return ctx == OM_CTX_INGAME ? "UI_PauseOptions.fng" : "UI_Options.fng";
+    if (screen == OM_SCREEN_HUB && ctx == OM_CTX_INGAME) return "UI_PauseOptionsMain.fng";
     return NULL;
 }
 uint32_t om_package_key(OmContext ctx, OmScreen screen) {
     if (screen == OM_SCREEN_CUSTOMIZE) return 0xC4ACC9A5u;
     if (screen == OM_SCREEN_DISPLAY) return ctx == OM_CTX_INGAME ? 0xAEA9078Fu : 0x551CA351u;
+    if (screen == OM_SCREEN_HUB && ctx == OM_CTX_INGAME) return 0x73F51C74u;
     return 0;
 }
 const char *om_hub_package_name(OmContext ctx) {
     return ctx == OM_CTX_INGAME ? "UI_PauseOptionsMain.fng" : "UI_OptionsMain.fng";
 }
 const char *om_dialog_package_name(void) { return "GenericDialog_SMALL.fng"; }
+int om_exit_ms(OmContext ctx, OmScreen screen) {
+    const char *n = om_package_name(ctx, screen);
+    return n ? gt_exit_complete_ms(n) : 0;
+}
+
+/* Grid anchors (centre + size), SPEC_GUI 2.3 table. */
+GlAnchors om_anchors(OmContext ctx, OmScreen screen) {
+    if (screen == OM_SCREEN_CUSTOMIZE) return gl_anchors_from_centres(-152, -120, 240, 36, 126, -122, 200, 32);
+    if (ctx == OM_CTX_INGAME) return gl_anchors_from_centres(-150.2f, -120.9f, 240, 36, 124.7f, -122.9f, 231.18f, 32);
+    return gl_anchors_from_centres(-151, -120, 240, 36, 126, -122, 216, 32);
+}
+float om_row_center_y(const OptionsMenu *m, int k) {
+    GlAnchors a = om_anchors(m->cfg.ctx, m->screen);
+    return gl_row_top(&a, k) + a.th / 2;
+}
 
 /* ---- list engine (SPEC_GUI 2.5) ----------------------------------------------------------------- */
 
@@ -132,7 +149,6 @@ void om_config_default(OmConfig *c, OmContext ctx) {
     c->ctx = ctx;
     c->cpu_mhz = 3000;           /* CPU score 4, GPU score 5: SPEC 4.5 recommendation (P = 4) */
     c->gpu_score = 5.0;
-    c->exit_ms = 140.0f;         /* frontend FadeOut figure of SPEC_GUI 2.4; the Forward script length is not specified */
 }
 
 static OmRow *add_row(OptionsMenu *m, OmRowKind kind, OmRowId id, uint32_t key, const char *label) {
@@ -182,46 +198,70 @@ static void build_customize(OptionsMenu *m) {
     }
 }
 
-static void enter_screen(OptionsMenu *m, OmScreen screen, int remembered_focus) {
+static void build_hub(OptionsMenu *m) {
+    int first = m->hub_remembered >= 1 && m->hub_remembered <= OM_HUB_ENTRIES ? m->hub_remembered - 1 : 0;
+    gc_init(&m->hub, GC_RAIL_HUB);
+    gc_set_entries(&m->hub, OM_HUB_ENTRIES, NULL);
+    gc_snap_to(&m->hub, first);                             /* first build snaps (3.2) */
+    m->hub_ptr.armed = 0;
+}
+
+static void enter_screen(OptionsMenu *m, OmScreen screen) {
     m->screen = screen;
     m->nrows = 0;
-    m->dialog_open = 0;
-    m->dialog_focus = 0;
+    memset(&m->dialog, 0, sizeof m->dialog);
     m->exiting = 0;
+    m->exit_kind = OM_EXIT_NONE;
     if (screen == OM_SCREEN_DISPLAY) build_display(m);
     else if (screen == OM_SCREEN_CUSTOMIZE) build_customize(m);
+    else if (screen == OM_SCREEN_HUB) build_hub(m);
     int sel[OM_MAX_ROWS];
     for (int i = 0; i < m->nrows; i++) sel[i] = m->rows[i].selectable;
     om_list_init(&m->list, m->nrows, sel, 0);
-    int focus = om_first_selectable(&m->list);
-    if (m->cfg.ctx == OM_CTX_INGAME && screen == OM_SCREEN_DISPLAY && remembered_focus >= 1 &&
-        remembered_focus <= m->nrows && m->rows[remembered_focus - 1].selectable)
-        focus = remembered_focus - 1;
-    om_list_init(&m->list, m->nrows, sel, focus);
-    refresh_res_text(m);
+    om_list_init(&m->list, m->nrows, sel, om_first_selectable(&m->list));   /* every screen opens on row 1 (SPEC_GUI_ART 4.7) */
+    if (m->gfx) refresh_res_text(m);
+    m->build_serial++;
 }
 
-void om_open(OptionsMenu *m, const OmConfig *cfg, StGraphics *gfx, const StGfxCaps *caps,
-             StRegStore *store, int remembered_focus) {
+static void begin(OptionsMenu *m, const OmConfig *cfg, StGraphics *gfx, const StGfxCaps *caps, StRegStore *store) {
     int apply = m->apply_requested, reinit = m->reinit_requested;   /* pending requests survive */
     int writes = m->registry_writes, status = m->last_write_status;
+    int remembered = m->hub_remembered;
+    unsigned build = m->build_serial, blink = m->blink_serial, exit = m->exit_serial, dlg = m->dialog_serial;
     memset(m, 0, sizeof *m);
     m->apply_requested = apply; m->reinit_requested = reinit;
     m->registry_writes = writes; m->last_write_status = status;
+    m->hub_remembered = remembered;
+    m->build_serial = build; m->blink_serial = blink; m->exit_serial = exit; m->dialog_serial = dlg;
     m->cfg = *cfg;
     m->gfx = gfx;
     m->caps = caps;
     m->store = store;
     m->res_shown = -1;
-    enter_screen(m, OM_SCREEN_DISPLAY, remembered_focus);
+}
+
+void om_open(OptionsMenu *m, const OmConfig *cfg, StGraphics *gfx, const StGfxCaps *caps,
+             StRegStore *store, int remembered_focus) {
+    (void)remembered_focus;      /* every path leaving the in-game Display resets the remembered row (SPEC_GUI_ART 4.7) */
+    begin(m, cfg, gfx, caps, store);
+    enter_screen(m, OM_SCREEN_DISPLAY);
+}
+void om_open_hub(OptionsMenu *m, const OmConfig *cfg, StGraphics *gfx, const StGfxCaps *caps,
+                 StRegStore *store) {
+    begin(m, cfg, gfx, caps, store);
+    m->cfg.ctx = OM_CTX_INGAME;
+    enter_screen(m, OM_SCREEN_HUB);
 }
 void om_close(OptionsMenu *m) {
     m->screen = OM_SCREEN_CLOSED;
     m->nrows = 0;
-    m->dialog_open = 0;
+    memset(&m->dialog, 0, sizeof m->dialog);
     m->exiting = 0;
+    m->exit_kind = OM_EXIT_NONE;
     m->nevents = 0;
+    m->build_serial++;
 }
+void om_reset_session(OptionsMenu *m) { m->hub_remembered = 0; }
 int om_is_open(const OptionsMenu *m) { return m->screen != OM_SCREEN_CLOSED; }
 OmScreen om_screen(const OptionsMenu *m) { return m->screen; }
 
@@ -246,7 +286,7 @@ int om_reinit_pending(const OptionsMenu *m) { return m->reinit_requested; }
 void om_notify_resolution_lowered(OptionsMenu *m) {
     /* SPEC_GUI 5.5: only the frontend Display list is rebuilt. */
     if (m->screen == OM_SCREEN_DISPLAY && m->cfg.ctx == OM_CTX_FRONTEND && !m->exiting)
-        enter_screen(m, OM_SCREEN_DISPLAY, 0);
+        enter_screen(m, OM_SCREEN_DISPLAY);
 }
 
 /* ---- queries ----------------------------------------------------------------------------------------- */
@@ -285,25 +325,30 @@ const char *om_row_value_text(const OptionsMenu *m, int i, uint32_t *key) {
     if (key) *key = k;
     return t;
 }
-int om_scrollbar_visible(const OptionsMenu *m) { return m->nrows > 1; }
+int om_scrollbar_visible(const OptionsMenu *m) { return gl_scroll_visible(m->nrows); }
 float om_scroll_tab(const OptionsMenu *m) {
     return m->nrows > 1 ? (float)m->list.focus / (float)(m->nrows - 1) : 0.0f;
 }
-const char *om_title(const OptionsMenu *m, uint32_t *key) {
+const char *om_header(const OmContext ctx, OmScreen screen, int which, uint32_t *key) {
     uint32_t k = 0;
     const char *t = NULL;
-    if (m->screen == OM_SCREEN_CUSTOMIZE) { k = OM_KEY_TITLE_CUSTOMIZE; t = "Customize Display Settings"; }
-    else if (m->screen == OM_SCREEN_DISPLAY) {
-        if (m->cfg.ctx == OM_CTX_INGAME) { k = OM_KEY_TITLE_PAUSE_DISPLAY; t = "DISPLAY"; }
-        else { k = OM_KEY_TITLE_DISPLAY; t = "Display"; }
+    if (screen == OM_SCREEN_CUSTOMIZE && which == 0) { k = OM_KEY_TITLE_CUSTOMIZE; t = "Customize Display Settings"; }
+    else if (screen == OM_SCREEN_HUB && which == 0) { k = OM_KEY_TITLE_PAUSE; t = "PAUSE OPTIONS"; }
+    else if (screen == OM_SCREEN_DISPLAY) {
+        if (ctx == OM_CTX_INGAME) {
+            if (which == 0) { k = OM_KEY_TITLE_PAUSE; t = "PAUSE OPTIONS"; }
+            else if (which == 1) { k = OM_KEY_TITLE_PAUSE_DISPLAY; t = "DISPLAY"; }
+        } else if (which == 0) { k = OM_KEY_TITLE_DISPLAY; t = "Display"; }
     }
     if (key) *key = k;
     return t;
 }
-int om_dialog_is_open(const OptionsMenu *m) { return m->dialog_open; }
-int om_dialog_focus(const OptionsMenu *m) { return m->dialog_focus; }
+int om_dialog_is_open(const OptionsMenu *m) { return m->dialog.open; }
+int om_dialog_focus(const OptionsMenu *m) { return m->dialog.focus; }
 uint32_t om_dialog_button_key(int i) { return i == 0 ? OM_KEY_YES : OM_KEY_NO; }
-float om_row_center_y(int k) { return OM_ROW0_Y + OM_ROW_PITCH * (float)k; }
+const OmHubEntry *om_hub_entry(int i) { return i >= 0 && i < OM_HUB_ENTRIES ? &k_hub[i] : NULL; }
+int om_hub_focus(const OptionsMenu *m) { return m->hub.cur; }
+int om_hub_remembered(const OptionsMenu *m) { return m->hub_remembered; }
 
 /* ---- input ----------------------------------------------------------------------------------------------- */
 
@@ -313,11 +358,55 @@ static void changed(OptionsMenu *m, const OmRow *r) {
     refresh_res_text(m);
 }
 
-static void begin_exit(OptionsMenu *m, OmScreen to);
+static void blink(OptionsMenu *m, int dir) { m->blink_dir = dir; m->blink_serial++; }
+
+static void begin_exit(OptionsMenu *m, OmExit kind) {
+    if (m->exiting) return;                                 /* a second Back while exiting is ignored */
+    m->exiting = 1;
+    m->exit_kind = kind;
+    m->exit_left_ms = (float)om_exit_ms(m->cfg.ctx, m->screen);
+    m->exit_serial++;
+}
+
+static void finish_exit(OptionsMenu *m);
+
+static void write_registry(OptionsMenu *m) {
+    if (!m->store) return;
+    m->last_write_status = st_gfx_save(m->store, m->gfx);
+    m->registry_writes++;
+}
+
+static void finish_exit(OptionsMenu *m) {
+    OmExit kind = m->exit_kind;
+    m->exiting = 0;
+    m->exit_kind = OM_EXIT_NONE;
+    switch (kind) {
+    case OM_EXIT_TO_DISPLAY: enter_screen(m, OM_SCREEN_DISPLAY); break;     /* fresh build, focus on row 1 */
+    case OM_EXIT_TO_CUSTOMIZE: enter_screen(m, OM_SCREEN_CUSTOMIZE); break;
+    case OM_EXIT_LEAVE_DISPLAY:                              /* SPEC_GUI 5.1: write, then the hub */
+        write_registry(m);
+        if (m->cfg.ctx == OM_CTX_INGAME) enter_screen(m, OM_SCREEN_HUB);   /* UI_PauseOptionsMain.fng */
+        else om_close(m);
+        push_event(m, OM_EV_LEAVE_TO_HUB);
+        break;
+    case OM_EXIT_TO_PAUSE:                                   /* hub Back: forget the remembered entry */
+        m->hub_remembered = 0;
+        om_close(m);
+        push_event(m, OM_EV_LEAVE_TO_PAUSE);
+        break;
+    case OM_EXIT_RESUME:                                     /* Start: nothing is written (SPEC_GUI 5.2) */
+        m->hub_remembered = 0;
+        om_close(m);
+        push_event(m, OM_EV_RESUME_GAME);
+        break;
+    default: break;
+    }
+}
 
 static void row_adjust(OptionsMenu *m, int dir) {
     const OmRow *r = &m->rows[m->list.focus];
     StGraphics *g = m->gfx;
+    if (r->kind == OM_ROW_CHOICE || r->kind == OM_ROW_SLIDER) blink(m, dir);   /* the arrow blinks on any press */
     if (r->kind == OM_ROW_CHOICE && r->id == OM_ID_RESOLUTION) {
         int res = g->v[ST_GFX_RESOLUTION];
         if (res >= 0 && res <= 5 && m->caps && st_resolution_step(g, m->caps, dir)) changed(m, r);
@@ -333,42 +422,23 @@ static void row_adjust(OptionsMenu *m, int dir) {
     }
 }
 
+static void open_defaults_dialog(OptionsMenu *m) {
+    GdSpec spec;
+    gd_spec(&spec, GD_DEFAULTS, NULL);
+    gd_open(&m->dialog, &spec);                              /* focus on the second button (SPEC_GUI_ART 6) */
+    m->dialog_serial++;
+}
+
 static void row_accept(OptionsMenu *m) {
     const OmRow *r = &m->rows[m->list.focus];
     if (r->kind == OM_ROW_CHOICE && r->id == OM_ID_OPTION) {
         m->gfx->v[r->gfx] = m->gfx->v[r->gfx] ? 0 : 1;
         changed(m, r);
     } else if (r->id == OM_ID_CUSTOMIZE) {
-        begin_exit(m, OM_SCREEN_CUSTOMIZE);
+        begin_exit(m, OM_EXIT_TO_CUSTOMIZE);
     } else if (r->id == OM_ID_DEFAULTS) {
-        m->dialog_open = 1;
-        m->dialog_focus = 0;                                /* SPEC_GUI 6: first button (Yes) */
+        open_defaults_dialog(m);
     }
-}
-
-static void write_registry(OptionsMenu *m) {
-    if (!m->store) return;
-    m->last_write_status = st_gfx_save(m->store, m->gfx);
-    m->registry_writes++;
-}
-
-static void finish_exit(OptionsMenu *m) {
-    OmScreen to = m->exit_to;
-    m->exiting = 0;
-    if (to == OM_SCREEN_CLOSED) {                           /* SPEC_GUI 5.1 */
-        write_registry(m);
-        om_close(m);
-        push_event(m, OM_EV_LEAVE_TO_HUB);
-    } else {
-        enter_screen(m, to, 0);                             /* fresh build, focus on the first selectable row */
-    }
-}
-static void begin_exit(OptionsMenu *m, OmScreen to) {
-    if (m->exiting) return;                                 /* a second Back while exiting is ignored */
-    m->exiting = 1;
-    m->exit_to = to;
-    m->exit_left_ms = m->cfg.exit_ms;
-    if (m->exit_left_ms <= 0) finish_exit(m);
 }
 
 static void defaults_yes(OptionsMenu *m) {
@@ -376,25 +446,49 @@ static void defaults_yes(OptionsMenu *m) {
     if (m->caps) st_gfx_autodetect(m->gfx, m->caps, level, m->cfg.gpu_score);
     m->apply_requested = 1;
     m->reinit_requested = 1;
-    enter_screen(m, OM_SCREEN_DISPLAY, 0);                  /* SPEC_GUI 5.6: rebuild, focus row 1 */
+    enter_screen(m, OM_SCREEN_DISPLAY);                      /* SPEC_GUI 5.6: rebuild, focus row 1 */
 }
 
-static void dialog_input(OptionsMenu *m, OmInput in) {
+static GdInput dialog_input_of(OmInput in) {
     switch (in) {
-    case OM_IN_LEFT:  m->dialog_focus = 0; break;           /* wrapping unknown (SPEC_GUI 11.5): clamped */
-    case OM_IN_RIGHT: m->dialog_focus = 1; break;
-    case OM_IN_ACCEPT:
-        m->dialog_open = 0;
-        if (m->dialog_focus == 0) defaults_yes(m);
+    case OM_IN_UP: return GD_IN_UP;
+    case OM_IN_DOWN: return GD_IN_DOWN;
+    case OM_IN_LEFT: return GD_IN_LEFT;
+    case OM_IN_RIGHT: return GD_IN_RIGHT;
+    case OM_IN_ACCEPT: return GD_IN_ACCEPT;
+    case OM_IN_BACK: return GD_IN_BACK;
+    case OM_IN_START: return GD_IN_START;
+    default: return GD_IN_NONE;
+    }
+}
+
+static void hub_activate(OptionsMenu *m) {
+    int page = k_hub[m->hub.cur].page;
+    m->page = page;
+    if (page == HUB_PAGE_DISPLAY) begin_exit(m, OM_EXIT_TO_DISPLAY);
+    /* Audio, Gameplay and Player pages are not part of this project's scope: activation does nothing. */
+}
+
+static void hub_input(OptionsMenu *m, OmInput in) {
+    switch (in) {
+    case OM_IN_LEFT: case OM_IN_RIGHT:
+        if (gc_step(&m->hub, in == OM_IN_LEFT ? -1 : 1)) {
+            m->hub_remembered = m->hub.cur + 1;              /* updated on every Left/Right move (SPEC_GUI_ART 2.5) */
+            blink(m, in == OM_IN_LEFT ? -1 : 1);
+        }
         break;
-    case OM_IN_BACK: m->dialog_open = 0; break;
-    default: break;                                          /* Up/Down/Start never reach the dialog */
+    case OM_IN_ACCEPT: hub_activate(m); break;
+    case OM_IN_BACK: begin_exit(m, OM_EXIT_TO_PAUSE); break;
+    case OM_IN_START: begin_exit(m, OM_EXIT_RESUME); break;
+    default: break;                                          /* Up/Down are ignored */
     }
 }
 
 void om_input(OptionsMenu *m, OmInput in) {
-    if (!om_is_open(m) || m->exiting || m->nrows == 0) return;
-    if (m->dialog_open) { dialog_input(m, in); return; }
+    if (!om_is_open(m) || m->exiting) return;
+    if (m->dialog.open) { gd_input(&m->dialog, dialog_input_of(in)); return; }
+    if (m->screen == OM_SCREEN_HUB) { hub_input(m, in); return; }
+    if (m->nrows == 0) return;
     switch (in) {
     case OM_IN_UP:    om_list_move(&m->list, -1); break;
     case OM_IN_DOWN:  om_list_move(&m->list, 1); break;
@@ -402,145 +496,60 @@ void om_input(OptionsMenu *m, OmInput in) {
     case OM_IN_RIGHT: row_adjust(m, 1); break;
     case OM_IN_ACCEPT: row_accept(m); break;
     case OM_IN_BACK:
-        begin_exit(m, m->screen == OM_SCREEN_DISPLAY ? OM_SCREEN_CLOSED : OM_SCREEN_DISPLAY);
+        begin_exit(m, m->screen == OM_SCREEN_DISPLAY ? OM_EXIT_LEAVE_DISPLAY : OM_EXIT_TO_DISPLAY);
         break;
     case OM_IN_START:                                       /* SPEC_GUI 5.2: in-game Display only, no write */
-        if (m->cfg.ctx == OM_CTX_INGAME && m->screen == OM_SCREEN_DISPLAY) {
-            om_close(m);
-            push_event(m, OM_EV_RESUME_GAME);
-        }
+        if (m->cfg.ctx == OM_CTX_INGAME && m->screen == OM_SCREEN_DISPLAY) begin_exit(m, OM_EXIT_RESUME);
         break;
     default: break;
     }
 }
 
+static int in_rect(float x, float y, float x0, float y0, float w, float h) {
+    return x >= x0 && x <= x0 + w && y >= y0 && y <= y0 + h;    /* edges inclusive (SPEC_GUI_ART 4.6) */
+}
+
 void om_pointer_click(OptionsMenu *m, float x, float y) {
-    if (!om_is_open(m) || m->exiting || m->dialog_open) return;      /* the dialog is modal */
+    if (!om_is_open(m) || m->exiting) return;
+    if (m->dialog.open) { gd_pointer_click(&m->dialog, x, y); return; }   /* the dialog is modal */
+    if (m->screen == OM_SCREEN_HUB) {
+        GcPtAction a = gc_pointer_press(&m->hub, &m->hub_ptr, x, y);
+        if (a == GC_PT_LEFT) hub_input(m, OM_IN_LEFT);
+        else if (a == GC_PT_RIGHT) hub_input(m, OM_IN_RIGHT);
+        else if (gc_pointer_release(&m->hub, &m->hub_ptr, x, y) == GC_PT_ACTIVATE) hub_activate(m);
+        return;
+    }
+    GlAnchors a = om_anchors(m->cfg.ctx, m->screen);
     for (int k = 0; k < OM_VISIBLE_ROWS; k++) {
         int i = m->list.top + k;
         if (i >= m->nrows) break;
-        float cy = om_row_center_y(k);
-        if (y < cy - OM_ROW_PITCH / 2 || y >= cy + OM_ROW_PITCH / 2) continue;
         const OmRow *r = &m->rows[i];
-        if (r->kind == OM_ROW_BUTTON) {                      /* label click activates (SPEC_GUI 11.10, inferred) */
-            if (x >= OM_BACK_X0 && x <= OM_BACK_X1) { m->list.focus = i; row_accept(m); }
-        } else if (i == m->list.focus && (r->kind == OM_ROW_CHOICE || r->kind == OM_ROW_SLIDER)) {
-            if (x >= OM_ARROW_LX - OM_ARROW_HIT && x <= OM_ARROW_LX + OM_ARROW_HIT) row_adjust(m, -1);
-            else if (x >= OM_ARROW_RX - OM_ARROW_HIT && x <= OM_ARROW_RX + OM_ARROW_HIT) row_adjust(m, 1);
-            else if (r->kind == OM_ROW_CHOICE && x > OM_ARROW_LX + OM_ARROW_HIT && x < OM_ARROW_RX - OM_ARROW_HIT)
-                row_adjust(m, 1);                            /* value text acts as Right */
+        float ry = gl_row_top(&a, k);
+        if (r->kind == OM_ROW_SPACER) continue;
+        if (r->kind == OM_ROW_BUTTON) {                      /* a hit on the name object activates it (4.6) */
+            if (in_rect(x, y, a.tx, ry, a.tw, a.th)) { m->list.focus = i; row_accept(m); return; }
+        } else if (i == m->list.focus) {                     /* arrows of the focused row; left tested first */
+            GlPt l = gl_left_arrow_tl(&a, k, OM_ARROW_SIZE), rt = gl_right_arrow_tl(&a, k);
+            if (in_rect(x, y, l.x, l.y, OM_ARROW_SIZE, OM_ARROW_SIZE)) { row_adjust(m, -1); return; }
+            if (in_rect(x, y, rt.x, rt.y, OM_ARROW_SIZE, OM_ARROW_SIZE)) { row_adjust(m, 1); return; }
+            if (r->kind == OM_ROW_CHOICE && in_rect(x, y, a.dx, gl_data_top(&a, k), a.dw, a.dh)) { row_adjust(m, 1); return; }
         }
-        return;
     }
 }
 
 void om_update(OptionsMenu *m, float seconds) {
-    if (!om_is_open(m) || !m->exiting) return;
+    if (!om_is_open(m)) return;
+    if (m->screen == OM_SCREEN_HUB) gc_update(&m->hub, seconds);
+    if (m->dialog.open) {
+        gd_update(&m->dialog, seconds);
+        GdResult res = gd_poll(&m->dialog);
+        if (res != GD_RES_NONE) {
+            memset(&m->dialog, 0, sizeof m->dialog);
+            m->dialog_serial++;                              /* the screen undims */
+            if (res == GD_RES_FIRST) defaults_yes(m);
+        }
+    }
+    if (!m->exiting) return;
     m->exit_left_ms -= seconds > 0 ? seconds * 1000.0f : 0.0f;
     if (m->exit_left_ms <= 0) finish_exit(m);
-}
-
-/* ---- drawing -------------------------------------------------------------------------------------------- */
-
-static void draw_arrow(UgCanvas *cv, float cx, float cy, int dir, UgColor c) {
-    float s = 8.0f;
-    ug_cv_tri(cv, cx + dir * s, cy, cx - dir * s * 0.6f, cy - s, cx - dir * s * 0.6f, cy + s, c);
-}
-static void draw_vtri(UgCanvas *cv, float cx, float cy, int dir, UgColor c) {   /* dir -1 up, +1 down */
-    float s = 6.0f;
-    ug_cv_tri(cv, cx, cy + dir * s, cx - s, cy - dir * s * 0.6f, cx + s, cy - dir * s * 0.6f, c);
-}
-
-void options_menu_draw(const OptionsMenu *m, UgCanvas *cv) {
-    if (!om_is_open(m)) return;
-    int ingame = m->cfg.ctx == OM_CTX_INGAME;
-    UgColor lime = UG_ACCENT, dark = UG_TEXT_DARK, white = UG_WHITE;
-    UgColor text = ingame ? lime : dark;
-    float scale = ingame ? 0.75f : 0.7f;
-
-    ug_cv_fill(cv, (UgRect){-320, -240, 640, 480}, UG_RGBA(0, 0, 0, 120), 0);          /* dim the scene */
-    if (ingame) {
-        ug_cv_fill(cv, UG_RECT_C(1, 4, 562, 436), UG_RGBA(0, 0, 0, 235), 14);
-        ug_cv_fill(cv, UG_RECT_C(1, 9, 548, 362), UG_RGBA(255, 255, 255, 25), 8);
-        ug_cv_outline(cv, UG_RECT_C(1, 4, 562, 436), UG_BORDER, 14, 2);
-    } else {
-        ug_cv_fill(cv, UG_RECT_C(-1, -17, 562, 412), UG_RGBA(0, 0, 0, 220), 14);
-        ug_cv_fill(cv, UG_RECT_C(-1, 1, 548, 364), UG_RGBA(235, 235, 235, 200), 8);
-    }
-
-    /* title (SPEC_GUI 3.2, 3.3) */
-    uint32_t tk;
-    const char *title = om_title(m, &tk);
-    if (ingame && m->screen == OM_SCREEN_DISPLAY) {
-        ug_text_draw(cv, "PAUSE OPTIONS", -287.7f, -208.3f, 0.75f, lime, UG_J_VCENTER, 0, 0, UG_GLYPHS_KEYS);
-        ug_text_draw(cv, title, 288.3f, -208.3f, 0.75f, lime, UG_J_RIGHT | UG_J_VCENTER, 0, 0, UG_GLYPHS_KEYS);
-    } else if (title) {
-        ug_text_draw(cv, title, -289.7f, ingame ? -208.3f : -220.0f, ingame ? 0.75f : 0.8f, lime,
-                     UG_J_VCENTER, 0, 0, UG_GLYPHS_KEYS);
-    }
-
-    /* rows; they dim behind the confirmation dialog */
-    ug_cv_push(cv);
-    if (m->dialog_open) ug_cv_mul_alpha(cv, 0.4f);
-    for (int k = 0; k < OM_VISIBLE_ROWS; k++) {
-        int i = m->list.top + k;
-        if (i >= m->nrows) break;
-        const OmRow *r = &m->rows[i];
-        if (r->kind == OM_ROW_SPACER) continue;
-        float cy = om_row_center_y(k);
-        int focused = i == m->list.focus;
-        UgColor c = text;
-        if (focused) {
-            if (!ingame) {
-                ug_cv_fill(cv, (UgRect){OM_BACK_X0, cy - 17.5f, OM_BACK_X1 - OM_BACK_X0, 35.0f}, UG_RGBA(65, 65, 65, 200), 4);
-                c = lime;
-            } else {
-                c = white;                                   /* no backing in game (SPEC_GUI 2.1) */
-            }
-        }
-        ug_text_draw(cv, r->label, OM_LABEL_X, cy, scale, c, UG_J_VCENTER, 0, 0, UG_GLYPHS_KEYS);
-        if (r->kind == OM_ROW_CHOICE) {
-            const char *vt = om_row_value_text(m, i, NULL);
-            if (vt) ug_text_draw(cv, vt, OM_VALUE_X, cy, scale, c, UG_J_CENTER | UG_J_VCENTER, 0, 0, UG_GLYPHS_KEYS);
-        } else if (r->kind == OM_ROW_SLIDER) {
-            float f = om_row_fill(m, i), kx = OM_SLIDER_X0 + f * (OM_SLIDER_KNOB_X1 - OM_SLIDER_X0);
-            ug_cv_fill(cv, (UgRect){OM_SLIDER_X0, cy - 3.5f, OM_SLIDER_TRACK_X1 - OM_SLIDER_X0, 7.0f}, UG_RGBA(30, 30, 30, 200), 3);
-            if (kx > OM_SLIDER_X0) ug_cv_fill(cv, (UgRect){OM_SLIDER_X0, cy - 3.5f, kx - OM_SLIDER_X0, 7.0f}, UG_RGBA(98, 178, 34, 255), 3);
-            ug_cv_disc(cv, kx, cy, 6.0f, UG_RGBA(230, 230, 230, 255));
-        }
-        if (focused && (r->kind == OM_ROW_CHOICE || r->kind == OM_ROW_SLIDER)) {   /* arrows on the focused row only */
-            UgColor a = UG_RGBA(255, 255, 255, 150);
-            draw_arrow(cv, OM_ARROW_LX, cy, -1, a);
-            draw_arrow(cv, OM_ARROW_RX, cy, 1, a);
-        }
-    }
-    ug_cv_pop(cv);
-
-    /* scrollbar: shown whenever there is more than one row; the tab follows the focused row (2.6) */
-    if (om_scrollbar_visible(m)) {
-        float sx = ingame ? 275.0f : 273.0f, sy = ingame ? 10.0f : 2.0f;
-        float top = sy - 141.0f + 8.0f, span = 282.0f - 16.0f;
-        ug_cv_fill(cv, UG_RECT_C(sx, sy, 8, 282), UG_RGBA(20, 20, 20, 170), 3);
-        ug_cv_fill(cv, UG_RECT_C(sx, top + om_scroll_tab(m) * span, 12, 16), ingame ? lime : UG_RGBA(98, 178, 34, 255), 4);
-        draw_vtri(cv, sx, ingame ? -154.0f : -164.0f, -1, text);
-        draw_vtri(cv, sx, ingame ? 175.0f : 167.0f, 1, text);
-    }
-
-    /* hint line (SPEC_GUI 7: the PC help bar proper is the host's) */
-    ug_text_draw(cv, ingame ? "Up/Down: Move   Left/Right: Change   Enter: Select   Esc: Back   Start: Resume"
-                            : "Up/Down: Move   Left/Right: Change   Enter: Select   Esc: Back",
-                 0, ingame ? 205.0f : 196.0f, 0.4f, ingame ? lime : dark, UG_J_CENTER | UG_J_VCENTER, 0, 0, UG_GLYPHS_KEYS);
-
-    /* confirmation dialog (SPEC_GUI 6): Yes at x -150, No at x +150, first button focused */
-    if (m->dialog_open) {
-        ug_cv_fill(cv, UG_RECT_C(0, 0, 460, 130), UG_RGBA(0, 0, 0, 245), 12);
-        ug_cv_outline(cv, UG_RECT_C(0, 0, 460, 130), UG_BORDER, 12, 2);
-        ug_text_draw(cv, "Reset to default settings?", 0, -28.0f, 0.7f, lime, UG_J_CENTER | UG_J_VCENTER, 0, 0, UG_GLYPHS_KEYS);
-        for (int b = 0; b < 2; b++) {
-            float bx = b ? 150.0f : -150.0f;
-            int sel = b == m->dialog_focus;
-            ug_cv_fill(cv, UG_RECT_C(bx, 28, 130, 34), sel ? UG_RGBA(202, 244, 138, 230) : UG_RGBA(60, 60, 60, 230), 8);
-            ug_text_draw(cv, b ? "No" : "Yes", bx, 28, 0.7f, sel ? UG_BLACK : lime, UG_J_CENTER | UG_J_VCENTER, 0, 0, UG_GLYPHS_KEYS);
-        }
-    }
 }
