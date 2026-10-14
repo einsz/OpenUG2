@@ -1,0 +1,202 @@
+{
+  "provenance": "Freshly authored demo requirements; no original runtime capture",
+  "cases": [
+    {
+      "id": "F-1",
+      "input": {
+        "source": "complete",
+        "profile": "ps2",
+        "action_map": {}
+      },
+      "expected": {
+        "available_keys": 19,
+        "gallery_visible": true,
+        "action_slots": "unbound"
+      }
+    },
+    {
+      "id": "F-2",
+      "input": {
+        "source": "complete",
+        "profile": "xbox",
+        "action_map": {}
+      },
+      "expected": {
+        "base_keys": 23,
+        "localized_keys": 24,
+        "languages": {
+          "french": 8,
+          "italian": 8,
+          "swedish": 8
+        },
+        "all_keys_reachable": true
+      }
+    },
+    {
+      "id": "F-3",
+      "input": {
+        "source": "complete",
+        "profile": "ps2",
+        "action_map": {
+          "Accept": "e795717d",
+          "Back": "d9a22505"
+        }
+      },
+      "expected": {
+        "visible_slots": [
+          "Accept",
+          "Back"
+        ],
+        "family": "ps2",
+        "single_console_strip": true
+      }
+    },
+    {
+      "id": "F-4",
+      "input": {
+        "source": "complete",
+        "profile": "xbox",
+        "action_map": {
+          "Accept": "8522e0a0",
+          "Back": "8522e0a1"
+        }
+      },
+      "expected": {
+        "visible_slots": [
+          "Accept",
+          "Back"
+        ],
+        "family": "xbox",
+        "single_console_strip": true
+      }
+    },
+    {
+      "id": "F-5",
+      "input": {
+        "source": "absent",
+        "profile": "ps2"
+      },
+      "expected": {
+        "source": "unavailable",
+        "glyphs": 0,
+        "fallback_art": false
+      }
+    },
+    {
+      "id": "F-6",
+      "input": {
+        "source": "complete_except_missing_ps2_cross",
+        "profile": "ps2",
+        "action_map": {
+          "Accept": "e795717d",
+          "Back": "d9a22505"
+        }
+      },
+      "expected": {
+        "available_keys": 18,
+        "Accept": "missing-file",
+        "Back": "visible",
+        "family_available": true
+      }
+    },
+    {
+      "id": "F-7",
+      "input": {
+        "source": "complete_except_corrupted_xbox_a",
+        "profile": "xbox",
+        "action_map": {
+          "Accept": "8522e0a0",
+          "Back": "8522e0a1"
+        }
+      },
+      "expected": {
+        "available_keys": 46,
+        "Accept": "rejected-with-specific-reason",
+        "Back": "visible",
+        "family_available": true
+      }
+    },
+    {
+      "id": "F-8",
+      "input": {
+        "source": "complete",
+        "profile": "ps2",
+        "action_map": {
+          "Accept": "8522e0a0"
+        }
+      },
+      "expected": {
+        "Accept": "unavailable-key",
+        "other_family_substitution": false,
+        "available_keys": 19
+      }
+    },
+    {
+      "id": "F-9",
+      "input": {
+        "source": "complete",
+        "explicit_profile": null
+      },
+      "expected": {
+        "profile": "pc",
+        "pc_pills": "text-only"
+      }
+    },
+    {
+      "id": "F-10",
+      "input": {
+        "source": "complete_without_manifest_readme_previews",
+        "profile": "xbox"
+      },
+      "expected": {
+        "available_keys": 47
+      }
+    },
+    {
+      "id": "F-11",
+      "input": {
+        "source": "complete_plus_unindexed_png_and_contact_sheet",
+        "profile": "ps2"
+      },
+      "expected": {
+        "available_keys": 19,
+        "extra_files_ignored": true
+      }
+    },
+    {
+      "id": "F-12",
+      "input": {
+        "source": "complete_except_indexed_file_symlink_outside_root",
+        "profile": "ps2"
+      },
+      "expected": {
+        "escaped_file": "rejected",
+        "outside_file_read": false,
+        "other_valid_records": "available"
+      }
+    },
+    {
+      "id": "F-13",
+      "input": {
+        "source": "complete",
+        "index_mutation": "duplicate_family_key"
+      },
+      "expected": {
+        "status": "index-configuration-failure",
+        "ambiguous_file_selected": false
+      }
+    },
+    {
+      "id": "F-14",
+      "input": {
+        "source": "complete_except_requested_png_wrong_dimensions_or_unsupported_type",
+        "profile": "xbox"
+      },
+      "expected": {
+        "requested_record": "rejected-with-specific-reason",
+        "other_valid_records": "available",
+        "unbounded_allocation": false
+      }
+    }
+  ]
+}

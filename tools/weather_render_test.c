@@ -5,6 +5,7 @@
 #include <string.h>
 #include "render.h"
 #include "rhi_gl.h"
+#include "legacy_draw.h"
 
 static RainVertex drops[RAIN_MAX_DROPS*6],again[RAIN_MAX_DROPS*6];
 static float verts[]={-100,-100,0,0,0, 100,-100,0,1,0,
@@ -396,7 +397,7 @@ int main(void) {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION,1);
     SDL_Window *win=SDL_CreateWindow("weather test",0,0,64,64,SDL_WINDOW_OPENGL|SDL_WINDOW_HIDDEN);
     assert(win);SDL_GLContext ctx=SDL_GL_CreateContext(win);assert(ctx);
-    RProg r=render_program();GLint linked=0;glGetProgramiv(r.prog,GL_LINK_STATUS,&linked);assert(linked);
+    RProg r=render_program();glUseProgram(r.prog);GLint linked=0;glGetProgramiv(r.prog,GL_LINK_STATUS,&linked);assert(linked);
     N2Mesh meshes[2]={{0},{0}};
     for(int i=0;i<2;i++){meshes[i].verts=verts;meshes[i].idx=indices;meshes[i].nverts=4;meshes[i].nidx=6;}
     meshes[0].cat=N2_ROAD;meshes[1].cat=N2_OTHER;

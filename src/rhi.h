@@ -76,6 +76,7 @@ typedef struct RhiCaps {
     int32_t    max_viewport[2];  /* largest main target / viewport, pixels */
     float      max_anisotropy;   /* 1.0 = anisotropic filtering unavailable */
     uint8_t    tex_bc1, tex_bc2, tex_bc3;  /* S3TC DXT1/3/5 uploads supported */
+    uint8_t    wireframe;        /* rhi_cmd_set_wireframe works (debug views) */
 } RhiCaps;
 
 const RhiCaps *rhi_caps(void);   /* valid after rhi_device_create */
@@ -419,6 +420,10 @@ void      rhi_cmd_end_pass(void);
  * open frame; RHI_ERR_UNSUPPORTED if the backend cannot copy it (GLES2: depth). */
 RhiResult rhi_cmd_copy_main_to_texture(RhiTexture texture, int32_t x, int32_t y,
                                        int32_t w, int32_t h);
+
+/* Debug views: draw triangles as their edges, whatever pipeline is bound,
+ * until switched off again. RHI_ERR_UNSUPPORTED without caps.wireframe. */
+RhiResult rhi_cmd_set_wireframe(int on);
 
 #ifdef __cplusplus
 }

@@ -1,6 +1,5 @@
 /* world_mesh.c — see world_mesh.h. Pure C99, GL 2.1, no VAO. */
 #include "world_mesh.h"
-#include "rhi_gl.h"   /* GL names behind buffer handles for the draw code */
 #include "generated_world_debug_shaders.h"   /* make-embedded shader byte arrays */
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,60 +21,62 @@ WorldMeshBatch upload_world_mesh_to_gpu(const BatchedVertex *verts, uint32_t vco
     b.ibo = rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_INDEX, RHI_UPDATE_STATIC,
                                                 (size_t)icount * sizeof(uint16_t), indices});
 
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     return b;   /* GL 2.1: no VAO, so attribute pointers are set at draw time */
 }
 
+static const RhiParamField world_debug_params_fields[] = {
+    {"u_MVP", RHI_PARAM_MAT4, offsetof(WorldDebugParams, u_MVP), 1},
+    {"u_DebugMode", RHI_PARAM_INT, offsetof(WorldDebugParams, u_DebugMode), 1},
+};
+const RhiParamLayout world_debug_params_layout = {
+    world_debug_params_fields,
+    (uint32_t)(sizeof world_debug_params_fields / sizeof world_debug_params_fields[0]),
+    (uint32_t)sizeof(WorldDebugParams), "WorldDebugParams"
+};
+
+/* BatchedVertex in shader attribute order (a_Position, a_Normal, a_UV0,
+   a_Color); depth test LEQUAL with write, no blend, two-sided. */
+static RhiPipeline world_map_pipeline(RhiShader shader) {
+    static RhiShader cached_shader;
+    static RhiPipeline cached;
+    if (cached.id && cached_shader.id == shader.id) return cached;
+    RhiPipelineDesc d;
+    rhi_pipeline_desc_init(&d);
+    d.shader = shader;
+    d.vertex.attribs[0] = (RhiVertexAttrib){ 0, 0, (uint32_t)offsetof(BatchedVertex, pos),    RHI_VERTEX_FLOAT3 };
+    d.vertex.attribs[1] = (RhiVertexAttrib){ 1, 0, (uint32_t)offsetof(BatchedVertex, normal), RHI_VERTEX_FLOAT3 };
+    d.vertex.attribs[2] = (RhiVertexAttrib){ 2, 0, (uint32_t)offsetof(BatchedVertex, uv),     RHI_VERTEX_FLOAT2 };
+    d.vertex.attribs[3] = (RhiVertexAttrib){ 3, 0, (uint32_t)offsetof(BatchedVertex, col),    RHI_VERTEX_UNORM8X4 };
+    d.vertex.attrib_count = 4;
+    d.vertex.stride[0] = (uint32_t)sizeof(BatchedVertex);   /* 36 B */
+    d.depth_test = 1;
+    d.depth_write = 1;
+    d.depth_compare = RHI_COMPARE_LESS_EQUAL;
+    cached = rhi_pipeline_create(&d);
+    cached_shader = shader;
+    return cached;
+}
+
 void render_world_map(const WorldMeshBatch *batches, uint32_t n,
-                      GLuint program, const float *mvp16, int debug_mode) {
-    if (!batches || !program) return;
-    glUseProgram(program);
-
-    GLint locMVP  = glGetUniformLocation(program, "u_MVP");
-    GLint locMode = glGetUniformLocation(program, "u_DebugMode");
-    if (locMVP  >= 0 && mvp16) glUniformMatrix4fv(locMVP, 1, GL_FALSE, mvp16);
-    if (locMode >= 0)         glUniform1i(locMode, debug_mode);
-
-    /* Attribute locations (bound to 0..3 by world_debug_program_load; queried so
-       an externally-built program still works). Fetched once, not per batch. */
-    GLint aPos = glGetAttribLocation(program, "a_Position");
-    GLint aNor = glGetAttribLocation(program, "a_Normal");
-    GLint aUV  = glGetAttribLocation(program, "a_UV0");
-    GLint aCol = glGetAttribLocation(program, "a_Color");
-    const GLsizei stride = (GLsizei)sizeof(BatchedVertex);   /* 36 B */
-
-#ifndef N2_GLES
-    if (debug_mode == 2) glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);   /* desktop only */
-#endif
+                      RhiShader shader, const float *mvp16, int debug_mode) {
+    WorldDebugParams *p = (WorldDebugParams *)rhi_shader_params(shader, 0);
+    if (!batches || !p) return;
+    RhiPipeline pipeline = world_map_pipeline(shader);
+    if (!pipeline.id) return;
+    if (mvp16) memcpy(p->u_MVP, mvp16, sizeof p->u_MVP);
+    p->u_DebugMode = debug_mode;
+    rhi_cmd_bind_pipeline(pipeline);
+    int wire = debug_mode == 2 && rhi_cmd_set_wireframe(1) == RHI_OK;
 
     for (uint32_t k = 0; k < n; k++) {
         const WorldMeshBatch *b = &batches[k];
         if (!b->vbo.id || !b->index_count) continue;   /* skip empty/disabled sections */
-
-        glBindBuffer(GL_ARRAY_BUFFER, rhi_gl_buffer_name(b->vbo));
-        if (aPos >= 0) { glEnableVertexAttribArray((GLuint)aPos);
-            glVertexAttribPointer((GLuint)aPos, 3, GL_FLOAT, GL_FALSE, stride,
-                                  (const void *)offsetof(BatchedVertex, pos)); }
-        if (aNor >= 0) { glEnableVertexAttribArray((GLuint)aNor);
-            glVertexAttribPointer((GLuint)aNor, 3, GL_FLOAT, GL_FALSE, stride,
-                                  (const void *)offsetof(BatchedVertex, normal)); }
-        if (aUV  >= 0) { glEnableVertexAttribArray((GLuint)aUV);
-            glVertexAttribPointer((GLuint)aUV, 2, GL_FLOAT, GL_FALSE, stride,
-                                  (const void *)offsetof(BatchedVertex, uv)); }
-        if (aCol >= 0) { glEnableVertexAttribArray((GLuint)aCol);
-            glVertexAttribPointer((GLuint)aCol, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride,
-                                  (const void *)offsetof(BatchedVertex, col)); }
-
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, rhi_gl_buffer_name(b->ibo));
-        glDrawElements(GL_TRIANGLES, (GLsizei)b->index_count, GL_UNSIGNED_SHORT, 0);
+        rhi_cmd_bind_vertex_buffer(0, b->vbo, 0);
+        rhi_cmd_bind_index_buffer(b->ibo);
+        rhi_cmd_draw_indexed(b->index_count, 0);
     }
 
-#ifndef N2_GLES
-    if (debug_mode == 2) glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-#endif
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    if (wire) rhi_cmd_set_wireframe(0);
 }
 
 void destroy_world_mesh_batch(WorldMeshBatch *b) {
@@ -139,12 +140,13 @@ RhiShader world_debug_shader_load(const char *vert_path, const char *frag_path) 
            fprintf(stderr, "world_debug: %s not found, using embedded fragment shader\n", frag_path); }
 
     static const char *const attributes[] = { "a_Position", "a_Normal", "a_UV0", "a_Color" };
+    static const RhiParamLayout *const blocks[] = { &world_debug_params_layout };
     char *vtext = wm_text(GL_VERTEX_SHADER, vsrc, vlen);
     char *ftext = wm_text(GL_FRAGMENT_SHADER, fsrc, flen);
     free(vfile); free(ffile);
     RhiShader shader = {0};
     if (vtext && ftext)
-        shader = rhi_shader_create(&(RhiShaderDesc){ vtext, ftext, attributes, 4, "world_debug", NULL, 0 });
+        shader = rhi_shader_create(&(RhiShaderDesc){ vtext, ftext, attributes, 4, "world_debug", blocks, 1 });
     free(vtext); free(ftext);
     return shader;
 }

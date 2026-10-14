@@ -5,6 +5,7 @@ extern "C" {
 #include "resource.h"
 #include "world.h"
 #include "rhi_gl.h"
+#include "legacy_draw.h"   /* draw_batch: the editor still sets GL state by hand */
 }
 #include "backends/imgui_impl_opengl2.h"
 #include "backends/imgui_impl_sdl2.h"

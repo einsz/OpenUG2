@@ -43,7 +43,7 @@ int render_world_glows(const RProg *r,const N2Batch *batches,int count,
         r->p->uUseTex = b->tex.id?1:0;
         r->p->uEmissiveTex = b->tex.id?1:0;
         ug2_vec3(r->p->uColor, 1, b->tex.id?1:.85f, b->tex.id?1:.5f);
-        glBindTexture(GL_TEXTURE_2D,rhi_gl_texture_name(b->tex));
+        rhi_cmd_bind_texture(0,b->tex);
         render_draw_batch(b);draws++;
     }
     ug2_copy(r->p->uFogColor, fog, 3);
@@ -98,7 +98,7 @@ int render_district_lights(const RProg *r, GpuMesh *quad, RhiTexture texture,
     /* Additive emission fades toward zero, not fog RGB: black sprite edges
        must add nothing even at long distance. The sky path is unaffected. */
     ug2_vec3(rp.p->uFogColor, 0.0f, 0.0f, 0.0f);
-    glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(texture));
+    rhi_cmd_bind_texture(0,texture);
     float maxd2 = viewdist * viewdist;
     for (int i = 0; i < nlights; i++) {
         const N2LightSrc *light = &lights[i];
@@ -424,7 +424,7 @@ int render_car_environment(const RProg *r,CarEnvironment *s,const N2Batch *world
     int size=quality==1?64:128,draws=0;
     if(s->size!=size) {
         free_car_environment(s);s->size=size;s->capture=render_program();
-        if(!s->capture.prog){free_car_environment(s);s->failed=1;draws=-1;goto restore;}
+        if(!s->capture.shader.id){free_car_environment(s);s->failed=1;draws=-1;goto restore;}
         glActiveTexture(GL_TEXTURE5);   /* GL: the cubes are created on their own unit */
         const RhiSampler linear=rhi_sampler_create(&(RhiSamplerDesc){RHI_FILTER_LINEAR,RHI_FILTER_LINEAR,
             RHI_MIP_NONE,RHI_WRAP_CLAMP,RHI_WRAP_CLAMP,1.0f});
@@ -946,7 +946,7 @@ void render_tail_lamp(const RProg *r,RhiTexture texture,int running,int braking,
     r->p->uSpec = .26f;r->p->uEnv = .16f;
     r->p->uGloss = 20.0f;r->p->uClearcoat = 0.0f;
     r->p->uDecal = 0.0f;r->p->uUseTex = texture.id?1.0f:0.0f;
-    if(texture.id)glBindTexture(GL_TEXTURE_2D,rhi_gl_texture_name(texture));
+    if(texture.id)rhi_cmd_bind_texture(0,texture);
 }
 
 void render_model(const RProg *r,const float model[16]) {
@@ -969,7 +969,6 @@ RProg render_program(void) {
         static UG2Params unused;
         r.p = &unused;
     }
-    glUseProgram(r.prog);
     render_model(&r,NULL);
     r.p->uReflectionColor = 3; r.p->uReflectionDepth = 4;
     r.p->uEnvCube = 5;r.p->uEnvReady = 0;
@@ -1075,7 +1074,7 @@ static int btex_cmp(const void *a, const void *b) {   /* final texture order */
 #define BATCH_CELL     256.0f   /* grid cell edge, metres */
 #define BATCH_MAXVERTS 65535    /* u16 indices (GLES2: no u32 without ext) */
 
-/* Milestone 75: the VBO layout draw_batch() hardcodes must equal the struct's
+/* Milestone 75: the VBO layout world_pipeline_desc() hardcodes must equal the struct's
  * real layout. Compile-time (C99: negative array size, not C11 _Static_assert),
  * so a field reorder becomes a build error instead of scrambled attributes. */
 typedef char n2_batchvertex_layout_check[
@@ -1557,8 +1556,8 @@ void render_world_pipelines(const RProg *r, UG2WorldPipelines *p) {
 
 /* ---- car pipelines ----
  * GpuMesh streams: 0 = position + uv (20 B), 1 = normal (12 B), 2 = optional
- * RGBA8 prelight. The attribute order (colour first) is the order draw_gpumesh
- * sets them up in. All car passes test depth with LEQUAL. */
+ * RGBA8 prelight. Colour comes first in the layout, the order the hand-written
+ * draw set the attributes up in. All car passes test depth with LEQUAL. */
 static RhiPipelineDesc car_pipeline(const RProg *r, RhiCullMode cull, int depth_write,
                                     int blend, RhiBlendFactor dst) {
     RhiPipelineDesc d;
@@ -1665,7 +1664,7 @@ const UG2OverlayPipelines *render_overlay_pipelines(const RProg *r) {
     return &pipelines_of(r)->overlay;
 }
 
-/* draw_gpumesh through the bound car pipeline. */
+/* A GpuMesh through the bound car pipeline. */
 void render_draw_gpumesh(const GpuMesh *g) {
     rhi_cmd_bind_vertex_buffer(0, g->vbo, 0);
     rhi_cmd_bind_vertex_buffer(1, g->nbo, 0);
@@ -1679,21 +1678,6 @@ void render_draw_batch(const N2Batch *b) {
     rhi_cmd_bind_vertex_buffer(0, b->vbo, 0);
     rhi_cmd_bind_index_buffer(b->ibo);
     rhi_cmd_draw_indexed((uint32_t)b->index_count, 0);
-}
-
-void draw_batch(const N2Batch *b) {
-    glBindBuffer(GL_ARRAY_BUFFER, rhi_gl_buffer_name(b->vbo));
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(BatchedVertex), (void*)0);
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(BatchedVertex), (void*)12);
-    glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(BatchedVertex), (void*)20);
-    glEnableVertexAttribArray(3);
-    glVertexAttribPointer(3, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(BatchedVertex), (void*)32);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, rhi_gl_buffer_name(b->ibo));
-    rhi_gl_flush_params();
-    glDrawElements(GL_TRIANGLES, b->index_count, GL_UNSIGNED_SHORT, 0);
 }
 
 /* Build a clean procedural wheel (short cylinder, axle along Y, disc in X-Z) —
@@ -1770,25 +1754,6 @@ GpuMesh make_quad(void) {
     return quad;
 }
 
-void draw_gpumesh(GpuMesh *g) {
-    if (g->cbo.id) {
-        glBindBuffer(GL_ARRAY_BUFFER,rhi_gl_buffer_name(g->cbo));
-        glEnableVertexAttribArray(3);
-        glVertexAttribPointer(3,4,GL_UNSIGNED_BYTE,GL_TRUE,0,(void*)0);
-    } else glDisableVertexAttribArray(3);
-    glBindBuffer(GL_ARRAY_BUFFER, rhi_gl_buffer_name(g->vbo));
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5*sizeof(float), (void*)0);
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5*sizeof(float), (void*)(3*sizeof(float)));
-    glBindBuffer(GL_ARRAY_BUFFER, rhi_gl_buffer_name(g->nbo));
-    glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, rhi_gl_buffer_name(g->ibo));
-    rhi_gl_flush_params();
-    glDrawElements(GL_TRIANGLES, g->nidx, GL_UNSIGNED_SHORT, 0);
-}
-
 void render_wheel_mesh(const RProg *r, GpuMesh *mesh, RhiTexture texture, int mode) {
     float *const loc[]={&r->p->uUseTex,&r->p->uAlphaTest,&r->p->uTextureAlpha,&r->p->uAlpha,&r->p->uDecal,
                        &r->p->uRimTint,&r->p->uSpec,&r->p->uEnv,&r->p->uClearcoat,&r->p->uVColor};
@@ -1809,7 +1774,7 @@ void render_wheel_mesh(const RProg *r, GpuMesh *mesh, RhiTexture texture, int mo
     /* Prelit traffic wheels use a cutout quad for the visible wheel face. */
     if (mesh->car_material == N2_MAT_INTERIOR && !mesh->cbo.id) cut = 0;
     r->p->uVColor = mesh->cbo.id?2.0f:0.0f;
-    glBindTexture(GL_TEXTURE_2D,rhi_gl_texture_name(texture));
+    rhi_cmd_bind_texture(0,texture);
     r->p->uUseTex = texture.id?1.0f:0.0f;
     r->p->uAlphaTest = cut?1.0f:0.0f;
     r->p->uTextureAlpha = translucent?1.0f:0.0f;

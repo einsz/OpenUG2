@@ -36,7 +36,7 @@ int main(void) {
     SDL_Window *w=SDL_CreateWindow("wheel-render-test",0,0,32,32,SDL_WINDOW_OPENGL|SDL_WINDOW_HIDDEN);
     assert(w);SDL_GLContext ctx=SDL_GL_CreateContext(w);assert(ctx);
     stale_buffer_test();
-    RProg r=render_program();GpuMesh q=make_quad();
+    RProg r=render_program();glUseProgram(r.prog);GpuMesh q=make_quad();
     float m[16]={2,0,0,0,0,2,0,0,0,0,1,0,-1,-1,0,1};
     ug2_copy(r.p->uMVP, m, 16);
     r.p->uFogDensity = 0;r.p->uAmbient = 1.0f/1.35f;

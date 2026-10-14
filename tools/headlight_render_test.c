@@ -1,6 +1,7 @@
 /* Real GL shader regression, no retail assets. Run: make headlight-render-test. */
 #include "render.h"
 #include "rhi_gl.h"
+#include "legacy_draw.h"
 #include <assert.h>
 #include <stdio.h>
 
@@ -160,7 +161,7 @@ int main(void) {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION,1);
     SDL_Window *window=SDL_CreateWindow("Headlight shader test",0,0,128,64,SDL_WINDOW_OPENGL|SDL_WINDOW_HIDDEN);
     assert(window);SDL_GLContext context=SDL_GL_CreateContext(window);assert(context);
-    RProg r=render_program();GLint linked=0;glGetProgramiv(r.prog,GL_LINK_STATUS,&linked);assert(linked);
+    RProg r=render_program();glUseProgram(r.prog);GLint linked=0;glGetProgramiv(r.prog,GL_LINK_STATUS,&linked);assert(linked);
     /* The normal buffer uses authored smoothing, with a per-vertex fallback
        for zero/NaN source data. Position/UV layout stays five floats wide. */
     float normal_verts[]={0,0,0,0,0, 1,0,0,1,0, 0,1,0,0,1,

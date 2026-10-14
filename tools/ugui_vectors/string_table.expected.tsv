@@ -1,0 +1,5 @@
+# label	hash	decoded_text (UTF-8 here; ^ is a line break marker, not yet converted)
+COMMON_OK	417b2601	OK
+COMMON_BACK	8cd567b8	Back
+DEMO_HELLO	a6da2f97	Hello^World
+DEMO_PRICE	a7720696	Café ’ 99
