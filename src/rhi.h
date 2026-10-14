@@ -435,6 +435,22 @@ RhiResult rhi_cmd_copy_main_to_texture(RhiTexture texture, int32_t x, int32_t y,
  * Only inside a frame and outside a pass. */
 RhiResult rhi_cmd_clear_main(const float color[4], float depth);
 
+/* The state the next draw uses when no pipeline or texture is bound in
+ * between: the bound pipeline and its raster state, the texture on sampler
+ * slots 0..RHI_STATE_TEXTURE_SLOTS-1, the viewport and the target. Helpers
+ * that bind their own pipelines save it on entry and restore it on exit, so
+ * callers that still draw with ambient state (HUD, frontend, debug UI) get
+ * theirs back. Restore sends only what differs. Not included: stencil
+ * functions and the cull face (set by every pipeline that uses them), vertex
+ * and index buffers, cube textures. */
+#define RHI_STATE_TEXTURE_SLOTS 8
+typedef struct RhiStateSnapshot { uint32_t opaque[48]; } RhiStateSnapshot;
+void rhi_cmd_save_state(RhiStateSnapshot *out);
+void rhi_cmd_restore_state(const RhiStateSnapshot *state);
+/* Makes `state` restore `texture` (2D) on `slot` instead of what was there:
+ * for helpers whose output is a bound texture. */
+void rhi_state_set_texture(RhiStateSnapshot *state, uint32_t slot, RhiTexture texture);
+
 /* Debug views: draw triangles as their edges, whatever pipeline is bound,
  * until switched off again. RHI_ERR_UNSUPPORTED without caps.wireframe. */
 RhiResult rhi_cmd_set_wireframe(int on);

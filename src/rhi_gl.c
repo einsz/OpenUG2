@@ -1254,6 +1254,95 @@ RhiResult rhi_cmd_begin_pass(const RhiPassDesc *desc) {
 
 void rhi_cmd_end_pass(void) { g_in_pass = 0; }
 
+/* ------------------------------------------------------------------------------ */
+/* State snapshots                                                                */
+/* ------------------------------------------------------------------------------ */
+/* GL: the tracked context state. Read from the tracker, so state set with raw
+ * GL calls is included. */
+static const GLenum k_snapshot_caps[] = { GL_DEPTH_TEST, GL_BLEND, GL_CULL_FACE, GL_SCISSOR_TEST,
+                                          GL_STENCIL_TEST, GL_DITHER, GL_POLYGON_OFFSET_FILL };
+#define RHI_GL_SNAPSHOT_CAPS (sizeof k_snapshot_caps / sizeof k_snapshot_caps[0])
+
+typedef struct {
+    int32_t   pipeline;
+    GLint     blend[4], depth_func, viewport[4], program, framebuffer, renderbuffer, active;
+    GLint     texture[RHI_STATE_TEXTURE_SLOTS];
+    GLfloat   clear_color[4], clear_depth;
+    GLboolean caps[RHI_GL_SNAPSHOT_CAPS], depth_mask, color_mask[4];
+} RhiGlSnapshot;
+typedef char rhi_gl_snapshot_fits[sizeof(RhiGlSnapshot) <= sizeof(RhiStateSnapshot) ? 1 : -1];
+
+void rhi_cmd_save_state(RhiStateSnapshot *out) {
+    RhiGlSnapshot g;
+    if (!out) return;
+    memset(&g, 0, sizeof g);
+    g.pipeline = g_cmd.pipeline;
+    gls_get_integerv(GL_BLEND_SRC_RGB, &g.blend[0]); gls_get_integerv(GL_BLEND_DST_RGB, &g.blend[1]);
+    gls_get_integerv(GL_BLEND_SRC_ALPHA, &g.blend[2]); gls_get_integerv(GL_BLEND_DST_ALPHA, &g.blend[3]);
+    gls_get_integerv(GL_DEPTH_FUNC, &g.depth_func);
+    gls_get_integerv(GL_VIEWPORT, g.viewport);
+    gls_get_integerv(GL_CURRENT_PROGRAM, &g.program);
+    gls_get_integerv(GL_FRAMEBUFFER_BINDING, &g.framebuffer);
+    gls_get_integerv(GL_RENDERBUFFER_BINDING, &g.renderbuffer);
+    gls_get_integerv(GL_ACTIVE_TEXTURE, &g.active);
+    for (int i = 0; i < RHI_STATE_TEXTURE_SLOTS; i++) g.texture[i] = gls_texture_2d(i);
+    gls_get_floatv(GL_COLOR_CLEAR_VALUE, g.clear_color);
+    gls_get_floatv(GL_DEPTH_CLEAR_VALUE, &g.clear_depth);
+    for (size_t i = 0; i < RHI_GL_SNAPSHOT_CAPS; i++) g.caps[i] = gls_is_enabled(k_snapshot_caps[i]);
+    gls_get_booleanv(GL_DEPTH_WRITEMASK, &g.depth_mask);
+    gls_get_booleanv(GL_COLOR_WRITEMASK, g.color_mask);
+    memset(out, 0, sizeof *out);
+    memcpy(out, &g, sizeof g);
+}
+
+void rhi_state_set_texture(RhiStateSnapshot *state, uint32_t slot, RhiTexture texture) {
+    RhiGlSnapshot g;
+    const RhiGlTexture *t = texture_lookup(texture, "state_set_texture");
+    if (!state || slot >= RHI_STATE_TEXTURE_SLOTS || (t && t->target != GL_TEXTURE_2D)) return;
+    memcpy(&g, state, sizeof g);
+    g.texture[slot] = t ? (GLint)t->name : 0;
+    memcpy(state, &g, sizeof g);
+}
+
+void rhi_cmd_restore_state(const RhiStateSnapshot *state) {
+    RhiGlSnapshot g, now;
+    if (!state) return;
+    memcpy(&g, state, sizeof g);
+    RhiStateSnapshot current;
+    rhi_cmd_save_state(&current);
+    memcpy(&now, &current, sizeof now);
+    g_cmd.pipeline = g.pipeline;
+    if (now.framebuffer != g.framebuffer) glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)g.framebuffer);
+    if (now.renderbuffer != g.renderbuffer) glBindRenderbuffer(GL_RENDERBUFFER, (GLuint)g.renderbuffer);
+    if (memcmp(now.viewport, g.viewport, sizeof g.viewport))
+        glViewport(g.viewport[0], g.viewport[1], g.viewport[2], g.viewport[3]);
+    if (now.program != g.program) glUseProgram((GLuint)g.program);
+    if (memcmp(now.clear_color, g.clear_color, sizeof g.clear_color))
+        glClearColor(g.clear_color[0], g.clear_color[1], g.clear_color[2], g.clear_color[3]);
+    if (now.clear_depth != g.clear_depth) {
+#ifdef N2_GLES
+        glClearDepthf(g.clear_depth);
+#else
+        glClearDepth(g.clear_depth);
+#endif
+    }
+    if (memcmp(now.color_mask, g.color_mask, sizeof g.color_mask))
+        glColorMask(g.color_mask[0], g.color_mask[1], g.color_mask[2], g.color_mask[3]);
+    if (now.depth_func != g.depth_func) glDepthFunc((GLenum)g.depth_func);
+    if (!now.depth_mask != !g.depth_mask) glDepthMask(g.depth_mask);
+    if (memcmp(now.blend, g.blend, sizeof g.blend))
+        glBlendFuncSeparate((GLenum)g.blend[0], (GLenum)g.blend[1], (GLenum)g.blend[2], (GLenum)g.blend[3]);
+    for (size_t i = 0; i < RHI_GL_SNAPSHOT_CAPS; i++) set_cap(k_snapshot_caps[i], g.caps[i]);
+    GLint active = now.active;
+    for (int i = 0; i < RHI_STATE_TEXTURE_SLOTS; i++) {
+        if (now.texture[i] == g.texture[i]) continue;
+        if (active != (GLint)GL_TEXTURE0 + i) glActiveTexture(GL_TEXTURE0 + (GLenum)i);
+        active = (GLint)GL_TEXTURE0 + i;
+        glBindTexture(GL_TEXTURE_2D, (GLuint)g.texture[i]);
+    }
+    if (active != g.active) glActiveTexture((GLenum)g.active);
+}
+
 RhiResult rhi_cmd_clear_main(const float color[4], float depth) {
     if (!color || !g_rhi.in_frame || g_in_pass) return RHI_ERR_INVALID;
     glViewport(0, 0, g_rhi.frame_w, g_rhi.frame_h);

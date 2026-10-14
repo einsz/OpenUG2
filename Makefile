@@ -427,7 +427,7 @@ settings-test: tools/settings_test.c src/settings.c src/settings.h
 	./build/settings_test "$(SETTINGS_SPEC)/test-vectors" build/settings_test_tmp
 .PHONY: settings-test
 
-# RHI main-target clear, upload results, texture limit and GPU timers.
+# RHI main-target clear, upload results, texture limit, state snapshots and GPU timers.
 rhi-frame-test: tools/rhi_frame_test.c src/rhi_gl.c src/rhi_gl_state.c src/rhi.h src/rhi_gl.h src/rhi_gl_state.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/rhi_frame_test.c src/rhi_gl.c src/rhi_gl_state.c -o build/rhi_frame_test $(SDL_LIBS) $(GL_LIBS) -lm

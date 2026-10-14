@@ -104,6 +104,7 @@ void gls_get_integerv(GLenum pname, GLint *out);
 void gls_get_booleanv(GLenum pname, GLboolean *out);
 void gls_get_floatv(GLenum pname, GLfloat *out);
 GLint gls_attrib_enabled(GLuint index);  /* GL_VERTEX_ATTRIB_ARRAY_ENABLED */
+GLint gls_texture_2d(int unit);          /* GL_TEXTURE_BINDING_2D on `unit`, any active unit */
 
 /* ---- uniform mirror (replaces glGetUniformfv) ----
  * Copies the floats last written at `loc` of `program` (n = component count,
