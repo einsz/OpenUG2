@@ -25,7 +25,11 @@ static int sample(const RProg *r,GpuMesh *road,const float model[16],int high,fl
     const float anchors[4][4]={{0,.65f,.7f,1},{0,-.65f,.7f,1},{0},{0}};
     render_headlights(r,model,anchors,high,high?1:4,high?85:35,gain);
     if(shadow_enabled) {
+        GLboolean stencil=glIsEnabled(GL_STENCIL_TEST);
+        glEnable(GL_STENCIL_TEST);
         shadow_draws=render_headlight_shadows(r,&shadows,casters,caster_count);
+        assert(glIsEnabled(GL_STENCIL_TEST));
+        if(!stencil)glDisable(GL_STENCIL_TEST);
         assert(shadow_draws>=0);
         GLint viewport[4],program,active;glGetIntegerv(GL_VIEWPORT,viewport);
         glGetIntegerv(GL_CURRENT_PROGRAM,&program);glGetIntegerv(GL_ACTIVE_TEXTURE,&active);
