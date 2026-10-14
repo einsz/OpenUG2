@@ -41,7 +41,8 @@ typedef struct StContainerView {
 
 /* Validates a whole container held in memory (steps 2..5 of 3.5). */
 int st_container_parse(const uint8_t *buf, size_t len, StContainerView *view);
-/* Builds a container; returns total size, or 0 if `cap` is too small. */
+/* Builds a container; returns total size, or 0 for insufficient capacity or
+ * a nonempty block with a NULL data pointer. */
 size_t st_container_build(uint8_t *out, size_t cap, const uint8_t *a, uint32_t size_a,
                           const uint8_t *b, uint32_t size_b);
 
@@ -161,6 +162,8 @@ int st_save_cycle(StProfile *p, int dir, int autosave_ok);
 /* ---- 3.1 profile files ------------------------------------------------------- */
 int st_profile_name_valid(const char *name);             /* 1..15 bytes, valid file name */
 int st_profile_path(const char *root, const char *name, char *out, size_t cap);
+/* Profile directory/file entries must be real directories/regular files, not
+ * links or special files. Writes reject files with multiple hard links. */
 int st_profile_save(const char *root, const StProfile *p);     /* uses p->name; not atomic (3.3) */
 int st_profile_load(const char *root, const char *name, StProfile *out);
 int st_profile_exists(const char *root, const char *name);     /* directory holds anything */
@@ -186,6 +189,8 @@ typedef struct StRegStore {
 } StRegStore;
 
 int st_reg_open_memory(StRegStore *s);                      /* volatile, for tests */
+/* Missing file opens an empty store; malformed recognized values, read errors
+ * and allocation failures return an error without publishing a partial store. */
 int st_reg_open_ini(StRegStore *s, const char *path);       /* file store, any platform */
 int st_reg_open_default(StRegStore *s);                     /* Windows: HKLM registry; else INI */
 void st_reg_close(StRegStore *s);

@@ -424,11 +424,21 @@ rhi-readback-test: tools/rhi_readback_test.c src/rhi_gl.c src/rhi_gl_state.c src
 # Settings backend vs docs/cleanroom-settings/test-vectors (synthetic vectors, no retail data).
 # Profile/INI scratch files go to build/settings_test_tmp.
 SETTINGS_SPEC ?= docs/cleanroom-settings
+ifeq ($(OS),Windows_NT)
+SETTINGS_LIBS := -ladvapi32
+endif
 settings-test: tools/settings_test.c src/settings.c src/settings.h
 	@mkdir -p build
-	$(CC) $(CFLAGS) -Isrc tools/settings_test.c src/settings.c -o build/settings_test -lm
+	$(CC) $(CFLAGS) -Isrc tools/settings_test.c src/settings.c -o build/settings_test $(SETTINGS_LIBS) -lm
 	./build/settings_test "$(SETTINGS_SPEC)/test-vectors" build/settings_test_tmp
 .PHONY: settings-test
+
+# Malformed input, allocation failures and synthetic file/link boundaries.
+settings-boundary-test: tools/settings_boundary_test.c src/settings.c src/settings.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Isrc tools/settings_boundary_test.c -o build/settings_boundary_test $(SETTINGS_LIBS) -lm
+	./build/settings_boundary_test
+.PHONY: settings-boundary-test
 
 # RHI main-target clear, upload results, texture limit and GPU timers.
 rhi-frame-test: tools/rhi_frame_test.c src/rhi_gl.c src/rhi_gl_state.c src/rhi.h src/rhi_gl.h src/rhi_gl_state.h
