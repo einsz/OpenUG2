@@ -1,0 +1,77 @@
+{
+ "formula": "SPEC section 4.5",
+ "cases": [
+  {
+   "cpu_mhz": 0,
+   "gpu_score": 1.0,
+   "cpu_score": 1.0,
+   "performance_level": 1
+  },
+  {
+   "cpu_mhz": 1000,
+   "gpu_score": 1.0,
+   "cpu_score": 1.0,
+   "performance_level": 1
+  },
+  {
+   "cpu_mhz": 1399,
+   "gpu_score": 5.0,
+   "cpu_score": 1.0,
+   "performance_level": 1
+  },
+  {
+   "cpu_mhz": 1400,
+   "gpu_score": 1.0,
+   "cpu_score": 2.0,
+   "performance_level": 1
+  },
+  {
+   "cpu_mhz": 1799,
+   "gpu_score": 3.0,
+   "cpu_score": 2.0,
+   "performance_level": 2
+  },
+  {
+   "cpu_mhz": 1800,
+   "gpu_score": 3.0,
+   "cpu_score": 3.0,
+   "performance_level": 3
+  },
+  {
+   "cpu_mhz": 2399,
+   "gpu_score": 4.0,
+   "cpu_score": 3.0,
+   "performance_level": 3
+  },
+  {
+   "cpu_mhz": 2400,
+   "gpu_score": 4.0,
+   "cpu_score": 4.0,
+   "performance_level": 4
+  },
+  {
+   "cpu_mhz": 3000,
+   "gpu_score": 5.0,
+   "cpu_score": 4.0,
+   "performance_level": 4
+  },
+  {
+   "cpu_mhz": 3000,
+   "gpu_score": 0.0,
+   "cpu_score": 4.0,
+   "performance_level": 3
+  },
+  {
+   "cpu_mhz": 2400,
+   "gpu_score": 1.0,
+   "cpu_score": 4.0,
+   "performance_level": 3
+  },
+  {
+   "cpu_mhz": 1800,
+   "gpu_score": 5.0,
+   "cpu_score": 3.0,
+   "performance_level": 3
+  }
+ ]
+}

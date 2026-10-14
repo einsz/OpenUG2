@@ -1,0 +1,1188 @@
+{
+ "payload_size": 54930,
+ "file_size": 54966,
+ "block_A": {
+  "version": 269,
+  "payload_size": 54930
+ },
+ "opaque_regions_payload_offset_size": [
+  [
+   0,
+   50211
+  ],
+  [
+   50599,
+   380
+  ],
+  [
+   50983,
+   4
+  ],
+  [
+   50989,
+   4
+  ],
+  [
+   50993,
+   2640
+  ],
+  [
+   53633,
+   128
+  ]
+ ],
+ "fields": [
+  {
+   "payload_offset": 50211,
+   "file_offset": 50247,
+   "type": "u32",
+   "name": "trax[0].track",
+   "default": null,
+   "domain": "0..26",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50215,
+   "file_offset": 50251,
+   "type": "u8",
+   "name": "trax[0].mode",
+   "default": null,
+   "domain": "0 off,1 FE,2 in-game,3 both",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50219,
+   "file_offset": 50255,
+   "type": "u32",
+   "name": "trax[1].track",
+   "default": null,
+   "domain": "0..26",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50223,
+   "file_offset": 50259,
+   "type": "u8",
+   "name": "trax[1].mode",
+   "default": null,
+   "domain": "0 off,1 FE,2 in-game,3 both",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50227,
+   "file_offset": 50263,
+   "type": "u32",
+   "name": "trax[2].track",
+   "default": null,
+   "domain": "0..26",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50231,
+   "file_offset": 50267,
+   "type": "u8",
+   "name": "trax[2].mode",
+   "default": null,
+   "domain": "0 off,1 FE,2 in-game,3 both",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50235,
+   "file_offset": 50271,
+   "type": "u32",
+   "name": "trax[3].track",
+   "default": null,
+   "domain": "0..26",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50239,
+   "file_offset": 50275,
+   "type": "u8",
+   "name": "trax[3].mode",
+   "default": null,
+   "domain": "0 off,1 FE,2 in-game,3 both",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50243,
+   "file_offset": 50279,
+   "type": "u32",
+   "name": "trax[4].track",
+   "default": null,
+   "domain": "0..26",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50247,
+   "file_offset": 50283,
+   "type": "u8",
+   "name": "trax[4].mode",
+   "default": null,
+   "domain": "0 off,1 FE,2 in-game,3 both",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50251,
+   "file_offset": 50287,
+   "type": "u32",
+   "name": "trax[5].track",
+   "default": null,
+   "domain": "0..26",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50255,
+   "file_offset": 50291,
+   "type": "u8",
+   "name": "trax[5].mode",
+   "default": null,
+   "domain": "0 off,1 FE,2 in-game,3 both",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50259,
+   "file_offset": 50295,
+   "type": "u32",
+   "name": "trax[6].track",
+   "default": null,
+   "domain": "0..26",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50263,
+   "file_offset": 50299,
+   "type": "u8",
+   "name": "trax[6].mode",
+   "default": null,
+   "domain": "0 off,1 FE,2 in-game,3 both",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50267,
+   "file_offset": 50303,
+   "type": "u32",
+   "name": "trax[7].track",
+   "default": null,
+   "domain": "0..26",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50271,
+   "file_offset": 50307,
+   "type": "u8",
+   "name": "trax[7].mode",
+   "default": null,
+   "domain": "0 off,1 FE,2 in-game,3 both",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50275,
+   "file_offset": 50311,
+   "type": "u32",
+   "name": "trax[8].track",
+   "default": null,
+   "domain": "0..26",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50279,
+   "file_offset": 50315,
+   "type": "u8",
+   "name": "trax[8].mode",
+   "default": null,
+   "domain": "0 off,1 FE,2 in-game,3 both",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50283,
+   "file_offset": 50319,
+   "type": "u32",
+   "name": "trax[9].track",
+   "default": null,
+   "domain": "0..26",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50287,
+   "file_offset": 50323,
+   "type": "u8",
+   "name": "trax[9].mode",
+   "default": null,
+   "domain": "0 off,1 FE,2 in-game,3 both",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50291,
+   "file_offset": 50327,
+   "type": "u32",
+   "name": "trax[10].track",
+   "default": null,
+   "domain": "0..26",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50295,
+   "file_offset": 50331,
+   "type": "u8",
+   "name": "trax[10].mode",
+   "default": null,
+   "domain": "0 off,1 FE,2 in-game,3 both",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50299,
+   "file_offset": 50335,
+   "type": "u32",
+   "name": "trax[11].track",
+   "default": null,
+   "domain": "0..26",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50303,
+   "file_offset": 50339,
+   "type": "u8",
+   "name": "trax[11].mode",
+   "default": null,
+   "domain": "0 off,1 FE,2 in-game,3 both",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50307,
+   "file_offset": 50343,
+   "type": "u32",
+   "name": "trax[12].track",
+   "default": null,
+   "domain": "0..26",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50311,
+   "file_offset": 50347,
+   "type": "u8",
+   "name": "trax[12].mode",
+   "default": null,
+   "domain": "0 off,1 FE,2 in-game,3 both",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50315,
+   "file_offset": 50351,
+   "type": "u32",
+   "name": "trax[13].track",
+   "default": null,
+   "domain": "0..26",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50319,
+   "file_offset": 50355,
+   "type": "u8",
+   "name": "trax[13].mode",
+   "default": null,
+   "domain": "0 off,1 FE,2 in-game,3 both",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50323,
+   "file_offset": 50359,
+   "type": "u32",
+   "name": "trax[14].track",
+   "default": null,
+   "domain": "0..26",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50327,
+   "file_offset": 50363,
+   "type": "u8",
+   "name": "trax[14].mode",
+   "default": null,
+   "domain": "0 off,1 FE,2 in-game,3 both",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50331,
+   "file_offset": 50367,
+   "type": "u32",
+   "name": "trax[15].track",
+   "default": null,
+   "domain": "0..26",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50335,
+   "file_offset": 50371,
+   "type": "u8",
+   "name": "trax[15].mode",
+   "default": null,
+   "domain": "0 off,1 FE,2 in-game,3 both",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50339,
+   "file_offset": 50375,
+   "type": "u32",
+   "name": "trax[16].track",
+   "default": null,
+   "domain": "0..26",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50343,
+   "file_offset": 50379,
+   "type": "u8",
+   "name": "trax[16].mode",
+   "default": null,
+   "domain": "0 off,1 FE,2 in-game,3 both",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50347,
+   "file_offset": 50383,
+   "type": "u32",
+   "name": "trax[17].track",
+   "default": null,
+   "domain": "0..26",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50351,
+   "file_offset": 50387,
+   "type": "u8",
+   "name": "trax[17].mode",
+   "default": null,
+   "domain": "0 off,1 FE,2 in-game,3 both",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50355,
+   "file_offset": 50391,
+   "type": "u32",
+   "name": "trax[18].track",
+   "default": null,
+   "domain": "0..26",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50359,
+   "file_offset": 50395,
+   "type": "u8",
+   "name": "trax[18].mode",
+   "default": null,
+   "domain": "0 off,1 FE,2 in-game,3 both",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50363,
+   "file_offset": 50399,
+   "type": "u32",
+   "name": "trax[19].track",
+   "default": null,
+   "domain": "0..26",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50367,
+   "file_offset": 50403,
+   "type": "u8",
+   "name": "trax[19].mode",
+   "default": null,
+   "domain": "0 off,1 FE,2 in-game,3 both",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50371,
+   "file_offset": 50407,
+   "type": "u32",
+   "name": "trax[20].track",
+   "default": null,
+   "domain": "0..26",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50375,
+   "file_offset": 50411,
+   "type": "u8",
+   "name": "trax[20].mode",
+   "default": null,
+   "domain": "0 off,1 FE,2 in-game,3 both",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50379,
+   "file_offset": 50415,
+   "type": "u32",
+   "name": "trax[21].track",
+   "default": null,
+   "domain": "0..26",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50383,
+   "file_offset": 50419,
+   "type": "u8",
+   "name": "trax[21].mode",
+   "default": null,
+   "domain": "0 off,1 FE,2 in-game,3 both",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50387,
+   "file_offset": 50423,
+   "type": "u32",
+   "name": "trax[22].track",
+   "default": null,
+   "domain": "0..26",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50391,
+   "file_offset": 50427,
+   "type": "u8",
+   "name": "trax[22].mode",
+   "default": null,
+   "domain": "0 off,1 FE,2 in-game,3 both",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50395,
+   "file_offset": 50431,
+   "type": "u32",
+   "name": "trax[23].track",
+   "default": null,
+   "domain": "0..26",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50399,
+   "file_offset": 50435,
+   "type": "u8",
+   "name": "trax[23].mode",
+   "default": null,
+   "domain": "0 off,1 FE,2 in-game,3 both",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50403,
+   "file_offset": 50439,
+   "type": "u32",
+   "name": "trax[24].track",
+   "default": null,
+   "domain": "0..26",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50407,
+   "file_offset": 50443,
+   "type": "u8",
+   "name": "trax[24].mode",
+   "default": null,
+   "domain": "0 off,1 FE,2 in-game,3 both",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50411,
+   "file_offset": 50447,
+   "type": "u32",
+   "name": "trax[25].track",
+   "default": null,
+   "domain": "0..26",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50415,
+   "file_offset": 50451,
+   "type": "u8",
+   "name": "trax[25].mode",
+   "default": null,
+   "domain": "0 off,1 FE,2 in-game,3 both",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50419,
+   "file_offset": 50455,
+   "type": "u32",
+   "name": "trax[26].track",
+   "default": null,
+   "domain": "0..26",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50423,
+   "file_offset": 50459,
+   "type": "u8",
+   "name": "trax[26].mode",
+   "default": null,
+   "domain": "0 off,1 FE,2 in-game,3 both",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50427,
+   "file_offset": 50463,
+   "type": "f32",
+   "name": "master_volume",
+   "default": 1.0,
+   "domain": "0.0..1.0 step 0.05",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50431,
+   "file_offset": 50467,
+   "type": "f32",
+   "name": "speech_movie_volume",
+   "default": 1.0,
+   "domain": "0.0..1.0 step 0.05",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50435,
+   "file_offset": 50471,
+   "type": "f32",
+   "name": "menu_music_volume",
+   "default": 0.7,
+   "domain": "0.0..1.0 step 0.05",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50439,
+   "file_offset": 50475,
+   "type": "f32",
+   "name": "game_music_volume",
+   "default": 1.0,
+   "domain": "0.0..1.0 step 0.05",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50443,
+   "file_offset": 50479,
+   "type": "f32",
+   "name": "sfx_volume",
+   "default": 1.0,
+   "domain": "0.0..1.0 step 0.05",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50447,
+   "file_offset": 50483,
+   "type": "f32",
+   "name": "engine_volume",
+   "default": 1.0,
+   "domain": "0.0..1.0 step 0.05",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50451,
+   "file_offset": 50487,
+   "type": "f32",
+   "name": "tire_volume",
+   "default": 1.0,
+   "domain": "0.0..1.0 step 0.05",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50455,
+   "file_offset": 50491,
+   "type": "f32",
+   "name": "audio_unknown_28",
+   "default": 1.0,
+   "domain": "unknown",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50459,
+   "file_offset": 50495,
+   "type": "f32",
+   "name": "audio_unknown_32",
+   "default": 1.0,
+   "domain": "unknown",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50463,
+   "file_offset": 50499,
+   "type": "f32",
+   "name": "audio_unknown_36",
+   "default": 1.0,
+   "domain": "unknown",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50467,
+   "file_offset": 50503,
+   "type": "u32",
+   "name": "audio_mode",
+   "default": 1,
+   "domain": "0 mono,1 stereo",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50471,
+   "file_offset": 50507,
+   "type": "u32",
+   "name": "audio_unknown_44",
+   "default": 0,
+   "domain": "unknown",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50475,
+   "file_offset": 50511,
+   "type": "u32",
+   "name": "trax_play_order",
+   "default": 1,
+   "domain": "0 sequential,1 random",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50479,
+   "file_offset": 50515,
+   "type": "u32",
+   "name": "audio_unknown_52",
+   "default": 0,
+   "domain": "unknown",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50483,
+   "file_offset": 50519,
+   "type": "u32",
+   "name": "audio_unknown_56",
+   "default": 0,
+   "domain": "unknown",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50487,
+   "file_offset": 50523,
+   "type": "u8",
+   "name": "rearview_mirror",
+   "default": 1,
+   "domain": "0/1",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50488,
+   "file_offset": 50524,
+   "type": "u8",
+   "name": "gameplay_unknown_1",
+   "default": 0,
+   "domain": "unknown",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50489,
+   "file_offset": 50525,
+   "type": "u8",
+   "name": "speedo_units",
+   "default": "0 if language index 0 else 1",
+   "domain": "0 MPH,1 KM/H",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50490,
+   "file_offset": 50526,
+   "type": "u8",
+   "name": "race_map_mode",
+   "default": 2,
+   "domain": "0 off,1 static,2 rotate",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50491,
+   "file_offset": 50527,
+   "type": "u8",
+   "name": "explore_map_mode",
+   "default": 2,
+   "domain": "0 off,1 static,2 rotate",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50495,
+   "file_offset": 50531,
+   "type": "f32",
+   "name": "jump_camera",
+   "default": 127.5,
+   "domain": "0.0 off, nonzero on (toggle-on writes 127.0)",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50499,
+   "file_offset": 50535,
+   "type": "f32",
+   "name": "gameplay_unknown_12",
+   "default": 127.5,
+   "domain": "unknown",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50503,
+   "file_offset": 50539,
+   "type": "u8",
+   "name": "player1.gauges",
+   "default": 1,
+   "domain": "0/1",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50504,
+   "file_offset": 50540,
+   "type": "u8",
+   "name": "player1.race_position",
+   "default": 1,
+   "domain": "0/1",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50505,
+   "file_offset": 50541,
+   "type": "u8",
+   "name": "player1.lap_info",
+   "default": 1,
+   "domain": "0/1",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50506,
+   "file_offset": 50542,
+   "type": "u8",
+   "name": "player1.score",
+   "default": 1,
+   "domain": "0/1",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50507,
+   "file_offset": 50543,
+   "type": "u8",
+   "name": "player1.feedback",
+   "default": 1,
+   "domain": "0/1",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50508,
+   "file_offset": 50544,
+   "type": "u8",
+   "name": "player1.leaderboard",
+   "default": 1,
+   "domain": "0/1",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50509,
+   "file_offset": 50545,
+   "type": "u8",
+   "name": "player1.ask_for_transmission",
+   "default": 1,
+   "domain": "0/1",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50511,
+   "file_offset": 50547,
+   "type": "u32",
+   "name": "player1.controller_config_index",
+   "default": 0,
+   "domain": "0..8",
+   "confidence": "inferred"
+  },
+  {
+   "payload_offset": 50515,
+   "file_offset": 50551,
+   "type": "u8",
+   "name": "player1.unknown_12",
+   "default": 0,
+   "domain": "unknown",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50519,
+   "file_offset": 50555,
+   "type": "u32",
+   "name": "player1.camera",
+   "default": 3,
+   "domain": "0 bumper,1 hood,2 close,3 far,4 super far",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50523,
+   "file_offset": 50559,
+   "type": "u8",
+   "name": "player1.split_time",
+   "default": 0,
+   "domain": "0 leader,1 lap record,2 best lap,3 last lap,4 off",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50524,
+   "file_offset": 50560,
+   "type": "u8",
+   "name": "player1.transmission",
+   "default": 0,
+   "domain": "0 auto,1 manual",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50525,
+   "file_offset": 50561,
+   "type": "u8",
+   "name": "player1.stability_control",
+   "default": 1,
+   "domain": "0 on,1 off",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50526,
+   "file_offset": 50562,
+   "type": "u8",
+   "name": "player1.unknown_23",
+   "default": 0,
+   "domain": "unknown",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50527,
+   "file_offset": 50563,
+   "type": "u8",
+   "name": "player1.unknown_24",
+   "default": 1,
+   "domain": "unknown",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50528,
+   "file_offset": 50564,
+   "type": "u8",
+   "name": "player1.unknown_25",
+   "default": 0,
+   "domain": "unknown",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50531,
+   "file_offset": 50567,
+   "type": "f32",
+   "name": "player1.wheel_range",
+   "default": 1.0,
+   "domain": "0.1..1.0 step 0.1",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50535,
+   "file_offset": 50571,
+   "type": "f32",
+   "name": "player1.road_feedback_stored",
+   "default": 12.4,
+   "domain": "2.0..20.0 (slider s: v=20-18s)",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50539,
+   "file_offset": 50575,
+   "type": "f32",
+   "name": "player1.force_strength",
+   "default": 1.0,
+   "domain": "0.0..1.0 step 0.1",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50543,
+   "file_offset": 50579,
+   "type": "u8",
+   "name": "player2.gauges",
+   "default": 1,
+   "domain": "0/1",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50544,
+   "file_offset": 50580,
+   "type": "u8",
+   "name": "player2.race_position",
+   "default": 1,
+   "domain": "0/1",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50545,
+   "file_offset": 50581,
+   "type": "u8",
+   "name": "player2.lap_info",
+   "default": 1,
+   "domain": "0/1",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50546,
+   "file_offset": 50582,
+   "type": "u8",
+   "name": "player2.score",
+   "default": 1,
+   "domain": "0/1",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50547,
+   "file_offset": 50583,
+   "type": "u8",
+   "name": "player2.feedback",
+   "default": 1,
+   "domain": "0/1",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50548,
+   "file_offset": 50584,
+   "type": "u8",
+   "name": "player2.leaderboard",
+   "default": 1,
+   "domain": "0/1",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50549,
+   "file_offset": 50585,
+   "type": "u8",
+   "name": "player2.ask_for_transmission",
+   "default": 1,
+   "domain": "0/1",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50551,
+   "file_offset": 50587,
+   "type": "u32",
+   "name": "player2.controller_config_index",
+   "default": 0,
+   "domain": "0..8",
+   "confidence": "inferred"
+  },
+  {
+   "payload_offset": 50555,
+   "file_offset": 50591,
+   "type": "u8",
+   "name": "player2.unknown_12",
+   "default": 0,
+   "domain": "unknown",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50559,
+   "file_offset": 50595,
+   "type": "u32",
+   "name": "player2.camera",
+   "default": 3,
+   "domain": "0 bumper,1 hood,2 close,3 far,4 super far",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50563,
+   "file_offset": 50599,
+   "type": "u8",
+   "name": "player2.split_time",
+   "default": 0,
+   "domain": "0 leader,1 lap record,2 best lap,3 last lap,4 off",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50564,
+   "file_offset": 50600,
+   "type": "u8",
+   "name": "player2.transmission",
+   "default": 0,
+   "domain": "0 auto,1 manual",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50565,
+   "file_offset": 50601,
+   "type": "u8",
+   "name": "player2.stability_control",
+   "default": 1,
+   "domain": "0 on,1 off",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50566,
+   "file_offset": 50602,
+   "type": "u8",
+   "name": "player2.unknown_23",
+   "default": 0,
+   "domain": "unknown",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50567,
+   "file_offset": 50603,
+   "type": "u8",
+   "name": "player2.unknown_24",
+   "default": 1,
+   "domain": "unknown",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50568,
+   "file_offset": 50604,
+   "type": "u8",
+   "name": "player2.unknown_25",
+   "default": 0,
+   "domain": "unknown",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50571,
+   "file_offset": 50607,
+   "type": "f32",
+   "name": "player2.wheel_range",
+   "default": 1.0,
+   "domain": "0.1..1.0 step 0.1",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50575,
+   "file_offset": 50611,
+   "type": "f32",
+   "name": "player2.road_feedback_stored",
+   "default": 12.4,
+   "domain": "2.0..20.0 (slider s: v=20-18s)",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50579,
+   "file_offset": 50615,
+   "type": "f32",
+   "name": "player2.force_strength",
+   "default": 1.0,
+   "domain": "0.0..1.0 step 0.1",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50583,
+   "file_offset": 50619,
+   "type": "f32",
+   "name": "unknown_block_0",
+   "default": 0.5,
+   "domain": "unknown",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50587,
+   "file_offset": 50623,
+   "type": "u32",
+   "name": "unknown_block_4",
+   "default": 0,
+   "domain": "unknown",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50591,
+   "file_offset": 50627,
+   "type": "u32",
+   "name": "unknown_block_8",
+   "default": 0,
+   "domain": "unknown",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50595,
+   "file_offset": 50631,
+   "type": "u8",
+   "name": "unknown_block_12",
+   "default": 0,
+   "domain": "unknown",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 50979,
+   "file_offset": 51015,
+   "type": "u32",
+   "name": "career_difficulty",
+   "default": 0,
+   "domain": "0 easy,1 medium,2 hard",
+   "confidence": "static; default inferred"
+  },
+  {
+   "payload_offset": 50987,
+   "file_offset": 51023,
+   "type": "u8",
+   "name": "autosave",
+   "default": null,
+   "domain": "0/1",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 50988,
+   "file_offset": 51024,
+   "type": "u8",
+   "name": "save_prompt",
+   "default": null,
+   "domain": "0/1",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 53761,
+   "file_offset": 53797,
+   "type": "char[32]",
+   "name": "profile_name",
+   "default": null,
+   "domain": "NUL-padded, <=15 chars",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 53793,
+   "file_offset": 53829,
+   "type": "u32",
+   "name": "online_reserved_0",
+   "default": 0,
+   "domain": "always 0",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 53797,
+   "file_offset": 53833,
+   "type": "u32",
+   "name": "online_reserved_4",
+   "default": 0,
+   "domain": "always 0",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 53801,
+   "file_offset": 53837,
+   "type": "u8",
+   "name": "show_player_names",
+   "default": null,
+   "domain": "0/1",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 53802,
+   "file_offset": 53838,
+   "type": "u8",
+   "name": "bad_connection_warning",
+   "default": null,
+   "domain": "0/1",
+   "confidence": "static; default unknown"
+  },
+  {
+   "payload_offset": 53803,
+   "file_offset": 53839,
+   "type": "u8",
+   "name": "online_unknown_10",
+   "default": null,
+   "domain": "unknown",
+   "confidence": "static"
+  },
+  {
+   "payload_offset": 53844,
+   "file_offset": 53880,
+   "type": "bytes[1086]",
+   "name": "input_devices",
+   "default": null,
+   "domain": "6 x 181, SPEC section 6",
+   "confidence": "static"
+  }
+ ]
+}
