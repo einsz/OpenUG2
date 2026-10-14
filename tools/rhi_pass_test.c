@@ -23,6 +23,44 @@ static void test_gen_framebuffers(GLsizei n, GLuint *names) {
 #else
 #undef glGenFramebuffers
 #endif
+static void copy_tests(SDL_Window *window) {
+    glClearColor(1,0,0,1);glClear(GL_COLOR_BUFFER_BIT);
+    RhiTextureDesc d={RHI_TEXTURE_2D,RHI_FORMAT_RGBA8,4,4,RHI_TEXTURE_SAMPLED|RHI_TEXTURE_COPY_DST};
+    for(int i=0;i<2;i++) {
+        RhiTexture copy=rhi_texture_create(&d);assert(copy.id);
+        assert(rhi_cmd_copy_main_to_texture(copy,0,0,4,4)==RHI_OK);
+        unsigned char pixel[64];glGetTexImage(GL_TEXTURE_2D,0,GL_RGBA,GL_UNSIGNED_BYTE,pixel);assert(pixel[0]==255 && !pixel[2]);
+        rhi_texture_destroy(copy); /* Reuse must allocate new GL storage. */
+    }
+    RhiTexture copy=rhi_texture_create(&d);assert(copy.id);
+    int width,height;SDL_GL_GetDrawableSize(window,&width,&height);
+    assert(rhi_cmd_copy_main_to_texture(copy,-1,0,4,4)==RHI_ERR_INVALID);
+    assert(rhi_cmd_copy_main_to_texture(copy,0,0,width+1,height)==RHI_ERR_INVALID);
+    d.usage=RHI_TEXTURE_SAMPLED;RhiTexture sampled=rhi_texture_create(&d);assert(sampled.id);
+    assert(rhi_cmd_copy_main_to_texture(sampled,0,0,4,4)==RHI_ERR_INVALID);rhi_texture_destroy(sampled);
+    d.usage=RHI_TEXTURE_SAMPLED|RHI_TEXTURE_COLOR_TARGET|RHI_TEXTURE_COPY_DST;
+    RhiTexture target=rhi_texture_create(&d);assert(target.id && rhi_texture_upload(target,0,0,NULL,0)==RHI_OK);
+    RhiTexture depth=rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D,RHI_FORMAT_D16,4,4,RHI_TEXTURE_DEPTH_TARGET});assert(depth.id);
+    RhiPassDesc pass={{target,0},{depth,0},RHI_LOAD_CLEAR,RHI_LOAD_CLEAR,{0,0,1,1},1};
+    assert(rhi_cmd_begin_pass(&pass)==RHI_OK);
+    assert(rhi_cmd_copy_main_to_texture(copy,0,0,4,4)==RHI_ERR_INVALID);
+    rhi_cmd_end_pass();GLint before,after;glGetIntegerv(GL_FRAMEBUFFER_BINDING,&before);assert(before);
+    assert(rhi_cmd_copy_main_to_texture(copy,0,0,4,4)==RHI_OK);
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING,&after);assert(after==before);
+    unsigned char pixel[64];glGetTexImage(GL_TEXTURE_2D,0,GL_RGBA,GL_UNSIGNED_BYTE,pixel);assert(pixel[0]==255 && !pixel[2]);
+    assert(rhi_cmd_copy_main_to_texture(target,0,0,8,8)==RHI_OK);
+    RhiResult result=rhi_cmd_begin_pass(&pass);
+    GLenum status=glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if(status!=GL_FRAMEBUFFER_COMPLETE)assert(result!=RHI_OK); /* Resize invalidates cached completeness. */
+    else assert(result==RHI_OK);
+    if(result==RHI_OK)rhi_cmd_end_pass();
+    rhi_texture_destroy(depth);rhi_texture_destroy(target);rhi_texture_destroy(copy);
+    d.format=RHI_FORMAT_DEPTH;d.usage=RHI_TEXTURE_SAMPLED|RHI_TEXTURE_COPY_DST;
+    RhiTexture depth_copy=rhi_texture_create(&d);assert(depth_copy.id);
+    assert(rhi_texture_generate_mips(depth_copy)==RHI_ERR_INVALID);rhi_texture_destroy(depth_copy);
+    assert(glGetError()==GL_NO_ERROR);
+}
+
 int main(void) {
     assert(SDL_Init(SDL_INIT_VIDEO)==0);
     SDL_Window *w=SDL_CreateWindow("rhi pass",0,0,32,32,SDL_WINDOW_OPENGL|SDL_WINDOW_HIDDEN);assert(w);
@@ -87,6 +125,7 @@ int main(void) {
     assert(rhi_cmd_copy_main_to_texture(depth,0,0,4,4)==RHI_OK);
 #endif
     rhi_texture_destroy(depth);rhi_texture_destroy(color);rhi_texture_destroy(plain);rhi_texture_destroy(copy);
+    copy_tests(w);
     assert(glGetError()==GL_NO_ERROR);
     SDL_GL_DeleteContext(ctx);SDL_DestroyWindow(w);SDL_Quit();puts("rhi_pass_test: PASS (ownership, roles, validation, allocation rollback and recovery, frame copies)");
 }

@@ -249,6 +249,7 @@ int render_road_reflections(const RProg *r,RoadReflections *s,
     gls_get_integerv(GL_BLEND_SRC_RGB,&sr);gls_get_integerv(GL_BLEND_DST_RGB,&dr);
     gls_get_integerv(GL_BLEND_SRC_ALPHA,&sa);gls_get_integerv(GL_BLEND_DST_ALPHA,&da);
     rhi_cmd_bind_pipeline(pipelines_of(r)->world.reflect);
+    glDisable(GL_POLYGON_OFFSET_FILL);
     for(int i=0;i<7;i++)*loc[i] = 0;
     r->p->uWetness = wetness;r->p->uRoadReflection = 1;
     ug2_vec4(r->p->uReflectionParams, projection[10], projection[14], quality==1?16:32, 0);

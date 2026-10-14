@@ -337,8 +337,7 @@ typedef enum RhiBlendFactor {
 
 /* Everything a draw needs besides its buffers, textures and parameters.
  * Viewport and scissor are not part of it. Blending is "add" (src*f + dst*f).
- * The same stencil state applies to both faces. Not covered yet: depth bias
- * (polygon offset stays off).
+ * The same stencil state applies to both faces. Not covered yet: depth bias.
  * Shader attributes that are not in the vertex layout read their default
  * value (no array). */
 typedef struct RhiPipelineDesc {

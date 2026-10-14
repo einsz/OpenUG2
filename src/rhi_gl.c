@@ -413,6 +413,7 @@ RhiTexture rhi_texture_create(const RhiTextureDesc *desc) {
     t->usage = desc->usage;
     t->width = desc->width;
     t->height = desc->height;
+    t->copied_w = t->copied_h = 0;
     t->sampler = sampler;
     t->wrap_s = t->wrap_t = GL_REPEAT;               /* GL's initial parameters */
     t->min_filter = GL_NEAREST_MIPMAP_LINEAR;
@@ -455,7 +456,8 @@ RhiResult rhi_texture_upload(RhiTexture tex, int32_t face, int32_t level,
 
 RhiResult rhi_texture_generate_mips(RhiTexture tex) {
     RhiGlTexture *t = texture_lookup(tex, "texture_generate_mips");
-    if (!t || t->target != GL_TEXTURE_2D || format_compressed(t->format)) return RHI_ERR_INVALID;
+    if (!t || t->target != GL_TEXTURE_2D ||
+        (t->format != RHI_FORMAT_RGB8 && t->format != RHI_FORMAT_RGBA8)) return RHI_ERR_INVALID;
     glBindTexture(GL_TEXTURE_2D, t->name);
     glGenerateMipmap(GL_TEXTURE_2D);
     return RHI_OK;
@@ -965,7 +967,6 @@ void rhi_cmd_bind_pipeline(RhiPipeline pipeline) {
     GLboolean want_cm[4] = { (d->color_write & 1) ? GL_TRUE : GL_FALSE, (d->color_write & 2) ? GL_TRUE : GL_FALSE,
                              (d->color_write & 4) ? GL_TRUE : GL_FALSE, (d->color_write & 8) ? GL_TRUE : GL_FALSE };
     if (memcmp(cm, want_cm, sizeof cm)) glColorMask(want_cm[0], want_cm[1], want_cm[2], want_cm[3]);
-    set_cap(GL_POLYGON_OFFSET_FILL, 0);   /* no depth bias in pipelines yet */
     /* Stencil functions are not tracked: set whenever the test is on, left as
        they are when it is off (like the blend factors). */
     set_cap(GL_STENCIL_TEST, d->stencil_test);
@@ -1192,19 +1193,32 @@ void rhi_cmd_end_pass(void) { g_in_pass = 0; }
 RhiResult rhi_cmd_copy_main_to_texture(RhiTexture texture, int32_t x, int32_t y,
                                        int32_t w, int32_t h) {
     RhiGlTexture *t = texture_lookup(texture, "copy_main_to_texture");
-    if (!t || t->target != GL_TEXTURE_2D || !(t->usage & RHI_TEXTURE_COPY_DST) || g_in_pass ||
+    if (!t || t->target != GL_TEXTURE_2D || w <= 0 || h <= 0 || x < 0 || y < 0 || g_in_pass ||
+        !(t->usage & RHI_TEXTURE_COPY_DST) ||
         (t->format != RHI_FORMAT_RGBA8 && t->format != RHI_FORMAT_DEPTH) ||
-        x < 0 || y < 0 || w <= 0 || h <= 0 || w > INT_MAX - x || h > INT_MAX - y ||
+        w > INT_MAX - x || h > INT_MAX - y ||
         (g_rhi.in_frame && (w > g_rhi.frame_w - x || h > g_rhi.frame_h - y))) return RHI_ERR_INVALID;
 #ifdef N2_GLES
-    if (t->format == RHI_FORMAT_DEPTH) return RHI_ERR_UNSUPPORTED;   /* ES2 cannot copy depth */
+    if (t->format == RHI_FORMAT_DEPTH) return RHI_ERR_UNSUPPORTED;
 #endif
+    SDL_Window *window = SDL_GL_GetCurrentWindow();
+    int frame_w = 0, frame_h = 0;
+    if (window) SDL_GL_GetDrawableSize(window, &frame_w, &frame_h);
+    if (w > frame_w - x || h > frame_h - y) return RHI_ERR_INVALID;
+    GLint framebuffer;
+    gls_get_integerv(GL_FRAMEBUFFER_BINDING, &framebuffer);
+    if (framebuffer) glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glBindTexture(GL_TEXTURE_2D, t->name);
     if (t->copied_w != w || t->copied_h != h) {
         glCopyTexImage2D(GL_TEXTURE_2D, 0, t->format == RHI_FORMAT_DEPTH ? GL_DEPTH_COMPONENT : GL_RGBA,
                          x, y, w, h, 0);
-        t->copied_w = w; t->copied_h = h;
-        t->width = w; t->height = h;
+        for (uint32_t i = 0; i < RHI_GL_MAX_FRAMEBUFFERS; i++)
+            if (g_fbos[i].color_name == t->name) g_fbos[i].complete = 0;
     } else glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, x, y, w, h);
-    return glGetError() == GL_NO_ERROR ? RHI_OK : RHI_ERR_UNSUPPORTED;
+    RhiResult result = glGetError() == GL_NO_ERROR ? RHI_OK : RHI_ERR_UNSUPPORTED;
+    if (framebuffer) glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)framebuffer);
+    if (result != RHI_OK) return result;
+    t->copied_w = w; t->copied_h = h;
+    t->width = w; t->height = h;
+    return RHI_OK;
 }
