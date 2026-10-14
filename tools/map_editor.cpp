@@ -60,7 +60,7 @@ struct Editor {
     std::vector<uint64_t> mesh_sources;
     std::vector<std::vector<float>> verts;
     std::vector<float> bounds;
-    std::vector<GLuint> textures, source_textures;
+    std::vector<RhiTexture> textures, source_textures;
     std::vector<unsigned char> modes, source_modes;
     std::vector<N2LightSrc> lights;
     std::vector<Point> navpoints;
@@ -68,7 +68,7 @@ struct Editor {
     int nbatch = 0, nglow = 0, nsky = 0;
     RProg shader{};
     RhiBuffer wallvbo{};
-    GLuint flare = 0;
+    RhiTexture flare = {0};
     GpuMesh quad{};
     char root[1024] = "../TRACKS", file[1024] = "map-edits.ug2map", filter[128] = "";
     char tracks[128][64]{};
@@ -211,16 +211,16 @@ struct Editor {
         scene_event = event;
         sources();
         uint32_t keys[4096];
-        GLuint tex[4096];
+        RhiTexture tex[4096];
         unsigned char mode[4096];
         int count = world_bind_textures(world.get(), keys, tex, mode, 4096);
         if (count < 0) {
             error = "Texture upload failed; project is still retained";
             return false;
         }
-        source_textures.assign(world->neighborhood.scene.count, 0);
+        source_textures.assign(world->neighborhood.scene.count, RhiTexture{0});
         source_modes.assign(source_textures.size(), 0);
-        flare = 0;
+        flare = RhiTexture{0};
         std::unordered_map<uint32_t, int> binding;
         for (int k = 0; k < count; k++) {
             binding[keys[k]] = k;
@@ -295,7 +295,7 @@ struct Editor {
                         destination = int(meshes.size());
                         meshes.push_back({});
                         verts.emplace_back();
-                        textures.push_back(0);
+                        textures.push_back(RhiTexture{0});
                         modes.push_back(0);
                         mesh_sources.push_back(i.source);
                     }
@@ -349,7 +349,7 @@ struct Editor {
         }
         N2Batch *next = nullptr;
         int count = upload_world_batches(&view, (const float (*)[4])bounds.data(), textures.data(),
-                                         0, &next, nullptr, nullptr, modes.data());
+                                         RhiTexture{0}, &next, nullptr, nullptr, modes.data());
         if (count < 0) {
             error = "Could not rebuild map preview";
             return false;
@@ -1145,8 +1145,8 @@ struct Editor {
         if (world) {
             std::vector<std::pair<float, int>> blend;
             auto draw = [&](const N2Batch &b) {
-                glUniform1f(shader.uUseTex, b.tex ? 1 : 0);
-                glBindTexture(GL_TEXTURE_2D, b.tex);
+                glUniform1f(shader.uUseTex, b.tex.id ? 1 : 0);
+                glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(b.tex));
                 glUniform1f(shader.uAlphaTest, b.drawmode == N2_DRAW_CUTOUT);
                 glUniform1f(shader.uTextureAlpha,
                             b.drawmode == N2_DRAW_BLEND || b.drawmode == N2_DRAW_ADD);
@@ -1189,7 +1189,7 @@ struct Editor {
             glUniform1f(shader.uAlphaTest, 0);
             glUniform1f(shader.uTextureAlpha, 0);
             render_world_glows(&shader, glows, nglow, mvp);
-            if (flare && !lights.empty())
+            if (flare.id && !lights.empty())
                 render_district_lights(&shader, &quad, flare, lights.data(), int(lights.size()),
                                        eye, look, mvp, range, 1, 1);
             ImGui::GetBackgroundDrawList()->PushClipRect(view_min(), view_max(), true);

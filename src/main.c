@@ -29,6 +29,7 @@
 #include "car_mod.h"
 #include "render.h"
 #include "rhi.h"
+#include "rhi_gl.h"   /* GL names behind texture handles for the draw code */
 #include "physics.h"
 #include "ai.h"
 #include "audio.h"
@@ -224,11 +225,11 @@ static int load_rim_style(const unsigned char *wldata, long wllen,
                           const uint32_t *wkeys, int nwkeys, int style,
                           N2Scene *active, GpuMesh **active_gm, int *ngm,
                           const unsigned char *wtdata, long wtlen,
-                          GLuint *active_tex, int *active_mode, float fitR) {
+                          RhiTexture *active_tex, int *active_mode, float fitR) {
     if (!wldata || wllen <= 0 || !isfinite(fitR)) return 0;
     N2Scene candidate = {0}, *lib = &candidate;
     GpuMesh *gm = NULL;
-    GLuint rimtex = 0;
+    RhiTexture rimtex = {0};
     int rimmode = N2_DRAW_OPAQUE;
     N2Tex rt = {0};
     N2CarConfig wcfg = {.hood_style=style,.wheel_style_id=style};   /* STYLEnn selects the rim */
@@ -287,11 +288,11 @@ static int load_rim_style(const unsigned char *wldata, long wllen,
             if (b < bmn) bmn = b; if (b > bmx) bmx = b; }
         if (np) { ar/=np; ag/=np; ab/=np; }
     }
-    if (!rimtex || glGetError() != GL_NO_ERROR) goto failed;
+    if (!rimtex.id || glGetError() != GL_NO_ERROR) goto failed;
     free(rt.rgb); free(rt.alpha); free(rt.dxt);
     free_scene_gpu(*active_gm, *ngm);
     n2_free_scene(active);
-    if (*active_tex) glDeleteTextures(1, active_tex);
+    if (active_tex->id) rhi_texture_destroy(*active_tex);
     *active = candidate; *active_gm = gm; *ngm = n;
     *active_tex = rimtex; *active_mode = rimmode;
     /* channel telemetry: B min/max spanning 0..255 confirms the decode is NOT
@@ -303,7 +304,7 @@ static int load_rim_style(const unsigned char *wldata, long wllen,
 failed:
     free(rt.rgb); free(rt.alpha); free(rt.dxt);
     free_scene_gpu(gm, candidate.count);
-    if (rimtex) glDeleteTextures(1, &rimtex);
+    if (rimtex.id) rhi_texture_destroy(rimtex);
     n2_free_scene(&candidate);
     fprintf(stderr, "Wheel style %d could not be loaded; keeping current wheels.\n", style);
     return 0;
@@ -317,14 +318,14 @@ typedef struct {
     int stock_wheel, ntextures;
     float bb[6], bloom[4][4];
     uint32_t keys[128];
-    GLuint textures[128];
+    RhiTexture textures[128];
     char alpha[128], mode[128];
 } BodyKitCandidate;
 
 static void body_kit_release(BodyKitCandidate *kit) {
     free_scene_gpu(kit->gpu, kit->scene.count);
     n2_free_scene(&kit->scene);
-    for (int i=0;i<kit->ntextures;i++) glDeleteTextures(1,&kit->textures[i]);
+    for (int i=0;i<kit->ntextures;i++) rhi_texture_destroy(kit->textures[i]);
     memset(kit,0,sizeof *kit);
 }
 
@@ -379,7 +380,7 @@ typedef struct {
     N2CarProfile profile; N2CarConfig config;
     VehicleWheelConfig wheel;
     N2PhysicsAttr physics; int has_physics;
-    uint32_t tex_keys[128]; GLuint textures[128];
+    uint32_t tex_keys[128]; RhiTexture textures[128];
     char alpha[128], mode[128]; int ntextures;
     CarShadow shadow;
     float body_floor; /* car_body_floor of scene: immutable after load */
@@ -393,7 +394,7 @@ static void car_switch_release(CarSwitchCandidate *candidate) {
     free_scene_gpu(candidate->gpu, candidate->nmesh);
     n2_free_scene(&candidate->scene);
     for (int i = 0; i < candidate->ntextures; i++)
-        if (candidate->textures[i]) glDeleteTextures(1, &candidate->textures[i]);
+        if (candidate->textures[i].id) rhi_texture_destroy(candidate->textures[i]);
     free(candidate->data); free(candidate->texdata);
     free(candidate->globaltpk.blk); free(candidate->globaldata);
     memset(candidate, 0, sizeof *candidate);
@@ -401,13 +402,13 @@ static void car_switch_release(CarSwitchCandidate *candidate) {
 
 /* The roaming car keeps its original textures when the player switches cars.
  * Shared GL handles survive the first switch; later player-only maps do not. */
-static void car_texture_map_clear(GLuint *textures, int count,
-                                  const GLuint *keep, int nkeep) {
+static void car_texture_map_clear(RhiTexture *textures, int count,
+                                  const RhiTexture *keep, int nkeep) {
     for (int i = 0; i < count; i++) {
         int retained = 0;
         for (int j = 0; j < nkeep; j++)
-            if (textures[i] == keep[j]) { retained = 1; break; }
-        if (textures[i] && !retained) glDeleteTextures(1, &textures[i]);
+            if (textures[i].id == keep[j].id) { retained = 1; break; }
+        if (textures[i].id && !retained) rhi_texture_destroy(textures[i]);
     }
 }
 
@@ -476,7 +477,7 @@ static int prepare_car_switch(CarSwitchCandidate *candidate,
         candidate->alpha[slot] = tex.alpha != NULL && tex.dxtfmt != 1;
         candidate->mode[slot] = (char)n2_tex_mode(&tex);
         free(tex.rgb); free(tex.alpha); free(tex.dxt);
-        if (!candidate->textures[slot] || glGetError() != GL_NO_ERROR) {
+        if (!candidate->textures[slot].id || glGetError() != GL_NO_ERROR) {
             car_switch_release(candidate); return 0;
         }
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -827,7 +828,7 @@ static int prepare_body_kit(BodyKitCandidate *kit,
         glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
         free(t.rgb);free(t.alpha);free(t.dxt);
-        if(!kit->textures[j] || glGetError()!=GL_NO_ERROR)goto failed;
+        if(!kit->textures[j].id || glGetError()!=GL_NO_ERROR)goto failed;
     }
     return 1;
 failed:
@@ -2010,14 +2011,14 @@ static int er_find_paths(const char *troot, const char *stem, int skip, char *ou
 
 /* The selected vinyl's own GL texture, drawn as a decal over the body paint.
    0 = stock, no vinyl, which is the default. */
-static GLuint g_car_vinyl_tex = 0;
+static RhiTexture g_car_vinyl_tex = {0};
 static unsigned char *g_vinyl_data;
 static long g_vinyl_len;
 static uint32_t g_vinyl_keys[4096];
 static char g_vinyl_names[4096][32];
 
 static void clear_car_vinyl(void) {
-    glDeleteTextures(1,&g_car_vinyl_tex);g_car_vinyl_tex=0;
+    rhi_texture_destroy(g_car_vinyl_tex);g_car_vinyl_tex=(RhiTexture){0};
     free(g_vinyl_data);g_vinyl_data=NULL;g_vinyl_len=0;
     g_dbg.vinyl_names=g_vinyl_names;g_dbg.vinyl_count=0;g_dbg.vinyl_current=0;
     g_dbg.vinyl_request=-1;g_dbg.vinyl_catalog_request=0;g_dbg.vinyl_catalog_ready=0;
@@ -2046,15 +2047,15 @@ static void load_vinyl_catalog(const char *root,const char *car) {
 /* Upload before replacing the current decal so failed choices keep it intact. */
 static int select_car_vinyl(int choice) {
     if(choice<0 || choice>g_dbg.vinyl_count)return 0;
-    GLuint next=0;
+    RhiTexture next={0};
     if(choice) {
         N2Tex tex={0};
         int loaded=g_vinyl_data && n2_load_car_tex_by_key(g_vinyl_data,g_vinyl_len,
                                                         g_vinyl_keys[choice-1],&tex);
         if(loaded)next=upload_tex_keyed(g_vinyl_keys[choice-1],"VINYLS",&tex);
         free(tex.rgb);free(tex.alpha);free(tex.dxt);
-        if(!next || glGetError()!=GL_NO_ERROR) {
-            if(next)glDeleteTextures(1,&next);
+        if(!next.id || glGetError()!=GL_NO_ERROR) {
+            if(next.id)rhi_texture_destroy(next);
             snprintf(g_dbg.vinyl_status,sizeof g_dbg.vinyl_status,
                      "Could not load this vinyl. The current design was kept.");
             return 0;
@@ -2062,7 +2063,7 @@ static int select_car_vinyl(int choice) {
         glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
     }
-    glDeleteTextures(1,&g_car_vinyl_tex);g_car_vinyl_tex=next;
+    rhi_texture_destroy(g_car_vinyl_tex);g_car_vinyl_tex=next;
     g_dbg.vinyl_current=choice;g_dbg.vinyl_status[0]=0;
     return 1;
 }
@@ -4218,10 +4219,10 @@ int main(int argc, char **argv) {
         }
         printf("\n");
     }
-    static uint32_t legacy_tmapkey[2048]; static GLuint legacy_tmaptex[2048];
+    static uint32_t legacy_tmapkey[2048]; static RhiTexture legacy_tmaptex[2048];
     static unsigned char legacy_tmapmode[2048];
     uint32_t *tmapkey = legacy_tmapkey;
-    GLuint *tmaptex = legacy_tmaptex;
+    RhiTexture *tmaptex = legacy_tmaptex;
     unsigned char *tmapmode = legacy_tmapmode;
     int ntmap = 0;
     if (world2) {
@@ -4293,17 +4294,17 @@ int main(int argc, char **argv) {
         }
     }
     printf("track textures bound: %d distinct\n", ntmap);
-    GLuint district_light_tex = 0;
+    RhiTexture district_light_tex = {0};
     for (int j = 0; j < ntmap; j++)
         if (tmapkey[j] == N2_TEX_SFX_FLARE_GLOWA) {
             district_light_tex = tmaptex[j]; break;
         }
     printf("authored light texture: %s\n",
-           world.neighborhood.nlights == 0 ? "not needed" : district_light_tex ? "resolved" : "missing");
+           world.neighborhood.nlights == 0 ? "not needed" : district_light_tex.id ? "resolved" : "missing");
     if (smaudit) { int slot = -1;
         for (int j = 0; j < ntmap; j++) if (tmapkey[j] == smkey) { slot = j; break; }
         printf("M98 target %08x -> bound slot %d, GL id %u\n\n", smkey, slot,
-               slot < 0 ? 0u : tmaptex[slot]); }
+               slot < 0 ? 0u : rhi_gl_texture_name(tmaptex[slot])); }
 
 
     /* GPS self-check: route across the city so a broken graph is loud at load. */
@@ -4361,8 +4362,8 @@ int main(int argc, char **argv) {
                sdefs[i].name, sdefs[i].hash, sdefs[i].w, sdefs[i].l, sdefs[i].h);
     /* resolve each mesh's texture once — the per-frame key scan was fine for
        one region, not for a whole city of meshes */
-    GLuint *mtex = world2 ? active_resident->resources.mesh_textures
-                          : (GLuint *)calloc(nm, sizeof *mtex);
+    RhiTexture *mtex = world2 ? active_resident->resources.mesh_textures
+                          : (RhiTexture *)calloc(nm, sizeof *mtex);
     unsigned char *mtexmode = world2 ? active_resident->resources.mesh_modes
         : (unsigned char *)calloc((size_t)(nm ? nm : 1), 1);
     if (!world2)
@@ -4454,7 +4455,7 @@ int main(int argc, char **argv) {
         for (int i = 0; i < nm; i++) {
             uint32_t tk = scene.meshes[i].texkey;
             if (!tk) { nokey2++; continue; }
-            if (mtex[i]) continue;
+            if (mtex[i].id) continue;
             int found = 0;
             for (int j = 0; j < ntmap; j++) if (tmapkey[j] == tk) { found = 1; break; }
             if (found) inmap++; else notinmap++;
@@ -4472,7 +4473,7 @@ int main(int argc, char **argv) {
             int sc=scene.meshes[i].scen;
             if (sc<0 || sc>=8) sc=0;
             if (!scene.meshes[i].texkey) nokey[sc]++;
-            else { keyed[sc]++; if (!mtex[i]) unresolved[sc]++; }
+            else { keyed[sc]++; if (!mtex[i].id) unresolved[sc]++; }
         }
         printf("MAP texture resolution (source meshes):\n");
         for (int sc=1;sc<=N2_SC_OTHER;sc++)
@@ -4486,7 +4487,7 @@ int main(int argc, char **argv) {
     /* per-mesh car textures: get the TPK keys, then decode each key referenced
        by a mesh into its own GL texture (body, wheel, brake, ... bound by UVs). */
     uint32_t ckeys[2048]; int nck = ctdata ? n2_car_tex_keys(ctdata, ctlen, ckeys, 2048) : 0;
-    uint32_t mapkey[128]; GLuint maptex[128]; char mapalpha[128], mapmode[128]; int nmap = 0;
+    uint32_t mapkey[128]; RhiTexture maptex[128]; char mapalpha[128], mapmode[128]; int nmap = 0;
     N2Scene car={0}; int ncar = 0; GpuMesh *cgm = NULL;
     int stock_wheel = -1;   /* representative of the complete stock wheel tier */
     float wheelT[4][16];                         /* 4 wheel placements (car-local) */
@@ -4684,7 +4685,7 @@ int main(int argc, char **argv) {
     const float opponent_floor=car_floor;
     const VehicleWheelConfig opponent_wheel=g_dbg.wheel;
     const N2CarConfig opponent_config=carcfg;
-    uint32_t opponent_mapkey[128]; GLuint opponent_maptex[128];
+    uint32_t opponent_mapkey[128]; RhiTexture opponent_maptex[128];
     char opponent_mapalpha[128], opponent_mapmode[128];
     const int opponent_nmap=nmap;
     memcpy(opponent_mapkey,mapkey,(size_t)nmap*sizeof *mapkey);
@@ -5747,11 +5748,11 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    GLuint texTerr = world2 ? active_resident->resources.terrain_texture
+    RhiTexture texTerr = world2 ? active_resident->resources.terrain_texture
         : (world.neighborhood.have_grass
            ? upload_tex_keyed(0x5671B2B5u /* TRN_GRASSC */, NULL, &world.neighborhood.grass)
-           : 0);
-    GLuint texWheel = make_wheel_tex();   /* radial alloy-rim look for the tyres */
+           : (RhiTexture){0});
+    RhiTexture texWheel = make_wheel_tex();   /* radial alloy-rim look for the tyres */
 
     /* Aftermarket rim library. NOT CARS/WHEELS/GEOMETRY.BIN -- that file is a
        64-byte stub; the real geometry is per brand (GEOMETRY_BBS.BIN,
@@ -5793,7 +5794,7 @@ int main(int argc, char **argv) {
         if (wtdata) nwkeys = n2_car_tex_keys(wtdata, wtlen, wkeys,
                                              (int)(sizeof wkeys / sizeof wkeys[0]));
     }
-    GLuint rimtex = 0; int rimmode=N2_DRAW_OPAQUE;
+    RhiTexture rimtex = {0}; int rimmode=N2_DRAW_OPAQUE;
     if (load_rim_style(wldata, wllen, wkeys, nwkeys, wheel_style,
                        &wheellib, &wheelgm, &nwheelgm,
                        wtdata, wtlen, &rimtex, &rimmode, carWheelR))
@@ -5847,7 +5848,7 @@ int main(int argc, char **argv) {
     } else if (!world2 && tier == 2 && world.neighborhood.vista.count) {
         printf("vista: EXPERIMENTAL tier requested (--tier full); known "
                "opaque-sheet artifacts remain\n");
-        GLuint *vtex = (GLuint *)calloc((size_t)world.neighborhood.vista.count, sizeof *vtex);
+        RhiTexture *vtex = (RhiTexture *)calloc((size_t)world.neighborhood.vista.count, sizeof *vtex);
         for (int i = 0; i < world.neighborhood.vista.count; i++)
             for (int j = 0; j < ntmap; j++)
                 if (tmapkey[j] == world.neighborhood.vista.meshes[i].texkey) { vtex[i] = tmaptex[j]; break; }
@@ -5861,7 +5862,7 @@ int main(int argc, char **argv) {
            sheet exceeds the vertex limit. */
         for (int i = 0; i < world.neighborhood.vista.count; i++) {
             N2Scene one = { &world.neighborhood.vista.meshes[i], 1, 1 };
-            GLuint t1 = vtex[i];
+            RhiTexture t1 = vtex[i];
             N2Batch *part = NULL;
             int np = upload_cat_batches(&one, world.neighborhood.vista.meshes[i].cat, &t1, &part, NULL);
             if (np) {
@@ -5879,7 +5880,7 @@ int main(int argc, char **argv) {
         int textured = 0;
         for (int i = 0; i < world.neighborhood.vista.count; i++) {
             vista_tris += world.neighborhood.vista.meshes[i].nidx/3;
-            if (vtex[i]) textured++;
+            if (vtex[i].id) textured++;
         }
         /* the pass needs a frustum that actually reaches the backdrop */
         for (int k = 0; k < nvista; k++)
@@ -5903,7 +5904,7 @@ int main(int argc, char **argv) {
         static N2Mesh rm[4096]; int nrm = 0;
         for (int i = 0; i < nm && nrm < 4096; i++)
             if (scene.meshes[i].vrepair) rm[nrm++] = scene.meshes[i];
-        static GLuint rtx[4096]; memset(rtx, 0, sizeof rtx);
+        static RhiTexture rtx[4096]; memset(rtx, 0, sizeof rtx);
         for (int c = 0; c <= N2_GLOW; c++) {
             N2Scene rs = { rm, nrm, 4096 };
             N2Batch *part = NULL;
@@ -6566,7 +6567,7 @@ int main(int argc, char **argv) {
                             maptex[nmap]=candidate.textures[i];
                             mapalpha[nmap]=candidate.alpha[i];
                             mapmode[nmap++]=candidate.mode[i];
-                            candidate.textures[i]=0;
+                            candidate.textures[i]=(RhiTexture){0};
                         }
                         /* The procedural tyre follows the newly measured radius. */
                         if (have_wheel) {
@@ -6662,7 +6663,7 @@ int main(int argc, char **argv) {
                     traffic_world.obst=(const float (*)[4])obst;
                     traffic_world.obstz=(const float (*)[2])obstz;
                     traffic_world.obstsrc=obstsrc;traffic_world.nobst=nobst;
-                    district_light_tex = 0;
+                    district_light_tex = (RhiTexture){0};
                     for (int j = 0; j < ntmap; j++)
                         if (tmapkey[j] == N2_TEX_SFX_FLARE_GLOWA) {
                             district_light_tex = tmaptex[j]; break;
@@ -6950,7 +6951,7 @@ int main(int argc, char **argv) {
                     traffic_world.obst=(const float (*)[4])obst;
                     traffic_world.obstz=(const float (*)[2])obstz;
                     traffic_world.obstsrc=obstsrc;traffic_world.nobst=nobst;
-                    district_light_tex = 0;
+                    district_light_tex = (RhiTexture){0};
                     for (int j = 0; j < ntmap; j++)
                         if (tmapkey[j] == N2_TEX_SFX_FLARE_GLOWA) {
                             district_light_tex = tmaptex[j]; break;
@@ -8635,16 +8636,16 @@ int main(int argc, char **argv) {
             /* Dome first. Exact classification means ordinary assets such as
                XB_SKYDOMEB and XB_FACTORYSKYLIGHT never enter this list. */
             for (int k = 0; k < nsky; k++) {
-                if (skybatch[k].texkey != sky_dome_key || !skybatch[k].tex) continue;
-                glBindTexture(GL_TEXTURE_2D, skybatch[k].tex);
+                if (skybatch[k].texkey != sky_dome_key || !skybatch[k].tex.id) continue;
+                glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(skybatch[k].tex));
                 draw_batch(&skybatch[k]);
                 g_dbg.drawn++; skydraws++;
             }
             /* The DXT3 cap carries its own authored gradient alpha. */
             glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
             for (int k = 0; k < nsky; k++) {
-                if (skybatch[k].texkey != sky_cap_key || !skybatch[k].tex) continue;
-                glBindTexture(GL_TEXTURE_2D, skybatch[k].tex);
+                if (skybatch[k].texkey != sky_cap_key || !skybatch[k].tex.id) continue;
+                glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(skybatch[k].tex));
                 draw_batch(&skybatch[k]);
                 g_dbg.drawn++; skydraws++;
             }
@@ -8708,7 +8709,7 @@ int main(int argc, char **argv) {
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
             glDepthMask(GL_FALSE);
-            GLuint vlast = (GLuint)-1;
+            RhiTexture vlast = {UINT32_MAX};
             for (int k = 0; k < nvista; k++) {
                 N2Batch *b = &vbatch[k];
                 /* A backdrop is by definition BEHIND the ordinary world, and
@@ -8775,8 +8776,8 @@ int main(int argc, char **argv) {
                            "(camera z %.1f)\n", vm->sname[0]?vm->sname:"?",
                            b->index_count/3, sqrtf(near2), hi, cam[2]);
                 }
-                if (b->tex != vlast) {
-                    if (b->tex) { glUniform1f(uUseTex, 1.0f); glBindTexture(GL_TEXTURE_2D, b->tex); }
+                if (b->tex.id != vlast.id) {
+                    if (b->tex.id) { glUniform1f(uUseTex, 1.0f); glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(b->tex)); }
                     else { glUniform1f(uUseTex, 0.0f); glUniform3f(uColor, 0.30f, 0.32f, 0.38f); }
                     vlast = b->tex;
                 }
@@ -8833,7 +8834,7 @@ int main(int argc, char **argv) {
         }
         int ndefblend = 0, ndefadd = 0;
         if (g_debug_mode == 0 || !dbgprog) {   /* --- default textured world pass --- */
-        GLuint lasttex = (GLuint)-1;
+        RhiTexture lasttex = {UINT32_MAX};
         int lastmode = -1;
         glUniform1f(rp.uVColor, g_dbg.vcolor);   /* apply source prelight to world geom */
         for (int k = 0; g_dbg.show_track && (passmode == 0 || passmode == 1) && k < nbatch; k++) {
@@ -8883,8 +8884,8 @@ int main(int argc, char **argv) {
                 continue;   /* drawn in the deferred pass below, not here */
             }
             ndrawn += b->nmesh;
-            if (b->tex != lasttex) {
-                if (b->tex) { glUniform1f(uUseTex, 1.0f); glBindTexture(GL_TEXTURE_2D, b->tex); }
+            if (b->tex.id != lasttex.id) {
+                if (b->tex.id) { glUniform1f(uUseTex, 1.0f); glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(b->tex)); }
                 else { glUniform1f(uUseTex, 0.0f); glUniform3f(uColor, 0.28f, 0.29f, 0.31f); }
                 lasttex = b->tex;
             }
@@ -8920,14 +8921,14 @@ int main(int argc, char **argv) {
             glEnable(GL_BLEND);
             glDepthMask(GL_FALSE);
             glUniform1f(rp.uTextureAlpha, 1.0f);
-            GLuint lasttex2 = (GLuint)-1; int lastmode2 = -1;
+            RhiTexture lasttex2 = {UINT32_MAX}; int lastmode2 = -1;
             for (int pass = 0; pass < 2; pass++) {
                 int *list = pass == 0 ? defblend : defadd;
                 int cnt   = pass == 0 ? ndefblend : ndefadd;
                 for (int q = 0; q < cnt; q++) {
                     N2Batch *b = &wbatch[list[q]];
-                    if (b->tex != lasttex2) {
-                        if (b->tex) { glUniform1f(uUseTex, 1.0f); glBindTexture(GL_TEXTURE_2D, b->tex); }
+                    if (b->tex.id != lasttex2.id) {
+                        if (b->tex.id) { glUniform1f(uUseTex, 1.0f); glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(b->tex)); }
                         else { glUniform1f(uUseTex, 0.0f); glUniform3f(uColor, 0.28f, 0.29f, 0.31f); }
                         lasttex2 = b->tex;
                     }
@@ -9267,7 +9268,7 @@ int main(int argc, char **argv) {
                                    : is_light?0.55f
                                    : (c==N2_CAR_MECH||c==N2_CAR_INTERIOR)?0.0f : 0.15f);
                 glUniform1f(rp.uDecal, 0.0f);   /* body branch may re-enable */
-                GLuint tex = 0; int hasalpha = 0, texmode = N2_DRAW_OPAQUE;
+                RhiTexture tex = {0}; int hasalpha = 0, texmode = N2_DRAW_OPAQUE;
                 for (int j = 0; j < nmap; j++) if (mapkey[j]==cgm[i].texkey) {
                     tex = maptex[j]; hasalpha = mapalpha[j]; texmode = mapmode[j]; break; }
                 uint32_t material=cgm[i].car_material;
@@ -9283,8 +9284,8 @@ int main(int argc, char **argv) {
                     glUniform1f(uGloss,dark_trim?12.0f:chrome?90.0f:25.0f);
                     glUniform1f(rp.uEnv,dark_trim?.04f:chrome?.85f:.30f);
                     glUniform1f(rp.uClearcoat,0.0f);
-                    glUniform1f(uUseTex,tex?1.0f:0.0f);
-                    if(tex)glBindTexture(GL_TEXTURE_2D,tex);
+                    glUniform1f(uUseTex,tex.id?1.0f:0.0f);
+                    if(tex.id)glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(tex));
                 } else if (c == N2_CAR_LIGHT) {
                     float gain=light_variant_gain(carcfg.parts[N2_PART_HEADLIGHT])*g_dbg.headlight_gain;
                     float level=emitting?gain*((beam_high || beam_flash)?1.0f:0.78f):0.65f;
@@ -9294,8 +9295,8 @@ int main(int argc, char **argv) {
                         glUniform3f(rp.uEmissive, level, level*0.94f, level*0.82f);
                     } else
                         glUniform3f(uColor,level,level,level);
-                    glUniform1f(uUseTex,tex?1.0f:0.0f);
-                    if(tex)glBindTexture(GL_TEXTURE_2D,tex);
+                    glUniform1f(uUseTex,tex.id?1.0f:0.0f);
+                    if(tex.id)glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(tex));
                 } else if (c == N2_CAR_BRAKELIGHT && n2_car_tail_lens(&car,i)) {
                     render_tail_lamp(&rp,tex,g_dbg.night_mode,brake_lights,nitro_active,
                                      light_variant_gain(carcfg.parts[N2_PART_TAILLIGHT]));
@@ -9318,23 +9319,23 @@ int main(int argc, char **argv) {
                        no soft-top marker (M111), so they take the same paint and
                        their own texture like every other body mesh. */
                     glUniform3f(uColor, pnt[0], pnt[1], pnt[2]);
-                    if (tex && !hasalpha) {
+                    if (tex.id && !hasalpha) {
                         glUniform1f(uUseTex, 1.0f);
-                        glBindTexture(GL_TEXTURE_2D, tex);
+                        glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(tex));
                     } else {
-                        if (tex) {
+                        if (tex.id) {
                             glUniform1f(uUseTex, 1.0f); glUniform1f(rp.uDecal, 1.0f);
-                            glBindTexture(GL_TEXTURE_2D, tex);
-                        } else if (g_car_vinyl_tex) {
+                            glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(tex));
+                        } else if (g_car_vinyl_tex.id) {
                             /* vinyl over paint: uDecal mixes uColor with the
                                texture by its own alpha, so the paint shows
                                everywhere the design is cut away. */
                             glUniform1f(uUseTex, 1.0f); glUniform1f(rp.uDecal, 1.0f);
-                            glBindTexture(GL_TEXTURE_2D, g_car_vinyl_tex);
+                            glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(g_car_vinyl_tex));
                         } else glUniform1f(uUseTex, 0.0f);
                     }
-                } else if (tex) {
-                    glUniform1f(uUseTex, 1.0f); glBindTexture(GL_TEXTURE_2D, tex);  /* wheel/brake */
+                } else if (tex.id) {
+                    glUniform1f(uUseTex, 1.0f); glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(tex));  /* wheel/brake */
                 } else {
                     glUniform1f(uUseTex, 0.0f);
                     if (c == N2_CAR_BRAKELIGHT && !n2_car_tail_lens(&car,i)) {
@@ -9411,7 +9412,7 @@ int main(int argc, char **argv) {
                 VehicleWheelConfig draw_wheel=tv?tv->wheel:opponent_wheel;
                 N2CarConfig draw_config=tv?tv->config:opponent_config;
                 const uint32_t *draw_mapkey=tv?tv->tex_keys:opponent_mapkey;
-                const GLuint *draw_maptex=tv?tv->textures:opponent_maptex;
+                const RhiTexture *draw_maptex=tv?tv->textures:opponent_maptex;
                 const char *draw_mapalpha=tv?tv->alpha:opponent_mapalpha;
                 const char *draw_mapmode=tv?tv->mode:opponent_mapmode;
                 int draw_nmap=tv?tv->ntextures:opponent_nmap;
@@ -9458,7 +9459,7 @@ int main(int argc, char **argv) {
                        (c==N2_CAR_TIRE&&!g_dbg.show_tires)||
                        ((c==N2_CAR_MISC||c==N2_CAR_MECH||c==N2_CAR_INTERIOR)&&!g_dbg.show_misc))continue;
                     glUniform1f(rp.uVColor,draw_scene->meshes[i].vcol?2.0f:0.0f);
-                    GLuint tex=0;int hasalpha=0,texmode=N2_DRAW_OPAQUE;
+                    RhiTexture tex={0};int hasalpha=0,texmode=N2_DRAW_OPAQUE;
                     for(int j=0;j<draw_nmap;j++)if(draw_mapkey[j]==draw_gpu[i].texkey){
                         tex=draw_maptex[j];hasalpha=draw_mapalpha[j];texmode=draw_mapmode[j];break;
                     }
@@ -9491,14 +9492,14 @@ int main(int argc, char **argv) {
                         glUniform1f(rp.uEnv,.85f*g_dbg.body_env*qenv[vq]);
                         glUniform1f(rp.uClearcoat,draw_gpu[i].trim?0.0f:
                             fminf(1.0f,g_dbg.body_clearcoat*qcoat[vq]));
-                        if(tex&&hasalpha)glUniform1f(rp.uDecal,1.0f);
-                    }else if(!tex){
+                        if(tex.id&&hasalpha)glUniform1f(rp.uDecal,1.0f);
+                    }else if(!tex.id){
                         if(c==N2_CAR_TIRE)glUniform3f(uColor,.05f,.05f,.06f);
                         else if(c==N2_CAR_MECH)glUniform3f(uColor,.05f,.05f,.05f);
                         else if(c==N2_CAR_INTERIOR)glUniform3f(uColor,.055f,.052f,.050f);
                         else glUniform3f(uColor,.055f,.055f,.058f);
                     }
-                    glUniform1f(uUseTex,tex?1.0f:0.0f);if(tex)glBindTexture(GL_TEXTURE_2D,tex);
+                    glUniform1f(uUseTex,tex.id?1.0f:0.0f);if(tex.id)glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(tex));
                     if (mount==N2_MOUNT_FRONT_BRAKE || mount==N2_MOUNT_REAR_BRAKE) {
                         int first=mount==N2_MOUNT_FRONT_BRAKE?0:2;
                         for(int w=first;w<first+2;w++){float MB[16];mat_mul(AIWheelMVP,aiBrakeT[w],MB);
@@ -9515,7 +9516,7 @@ int main(int argc, char **argv) {
                     for(int i=0;authored&&i<draw_nmesh;i++){
                         if(draw_scene->meshes[i].car_mount!=N2_MOUNT_WHEEL||
                            draw_scene->meshes[i].tierid!=draw_scene->meshes[draw_stock_wheel].tierid)continue;
-                        GLuint tex=0;int mode=N2_DRAW_OPAQUE;
+                        RhiTexture tex={0};int mode=N2_DRAW_OPAQUE;
                         for(int j=0;j<draw_nmap;j++)if(draw_mapkey[j]==draw_gpu[i].texkey){tex=draw_maptex[j];mode=draw_mapmode[j];break;}
                         if(draw_gpu[i].cbo.id)glUniform3f(uColor,1,1,1);
                         else glUniform3f(uColor,.05f,.05f,.06f);
@@ -9524,7 +9525,7 @@ int main(int argc, char **argv) {
                             render_wheel_mesh(&rp,&draw_gpu[i],tex,mode);g_dbg.drawn++;}
                     }
                     if(!authored&&have_wheel){
-                        glUniform1f(uUseTex,1.0f);glBindTexture(GL_TEXTURE_2D,texWheel);
+                        glUniform1f(uUseTex,1.0f);glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(texWheel));
                         for(int w=0;w<4;w++){float MW[16];mat_mul(AIWheelMVP,aiWheelT[w],MW);
                             glUniformMatrix4fv(uMVP,1,GL_FALSE,MW);render_model(&rp,aiWheelWorld[w]);
                             draw_gpumesh(draw_wheelmesh->vbo.id?draw_wheelmesh:&wheelmesh);
@@ -9680,15 +9681,15 @@ int main(int argc, char **argv) {
                     for (int i=0;i<ncar;i++) {
                         if (car.meshes[i].car_mount != N2_MOUNT_WHEEL ||
                             car.meshes[i].tierid != car.meshes[stock_wheel].tierid) continue;
-                        GLuint stex=0;int smode=N2_DRAW_OPAQUE;
+                        RhiTexture stex={0};int smode=N2_DRAW_OPAQUE;
                         for(int j=0;j<nmap;j++) if(mapkey[j]==cgm[i].texkey){stex=maptex[j];smode=mapmode[j];break;}
                         int inner = cgm[i].cat == N2_CAR_INTERIOR;
-                        glUniform1f(uUseTex,stex?1.0f:0.0f);
+                        glUniform1f(uUseTex,stex.id?1.0f:0.0f);
                         glUniform1f(rp.uEnv,inner?0.0f:0.25f);
                         glUniform1f(uSpec,inner?0.04f:0.5f);
                         if(cgm[i].cbo.id)glUniform3f(uColor,1,1,1);
                         else glUniform3f(uColor,0.05f,0.05f,0.06f);
-                        if(stex) glBindTexture(GL_TEXTURE_2D,stex);
+                        if(stex.id) glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(stex));
                         for(int k=0;k<4;k++){float MW[16];mat_mul(MVPwheel,wheelT[k],MW);
                             glUniformMatrix4fv(uMVP,1,GL_FALSE,MW);render_model(&rp,wheelWorld[k]);render_wheel_mesh(&rp,&cgm[i],stex,smode);}
                         g_dbg.drawn+=4;
@@ -9726,7 +9727,7 @@ int main(int argc, char **argv) {
                                 if (car.meshes[i].car_mount != N2_MOUNT_WHEEL ||
                                     car.meshes[i].tierid != car.meshes[stock_wheel].tierid ||
                                     cgm[i].cat != wanted) continue;
-                                GLuint stex=0; int smode=N2_DRAW_OPAQUE;
+                                RhiTexture stex={0}; int smode=N2_DRAW_OPAQUE;
                                 for (int j=0; j<nmap; j++)
                                     if (mapkey[j] == cgm[i].texkey) {
                                         stex=maptex[j]; smode=mapmode[j]; break;
@@ -9748,21 +9749,21 @@ int main(int argc, char **argv) {
                     /* Rim paint: bind the authentic OEM diffuse and recolor it
                        toward the chosen rim colour (silver default) via uRimTint,
                        keeping the spoke detail. rim_paint=0 shows the raw gold. */
-                    glUniform1f(uUseTex, rimtex ? 1.0f : 0.0f);
+                    glUniform1f(uUseTex, rimtex.id ? 1.0f : 0.0f);
                     glUniform1f(rp.uEnv, 0.0f); glUniform1f(uSpec, 0.85f);
                     glUniform3fv(uColor, 1, g_dbg.rim_color);
-                    glUniform1f(rp.uRimTint, rimtex && g_dbg.rim_paint ? 1.0f : 0.0f);
-                    if (rimtex) glBindTexture(GL_TEXTURE_2D, rimtex);
+                    glUniform1f(rp.uRimTint, rimtex.id && g_dbg.rim_paint ? 1.0f : 0.0f);
+                    if (rimtex.id) glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(rimtex));
                 } else {
                     glUniform1f(uUseTex, 1.0f); glUniform1f(rp.uEnv, 0.3f);
                     glUniform1f(uSpec, 0.4f);
-                    glBindTexture(GL_TEXTURE_2D, texWheel);
+                    glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(texWheel));
                 }
                 float wmvp[4][16];for(int k=0;k<4;k++)mat_mul(MVPwheel,wheelT[k],wmvp[k]);
                 if(geo) {
                     int order[4*nwheelgm];
                     for(int i=0;i<4*nwheelgm;i++)order[i]=i;
-                    if(rimtex && rimmode==N2_DRAW_BLEND)render_wheel_order(&wheellib,wmvp,order);
+                    if(rimtex.id && rimmode==N2_DRAW_BLEND)render_wheel_order(&wheellib,wmvp,order);
                     for(int j=0;j<4*nwheelgm;j++) {
                         int k=order[j]/nwheelgm,i=order[j]%nwheelgm;
                         glUniformMatrix4fv(uMVP,1,GL_FALSE,wmvp[k]);
@@ -9902,7 +9903,7 @@ int main(int argc, char **argv) {
         }
 
         /* Authored point lights are render-only; gameplay owns no part of this pass. */
-        if (world.neighborhood.nlights && district_light_tex && g_dbg.show_track &&
+        if (world.neighborhood.nlights && district_light_tex.id && g_dbg.show_track &&
             g_dbg.night_mode && (passmode == 0 || passmode == 2)) {
             districtdraws = render_district_lights(&rp, &quad, district_light_tex,
                 world.neighborhood.lights, world.neighborhood.nlights, cam, look, MVP,
@@ -10527,10 +10528,10 @@ int main(int argc, char **argv) {
             int v = (f == 100) ? 0 : (f == 110) ? 1 : (f == 120) ? 2 : (f == 130) ? 3 : -1;
             if (v >= 0 && v < 4 && !(done_v & (1 << v))) {
                 done_v |= 1 << v;
-                GLuint tid = 0;
+                RhiTexture tid = {0};
                 for (int j = 0; j < ntmap; j++) if (tmapkey[j] == smkey) tid = tmaptex[j];
-                if (tid) {
-                    glBindTexture(GL_TEXTURE_2D, tid);
+                if (tid.id) {
+                    glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(tid));
                     float amax = caps->max_anisotropy;
                     if (v == 0) { glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
                                                   GL_LINEAR_MIPMAP_LINEAR);
@@ -10560,9 +10561,9 @@ int main(int argc, char **argv) {
                 printf("SM captured %s (frame %ld, car stationary during countdown)\n", sp, f);
             }
             if (f == 132) {   /* restore normal sampler state, then stop */
-                GLuint tid = 0;
+                RhiTexture tid = {0};
                 for (int j = 0; j < ntmap; j++) if (tmapkey[j] == smkey) tid = tmaptex[j];
-                if (tid) { glBindTexture(GL_TEXTURE_2D, tid);
+                if (tid.id) { glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(tid));
                            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
                                            GL_LINEAR_MIPMAP_LINEAR);
                            glTexParameterf(GL_TEXTURE_2D, 0x84FE, 1.0f); }
@@ -10717,7 +10718,7 @@ int main(int argc, char **argv) {
                                     float dy2 = cam[1] < bt->bbox_min[1] ? bt->bbox_min[1]-cam[1]
                                               : (cam[1] > bt->bbox_max[1] ? cam[1]-bt->bbox_max[1] : 0);
                                     if (dx2*dx2 + dy2*dy2 > VIEW_DIST*VIEW_DIST) outcome = 1;
-                                    else if (!mtex[i] && me->cat != N2_TERRAIN) outcome = 3;
+                                    else if (!mtex[i].id && me->cat != N2_TERRAIN) outcome = 3;
                                     else outcome = 0;
                                 }
                                 if (outcome == 0) {
@@ -10730,7 +10731,7 @@ int main(int argc, char **argv) {
                                 }
                                 cls[sc2][outcome]++; acct++;
                                 if (rr == 1 && lsaudit > 1 &&
-                                    (sc2 != N2_SC_TERRAIN || !mtex[i] || outcome != 0)) {
+                                    (sc2 != N2_SC_TERRAIN || !mtex[i].id || outcome != 0)) {
                                     /* per-object detail: where does this thing sit
                                        relative to the road under its OWN extent,
                                        sampled at the AABB corners and centre, not
@@ -10762,8 +10763,8 @@ int main(int argc, char **argv) {
                                            bb[0], bb[1], bb[2], bb[3], lo, hi,
                                            ghit, ghit?gmin:0.0f, ghit?gmax:0.0f,
                                            ghit ? lo - gmin : 0.0f,
-                                           mtex[i] ? "ok" : "MISSING", OUT[outcome]);
-                                    if (!mtex[i])
+                                           mtex[i].id ? "ok" : "MISSING", OUT[outcome]);
+                                    if (!mtex[i].id)
                                         printf("LSAKEY %-30s texkey %08x cat %d "
                                                "verts %d tris %d\n", me->sname, me->texkey,
                                                me->cat, me->nverts, me->nidx/3);
@@ -11287,13 +11288,13 @@ int main(int argc, char **argv) {
     g_ai_contact_hook=NULL;
     ai_roads_free(&roam_roads);
     n2_free_scene(&wheellib);
-    if (rimtex) glDeleteTextures(1, &rimtex);
+    if (rimtex.id) rhi_texture_destroy(rimtex);
     free(wldata); free(wtdata);
     if(cgm!=opponent_cgm){free_scene_gpu(cgm,ncar);n2_free_scene(&car);}
     free_scene_gpu(opponent_cgm,opponent_ncar);n2_free_scene(&opponent_car);
-    for(int i=0;i<nmap;i++)glDeleteTextures(1,&maptex[i]);
+    for(int i=0;i<nmap;i++)rhi_texture_destroy(maptex[i]);
     if(opponent_map_separate)
-        for(int i=0;i<opponent_nmap;i++)glDeleteTextures(1,&opponent_maptex[i]);
+        for(int i=0;i<opponent_nmap;i++)rhi_texture_destroy(opponent_maptex[i]);
     free(cdata);free(ctdata);
     world_resident_job_cancel(&resident_job); /* join before active-grid/GL teardown */
     world_resident_free(retired_resident);

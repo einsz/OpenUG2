@@ -63,7 +63,7 @@ typedef struct {
                              A batch that mixes the two draws (flat colour) --
                              an untextured mesh must not vanish because a
                              neighbour in its cell lost its texture. */
-    GLuint tex;               /* resolved GL texture (0 = untextured fallback) */
+    RhiTexture tex;           /* resolved texture ({0} = untextured fallback) */
     unsigned char wettable;  /* road-only batch; upward faces receive wet shading */
     int nmesh;                /* source meshes merged in (drawn-mesh metric) */
     int scen_count[8];        /* source N2_SC_* membership (visibility audit) */
@@ -126,7 +126,8 @@ typedef struct {
 } RProg;
 
 typedef struct {
-    GLuint fbo, depth, texture[2], white, program;
+    GLuint fbo, depth, texture[2], program;
+    RhiTexture white;   /* 1x1 for untextured casters */
     GLint mvp, cutout, range;
     int failed;
 } HeadlightShadows;
@@ -139,7 +140,7 @@ void render_headlights(const RProg *r, const float model[16], const float anchor
 
 /* Select the material for a proven rear lens. Texture presence must not
  * disable emission. Brake lamps work independently of night running lights. */
-void render_tail_lamp(const RProg *r,GLuint texture,int running,int braking,
+void render_tail_lamp(const RProg *r,RhiTexture texture,int running,int braking,
                       int boost,float gain);
 
 typedef struct { GLuint color, depth; int width, height, failed; } RoadReflections;
@@ -228,13 +229,13 @@ RProg    render_program(void);          /* compile+link the shader, fetch unifor
 GpuMesh *upload_scene(N2Scene *s);      /* VBO/NBO/IBO per mesh, normals computed */
 void free_scene_gpu(GpuMesh *gm, int count);
 GpuMesh  make_wheel(float R, float halfW);  /* procedural tyre (see render.c) */
-GLuint   make_wheel_tex(void);          /* radial alloy-rim texture for it */
+RhiTexture make_wheel_tex(void);          /* radial alloy-rim texture for it */
 GpuMesh  make_quad(void);               /* unit quad for HUD / billboards */
 void     draw_gpumesh(GpuMesh *g);
 /* Wheel material draw: paint is restricted to proven metal; rubber, backing
  * and plastic suppress metallic lighting. All touched uniforms, texture,
  * alpha, blend and depth state are restored. Missing textures stay opaque. */
-void render_wheel_mesh(const RProg *r, GpuMesh *mesh, GLuint texture, int mode);
+void render_wheel_mesh(const RProg *r, GpuMesh *mesh, RhiTexture texture, int mode);
 /* Sort the four instances of a library's material slices by view depth.
  * order has space for 4 * scene->count entries (hub * count + slice). */
 void render_wheel_order(const N2Scene *scene, const float mvp[4][16], int *order);
@@ -248,7 +249,7 @@ int render_car_glass_order(const N2Scene *scene,const float mvp[16],int *order);
  * and fog on exit. Caller binds the program and texture unit zero. */
 int render_world_glows(const RProg *r,const N2Batch *batches,int count,
                         const float mvp[16]);
-int render_district_lights(const RProg *r, GpuMesh *quad, GLuint texture,
+int render_district_lights(const RProg *r, GpuMesh *quad, RhiTexture texture,
                            const N2LightSrc *lights, int nlights,
                            const float cam[3], const float look[3],
                            const float mvp[16], float viewdist,
@@ -272,7 +273,7 @@ int render_district_lights(const RProg *r, GpuMesh *quad, GLuint texture,
  * takes it from the first member. NULL leaves every batch N2_DRAW_OPAQUE,
  * unchanged from before this field existed. */
 int  upload_world_batches(const N2Scene *s, const float (*mbb)[4],
-                          const GLuint *mtex, GLuint texTerr, N2Batch **out,
+                          const RhiTexture *mtex, RhiTexture texTerr, N2Batch **out,
                           const char *audit, int *meshbatch,
                           const unsigned char *mtexmode);
 /* Same partition, resumed on the GL thread. Scene and mode arrays are borrowed
@@ -281,8 +282,8 @@ int  upload_world_batches(const N2Scene *s, const float (*mbb)[4],
  * failed steps leave outputs untouched. A quota is not a hard time deadline. */
 typedef struct WorldBatchUpload WorldBatchUpload;
 WorldBatchUpload *upload_world_batches_begin(const N2Scene *s,
-                          const float (*mbb)[4], const GLuint *mtex,
-                          GLuint texTerr, const char *audit,
+                          const float (*mbb)[4], const RhiTexture *mtex,
+                          RhiTexture texTerr, const char *audit,
                           const unsigned char *mtexmode);
 int upload_world_batches_step(WorldBatchUpload **job, int max_batches,
                           N2Batch **out, int *count, int *meshbatch);
@@ -292,24 +293,24 @@ void upload_world_batches_cancel(WorldBatchUpload **job);
  * since there are only ever a handful of skybox/neon meshes per city. Sky,
  * glow, vista and diagnostic-marker batches keep their own dedicated render
  * treatment, so their callers pass mtexmode = NULL (-> N2_DRAW_OPAQUE). */
-int  upload_cat_batches(const N2Scene *s, int cat, const GLuint *mtex, N2Batch **out,
+int  upload_cat_batches(const N2Scene *s, int cat, const RhiTexture *mtex, N2Batch **out,
                         const unsigned char *mtexmode);
 void render_batch_array_free(N2Batch **batches, int *count);
 /* Update only struck panels' existing VBO ranges; all passes share those buffers. */
 int render_world_prop_updates(const N2Scene *scene,N2Batch *batches,int count,
                              int (*update_mesh)(N2Mesh *));
 void draw_batch(const N2Batch *b);
-GLuint   upload_tex(const N2Tex *t);
+RhiTexture upload_tex(const N2Tex *t);
 /* Upload a decoded TPK texture, preferring a direct glCompressedTexImage2D of
    its raw S3TC blocks when the driver supports the format; falls back to the
    portable CPU-decoded RGBA path (upload_tex) otherwise. Leaves the texture
    bound (callers may override wrap/filter after). */
-GLuint   upload_tpk_texture_to_gpu(const N2Tex *t);
+RhiTexture upload_tpk_texture_to_gpu(const N2Tex *t);
 /* Same as upload_tex / upload_tpk_texture_to_gpu, but first try a user HD
    override for `key` (tex_override.h; `pack` = source stem or NULL). With no
    override directory these are exactly the original uploaders. */
-GLuint   upload_tex_keyed(uint32_t key, const char *pack, const N2Tex *t);
-GLuint   upload_tpk_keyed(uint32_t key, const char *pack, const N2Tex *t);
+RhiTexture upload_tex_keyed(uint32_t key, const char *pack, const N2Tex *t);
+RhiTexture upload_tpk_keyed(uint32_t key, const char *pack, const N2Tex *t);
 /* Anisotropic filtering, the one texture-detail knob this renderer was missing.
  * Trilinear alone samples a square footprint, so any surface seen at a grazing
  * angle -- which is most of a road, a kerb and a car's own flanks -- drops to a

@@ -44,8 +44,8 @@ int main(void) {
     glUniform1f(r.uClearcoat,0);glUniform1f(r.uRimTint,0);
     glUniform3f(r.uColor,0,1,0);glUniform3f(r.uCamPos,0,0,3);
     unsigned char pixels[]={255,0,0,0, 255,0,0,127, 255,0,0,128, 255,0,0,255};
-    GLuint tex;glGenTextures(1,&tex);glBindTexture(GL_TEXTURE_2D,tex);
-    glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,4,1,0,GL_RGBA,GL_UNSIGNED_BYTE,pixels);
+    RhiTexture wtex=rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D,RHI_FORMAT_RGBA8,4,1});
+    rhi_texture_upload(wtex,0,0,pixels,0);GLuint tex=rhi_gl_texture_name(wtex);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
     glViewport(0,0,32,32);glDepthFunc(GL_LESS);
@@ -62,7 +62,7 @@ int main(void) {
         glBindTexture(GL_TEXTURE_2D,tex);
         glUniform1f(r.uUseTex,.25f);glUniform1f(r.uAlpha,.4f);glUniform1f(r.uDecal,.8f);
         glUniform1f(r.uAlphaTest,.75f);glUniform1f(r.uTextureAlpha,.5f);
-        render_wheel_mesh(&r,&q,missing?0:tex,missing?N2_DRAW_CUTOUT:mode);
+        render_wheel_mesh(&r,&q,missing?(RhiTexture){0}:wtex,missing?N2_DRAW_CUTOUT:mode);
         unsigned char a[4],b[4],c[4],below[4];float za,zc;
         glReadPixels(4,16,1,1,GL_RGBA,GL_UNSIGNED_BYTE,a);
         glReadPixels(12,16,1,1,GL_RGBA,GL_UNSIGNED_BYTE,below);
@@ -101,9 +101,9 @@ int main(void) {
     glDepthMask(GL_TRUE);glClearDepth(1);glClearColor(0,0,1,1);
     glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
     m[14]=.5f;glUniformMatrix4fv(r.uMVP,1,GL_FALSE,m);
-    render_wheel_mesh(&r,&q,0,N2_DRAW_OPAQUE);
+    render_wheel_mesh(&r,&q,(RhiTexture){0},N2_DRAW_OPAQUE);
     m[14]=0;glUniformMatrix4fv(r.uMVP,1,GL_FALSE,m);
-    render_wheel_mesh(&r,&q,tex,N2_DRAW_BLEND);
+    render_wheel_mesh(&r,&q,wtex,N2_DRAW_BLEND);
     unsigned char overlap[4];
     glReadPixels(4,16,1,1,GL_RGBA,GL_UNSIGNED_BYTE,overlap);
     assert(overlap[1]>245 && overlap[0]<5 && overlap[2]<5);
@@ -128,7 +128,7 @@ int main(void) {
             glDepthMask(GL_TRUE);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
             glUniform1f(r.uRimTint,(float)paint);glUniform1f(r.uSpec,.85f);
             glUniform1f(r.uEnv,.25f);glUniform1f(r.uClearcoat,.4f);
-            render_wheel_mesh(&r,&q,tex,mode);
+            render_wheel_mesh(&r,&q,wtex,mode);
             unsigned char sample[4],corner[4];
             glReadPixels(28,16,1,1,GL_RGBA,GL_UNSIGNED_BYTE,sample);
             glReadPixels(4,16,1,1,GL_RGBA,GL_UNSIGNED_BYTE,corner);
@@ -153,7 +153,7 @@ int main(void) {
     q.car_material=N2_MAT_INTERIOR;
     glUniform1f(r.uVColor,.25f);
     glDepthMask(GL_TRUE);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
-    render_wheel_mesh(&r,&q,tex,N2_DRAW_CUTOUT);
+    render_wheel_mesh(&r,&q,wtex,N2_DRAW_CUTOUT);
     unsigned char corner[4],face[4];
     glReadPixels(4,16,1,1,GL_RGBA,GL_UNSIGNED_BYTE,corner);
     glReadPixels(28,16,1,1,GL_RGBA,GL_UNSIGNED_BYTE,face);
@@ -161,7 +161,7 @@ int main(void) {
     float vcolor;glGetUniformfv(r.prog,r.uVColor,&vcolor);assert(vcolor==.25f);
     rhi_buffer_destroy(q.cbo);q.cbo=(RhiBuffer){0};
     assert(glGetError()==GL_NO_ERROR);
-    glDeleteTextures(1,&tex);rhi_buffer_destroy(q.vbo);rhi_buffer_destroy(q.nbo);rhi_buffer_destroy(q.ibo);
+    rhi_texture_destroy(wtex);rhi_buffer_destroy(q.vbo);rhi_buffer_destroy(q.nbo);rhi_buffer_destroy(q.ibo);
     glDeleteProgram(r.prog);SDL_GL_DeleteContext(ctx);SDL_DestroyWindow(w);SDL_Quit();
     puts("wheel_render_test: PASS (alpha, depth, state, sorting, overlap, wheel material paint/sheen isolation)");
 }

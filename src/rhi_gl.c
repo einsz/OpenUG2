@@ -278,3 +278,148 @@ void rhi_buffer_destroy(RhiBuffer buf) {
     b->generation++;
     g_buffers.free_list[g_buffers.free_count++] = buf.id & RHI_GL_SLOT_MASK;
 }
+
+/* ------------------------------------------------------------------------------ */
+/* Textures                                                                       */
+/* ------------------------------------------------------------------------------ */
+/* Same handle scheme as buffers, separate table. GL calls go through the state
+ * tracker macros, so the binding they leave behind is tracked. */
+#ifndef GL_COMPRESSED_RGBA_S3TC_DXT1_EXT
+#  define GL_COMPRESSED_RGBA_S3TC_DXT1_EXT 0x83F1
+#  define GL_COMPRESSED_RGBA_S3TC_DXT3_EXT 0x83F2
+#  define GL_COMPRESSED_RGBA_S3TC_DXT5_EXT 0x83F3
+#endif
+
+typedef struct {
+    GLuint    name;     /* 0 = free slot */
+    GLenum    target;   /* GL_TEXTURE_2D / GL_TEXTURE_CUBE_MAP */
+    RhiFormat format;
+    int32_t   width, height;
+    uint8_t   generation;
+} RhiGlTexture;
+
+static struct {
+    RhiGlTexture *slots;
+    uint32_t      count, capacity;
+    uint32_t     *free_list;
+    uint32_t      free_count;
+    unsigned      stale_logged;
+} g_textures;
+
+static RhiGlTexture *texture_find(RhiTexture tex) {
+    uint32_t slot = tex.id & RHI_GL_SLOT_MASK;
+    if (!slot || slot > g_textures.count) return NULL;
+    RhiGlTexture *t = &g_textures.slots[slot - 1];
+    return t->name && t->generation == (uint8_t)(tex.id >> RHI_GL_SLOT_BITS) ? t : NULL;
+}
+
+static RhiGlTexture *texture_lookup(RhiTexture tex, const char *what) {
+    RhiGlTexture *t = texture_find(tex);
+    if (!t && tex.id && g_textures.stale_logged < 8) {
+        g_textures.stale_logged++;
+        fprintf(stderr, "rhi: %s: stale or invalid texture handle 0x%08x\n",
+                what, (unsigned)tex.id);
+    }
+    return t;
+}
+
+GLuint rhi_gl_texture_name(RhiTexture tex) {
+    const RhiGlTexture *t = texture_lookup(tex, "bind");
+    return t ? t->name : 0;
+}
+
+int rhi_texture_is_live(RhiTexture tex) {
+    return texture_find(tex) != NULL;
+}
+
+static uint32_t texture_slot_alloc(void) {
+    if (g_textures.free_count) return g_textures.free_list[--g_textures.free_count];
+    if (g_textures.count == g_textures.capacity) {
+        uint32_t cap = g_textures.capacity ? g_textures.capacity * 2u : 1024u;
+        if (cap > RHI_GL_SLOT_MASK) return 0;
+        RhiGlTexture *slots = (RhiGlTexture *)realloc(g_textures.slots, cap * sizeof *slots);
+        if (!slots) return 0;
+        g_textures.slots = slots;
+        uint32_t *list = (uint32_t *)realloc(g_textures.free_list, cap * sizeof *list);
+        if (!list) return 0;
+        g_textures.free_list = list;
+        g_textures.capacity = cap;
+    }
+    memset(&g_textures.slots[g_textures.count], 0, sizeof g_textures.slots[0]);
+    return ++g_textures.count;
+}
+
+static int format_compressed(RhiFormat f) {
+    return f == RHI_FORMAT_BC1 || f == RHI_FORMAT_BC2 || f == RHI_FORMAT_BC3;
+}
+
+RhiTexture rhi_texture_create(const RhiTextureDesc *desc) {
+    RhiTexture out = {0};
+    if (!desc || (desc->type != RHI_TEXTURE_2D && desc->type != RHI_TEXTURE_CUBE) ||
+        desc->format < RHI_FORMAT_RGB8 || desc->format > RHI_FORMAT_BC3 ||
+        desc->width <= 0 || desc->height <= 0 ||
+        (desc->type == RHI_TEXTURE_CUBE && desc->width != desc->height)) {
+        fprintf(stderr, "rhi: texture_create: invalid description\n");
+        return out;
+    }
+    uint32_t slot = texture_slot_alloc();
+    if (!slot) { fprintf(stderr, "rhi: texture_create: out of handles\n"); return out; }
+    RhiGlTexture *t = &g_textures.slots[slot - 1];
+    GLuint name = 0;
+    glGenTextures(1, &name);
+    if (!name) {
+        g_textures.free_list[g_textures.free_count++] = slot;
+        fprintf(stderr, "rhi: texture_create: glGenTextures failed\n");
+        return out;
+    }
+    t->name = name;
+    t->target = desc->type == RHI_TEXTURE_CUBE ? GL_TEXTURE_CUBE_MAP : GL_TEXTURE_2D;
+    t->format = desc->format;
+    t->width = desc->width;
+    t->height = desc->height;
+    glBindTexture(t->target, name);
+    out.id = ((uint32_t)t->generation << RHI_GL_SLOT_BITS) | slot;
+    return out;
+}
+
+RhiResult rhi_texture_upload(RhiTexture tex, int32_t face, int32_t level,
+                             const void *data, size_t size) {
+    RhiGlTexture *t = texture_lookup(tex, "texture_upload");
+    int faces = t && t->target == GL_TEXTURE_CUBE_MAP ? 6 : 1;
+    if (!t || face < 0 || face >= faces || level < 0 || level > 30) return RHI_ERR_INVALID;
+    GLsizei w = t->width >> level, h = t->height >> level;
+    if (w < 1) w = 1;
+    if (h < 1) h = 1;
+    GLenum target = faces == 6 ? (GLenum)(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face) : GL_TEXTURE_2D;
+    glBindTexture(t->target, t->name);
+    if (format_compressed(t->format)) {
+        if (!data || !size || size > 0x7fffffff) return RHI_ERR_INVALID;
+        GLenum fmt = t->format == RHI_FORMAT_BC1 ? GL_COMPRESSED_RGBA_S3TC_DXT1_EXT
+                   : t->format == RHI_FORMAT_BC2 ? GL_COMPRESSED_RGBA_S3TC_DXT3_EXT
+                                                 : GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
+        glCompressedTexImage2D(target, level, fmt, w, h, 0, (GLsizei)size, data);
+    } else {
+        GLenum fmt = t->format == RHI_FORMAT_RGB8 ? GL_RGB : GL_RGBA;
+        glTexImage2D(target, level, (GLint)fmt, w, h, 0, fmt, GL_UNSIGNED_BYTE, data);
+    }
+    return RHI_OK;
+}
+
+RhiResult rhi_texture_generate_mips(RhiTexture tex) {
+    RhiGlTexture *t = texture_lookup(tex, "texture_generate_mips");
+    if (!t || t->target != GL_TEXTURE_2D || format_compressed(t->format)) return RHI_ERR_INVALID;
+    glBindTexture(GL_TEXTURE_2D, t->name);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    return RHI_OK;
+}
+
+void rhi_texture_destroy(RhiTexture tex) {
+    RhiGlTexture *t = texture_lookup(tex, "texture_destroy");
+    if (!t) return;
+    glDeleteTextures(1, &t->name);
+    t->name = 0;
+    /* Retire the slot before its generation can alias an old handle. */
+    if (t->generation == UINT8_MAX) return;
+    t->generation++;
+    g_textures.free_list[g_textures.free_count++] = tex.id & RHI_GL_SLOT_MASK;
+}

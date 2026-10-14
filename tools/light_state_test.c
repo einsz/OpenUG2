@@ -67,7 +67,8 @@ int main(void) {
         assert(soft==1?inside[0]>250:inside[0]<210);
         assert(edge[0]>250);
     }
-    GLuint tex[2]; glGenTextures(2, tex);
+    RhiTexture light_tex = rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D,RHI_FORMAT_RGBA8,1,1});
+    GLuint tex[2] = {rhi_gl_texture_name(light_tex), 0}; glGenTextures(1, tex + 1);
     const unsigned char pixel[4] = {128,64,32,255};
     glBindTexture(GL_TEXTURE_2D, tex[0]);
     glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,1,1,0,GL_RGBA,GL_UNSIGNED_BYTE,pixel);
@@ -101,7 +102,7 @@ int main(void) {
         glUniform3fv(r.uColor,1,color);
         glUniformMatrix4fv(r.uMVP,1,GL_FALSE,saved);
         for (int i=0;i<5;i++) glUniform1f(scalars[i],values[i]);
-        assert(render_district_lights(&r,&quad,tex[0],lights,2,cam,look,mvp,10,1.0f,1.0f)==1);
+        assert(render_district_lights(&r,&quad,light_tex,lights,2,cam,look,mvp,10,1.0f,1.0f)==1);
         eq_uniform(&r,r.uColor,color,3);
         eq_uniform(&r,r.uMVP,saved,16);
         eq_uniform(&r,r.uFogColor,fog_color,3);
@@ -142,7 +143,7 @@ int main(void) {
             draw_gpumesh(&quad);
         }
         N2LightSrc lamp={{0,0,0},10,50,0xffffffffu};
-        assert(render_district_lights(&r,&quad,tex[0],&lamp,1,eye,direction,world,100,1,1)==1);
+        assert(render_district_lights(&r,&quad,light_tex,&lamp,1,eye,direction,world,100,1,1)==1);
         unsigned char out[4];glReadPixels(16,16,1,1,GL_RGBA,GL_UNSIGNED_BYTE,out);
         assert(blocked?(out[0]==0 && out[1]==0 && out[2]==0):out[0]>50);
     }
@@ -153,7 +154,7 @@ int main(void) {
         bv[i].pos[0]=(i==1||i==2)?1:-1;bv[i].pos[1]=i>=2?1:-1;
         memset(bv[i].col,255,4);
     }
-    N2Batch batch={.index_count=6,.tex=tex[0]};
+    N2Batch batch={.index_count=6,.tex=light_tex};
     batch.vbo=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX,RHI_UPDATE_STATIC,sizeof bv,bv});
     batch.ibo=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_INDEX,RHI_UPDATE_STATIC,sizeof bi,bi});
     float identity[16],wrong[16];mat_trans(0,0,0,identity);mat_trans(100,100,100,wrong);
@@ -174,7 +175,7 @@ int main(void) {
         assert(glGetError()==GL_NO_ERROR);
     }
     rhi_buffer_destroy(batch.vbo);rhi_buffer_destroy(batch.ibo);
-    glDeleteTextures(2,tex); glDeleteProgram(r.prog);
+    rhi_texture_destroy(light_tex); glDeleteTextures(1,tex+1); glDeleteProgram(r.prog);
     rhi_buffer_destroy(quad.vbo); rhi_buffer_destroy(quad.nbo); rhi_buffer_destroy(quad.ibo);
     SDL_GL_DeleteContext(ctx); SDL_DestroyWindow(win); SDL_Quit();
     puts("light_state_test: PASS (vehicle footprints, soft shadow coverage, state isolation, depth occlusion, distance culling, additive fog, world-glow transform isolation)");

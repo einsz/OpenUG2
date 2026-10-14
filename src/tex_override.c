@@ -11,18 +11,9 @@
 #include <sys/stat.h>
 #include "tex_override.h"
 
-#ifndef GL_COMPRESSED_RGBA_S3TC_DXT1_EXT
-#  define GL_COMPRESSED_RGBA_S3TC_DXT1_EXT 0x83F1
-#endif
-#ifndef GL_COMPRESSED_RGBA_S3TC_DXT3_EXT
-#  define GL_COMPRESSED_RGBA_S3TC_DXT3_EXT 0x83F2
-#endif
-#ifndef GL_COMPRESSED_RGBA_S3TC_DXT5_EXT
-#  define GL_COMPRESSED_RGBA_S3TC_DXT5_EXT 0x83F3
-#endif
 
 /* render.c: anisotropy + tracking for the currently bound texture */
-void render_tex_finish_bound(GLuint id);
+void render_tex_finish_bound(RhiTexture id);
 
 enum { TO_DXT1 = 1, TO_DXT3 = 3, TO_DXT5 = 5, TO_BGRA = 10, TO_RGBA = 11 };
 #define TO_MAX_LEVELS 16
@@ -41,9 +32,9 @@ typedef struct {
 
 /* Live override uploads, so the budget measures resident bytes rather than a
    session-cumulative total: world cache eviction and car switches delete GL
-   names behind our back, and the next upload prunes them with glIsTexture. A
+   names behind our back, and the next upload prunes them with rhi_texture_is_live. A
    recycled name still counts as live -- that can only over-estimate usage. */
-typedef struct { GLuint id; long long bytes; } TexLive;
+typedef struct { RhiTexture id; long long bytes; } TexLive;
 static TexLive *g_live; static int g_nlive, g_caplive;
 
 static TexOvr *g_ovr; static int g_novr, g_capovr;
@@ -245,13 +236,13 @@ static TexOvr *find(uint32_t key, const char *pack) {
 static long long live_bytes(void) {
     long long sum = 0; int out = 0;
     for (int i = 0; i < g_nlive; i++) {
-        if (!glIsTexture(g_live[i].id)) continue;      /* deleted since upload */
+        if (!rhi_texture_is_live(g_live[i].id)) continue;      /* deleted since upload */
         g_live[out++] = g_live[i]; sum += g_live[i].bytes;
     }
     g_nlive = out;
     return sum;
 }
-static void live_add(GLuint id, long long bytes) {
+static void live_add(RhiTexture id, long long bytes) {
     if (g_nlive == g_caplive) {
         int cap = g_caplive ? g_caplive * 2 : 64;
         TexLive *t = (TexLive *)realloc(g_live, (size_t)cap * sizeof *t);
@@ -294,11 +285,11 @@ static unsigned char *decode_level(const TexOvr *o, const unsigned char *src, in
     return px;
 }
 
-GLuint tex_override_upload(uint32_t key, const char *pack, const N2Tex *orig) {
-    if (!g_enabled || !orig) return 0;
+RhiTexture tex_override_upload(uint32_t key, const char *pack, const N2Tex *orig) {
+    if (!g_enabled || !orig) return (RhiTexture){0};
     TexOvr *o = find(key, pack);
-    if (!o) return 0;
-    if (orig->w <= 0 || orig->h <= 0) return 0;
+    if (!o) return (RhiTexture){0};
+    if (orig->w <= 0 || orig->h <= 0) return (RhiTexture){0};
     /* scale k in {0,1,2}, identical on both axes */
     int k = -1;
     for (int s = 0; s <= 2; s++)
@@ -306,12 +297,12 @@ GLuint tex_override_upload(uint32_t key, const char *pack, const N2Tex *orig) {
     if (k < 0) {
         char why[96]; snprintf(why, sizeof why, "size %dx%d is not 1x/2x/4x of original %dx%d",
                                o->w, o->h, orig->w, orig->h);
-        reject(o, why); return 0;
+        reject(o, why); return (RhiTexture){0};
     }
     int needs_alpha = orig->alpha != NULL || orig->usage || orig->blend;
     int smooth_alpha = orig->blend || orig->usage >= 2;
-    if (needs_alpha && !o->alpha) { reject(o, "original has alpha, override format has none"); return 0; }
-    if (smooth_alpha && o->fmt == TO_DXT1) { reject(o, "blended original needs DXT3/DXT5/RGBA, not DXT1"); return 0; }
+    if (needs_alpha && !o->alpha) { reject(o, "original has alpha, override format has none"); return (RhiTexture){0}; }
+    if (smooth_alpha && o->fmt == TO_DXT1) { reject(o, "blended original needs DXT3/DXT5/RGBA, not DXT1"); return (RhiTexture){0}; }
 
     int compressed = o->fmt <= TO_DXT5 && g_tex_s3tc && !g_force_cpu;
     /* GPU bytes of the levels [b, levels): CPU-decoded DXTn expands to RGBA8 */
@@ -337,7 +328,7 @@ GLuint tex_override_upload(uint32_t key, const char *pack, const N2Tex *orig) {
                        (double)g_used / 1048576.0, g_budget >> 20);
                 g_nskip++;
             }
-            return 0;
+            return (RhiTexture){0};
         }
         base = k; bytes = red;
         g_nreduced++;
@@ -345,11 +336,11 @@ GLuint tex_override_upload(uint32_t key, const char *pack, const N2Tex *orig) {
 
     long end = o->off[o->levels-1] + o->size[o->levels-1];
     FILE *f = fopen(o->path, "rb");
-    if (!f) { reject(o, "cannot open"); return 0; }
+    if (!f) { reject(o, "cannot open"); return (RhiTexture){0}; }
     unsigned char *buf = (unsigned char *)malloc((size_t)end);
     size_t got = buf ? fread(buf, 1, (size_t)end, f) : 0;
     fclose(f);
-    if (!buf || got != (size_t)end) { free(buf); reject(o, "short read"); return 0; }
+    if (!buf || got != (size_t)end) { free(buf); reject(o, "short read"); return (RhiTexture){0}; }
 
     int lw = o->w >> base, lh = o->h >> base;
     if (lw < 1) lw = 1;
@@ -363,21 +354,21 @@ GLuint tex_override_upload(uint32_t key, const char *pack, const N2Tex *orig) {
     /* Drain errors left by unrelated earlier calls so they are not blamed on
        this file (bounded: some drivers report forever without a context). */
     for (int i = 0; i < 16 && glGetError() != GL_NO_ERROR; i++) {}
-    GLuint id = 0; glGenTextures(1, &id); glBindTexture(GL_TEXTURE_2D, id);
+    RhiFormat format = !compressed ? RHI_FORMAT_RGBA8
+                     : o->fmt == TO_DXT1 ? RHI_FORMAT_BC1
+                     : o->fmt == TO_DXT3 ? RHI_FORMAT_BC2 : RHI_FORMAT_BC3;
+    RhiTexture id = rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D, format, lw, lh});
+    if (!id.id) { free(buf); reject(o, "GL upload error"); return (RhiTexture){0}; }
     int ok = 1;
     int uplevels = complete ? nlev : 1;
     for (int l = 0; l < uplevels && ok; l++) {
         const unsigned char *src = buf + o->off[base + l];
         if (compressed) {
-            GLenum fmt = o->fmt == TO_DXT1 ? GL_COMPRESSED_RGBA_S3TC_DXT1_EXT
-                       : o->fmt == TO_DXT3 ? GL_COMPRESSED_RGBA_S3TC_DXT3_EXT
-                                           : GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
-            glCompressedTexImage2D(GL_TEXTURE_2D, l, fmt, lw, lh, 0,
-                                   (GLsizei)o->size[base + l], src);
+            rhi_texture_upload(id, 0, l, src, (size_t)o->size[base + l]);
         } else {
             unsigned char *px = decode_level(o, src, lw, lh, keep_alpha);
             if (!px) { ok = 0; break; }
-            glTexImage2D(GL_TEXTURE_2D, l, GL_RGBA, lw, lh, 0, GL_RGBA, GL_UNSIGNED_BYTE, px);
+            rhi_texture_upload(id, 0, l, px, 0);
             free(px);
         }
         if (lw > 1) lw /= 2;
@@ -386,11 +377,11 @@ GLuint tex_override_upload(uint32_t key, const char *pack, const N2Tex *orig) {
     free(buf);
     /* A partial chain is re-mipped on the RGBA path; a compressed base cannot
        be re-mipped portably, so it stays base-only with LINEAR filtering. */
-    if (ok && !complete && !compressed) glGenerateMipmap(GL_TEXTURE_2D);
+    if (ok && !complete && !compressed) rhi_texture_generate_mips(id);
     if (!ok || glGetError() != GL_NO_ERROR) {
-        glDeleteTextures(1, &id);
+        rhi_texture_destroy(id);
         reject(o, ok ? "GL upload error" : "out of memory");
-        return 0;
+        return (RhiTexture){0};
     }
     int mipped = complete || !compressed;
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);

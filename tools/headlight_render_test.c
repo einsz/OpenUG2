@@ -90,7 +90,7 @@ static void model_lighting_test(const RProg *r) {
 static void tail_lamp_test(const RProg *r) {
     GpuMesh quad=make_quad();
     unsigned char rgb[]={32,4,3, 192,10,6};
-    N2Tex image={.w=2,.h=1,.rgb=rgb};GLuint texture=upload_tex(&image);assert(texture);
+    N2Tex image={.w=2,.h=1,.rgb=rgb};RhiTexture texture=upload_tex(&image);assert(texture.id);
     float mvp[]={2,0,0,0,0,2,0,0,0,0,1,0,-1,-1,0,1};
     render_model(r,NULL);glUniformMatrix4fv(r->uMVP,1,GL_FALSE,mvp);
     glViewport(0,0,128,64);glDisable(GL_BLEND);glDisable(GL_DEPTH_TEST);
@@ -101,7 +101,7 @@ static void tail_lamp_test(const RProg *r) {
     const int running[]={0,1,0,1,1,0,1},braking[]={0,0,1,1,0,0,0},boost[]={0,0,0,0,1,1,0};
     int red[2][7];
     for(int textured=0;textured<2;textured++)for(int state=0;state<7;state++) {
-        render_tail_lamp(r,textured?texture:0,running[state],braking[state],boost[state],state==6?.25f:1);
+        render_tail_lamp(r,textured?texture:(RhiTexture){0},running[state],braking[state],boost[state],state==6?.25f:1);
         glClear(GL_COLOR_BUFFER_BIT);draw_gpumesh(&quad);glFinish();
         unsigned char pixel[4];glReadPixels(64,32,1,1,GL_RGBA,GL_UNSIGNED_BYTE,pixel);
         red[textured][state]=pixel[0];
@@ -126,7 +126,7 @@ static void tail_lamp_test(const RProg *r) {
                tex,red[tex][0],red[tex][1],red[tex][2],red[tex][3]);
     }
     rhi_buffer_destroy(quad.vbo);rhi_buffer_destroy(quad.nbo);rhi_buffer_destroy(quad.ibo);
-    glDeleteTextures(1,&texture);glUniform3f(r->uEmissive,0,0,0);
+    rhi_texture_destroy(texture);glUniform3f(r->uEmissive,0,0,0);
     puts("PASS: rear lamps retain texture detail; day/night brakes, running lights and nitro response");
 }
 
@@ -175,7 +175,7 @@ int main(void) {
         free_scene_gpu(gpu,1);
     }
     unsigned char white[]={255,255,255};N2Tex tex={.w=1,.h=1,.rgb=white};
-    GLuint texture=upload_tex(&tex); /* shader sampler remains valid even for flat colour */
+    RhiTexture texture=upload_tex(&tex); /* shader sampler remains valid even for flat colour */
     float verts[]={0,-20,0,0,0,100,-20,0,1,0,100,20,0,1,1,0,20,0,0,1};
     uint16_t idx[]={0,1,2,0,2,3};
     N2Mesh mesh={.verts=verts,.idx=idx,.nverts=4,.nidx=6};N2Scene scene={.meshes=&mesh,.count=1};
@@ -206,7 +206,7 @@ int main(void) {
     blocker.drawmode=N2_DRAW_CUTOUT;
     unsigned char alpha=0;tex.alpha=&alpha;blocker.tex=upload_tex(&tex);
     assert(sample(&r,road,model,0,1,25)==low);
-    glDeleteTextures(1,&blocker.tex);alpha=255;blocker.tex=upload_tex(&tex);
+    rhi_texture_destroy(blocker.tex);alpha=255;blocker.tex=upload_tex(&tex);
     assert(sample(&r,road,model,0,1,25)==off);
     blocker.drawmode=N2_DRAW_BLEND;
     assert(sample(&r,road,model,0,1,25)==low && shadow_draws==0);
@@ -238,7 +238,7 @@ int main(void) {
     assert(sample(&r,road,model,0,1,25)==low);
     assert(sample(&r,road,model,1,1,64)==high_far);
     shadow_enabled=0;
-    glDeleteTextures(1,&blocker.tex);glBindTexture(GL_TEXTURE_2D,texture);
+    rhi_texture_destroy(blocker.tex);glBindTexture(GL_TEXTURE_2D,rhi_gl_texture_name(texture));
     rhi_buffer_destroy(blocker.vbo);rhi_buffer_destroy(blocker.ibo);
     printf("PASS: world shadows blocked=%d single lamp=%d clear=%d; cutouts, culling, refresh and GL state\n",blocked,one_lamp,low);
     free_scene_gpu(road,1);
@@ -274,6 +274,6 @@ int main(void) {
     model_lighting_test(&r);
     tail_lamp_test(&r);
     free_headlight_shadows(&shadows);
-    free_scene_gpu(road,1);glDeleteTextures(1,&texture);glDeleteProgram(r.prog);
+    free_scene_gpu(road,1);rhi_texture_destroy(texture);glDeleteProgram(r.prog);
     SDL_GL_DeleteContext(context);SDL_DestroyWindow(window);SDL_Quit();return 0;
 }
