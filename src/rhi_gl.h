@@ -32,6 +32,12 @@ GLuint rhi_gl_shader_program(RhiShader shader);
  * before each glDraw* until draws go through rhi.h. */
 void rhi_gl_flush_params(void);
 
+/* Pipelines are applied through the state tracker, field by field, every time
+ * they are bound, so code that still changes GL state directly stays correct
+ * around them. With blending (or the depth test) off, the blend factors (or
+ * the depth function) are left as they are: they change no pixels, and code
+ * that still enables blending directly may rely on the factors set before. */
+
 #ifdef __cplusplus
 }
 #endif

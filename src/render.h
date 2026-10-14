@@ -275,6 +275,20 @@ void render_batch_array_free(N2Batch **batches, int *count);
 int render_world_prop_updates(const N2Scene *scene,N2Batch *batches,int count,
                              int (*update_mesh)(N2Mesh *));
 void draw_batch(const N2Batch *b);
+/* Pipelines of the sky, vista and ordinary world passes (one RProg). Several
+   names share a pipeline when their state is the same. */
+typedef struct {
+    RhiPipeline sky_dome,   /* opaque, depth test LEQUAL, no depth write */
+                sky_cap,    /* alpha blend, no depth write */
+                vista,      /* = sky_cap */
+                opaque,     /* depth write, no blend */
+                blend,      /* authored BLEND batches: alpha blend, no depth write */
+                add,        /* authored ADD batches: src alpha + one, no depth write */
+                overlay;    /* restored-geometry diagnostic: = sky_dome */
+} UG2WorldPipelines;
+void render_world_pipelines(const RProg *r, UG2WorldPipelines *p);
+/* draw_batch through the bound pipeline (rhi_cmd_bind_pipeline) */
+void render_draw_batch(const N2Batch *b);
 RhiTexture upload_tex(const N2Tex *t);
 /* Upload a decoded TPK texture, preferring a direct glCompressedTexImage2D of
    its raw S3TC blocks when the driver supports the format; falls back to the

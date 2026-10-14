@@ -227,6 +227,12 @@ param-layout-test: tools/param_layout_test.c src/render_params.c src/render_para
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/param_layout_test.c src/render_params.c src/rhi_gl.c src/rhi_gl_state.c -o build/param_layout_test $(SDL_LIBS) $(GL_LIBS)
 	./build/param_layout_test
 
+.PHONY: rhi-pipeline-test
+rhi-pipeline-test: tools/rhi_pipeline_test.c src/rhi.h src/rhi_gl.c src/rhi_gl_state.c src/rhi_gl_state.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/rhi_pipeline_test.c src/rhi_gl.c src/rhi_gl_state.c -o build/rhi_pipeline_test $(SDL_LIBS) $(GL_LIBS)
+	./build/rhi_pipeline_test
+
 light-state-test: tools/light_state_test.c src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/render.h src/nfsu2.h src/generated_shaders.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/light_state_test.c src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c -o build/light_state_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
