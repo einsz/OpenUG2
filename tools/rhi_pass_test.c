@@ -48,7 +48,8 @@ static void copy_tests(SDL_Window *window) {
     rhi_cmd_end_pass();GLint before,after;glGetIntegerv(GL_FRAMEBUFFER_BINDING,&before);assert(before);
     assert(rhi_cmd_copy_main_to_texture(copy,0,0,4,4)==RHI_OK);
     glGetIntegerv(GL_FRAMEBUFFER_BINDING,&after);assert(after==before);
-    unsigned char pixel[64];glGetTexImage(GL_TEXTURE_2D,0,GL_RGBA,GL_UNSIGNED_BYTE,pixel);assert(pixel[0]==255 && !pixel[2]);
+    unsigned char pixel[64];glBindTexture(GL_TEXTURE_2D,rhi_gl_texture_name(copy));
+    glGetTexImage(GL_TEXTURE_2D,0,GL_RGBA,GL_UNSIGNED_BYTE,pixel);assert(pixel[0]==255 && !pixel[2]);
     assert(rhi_cmd_copy_main_to_texture(target,0,0,8,8)==RHI_OK);
     RhiResult result=rhi_cmd_begin_pass(&pass);
     GLenum status=glCheckFramebufferStatus(GL_FRAMEBUFFER);

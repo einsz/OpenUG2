@@ -462,6 +462,11 @@ void rhi_cmd_restore_state(const RhiStateSnapshot *state);
  * for helpers whose output is a bound texture. */
 void rhi_state_set_texture(RhiStateSnapshot *state, uint32_t slot, RhiTexture texture);
 
+/* The area of the target that draws map to, in pixels from the bottom left.
+ * It stays until the next call, rhi_cmd_begin_pass, rhi_cmd_clear_main or
+ * rhi_cmd_restore_state. RHI_ERR_INVALID for a negative size. */
+RhiResult rhi_cmd_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height);
+
 /* Debug views: draw triangles as their edges, whatever pipeline is bound,
  * until switched off again. RHI_ERR_UNSUPPORTED without caps.wireframe. */
 RhiResult rhi_cmd_set_wireframe(int on);
