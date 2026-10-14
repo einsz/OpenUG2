@@ -8,6 +8,7 @@
  */
 #include "hud_baseline.h"
 #include "hud_asset.h"
+#include "rhi_gl.h"   /* GL names behind texture handles for the draw code */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -124,10 +125,10 @@ void hud_baseline_place_fit(int policy, int width, int height, float anchor_x, f
 
 /* --------------------------------------------------------------- resources */
 
-/* One art slot. `key` is the TPK record hash; `tex` is 0 when it did not load,
+/* One art slot. `key` is the TPK record hash; `tex` is {0} when it did not load,
  * which every draw site must tolerate. */
 typedef struct HudArc HudArc;
-typedef struct { const char *name; uint32_t key; GLuint tex; int w, h;
+typedef struct { const char *name; uint32_t key; RhiTexture tex; int w, h;
                  unsigned char rejected; struct {
                      int ok; float cx, cy, r, a0, a1;
                  } arc; } HudArt;
@@ -177,7 +178,7 @@ static const char *HUD_PACKS[] = {
 enum { HUD_NPACK = (int)(sizeof HUD_PACKS / sizeof HUD_PACKS[0]) };
 
 static void hud_baseline_art_define(HudBaseline *h, int slot, const char *name, uint32_t key) {
-    h->art[slot].name = name; h->art[slot].key = key; h->art[slot].tex = 0;
+    h->art[slot].name = name; h->art[slot].key = key; h->art[slot].tex = (RhiTexture){0};
 }
 
 /* Least-squares circle through the arc's opaque texels (Kasa fit), plus the
@@ -259,14 +260,10 @@ static void hud_baseline_measure_arc(const N2Tex *t, struct HudArc *out) {
 /* Upload one decoded record with HUD-appropriate sampling. Clamping matters:
    these are sprites on a transparent field, and REPEAT bleeds the opposite
    edge into the border of every rotated element. */
-static GLuint hud_baseline_upload(const N2Tex *t) {
-    GLuint id = upload_tpk_texture_to_gpu(t);
-    if (!id) return 0;
-    glBindTexture(GL_TEXTURE_2D, id);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+static RhiTexture hud_baseline_upload(const N2Tex *t) {
+    RhiTexture id = upload_tpk_texture_to_gpu(t);
+    if (!id.id) return id;
+    render_texture_clamp_linear(id);
     return id;
 }
 
@@ -314,7 +311,7 @@ HudBaseline *hud_baseline_init(const char *dataroot) {
         if (!d) continue;
         N2Tpk tpk = n2_tpk_open(d, len);
         for (int a = 0; a < ART_COUNT; a++) {
-            if (h->art[a].tex) continue;             /* an earlier pack had it */
+            if (h->art[a].tex.id) continue;             /* an earlier pack had it */
             N2Tex t;
             if (!n2_tpk_decode(d, len, tpk, h->art[a].key, &t)) continue;
             /* A record can decode to garbage -- ARROW_MARKERA in InGameCommon
@@ -345,7 +342,7 @@ HudBaseline *hud_baseline_init(const char *dataroot) {
         free(d);
     }
     for (int a = 0; a < ART_COUNT; a++)
-        if (!h->art[a].tex) {
+        if (!h->art[a].tex.id) {
             size_t used = strlen(h->missing);
             snprintf(h->missing + used, sizeof h->missing - used,
                      "%s%s%s", used ? " " : "", h->art[a].name,
@@ -370,7 +367,7 @@ void hud_baseline_free(HudBaseline **hp) {
     if (!hp || !*hp) return;
     HudBaseline *h = *hp;
     for (int a = 0; a < ART_COUNT; a++)
-        if (h->art[a].tex) glDeleteTextures(1, &h->art[a].tex);
+        rhi_texture_destroy(h->art[a].tex);
     free(h);
     *hp = NULL;
 }
@@ -417,26 +414,26 @@ static void hud_baseline_xform(float asp, float w, float h, float cx, float cy,
  * through it is a flat filled rectangle. uEmissiveTex is the textured unlit
  * path -- t.rgb * uColor with alpha t.a * uAlpha -- which is exactly an
  * alpha-blended HUD sprite tinted by uColor. */
-static void hud_baseline_blit(const HudDC *dc, GLuint tex, float w, float h,
+static void hud_baseline_blit(const HudDC *dc, RhiTexture tex, float w, float h,
                      float cx, float cy, float rot,
                      float r, float g, float b, float a) {
     if (a <= 0.0f) return;
     float M[16];
     hud_baseline_xform(dc->asp, w, h, cx, cy, rot, M);
-    glUniformMatrix4fv(dc->rp->uMVP, 1, GL_FALSE, M);
-    if (tex) {
-        glBindTexture(GL_TEXTURE_2D, tex);
-        glUniform1f(dc->rp->uUseTex, 1.0f);
-        glUniform1f(dc->rp->uEmissiveTex, 1.0f);
-        glUniform1f(dc->rp->uUnlit, 0.0f);
+    ug2_copy(dc->rp->p->uMVP, M, 16);
+    if (tex.id) {
+        glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(tex));
+        dc->rp->p->uUseTex = 1.0f;
+        dc->rp->p->uEmissiveTex = 1.0f;
+        dc->rp->p->uUnlit = 0.0f;
     } else {
-        glUniform1f(dc->rp->uUseTex, 0.0f);
-        glUniform1f(dc->rp->uEmissiveTex, 0.0f);
-        glUniform1f(dc->rp->uUnlit, 1.0f);
+        dc->rp->p->uUseTex = 0.0f;
+        dc->rp->p->uEmissiveTex = 0.0f;
+        dc->rp->p->uUnlit = 1.0f;
     }
-    glUniform3f(dc->rp->uColor, r, g, b);
-    glUniform1f(dc->rp->uAlpha, a);
-    draw_gpumesh(dc->quad);
+    ug2_vec3(dc->rp->p->uColor, r, g, b);
+    dc->rp->p->uAlpha = a;
+    render_draw_gpumesh(dc->quad);
 }
 
 /* `size` is the CAP HEIGHT of the text in HUD units. draw_text's px/py are the
@@ -445,13 +442,13 @@ static void hud_baseline_blit(const HudDC *dc, GLuint tex, float w, float h,
 static void hud_baseline_label(const HudDC *dc, const char *s, float cx, float cy,
                       float size, float r, float g, float b, float a) {
     float py = size / 5.0f, px = py / dc->asp;
-    glUniform1f(dc->rp->uUseTex, 0.0f);
-    glUniform1f(dc->rp->uEmissiveTex, 0.0f);
-    glUniform1f(dc->rp->uUnlit, 1.0f);
-    glUniform3f(dc->rp->uColor, r, g, b);
-    glUniform1f(dc->rp->uAlpha, a);
+    dc->rp->p->uUseTex = 0.0f;
+    dc->rp->p->uEmissiveTex = 0.0f;
+    dc->rp->p->uUnlit = 1.0f;
+    ug2_vec3(dc->rp->p->uColor, r, g, b);
+    dc->rp->p->uAlpha = a;
     /* draw_text takes a TOP-LEFT origin; centre the run on (cx,cy). */
-    draw_text(dc->quad, dc->rp->uMVP, s,
+    draw_text(dc->quad, dc->rp, s,
               cx - (float)strlen(s) * 2.0f * px, cy + 2.5f * py, px, py);
 }
 
@@ -506,7 +503,7 @@ static void hud_baseline_draw_cluster(HudBaseline *h, const HudDC *dc, const Hud
         if (f0 > h->needle_rpm) break;
         float a = hud_baseline_arc_angle(arc, f0, 181.0f, 29.0f), rr = arc_r * 0.80f;
         int hot = f0 > 0.82f;
-        hud_baseline_blit(dc, 0, arc_r * 0.10f, arc_r * 0.10f,
+        hud_baseline_blit(dc, (RhiTexture){0}, arc_r * 0.10f, arc_r * 0.10f,
                  pivx + cosf(a) * rr / dc->asp, pivy + sinf(a) * rr, a,
                  hot ? 1.0f : 0.35f, hot ? 0.18f : 0.82f, hot ? 0.12f : 1.0f, 0.90f);
     }
@@ -516,10 +513,10 @@ static void hud_baseline_draw_cluster(HudBaseline *h, const HudDC *dc, const Hud
        drawn. It is the only part of the dial that is not retail art. */
     {   float a = hud_baseline_arc_angle(arc, h->needle_rpm, 181.0f, 29.0f);
         float len = arc_r * 0.86f;
-        hud_baseline_blit(dc, 0, len, arc_r * 0.048f,
+        hud_baseline_blit(dc, (RhiTexture){0}, len, arc_r * 0.048f,
                  pivx + cosf(a) * len * 0.5f / dc->asp,
                  pivy + sinf(a) * len * 0.5f, a, 0.95f, 0.16f, 0.12f, 0.95f);
-        hud_baseline_blit(dc, 0, arc_r * 0.15f, arc_r * 0.15f, pivx, pivy, 0.0f,
+        hud_baseline_blit(dc, (RhiTexture){0}, arc_r * 0.15f, arc_r * 0.15f, pivx, pivy, 0.0f,
                  0.10f, 0.10f, 0.12f, 0.95f);
     }
 
@@ -663,7 +660,7 @@ static void hud_baseline_draw_minimap(HudBaseline *h, const HudDC *dc, const Hud
             float px, py; int in;
             MAP_PT(s->nav_xy[i*2], s->nav_xy[i*2+1], px, py, in);
             if (!in) continue;
-            hud_baseline_blit(dc, 0, 0.012f, 0.012f, px, py, 0.0f,
+            hud_baseline_blit(dc, (RhiTexture){0}, 0.012f, 0.012f, px, py, 0.0f,
                      0.40f, 0.46f, 0.55f, 0.85f);
             drawn++;
         }
@@ -703,7 +700,7 @@ static void hud_baseline_draw_minimap(HudBaseline *h, const HudDC *dc, const Hud
             float dx = (bx - ax) * dc->asp, dy = by - ay;
             float len = sqrtf(dx*dx + dy*dy);
             if (len < 1e-5f) continue;
-            hud_baseline_blit(dc, 0, len, 0.020f, (ax+bx)*0.5f, (ay+by)*0.5f,
+            hud_baseline_blit(dc, (RhiTexture){0}, len, 0.020f, (ax+bx)*0.5f, (ay+by)*0.5f,
                      atan2f(dy, dx), 0.30f, 0.80f, 1.0f, 0.95f);
         }
     }
@@ -774,7 +771,7 @@ static void hud_baseline_draw_nav_arrow(HudBaseline *h, const HudDC *dc, const H
        CCW-positive, so the arrow angle passes straight through: negating it
        here points the arrow at the mirror image of every turn. */
     float rot = h->arrow_angle;
-    if (h->art[ART_ARROW].tex) {
+    if (h->art[ART_ARROW].tex.id) {
         /* the sprite points up at rot 0; a right turn must lean right */
         hud_baseline_blit(dc, h->art[ART_ARROW].tex, 0.13f, 0.26f, ax, ay, rot,
                  0.30f, 0.62f, 1.0f, 0.95f);
@@ -791,11 +788,11 @@ static void hud_baseline_draw_nav_arrow(HudBaseline *h, const HudDC *dc, const H
             float c = cosf((float)side * SPREAD), sn = sinf((float)side * SPREAD);
             float lx = -fx * c - -fy * sn, ly = -fx * sn + -fy * c;
             float mx = tipx + lx * L * 0.5f / dc->asp, my = tipy + ly * L * 0.5f;
-            hud_baseline_blit(dc, 0, L, T, mx, my, atan2f(ly, lx),
+            hud_baseline_blit(dc, (RhiTexture){0}, L, T, mx, my, atan2f(ly, lx),
                      0.30f, 0.62f, 1.0f, 0.95f);
         }
         /* shaft, so the glyph reads as an arrow rather than a bare V */
-        hud_baseline_blit(dc, 0, L * 0.95f, T * 0.82f,
+        hud_baseline_blit(dc, (RhiTexture){0}, L * 0.95f, T * 0.82f,
                  ax - fx * L * 0.10f / dc->asp, ay - fy * L * 0.10f,
                  atan2f(fy, fx), 0.30f, 0.62f, 1.0f, 0.95f);
     }
@@ -881,27 +878,26 @@ void hud_baseline_draw(HudBaseline *h, const RProg *rp, GpuMesh *quad,
     GLint blend_src = GL_SRC_ALPHA, blend_dst = GL_ONE_MINUS_SRC_ALPHA;
     glGetIntegerv(GL_BLEND_SRC_ALPHA, &blend_src);
     glGetIntegerv(GL_BLEND_DST_ALPHA, &blend_dst);
+    GLboolean cull_on = glIsEnabled(GL_CULL_FACE), stencil_on = glIsEnabled(GL_STENCIL_TEST);
+    GLboolean color_mask[4]; glGetBooleanv(GL_COLOR_WRITEMASK, color_mask);
     GLboolean depth_mask = GL_TRUE;
     glGetBooleanv(GL_DEPTH_WRITEMASK, &depth_mask);
 
-    glDisable(GL_DEPTH_TEST);
-    glDepthMask(GL_FALSE);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glUniform1f(rp->uUnlit, 1.0f);
-    glUniform1f(rp->uVColor, 0.0f);
+    /* no depth test, no depth write, alpha blend */
+    rhi_cmd_bind_pipeline(render_overlay_pipelines(rp)->screen_blend);
+    rp->p->uUnlit = 1.0f;
+    rp->p->uVColor = 0.0f;
     /* both unlit branches mix toward uFogColor; a HUD quad's vPos is meaningless
        so the only safe fog for it is none. Restored below. */
-    GLfloat fog_density = 0.0f;
-    glGetUniformfv(rp->prog, rp->uFogDensity, &fog_density);
-    glUniform1f(rp->uFogDensity, 0.0f);
-    glUniform1f(rp->uAlpha, 1.0f);
-    glUniform1f(rp->uDecal, 0.0f);
-    glUniform1f(rp->uAlphaTest, 0.0f);
-    glUniform1f(rp->uTextureAlpha, 1.0f);   /* HUD art is alpha-blended sprites */
-    glUniform1f(rp->uEmissiveTex, 0.0f);
-    glUniform1f(rp->uVista, 0.0f);
-    glUniform3f(rp->uEmissive, 0.0f, 0.0f, 0.0f);
+    float fog_density = rp->p->uFogDensity;
+    rp->p->uFogDensity = 0.0f;
+    rp->p->uAlpha = 1.0f;
+    rp->p->uDecal = 0.0f;
+    rp->p->uAlphaTest = 0.0f;
+    rp->p->uTextureAlpha = 1.0f;   /* HUD art is alpha-blended sprites */
+    rp->p->uEmissiveTex = 0.0f;
+    rp->p->uVista = 0.0f;
+    ug2_vec3(rp->p->uEmissive, 0.0f, 0.0f, 0.0f);
 
     if (s.racing) {
         hud_baseline_draw_minimap(h, &dc, &s);
@@ -925,13 +921,16 @@ void hud_baseline_draw(HudBaseline *h, const RProg *rp, GpuMesh *quad,
     }
 
     /* --- restore --- */
-    glUniform1f(rp->uUseTex, 0.0f);
-    glUniform1f(rp->uUnlit, 0.0f);
-    glUniform1f(rp->uEmissiveTex, 0.0f);
-    glUniform1f(rp->uAlpha, 1.0f);
-    glUniform1f(rp->uTextureAlpha, 0.0f);
-    glUniform1f(rp->uFogDensity, fog_density);
-    glUniform3f(rp->uColor, 1.0f, 1.0f, 1.0f);
+    rp->p->uUseTex = 0.0f;
+    rp->p->uUnlit = 0.0f;
+    rp->p->uEmissiveTex = 0.0f;
+    rp->p->uAlpha = 1.0f;
+    rp->p->uTextureAlpha = 0.0f;
+    rp->p->uFogDensity = fog_density;
+    ug2_vec3(rp->p->uColor, 1.0f, 1.0f, 1.0f);
+    glColorMask(color_mask[0], color_mask[1], color_mask[2], color_mask[3]);
+    if (cull_on) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
+    if (stencil_on) glEnable(GL_STENCIL_TEST); else glDisable(GL_STENCIL_TEST);
     glDepthMask(depth_mask);
     if (depth_on) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
     if (blend_on) glEnable(GL_BLEND); else glDisable(GL_BLEND);

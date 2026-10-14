@@ -601,7 +601,7 @@ static int world_texture_decode(const World *w, const WRegion *g,
  * a resident build, and the worker thread only prepares CPU data. */
 typedef struct {
     uint32_t key;
-    GLuint tex;
+    RhiTexture tex;
     unsigned char mode;
     unsigned char state;    /* 0 empty, 1 bound, 2 unresolvable */
     uint32_t build, pass;   /* emitted-in-this-build / tried-against-this-source */
@@ -635,8 +635,8 @@ static WTexCacheEntry *world_texcache_slot(uint32_t key) {
 
 void world_texture_cache_clear(void) {
     for (int i = 0; i < g_texcache_cap; i++)
-        if (g_texcache[i].state == 1 && g_texcache[i].tex)
-            glDeleteTextures(1, &g_texcache[i].tex);
+        if (g_texcache[i].state == 1)
+            rhi_texture_destroy(g_texcache[i].tex);
     free(g_texcache);
     g_texcache = NULL; g_texcache_cap = g_texcache_used = 0;
     g_texbind_build = g_texbind_pass = 0;
@@ -648,7 +648,7 @@ void world_texture_cache_clear(void) {
  * mesh named by the TEXFAIL census, or NULL for the light key (never
  * reported, same as before). */
 static int world_bind_key(World *w, const WRegion *g, uint32_t tk, int pass,
-                           int last, uint32_t *keys, GLuint *texs,
+                           int last, uint32_t *keys, RhiTexture *texs,
                            unsigned char *modes, int cap, WTextureBind *binding,
                            const N2Mesh *owner) {
     int *n = &binding->count;
@@ -670,9 +670,9 @@ static int world_bind_key(World *w, const WRegion *g, uint32_t tk, int pass,
     const char *pack = NULL;
     int ok = world_texture_decode(w, g, tk, &tt, pass, &pack);
     if (ok && !n2_tex_noise(&tt)) {   /* noise gate stays on the original */
-        GLuint id = upload_tex_keyed(tk, pack, &tt);
-        if (!id || glGetError() != GL_NO_ERROR) {
-            if (id) glDeleteTextures(1, &id);
+        RhiTexture id = upload_tex_keyed(tk, pack, &tt);
+        if (!id.id || glGetError() != GL_NO_ERROR) {
+            rhi_texture_destroy(id);
             free(tt.rgb); free(tt.alpha); free(tt.dxt);
             *n = -1;
             return 1; /* do not cache a failed upload */
@@ -707,7 +707,7 @@ static int world_bind_key(World *w, const WRegion *g, uint32_t tk, int pass,
     return 1; /* one uncached decode/upload attempt, including a miss */
 }
 
-int world_bind_textures_step(World *w, uint32_t *keys, GLuint *texs,
+int world_bind_textures_step(World *w, uint32_t *keys, RhiTexture *texs,
                              unsigned char *modes, int cap,
                              WTextureBind *binding, int max_decodes) {
     if (binding->pass == 2) return binding->count < 0 ? -1 : 1;
@@ -761,7 +761,7 @@ done:
     return binding->count < 0 ? -1 : 1;
 }
 
-int world_bind_textures(World *w, uint32_t *keys, GLuint *texs,
+int world_bind_textures(World *w, uint32_t *keys, RhiTexture *texs,
                         unsigned char *modes, int cap) {
     WTextureBind binding = {0};
     while (!world_bind_textures_step(w, keys, texs, modes, cap, &binding, INT_MAX)) {}
