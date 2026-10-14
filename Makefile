@@ -126,6 +126,14 @@ hud-test: tools/hud_test.c src/hud.c src/hud.h src/hud_host.h src/hud_asset.h sr
 		-o build/hud_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
 	./build/hud_test
 
+
+# Asset-free native check of the baseline HUD's caller state.
+hud-state-test: tools/hud_state_test.c src/render.c src/render_params.c src/hud_baseline.c src/hud_asset.c src/hud_texture.c src/rhi_gl.c src/rhi_gl_state.c src/tex_override.c $(HDRS) $(GEN)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/hud_state_test.c src/render.c src/render_params.c src/hud_baseline.c src/hud_asset.c src/hud_texture.c src/rhi_gl.c src/rhi_gl_state.c src/tex_override.c -o build/hud_state_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
+	./build/hud_state_test
+.PHONY: hud-state-test
+
 world-render-test: tools/world_render_test.c src/nfsu2.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Isrc tools/world_render_test.c -o build/world_render_test -lm

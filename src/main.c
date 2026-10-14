@@ -3734,6 +3734,7 @@ int main(int argc, char **argv) {
     render_world_pipelines(&rp, &wpipe);
     UG2CarPipelines cpipe;     /* car bodies, glass, lamp halos */
     render_car_pipelines(&rp, &cpipe);
+    const UG2OverlayPipelines *ovp = render_overlay_pipelines(&rp);   /* HUD, menu, nitro */
     HeadlightShadows headlight_shadows = {0};
     RhiBuffer rain_vbo = {0};
     RhiBuffer wall_debug_vbo = {0};
@@ -8964,8 +8965,7 @@ int main(int argc, char **argv) {
            positions/widths must not create collision across the real course.
            Authored meshes still use the ordinary body collision solver. */
         if (world.city.mode == MODE_RACE_EVENT && world.city.nbar > 0 && race_state != 3) {
-            glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-            glDepthMask(GL_FALSE);
+            rhi_cmd_bind_pipeline(cpipe.halo);   /* additive, depth tested, no write */
             rp.p->uUnlit = 1.0f; rp.p->uUseTex = 0.0f; rp.p->uSoft = 0.0f;
             ug2_vec3(rp.p->uColor, 1.0f, 0.10f, 0.03f); rp.p->uAlpha = 0.78f;
             for (int bi=0; bi<world.city.nbar; bi++) {
@@ -8980,7 +8980,7 @@ int main(int argc, char **argv) {
                     float M[16]={px*Wb,py*Wb,0,0, 0,0,H,0, 0,0,1,0,
                                  b->x-px*Wb*0.5f,b->y-py*Wb*0.5f,z,1};
                     float MV[16]; mat_mul(MVP,M,MV);
-                    ug2_copy(rp.p->uMVP, MV, 16); draw_gpumesh(&quad); g_dbg.drawn++;
+                    ug2_copy(rp.p->uMVP, MV, 16); render_draw_gpumesh(&quad); g_dbg.drawn++;
                 }
                 /* five posts make the closure readable from oblique angles */
                 for (int p=-2; p<=2; p++) {
@@ -8989,7 +8989,7 @@ int main(int argc, char **argv) {
                                  b->x+px*off-px*Wp*0.5f,
                                  b->y+py*off-py*Wp*0.5f,bz,1};
                     float MV[16]; mat_mul(MVP,M,MV);
-                    ug2_copy(rp.p->uMVP, MV, 16); draw_gpumesh(&quad); g_dbg.drawn++;
+                    ug2_copy(rp.p->uMVP, MV, 16); render_draw_gpumesh(&quad); g_dbg.drawn++;
                 }
             }
             rp.p->uAlpha = 1.0f; rp.p->uUnlit = 0.0f;
@@ -9001,8 +9001,7 @@ int main(int argc, char **argv) {
         /* Low detail uses a cheap square footprint. Medium/High draw actual
            model silhouettes with the current body/wheel transforms below. */
         if (ncar) {
-            glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            glDepthMask(GL_FALSE);
+            rhi_cmd_bind_pipeline(cpipe.glass);   /* alpha blend, depth tested, no write */
             rp.p->uUnlit = 1.0f; rp.p->uUseTex = 0.0f; rp.p->uSoft = 0.0f;
             ug2_vec3(rp.p->uColor, 0.0f, 0.0f, 0.0f); rp.p->uAlpha = 0.5f;
             for (int c=0; g_dbg.vehicle_quality<=0 && c<=draw_nai; c++) {
@@ -9029,7 +9028,7 @@ int main(int argc, char **argv) {
                 mat_car_footprint(gp,c==0?render_player.head:render_ais[c-1].head,ground.normal,
                                   bb,1.10f,1.35f,.03f,M);
                 float MV[16]; mat_mul(MVP,M,MV);
-                ug2_copy(rp.p->uMVP, MV, 16); draw_gpumesh(&quad);
+                ug2_copy(rp.p->uMVP, MV, 16); render_draw_gpumesh(&quad);
                 g_dbg.drawn++;
             }
             rp.p->uAlpha = 1.0f; rp.p->uSoft = 0.0f;
@@ -9042,8 +9041,7 @@ int main(int argc, char **argv) {
                it tracks the car's real footprint. Drawn after the shadow so it
                lights the ground the shadow just darkened. */
             if (!player_hidden && g_dbg.neon_on && g_dbg.neon_str > 0.001f) {
-                glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-                glDepthMask(GL_FALSE);
+                rhi_cmd_bind_pipeline(cpipe.halo);   /* additive, depth tested, no write */
                 rp.p->uUnlit = 1.0f; rp.p->uUseTex = 0.0f; rp.p->uSoft = 1.0f;
                 ug2_vec3(rp.p->uColor, g_dbg.neon_col[0], g_dbg.neon_col[1], g_dbg.neon_col[2]);
                 float gp[3]={render_player.pos[0],render_player.pos[1],render_player.pos[2]},up[3],M[16];
@@ -9052,7 +9050,7 @@ int main(int argc, char **argv) {
                 float MV[16]; mat_mul(MVP,M,MV);
                 ug2_copy(rp.p->uMVP, MV, 16);
                 rp.p->uAlpha = g_dbg.neon_str;
-                draw_gpumesh(&quad); g_dbg.drawn++;
+                render_draw_gpumesh(&quad); g_dbg.drawn++;
                 rp.p->uAlpha = 1.0f; rp.p->uSoft = 0.0f;
                 ug2_copy(rp.p->uMVP, MVP, 16);
                 glDepthMask(GL_TRUE); glDisable(GL_BLEND);
@@ -9062,8 +9060,7 @@ int main(int argc, char **argv) {
         pf_mark(PF_CAR_SHADOW);
         /* tyre skid marks: flat dark quads on the ground, alpha-blended */
         if (skidn > 0) {
-            glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            glDepthMask(GL_FALSE);
+            rhi_cmd_bind_pipeline(cpipe.glass);   /* alpha blend, depth tested, no write */
             rp.p->uUnlit = 1.0f; rp.p->uUseTex = 0.0f;
             ug2_vec3(rp.p->uColor, 0.04f, 0.04f, 0.05f);
             for (int i = 0; i < skidn; i++) {
@@ -9078,7 +9075,7 @@ int main(int argc, char **argv) {
                 float M[16]={ ux,uy,0,0,  px,py,0,0,  0,0,1,0,
                               s[0]-px*0.5f, s[1]-py*0.5f, s[2], 1 };
                 float MV[16]; mat_mul(MVP, M, MV);
-                ug2_copy(rp.p->uMVP, MV, 16); draw_gpumesh(&quad);
+                ug2_copy(rp.p->uMVP, MV, 16); render_draw_gpumesh(&quad);
                 g_dbg.drawn++;
             }
             rp.p->uAlpha = 1.0f; glDepthMask(GL_TRUE); glDisable(GL_BLEND);
@@ -9855,8 +9852,7 @@ int main(int argc, char **argv) {
         /* Nitro screen stress: a few soft corner layers keep the centre clear
            while suggesting speed without adding a post-process dependency. */
         if (nitro_fx > 0.01f) {
-            glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            glDepthMask(GL_FALSE); glDisable(GL_DEPTH_TEST);
+            rhi_cmd_bind_pipeline(ovp->screen_blend);
             rp.p->uUnlit = 1.0f; rp.p->uUseTex = 0.0f; rp.p->uSoft = 1.0f;
             ug2_vec3(rp.p->uColor, 0.58f, 0.72f, 0.92f);
             for (int corner=0; corner<4; corner++) {
@@ -9869,7 +9865,7 @@ int main(int argc, char **argv) {
                     float M[16]={sz,0,0,0, 0,sz,0,0, 0,0,1,0, px,py,0,1};
                     ug2_copy(rp.p->uMVP, M, 16);
                     rp.p->uAlpha = nitro_fx * (0.055f - layer*0.018f);
-                    draw_gpumesh(&quad); g_dbg.drawn++;
+                    render_draw_gpumesh(&quad); g_dbg.drawn++;
                 }
             }
             rp.p->uAlpha = 1.0f; rp.p->uSoft = 0.0f;
@@ -9885,8 +9881,7 @@ int main(int argc, char **argv) {
             rt[0]=ld[1]; rt[1]=-ld[0]; rt[2]=0;
             float rl=sqrtf(rt[0]*rt[0]+rt[1]*rt[1]); if(rl<1e-4f)rl=1; rt[0]/=rl;rt[1]/=rl;
             float up[3]={rt[1]*ld[2]-0, 0-rt[0]*ld[2], rt[0]*ld[1]-rt[1]*ld[0]}; /* right x look */
-            glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            glDepthMask(GL_FALSE);
+            rhi_cmd_bind_pipeline(cpipe.glass);   /* alpha blend, depth tested, no write */
             rp.p->uUnlit = 1.0f; rp.p->uUseTex = 0.0f; rp.p->uSoft = 1.0f;
             ug2_vec3(rp.p->uColor, 0.78f, 0.78f, 0.80f);
             for (int i = 0; i < smoken; i++) {
@@ -9898,7 +9893,7 @@ int main(int argc, char **argv) {
                 float MV[16]; mat_mul(MVP, M, MV);
                 ug2_copy(rp.p->uMVP, MV, 16);
                 rp.p->uAlpha = smoke[i].life*smoke[i].life*0.22f;
-                draw_gpumesh(&quad);
+                render_draw_gpumesh(&quad);
                 g_dbg.drawn++;
             }
             rp.p->uAlpha = 1.0f; rp.p->uSoft = 0.0f; glDepthMask(GL_TRUE); glDisable(GL_BLEND);
@@ -9970,7 +9965,7 @@ int main(int argc, char **argv) {
         /* the stage-8 HUD REPLACES the diagnostic overlay; never both at once */
         if (hud) draw_race_hud = 0;
         if (ai_race && nai > 0 && race_state != 3 && draw_race_hud) {
-            glDisable(GL_DEPTH_TEST);
+            rhi_cmd_bind_pipeline(ovp->screen);   /* screen space, no depth test */
             rp.p->uUnlit = 1.0f; rp.p->uUseTex = 0.0f;
             /* rank by monotonic progress = lap*loop + progress-along-loop */
             int nc = nai + 1, ord[N_RACE_AI+1], prog[N_RACE_AI+1], pl[N_RACE_AI+1];
@@ -9990,7 +9985,7 @@ int main(int argc, char **argv) {
                 float M[16]={ w,0,0,0, 0,h,0,0, 0,0,1,0, x,y,0,1 };
                 ug2_copy(rp.p->uMVP, M, 16);
                 ug2_vec3(rp.p->uColor, col[c][0], col[c][1], col[c][2]);
-                draw_gpumesh(&quad);
+                render_draw_gpumesh(&quad);
                 g_dbg.drawn++;
             }
             /* lap counter (green pips, one per completed lap) + lap-progress bar */
@@ -9998,29 +9993,29 @@ int main(int argc, char **argv) {
                 float x=-0.97f+i*0.05f, y=-0.93f;
                 float M[16]={0.035f,0,0,0, 0,0.05f,0,0, 0,0,1,0, x,y,0,1};
                 ug2_copy(rp.p->uMVP, M, 16);
-                ug2_vec3(rp.p->uColor, 0.2f, 0.9f, 0.3f); draw_gpumesh(&quad);
+                ug2_vec3(rp.p->uColor, 0.2f, 0.9f, 0.3f); render_draw_gpumesh(&quad);
                 g_dbg.drawn++;
             }
             {   /* thin bar: fraction of the current lap completed */
                 float frac = (float)p_prev / (float)aipath.n;
                 float bg[16]={1.5f,0,0,0, 0,0.03f,0,0, 0,0,1,0, -0.75f,-0.9f,0,1};
                 ug2_copy(rp.p->uMVP, bg, 16);
-                ug2_vec3(rp.p->uColor, 0.15f, 0.15f, 0.18f); draw_gpumesh(&quad);
+                ug2_vec3(rp.p->uColor, 0.15f, 0.15f, 0.18f); render_draw_gpumesh(&quad);
                 g_dbg.drawn++;
                 float fg[16]={1.5f*frac,0,0,0, 0,0.03f,0,0, 0,0,1,0, -0.75f,-0.9f,0,1};
                 ug2_copy(rp.p->uMVP, fg, 16);
-                ug2_vec3(rp.p->uColor, 0.9f, 0.8f, 0.2f); draw_gpumesh(&quad);
+                ug2_vec3(rp.p->uColor, 0.9f, 0.8f, 0.2f); render_draw_gpumesh(&quad);
                 g_dbg.drawn++;
             }
             {   /* speedometer: fraction of top speed (bottom-right) */
                 float sf = speed / PHYS_MAXSPD; if (sf < 0) sf = -sf; if (sf > 1) sf = 1;
                 float bg[16]={0.35f,0,0,0, 0,0.03f,0,0, 0,0,1,0, 0.58f,-0.9f,0,1};
                 ug2_copy(rp.p->uMVP, bg, 16);
-                ug2_vec3(rp.p->uColor, 0.15f, 0.15f, 0.18f); draw_gpumesh(&quad);
+                ug2_vec3(rp.p->uColor, 0.15f, 0.15f, 0.18f); render_draw_gpumesh(&quad);
                 g_dbg.drawn++;
                 float fg[16]={0.35f*sf,0,0,0, 0,0.03f,0,0, 0,0,1,0, 0.58f,-0.9f,0,1};
                 ug2_copy(rp.p->uMVP, fg, 16);
-                ug2_vec3(rp.p->uColor, 0.3f, 0.85f, 1.0f); draw_gpumesh(&quad);
+                ug2_vec3(rp.p->uColor, 0.3f, 0.85f, 1.0f); render_draw_gpumesh(&quad);
                 g_dbg.drawn++;
             }
             {   /* text labels: position (top-right), lap (bottom-left), speed (kph) */
@@ -10048,13 +10043,13 @@ int main(int argc, char **argv) {
                 float mmx0 = bx0+bw*0.5f, mmy0 = by0+bh*0.5f;
                 /* dark panel */
                 float PM[16]={bw,0,0,0, 0,bh,0,0, 0,0,1,0, bx0,by0,0,1};
-                ug2_copy(rp.p->uMVP, PM, 16); ug2_vec3(rp.p->uColor, 0.04f, 0.05f, 0.08f); draw_gpumesh(&quad);
+                ug2_copy(rp.p->uMVP, PM, 16); ug2_vec3(rp.p->uColor, 0.04f, 0.05f, 0.08f); render_draw_gpumesh(&quad);
                 g_dbg.drawn++;
                 /* draw a centred dot of half-size hs at world (wx,wy) */
                 #define MMDOT(wx,wy,hs,r,g,b) do{ \
                     float mmx=mmx0+((wx)-ccx)*scx, mmy=mmy0+((wy)-cyw)*scy; \
                     float M[16]={(hs)*2/asp,0,0,0, 0,(hs)*2,0,0, 0,0,1,0, mmx-(hs)/asp,mmy-(hs),0,1}; \
-                    ug2_copy(rp.p->uMVP, M, 16); ug2_vec3(rp.p->uColor, r, g, b); draw_gpumesh(&quad); \
+                    ug2_copy(rp.p->uMVP, M, 16); ug2_vec3(rp.p->uColor, r, g, b); render_draw_gpumesh(&quad); \
                     g_dbg.drawn++; }while(0)
                 for (int i=0;i<aipath.n;i++) MMDOT(aipath.xy[i*2],aipath.xy[i*2+1], 0.004f, 0.4f,0.4f,0.46f);
                 for (int k=0;k<draw_nai;k++)if(ai_actor_present(k,ai_race,nai,traffic_routes))
@@ -10067,7 +10062,7 @@ int main(int argc, char **argv) {
         }
 
         /* race banners: 3-2-1 countdown, then a finish banner + place pips */
-        glDisable(GL_DEPTH_TEST);
+        rhi_cmd_bind_pipeline(ovp->screen);   /* screen space, no depth test */
         rp.p->uUnlit = 1.0f; rp.p->uUseTex = 0.0f;
 #ifdef DEBUG_UI
         /* the retro pixel-font menu overlay is off by default under the debug
@@ -10089,7 +10084,7 @@ int main(int argc, char **argv) {
                 ug2_copy(rp.p->uMVP, M, 16);
                 if (s) ug2_vec3(rp.p->uColor, 0.95f, 0.95f, 0.98f);
                 else   ug2_vec3(rp.p->uColor, 0.30f, 0.32f, 0.38f);
-                draw_gpumesh(&quad);
+                render_draw_gpumesh(&quad);
                 g_dbg.drawn++;
             }
             /* track selector (Up/Down): one blue pip per STREAM*.BUN found */
@@ -10100,7 +10095,7 @@ int main(int argc, char **argv) {
                 ug2_copy(rp.p->uMVP, M, 16);
                 if (s) ug2_vec3(rp.p->uColor, 0.3f, 0.7f, 1.0f);
                 else   ug2_vec3(rp.p->uColor, 0.25f, 0.3f, 0.4f);
-                draw_gpumesh(&quad);
+                render_draw_gpumesh(&quad);
                 g_dbg.drawn++;
             }
             /* circuit selector ([ / ]): one yellow pip per circuit, chosen lit + tall */
@@ -10112,7 +10107,7 @@ int main(int argc, char **argv) {
                 ug2_copy(rp.p->uMVP, M, 16);
                 if (s) ug2_vec3(rp.p->uColor, 0.95f, 0.8f, 0.2f);
                 else   ug2_vec3(rp.p->uColor, 0.3f, 0.3f, 0.35f);
-                draw_gpumesh(&quad);
+                render_draw_gpumesh(&quad);
                 g_dbg.drawn++;
             }
             /* labels: car name (big, white) above its pips; track name below */
@@ -10125,7 +10120,7 @@ int main(int argc, char **argv) {
             float M[16]={0.5f,0,0,0, 0,0.06f,0,0, 0,0,1,0, -0.25f,-0.25f,0,1};
             ug2_copy(rp.p->uMVP, M, 16);
             ug2_vec3(rp.p->uColor, 0.15f*pulse, 0.85f*pulse, 0.3f*pulse);
-            draw_gpumesh(&quad);
+            render_draw_gpumesh(&quad);
             g_dbg.drawn++;
         } else if (draw_menu_hud && race_state == 0) {  /* 3-2-1 / GO, big and centred */
             char b[4]; snprintf(b,sizeof b,"%d", 3 - racetimer/60);

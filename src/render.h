@@ -297,6 +297,14 @@ typedef struct {
                 halo;        /* lamp halos: src alpha + one, no depth write */
 } UG2CarPipelines;
 void render_car_pipelines(const RProg *r, UG2CarPipelines *p);
+/* Screen-space quads (GpuMesh layout, no depth test, no culling): the
+   diagnostic HUD, menu overlay and text, and the HUD art / nitro overlay. */
+typedef struct {
+    RhiPipeline screen,         /* opaque; depth write stays on (inert without the test) */
+                screen_blend;   /* alpha blend, no depth write */
+} UG2OverlayPipelines;
+/* The overlay pipelines of r's shader (created on first use). */
+const UG2OverlayPipelines *render_overlay_pipelines(const RProg *r);
 /* Pipelines of the overlay effects: position-only car shadow and collision
    walls, and the screen-space rain. */
 typedef struct {

@@ -433,7 +433,7 @@ static void hud_baseline_blit(const HudDC *dc, RhiTexture tex, float w, float h,
     }
     ug2_vec3(dc->rp->p->uColor, r, g, b);
     dc->rp->p->uAlpha = a;
-    draw_gpumesh(dc->quad);
+    render_draw_gpumesh(dc->quad);
 }
 
 /* `size` is the CAP HEIGHT of the text in HUD units. draw_text's px/py are the
@@ -878,13 +878,13 @@ void hud_baseline_draw(HudBaseline *h, const RProg *rp, GpuMesh *quad,
     GLint blend_src = GL_SRC_ALPHA, blend_dst = GL_ONE_MINUS_SRC_ALPHA;
     glGetIntegerv(GL_BLEND_SRC_ALPHA, &blend_src);
     glGetIntegerv(GL_BLEND_DST_ALPHA, &blend_dst);
+    GLboolean cull_on = glIsEnabled(GL_CULL_FACE), stencil_on = glIsEnabled(GL_STENCIL_TEST);
+    GLboolean color_mask[4]; glGetBooleanv(GL_COLOR_WRITEMASK, color_mask);
     GLboolean depth_mask = GL_TRUE;
     glGetBooleanv(GL_DEPTH_WRITEMASK, &depth_mask);
 
-    glDisable(GL_DEPTH_TEST);
-    glDepthMask(GL_FALSE);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    /* no depth test, no depth write, alpha blend */
+    rhi_cmd_bind_pipeline(render_overlay_pipelines(rp)->screen_blend);
     rp->p->uUnlit = 1.0f;
     rp->p->uVColor = 0.0f;
     /* both unlit branches mix toward uFogColor; a HUD quad's vPos is meaningless
@@ -928,6 +928,9 @@ void hud_baseline_draw(HudBaseline *h, const RProg *rp, GpuMesh *quad,
     rp->p->uTextureAlpha = 0.0f;
     rp->p->uFogDensity = fog_density;
     ug2_vec3(rp->p->uColor, 1.0f, 1.0f, 1.0f);
+    glColorMask(color_mask[0], color_mask[1], color_mask[2], color_mask[3]);
+    if (cull_on) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
+    if (stencil_on) glEnable(GL_STENCIL_TEST); else glDisable(GL_STENCIL_TEST);
     glDepthMask(depth_mask);
     if (depth_on) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
     if (blend_on) glEnable(GL_BLEND); else glDisable(GL_BLEND);

@@ -16,7 +16,7 @@
 /* The world and car pipelines of a shader, for helpers that only get the
  * RProg (pipelines_of, below). */
 typedef struct { uint32_t shader; UG2WorldPipelines world; UG2CarPipelines car;
-                 UG2EffectPipelines effect; } ShaderPipelines;
+                 UG2EffectPipelines effect; UG2OverlayPipelines overlay; } ShaderPipelines;
 static const ShaderPipelines *pipelines_of(const RProg *r);
 
 #if defined(__APPLE__) && !defined(N2_GLES)
@@ -1633,7 +1633,17 @@ static const ShaderPipelines *pipelines_of(const RProg *r) {
     render_world_pipelines(r, &cache[slot].world);
     render_car_pipelines(r, &cache[slot].car);
     render_effect_pipelines(r, &cache[slot].effect);
+    RhiPipelineDesc d = car_pipeline(r, RHI_CULL_NONE, 1, 0, RHI_BLEND_ZERO);
+    d.depth_test = 0;
+    cache[slot].overlay.screen = rhi_pipeline_create(&d);
+    d = car_pipeline(r, RHI_CULL_NONE, 0, 1, RHI_BLEND_ONE_MINUS_SRC_ALPHA);
+    d.depth_test = 0;
+    cache[slot].overlay.screen_blend = rhi_pipeline_create(&d);
     return &cache[slot];
+}
+
+const UG2OverlayPipelines *render_overlay_pipelines(const RProg *r) {
+    return &pipelines_of(r)->overlay;
 }
 
 /* draw_gpumesh through the bound car pipeline. */
@@ -2024,7 +2034,7 @@ void draw_text(GpuMesh *quad, const RProg *r, const char *s, float x, float y, f
                     float M[16] = { px*0.85f,0,0,0, 0,py*0.85f,0,0, 0,0,1,0,
                                     x + col*px, y - row*py, 0, 1 };
                     ug2_copy(r->p->uMVP, M, 16);
-                    draw_gpumesh(quad);
+                    render_draw_gpumesh(quad);
                 }
         x += 4*px;   /* 3 columns + 1 gap */
     }
