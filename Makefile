@@ -241,7 +241,7 @@ rhi-pipeline-test: tools/rhi_pipeline_test.c src/rhi.h src/rhi_gl.c src/rhi_gl_s
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/rhi_pipeline_test.c src/rhi_gl.c src/rhi_gl_state.c -o build/rhi_pipeline_test $(SDL_LIBS) $(GL_LIBS)
 	./build/rhi_pipeline_test
 
-light-state-test: tools/light_state_test.c src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/render.h src/nfsu2.h src/generated_shaders.h
+light-state-test: tools/light_state_test.c tools/legacy_draw.h src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/render.h src/nfsu2.h src/generated_shaders.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/light_state_test.c src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c -o build/light_state_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
 	./build/light_state_test
@@ -357,7 +357,7 @@ clean:
 .PHONY: race-ai-test race-events-check run normal menu gles clean debug world-instance-test world-cli-test car-material-test world-render-test world-resident-test district-collision-test wheel-render-test light-state-test world-texture-test world-group-test world-group-audit ai-drive-test ai-drive-cli-test resolution-cli-test render-resolution-test
 
 .PHONY: headlight-render-test
-headlight-render-test: tools/headlight_render_test.c src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/render.h src/nfsu2.h src/generated_shaders.h
+headlight-render-test: tools/headlight_render_test.c tools/legacy_draw.h src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/render.h src/nfsu2.h src/generated_shaders.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/headlight_render_test.c src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c -o build/headlight_render_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
 	./build/headlight_render_test
@@ -372,7 +372,7 @@ rhi-pass-test: tools/rhi_pass_test.c src/rhi_gl.c src/rhi_gl_state.c $(HDRS)
 
 .PHONY: traffic-heatmap-test
 
-weather-render-test: tools/weather_render_test.c src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/render.h src/nfsu2.h src/generated_shaders.h
+weather-render-test: tools/weather_render_test.c tools/legacy_draw.h src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/render.h src/nfsu2.h src/generated_shaders.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/weather_render_test.c src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c -o build/weather_render_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
 	./build/weather_render_test
@@ -384,7 +384,7 @@ EDITOR_OBJ := $(EDITOR_SRC:src/%.c=build/editor/%.o)
 build/editor/%.o: src/%.c $(HDRS) $(GEN)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -c $< -o $@
-build/map_editor.o: tools/map_editor.cpp tools/map_editor_document.h tools/map_editor_gizmo.h tools/map_editor_collision.h $(HDRS)
+build/map_editor.o: tools/map_editor.cpp tools/legacy_draw.h tools/map_editor_document.h tools/map_editor_gizmo.h tools/map_editor_collision.h $(HDRS)
 	@mkdir -p build
 	$(CXX) -O2 -std=c++14 -Wall -Wextra -Wno-unused-function $(SDL_CFLAGS) -Isrc -I$(IMGUI_DIR) -c $< -o $@
 build/map_editor: $(EDITOR_OBJ) build/map_editor.o $(filter-out build/debugui.o,$(IMGUI_OBJ))

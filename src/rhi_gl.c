@@ -75,6 +75,9 @@ static void query_caps(RhiCaps *c) {
     /* DXT1-only drivers expose texture_compression_dxt1 (GLES). */
     c->tex_bc2 = c->tex_bc3 = (uint8_t)has_extension(ext, "GL_EXT_texture_compression_s3tc");
     c->tex_bc1 = (uint8_t)(c->tex_bc3 || has_extension(ext, "texture_compression_dxt1"));
+#ifndef N2_GLES
+    c->wireframe = 1;   /* glPolygonMode; ES2 has none */
+#endif
     c->max_anisotropy = 1.0f;
     if (has_extension(ext, "GL_EXT_texture_filter_anisotropic")) {
         GLfloat mx = 1.0f;
@@ -1220,5 +1223,16 @@ RhiResult rhi_cmd_copy_main_to_texture(RhiTexture texture, int32_t x, int32_t y,
     if (result != RHI_OK) return result;
     t->copied_w = w; t->copied_h = h;
     t->width = w; t->height = h;
+    return RHI_OK;
+}
+
+/* ------------------------------------------------------------------------------ */
+/* Debug fill mode                                                                */
+/* ------------------------------------------------------------------------------ */
+RhiResult rhi_cmd_set_wireframe(int on) {
+    if (!g_rhi.caps.wireframe) return RHI_ERR_UNSUPPORTED;
+#ifndef N2_GLES
+    glPolygonMode(GL_FRONT_AND_BACK, on ? GL_LINE : GL_FILL);
+#endif
     return RHI_OK;
 }

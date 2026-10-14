@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include "render.h"
 #include "rhi_gl.h"
+#include "legacy_draw.h"
 
 /* got: a field of the shader's parameter block (what the next draw sees) */
 static void eq_uniform(const float *got, const float *want, int n) {
@@ -49,7 +50,7 @@ int main(void) {
                                      SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
     assert(win);
     SDL_GLContext ctx = SDL_GL_CreateContext(win); assert(ctx);
-    RProg r = render_program(); GpuMesh quad = make_quad();
+    RProg r = render_program(); glUseProgram(r.prog); GpuMesh quad = make_quad();
     /* A footprint covers the body corners while still fading at its edge.
        UV near (.89,.86) lies beyond the old oval but inside the car bounds. */
     float clip[]={2,0,0,0,0,2,0,0,0,0,1,0,-1,-1,0,1};
