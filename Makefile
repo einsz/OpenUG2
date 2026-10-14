@@ -381,3 +381,25 @@ hud-asset-probe: build/hud_asset_probe
 build/hud_asset_probe: src/tex_override.c tools/hud_asset_probe.c src/hud.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/hud.h src/hud_asset.h src/hud_texture.h src/hud_baseline.h src/render.h src/nfsu2.h src/generated_shaders.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/hud_asset_probe.c src/hud.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/render.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c -o build/hud_asset_probe $(SDL_LIBS) $(GL_LIBS) -lz -lm
+
+# RHI readback contract: coordinates, row layout, bounds and arithmetic overflow.
+rhi-readback-test: tools/rhi_readback_test.c src/rhi_gl.c src/rhi_gl_state.c src/rhi.h src/rhi_gl.h src/rhi_gl_state.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/rhi_readback_test.c src/rhi_gl.c src/rhi_gl_state.c -o build/rhi_readback_test $(SDL_LIBS) $(GL_LIBS) -lm
+	./build/rhi_readback_test
+.PHONY: rhi-readback-test
+
+# The test includes rhi_gl.c to inject allocator failure into the real backend.
+rhi-sampler-test: tools/rhi_sampler_test.c src/render.c src/rhi_gl.c src/rhi_gl_state.c src/tex_override.c $(HDRS) $(GEN)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/rhi_sampler_test.c src/render.c src/rhi_gl_state.c src/tex_override.c -o build/rhi_sampler_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
+	./build/rhi_sampler_test
+
+.PHONY: rhi-sampler-test
+
+# Shader lifetime: synthetic GLSL only, no retail assets.
+.PHONY: rhi-shader-test
+rhi-shader-test: tools/rhi_shader_test.c src/rhi.h src/rhi_gl.h src/rhi_gl_state.h src/rhi_gl.c src/rhi_gl_state.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/rhi_shader_test.c src/rhi_gl.c src/rhi_gl_state.c -o build/rhi_shader_test $(SDL_LIBS) $(GL_LIBS)
+	./build/rhi_shader_test
