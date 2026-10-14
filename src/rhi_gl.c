@@ -791,11 +791,9 @@ void rhi_shader_destroy(RhiShader shader) {
 /* ------------------------------------------------------------------------------ */
 /* Pipelines and draws                                                            */
 /* ------------------------------------------------------------------------------ */
-#define RHI_GL_MAX_PIPELINES 64u
-
 static struct {
-    RhiPipelineDesc desc[RHI_GL_MAX_PIPELINES];
-    uint32_t        count;
+    RhiPipelineDesc *desc;
+    uint32_t        count, capacity;
 } g_pipelines;
 
 static struct {
@@ -882,9 +880,16 @@ RhiPipeline rhi_pipeline_create(const RhiPipelineDesc *desc) {
     }
     for (uint32_t i = 0; i < g_pipelines.count; i++)
         if (pipeline_desc_equal(&g_pipelines.desc[i], desc)) { out.id = i + 1; return out; }
-    if (g_pipelines.count == RHI_GL_MAX_PIPELINES) {
-        fprintf(stderr, "rhi: pipeline_create: out of handles\n");
-        return out;
+    if (g_pipelines.count == g_pipelines.capacity) {
+        uint32_t cap = g_pipelines.capacity ? g_pipelines.capacity * 2u : 64u;
+        if (cap > INT_MAX || cap < g_pipelines.capacity ||
+            (size_t)cap > SIZE_MAX / sizeof *g_pipelines.desc) {
+            fprintf(stderr, "rhi: pipeline_create: out of handles\n"); return out;
+        }
+        RhiPipelineDesc *next = realloc(g_pipelines.desc, (size_t)cap * sizeof *next);
+        if (!next) { fprintf(stderr, "rhi: pipeline_create: out of memory\n"); return out; }
+        g_pipelines.desc = next;
+        g_pipelines.capacity = cap;
     }
     g_pipelines.desc[g_pipelines.count++] = *desc;
     out.id = g_pipelines.count;

@@ -123,8 +123,10 @@ int render_road_reflections(const RProg *r,RoadReflections *s,
 void free_road_reflections(RoadReflections *s);
 
 typedef struct {
-    GLuint fbo, depth, cube[2];
-    RProg capture;
+    RhiTexture cube[2];   /* RGBA8 cube maps: one shown, one being captured */
+    RhiTexture depth;     /* D16 depth target, one face's size */
+    RProg capture;        /* a second UG2 shader for the capture views */
+    RhiPipeline sky, opaque, add;   /* capture pipelines (depth LESS) */
     int size, face, front, ready, failed, ticks;
     float origin[3], published[3];
 } CarEnvironment;

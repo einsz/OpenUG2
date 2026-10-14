@@ -20,17 +20,6 @@ typedef struct { uint32_t shader; UG2WorldPipelines world; UG2CarPipelines car;
 static const ShaderPipelines *pipelines_of(const RProg *r);
 static RhiPipelineDesc world_pipeline_desc(RhiShader shader);   /* below */
 
-#if defined(__APPLE__) && !defined(N2_GLES)
-/* Bind/Delete Framebuffers/Renderbuffers go through rhi_gl_state.c, which maps
-   them to the EXT entry points itself. */
-#define glGenFramebuffers glGenFramebuffersEXT
-#define glFramebufferTexture2D glFramebufferTexture2DEXT
-#define glCheckFramebufferStatus glCheckFramebufferStatusEXT
-#define glGenRenderbuffers glGenRenderbuffersEXT
-#define glRenderbufferStorage glRenderbufferStorageEXT
-#define glFramebufferRenderbuffer glFramebufferRenderbufferEXT
-#endif
-
 /* World glows use world coordinates, never the preceding car/smoke matrix.
    Additive fog fades to black so sprite rectangles cannot add fog colour. */
 int render_world_glows(const RProg *r,const N2Batch *batches,int count,
@@ -403,9 +392,8 @@ int render_car_shadow(const RProg *r,CarShadow *s,const N2Scene *car,const GpuMe
 }
 
 void free_car_environment(CarEnvironment *s) {
-    if(s->fbo)glDeleteFramebuffers(1,&s->fbo);
-    if(s->depth)glDeleteRenderbuffers(1,&s->depth);
-    glDeleteTextures(2,s->cube);
+    rhi_texture_destroy(s->depth);
+    for(int t=0;t<2;t++)rhi_texture_destroy(s->cube[t]);
     rhi_shader_destroy(s->capture.shader);
     memset(s,0,sizeof *s);
 }
@@ -418,7 +406,7 @@ int render_car_environment(const RProg *r,CarEnvironment *s,const N2Batch *world
         r->p->uEnvReady = 1;ug2_copy(r->p->uEnvOrigin, s->published, 3);return 0;
     }
     GLint program,fbo,rb,viewport[4],active,texture,depthfunc,sr,dr,sa,da;
-    GLfloat clear[4];GLboolean depthmask,color_mask[4];
+    GLfloat clear[4],clear_depth;GLboolean depthmask,color_mask[4];
     GLboolean depth=gls_is_enabled(GL_DEPTH_TEST),blend=gls_is_enabled(GL_BLEND),cull=gls_is_enabled(GL_CULL_FACE);
     GLboolean scissor=gls_is_enabled(GL_SCISSOR_TEST),stencil=gls_is_enabled(GL_STENCIL_TEST);
     gls_get_integerv(GL_CURRENT_PROGRAM,&program);gls_get_integerv(GL_FRAMEBUFFER_BINDING,&fbo);
@@ -426,6 +414,7 @@ int render_car_environment(const RProg *r,CarEnvironment *s,const N2Batch *world
     gls_get_integerv(GL_ACTIVE_TEXTURE,&active);glActiveTexture(GL_TEXTURE0);
     gls_get_integerv(GL_TEXTURE_BINDING_2D,&texture);gls_get_integerv(GL_DEPTH_FUNC,&depthfunc);
     gls_get_floatv(GL_COLOR_CLEAR_VALUE,clear);gls_get_booleanv(GL_DEPTH_WRITEMASK,&depthmask);
+    gls_get_floatv(GL_DEPTH_CLEAR_VALUE,&clear_depth);
     gls_get_booleanv(GL_COLOR_WRITEMASK,color_mask);
     gls_get_integerv(GL_BLEND_SRC_RGB,&sr);gls_get_integerv(GL_BLEND_DST_RGB,&dr);
     gls_get_integerv(GL_BLEND_SRC_ALPHA,&sa);gls_get_integerv(GL_BLEND_DST_ALPHA,&da);
@@ -433,34 +422,41 @@ int render_car_environment(const RProg *r,CarEnvironment *s,const N2Batch *world
     if(s->size!=size) {
         free_car_environment(s);s->size=size;s->capture=render_program();
         if(!s->capture.prog){free_car_environment(s);s->failed=1;draws=-1;goto restore;}
-        glGenTextures(2,s->cube);glActiveTexture(GL_TEXTURE5);
-        for(int t=0;t<2;t++) {
-            glBindTexture(GL_TEXTURE_CUBE_MAP,s->cube[t]);
-            for(int face=0;face<6;face++)glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X+face,0,
-                GL_RGBA,size,size,0,GL_RGBA,GL_UNSIGNED_BYTE,NULL);
-            glTexParameteri(GL_TEXTURE_CUBE_MAP,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_CUBE_MAP,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_CUBE_MAP,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_CUBE_MAP,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
+        glActiveTexture(GL_TEXTURE5);   /* GL: the cubes are created on their own unit */
+        const RhiSampler linear=rhi_sampler_create(&(RhiSamplerDesc){RHI_FILTER_LINEAR,RHI_FILTER_LINEAR,
+            RHI_MIP_NONE,RHI_WRAP_CLAMP,RHI_WRAP_CLAMP,1.0f});
+        int ok=1;
+        for(int t=0;t<2 && ok;t++) {
+            s->cube[t]=rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_CUBE,RHI_FORMAT_RGBA8,size,size,
+                RHI_TEXTURE_SAMPLED|RHI_TEXTURE_COLOR_TARGET});
+            ok=s->cube[t].id!=0;
+            for(int face=0;face<6 && ok;face++)ok=rhi_texture_upload(s->cube[t],face,0,NULL,0)==RHI_OK;
+            ok=ok && rhi_texture_set_sampler(s->cube[t],linear)==RHI_OK;
         }
-        glGenFramebuffers(1,&s->fbo);glGenRenderbuffers(1,&s->depth);
-        glBindRenderbuffer(GL_RENDERBUFFER,s->depth);
-        glRenderbufferStorage(GL_RENDERBUFFER,GL_DEPTH_COMPONENT16,size,size);
+        s->depth=rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D,RHI_FORMAT_D16,size,size,RHI_TEXTURE_DEPTH_TARGET});
+        /* depth LESS, two-sided: sky blends without depth write, the world is
+           opaque or additive */
+        RhiPipelineDesc d=world_pipeline_desc(s->capture.shader);
+        d.depth_compare=RHI_COMPARE_LESS;
+        s->opaque=rhi_pipeline_create(&d);
+        d.depth_write=0;d.blend=1;d.src_rgb=d.src_alpha=RHI_BLEND_SRC_ALPHA;
+        d.dst_rgb=d.dst_alpha=RHI_BLEND_ONE_MINUS_SRC_ALPHA;
+        s->sky=rhi_pipeline_create(&d);
+        d.dst_rgb=d.dst_alpha=RHI_BLEND_ONE;
+        s->add=rhi_pipeline_create(&d);
+        if(!ok || !s->depth.id || !s->opaque.id || !s->sky.id || !s->add.id) {
+            free_car_environment(s);s->failed=1;draws=-1;goto restore;
+        }
     }
     if(s->face==0)memcpy(s->origin,pos,sizeof s->origin);
-    glBindFramebuffer(GL_FRAMEBUFFER,s->fbo);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER,GL_DEPTH_ATTACHMENT,GL_RENDERBUFFER,s->depth);
-    glFramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,
-        GL_TEXTURE_CUBE_MAP_POSITIVE_X+s->face,s->cube[1-s->front],0);
-    if(glCheckFramebufferStatus(GL_FRAMEBUFFER)!=GL_FRAMEBUFFER_COMPLETE) {
+    rhi_cmd_bind_pipeline(s->opaque);
+    /* the face clears to what the main view clears to (the fog colour) */
+    if(rhi_cmd_begin_pass(&(RhiPassDesc){{s->cube[1-s->front],s->face},{s->depth,0},
+                                         RHI_LOAD_CLEAR,RHI_LOAD_CLEAR,
+                                         {clear[0],clear[1],clear[2],clear[3]},clear_depth})!=RHI_OK) {
         free_car_environment(s);s->failed=1;draws=-1;goto restore;
     }
-    glViewport(0,0,size,size);glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
-    glEnable(GL_DEPTH_TEST);glDepthFunc(GL_LESS);glDepthMask(GL_TRUE);
-    glDisable(GL_BLEND);glDisable(GL_CULL_FACE);glDisable(GL_SCISSOR_TEST);glDisable(GL_STENCIL_TEST);
-    glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
-    glUseProgram(s->capture.prog);
-    glActiveTexture(GL_TEXTURE5);glBindTexture(GL_TEXTURE_CUBE_MAP,s->cube[s->front]);
+    rhi_cmd_bind_texture(5,s->cube[s->front]);
     glActiveTexture(GL_TEXTURE0);
     const RProg *cr=&s->capture;float ambient,diffuse,fog,fc[3],sun[3];
     ug2_copy(&ambient, &r->p->uAmbient, 1);ug2_copy(&diffuse, &r->p->uDiffuse, 1);
@@ -481,12 +477,12 @@ int render_car_environment(const RProg *r,CarEnvironment *s,const N2Batch *world
     }
     mat_persp(1.570796327f,1,.15f,30000,p);mat_mul(p,view,matrix);
     ug2_copy(cr->p->uMVP, matrix, 16);
-    cr->p->uEmissiveTex = 1;cr->p->uFogDensity = 0;glDepthMask(GL_FALSE);
+    cr->p->uEmissiveTex = 1;cr->p->uFogDensity = 0;
     for(int i=0;i<nsky;i++)if(sky[i].tex.id) {
-        glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
-        cr->p->uUseTex = 1;glBindTexture(GL_TEXTURE_2D,rhi_gl_texture_name(sky[i].tex));draw_batch(sky+i);draws++;
+        rhi_cmd_bind_pipeline(s->sky);
+        cr->p->uUseTex = 1;rhi_cmd_bind_texture(0,sky[i].tex);render_draw_batch(sky+i);draws++;
     }
-    glDepthMask(GL_TRUE);glDisable(GL_BLEND);cr->p->uEmissiveTex = 0;
+    rhi_cmd_bind_pipeline(s->opaque);cr->p->uEmissiveTex = 0;
     cr->p->uFogDensity = fog;
     mat_persp(1.570796327f,1,.15f,350,p);mat_mul(p,view,matrix);
     ug2_copy(cr->p->uMVP, matrix, 16);
@@ -496,10 +492,10 @@ int render_car_environment(const RProg *r,CarEnvironment *s,const N2Batch *world
         cr->p->uUseTex = b->tex.id?1:0;ug2_vec3(cr->p->uColor, .28f, .29f, .31f);
         cr->p->uAlphaTest = b->drawmode==N2_DRAW_CUTOUT?1:0;
         cr->p->uTextureAlpha = b->drawmode==N2_DRAW_ADD?1:0;
-        if(b->drawmode==N2_DRAW_ADD){glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE);glDepthMask(GL_FALSE);}
-        else {glDisable(GL_BLEND);glDepthMask(GL_TRUE);}
-        glBindTexture(GL_TEXTURE_2D,rhi_gl_texture_name(b->tex));draw_batch(b);draws++;
+        rhi_cmd_bind_pipeline(b->drawmode==N2_DRAW_ADD?s->add:s->opaque);
+        rhi_cmd_bind_texture(0,b->tex);render_draw_batch(b);draws++;
     }
+    rhi_cmd_end_pass();
     if(++s->face==6){s->face=0;s->front=1-s->front;s->ready=1;memcpy(s->published,s->origin,sizeof s->published);}
 restore:
     glBindFramebuffer(GL_FRAMEBUFFER,fbo);glBindRenderbuffer(GL_RENDERBUFFER,rb);
@@ -512,7 +508,8 @@ restore:
     if(scissor)glEnable(GL_SCISSOR_TEST);else glDisable(GL_SCISSOR_TEST);
     if(stencil)glEnable(GL_STENCIL_TEST);else glDisable(GL_STENCIL_TEST);
     glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,texture);
-    glActiveTexture(GL_TEXTURE5);glBindTexture(GL_TEXTURE_CUBE_MAP,s->cube[s->front]);
+    if(s->cube[s->front].id)rhi_cmd_bind_texture(5,s->cube[s->front]);
+    else {glActiveTexture(GL_TEXTURE5);glBindTexture(GL_TEXTURE_CUBE_MAP,0);}
     glActiveTexture(active);
     r->p->uEnvReady = s->ready?1:0;ug2_copy(r->p->uEnvOrigin, s->published, 3);
     return draws;
