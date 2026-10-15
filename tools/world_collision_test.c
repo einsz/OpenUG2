@@ -3,6 +3,7 @@
 #include <assert.h>
 #include "world.h"
 #include "world_collision_rules.h"
+#include "ug2_track_collision.h"
 
 static N2Mesh mesh(uint32_t key,uint64_t id,float x,int ground) {
     float verts[]={x,-4,0,0,0,x,4,0,0,0,x,4,1,0,0,x,-4,1,0,0,
@@ -45,8 +46,8 @@ static void roadside(void) {
     assert(wce_roadside(&edits,&s,0) && wce_roadside(&edits,&s,0) && s.count==9);
     for(int n=0;n<9;n++) {
         N2Mesh *m=meshes+n;float x=20*n;
-        int wall=n<2 || n==7;
-        assert(m->wall_policy==(n<2?0:n==7?2:1));
+        int wall=n<3 || n==7;
+        assert(m->wall_policy==(n<3?0:n==7?2:1));
         assert(m->wall_height==(n==7?8:0) && n2_world_body_disabled(m)==!wall);
         assert((m->wall_nidx>0)==(n==7));
         assert(ids[n]==n2_world_source_id(m) && !memcmp(verts[n],m->verts,sizeof verts[n]));
@@ -63,11 +64,11 @@ static void roadside(void) {
         assert(verdict==(n<2?WWS_CONTACT:WWS_NOCOVER));
         float from[]={x-1,0,1},to[]={x-1,0,-1};
         assert((world_ground_sweep(&one,from,to,NULL)<1)==(n<2));
-        assert((world_camera_clip(&one,NULL,from,to,.1f)<1)==(n<2));
+        assert((world_camera_clip(&one,NULL,from,to,.1f)<1)==(n<3));
         if(n<2)assert(fabsf(ground)<1e-6f);
         else assert(n2_ground_z(&one,x-1,0,99)==99);
     }
-    float obst[9][4],z[9][2];int src[9];int count=phys_collect_walls(&s,obst,src,z,9);assert(count==1);
+    float obst[9][4],z[9][2];int src[9];int count=phys_collect_walls(&s,obst,src,z,9);assert(count==2);
     const float bb[]={-.8f,-.4f,0,.8f,.4f,1.4f};
     for(int side=-1;side<=1;side+=2) {
         float old[]={140+4*side,0,6},pos[]={140-4*side,0,6},vel[]={-side*2,0};
@@ -133,6 +134,7 @@ static void compiled_rules(void) {
         assert(r->kind>=0&&r->kind<=2&&isfinite(r->height)&&r->height>=0&&r->height<=1000);
         assert(r->kind==2 ? !r->key : r->key!=0);
         if (r->kind==0) assert(r->key<=UINT32_MAX&&!r->count&&!r->points);
+        else if (r->kind==1 && r->height==0) assert(!r->count&&!r->points);
         else assert(r->height>0&&r->count>=2&&r->count<=16383&&r->points);
         for (int k=0;k<r->count;k++) for (int a=0;a<3;a++)
             assert(isfinite(r->points[k][a])&&fabsf(r->points[k][a])<100000);
@@ -152,23 +154,31 @@ static void buildings(void) {
     }
     meshes[7]=mesh(20,400,80,1);
     static const float boundary[][3]={{0,-4,0},{0,4,0}};
-    const WCollisionRule rules[]={{0,11,8,0,NULL},{1,202,8,2,boundary}};
+    const WCollisionRule rules[]={{0,11,8,0,NULL},{1,999,8,2,boundary}};
     const WCollisionEdits edits={"TEST",2,rules};
     assert(wce_apply(&edits,&s,1));
     for(int n=0;n<5;n++) {
-        assert(meshes[n].scen==N2_SC_BUILDING && meshes[n].wall_policy==1);
-        assert(!meshes[n].wall_verts && !contact(meshes+n,10*n+.1f,0));
-        float face[9];assert(!phys_wall_debug_face(meshes+n,0,.3f,face));
+        assert(meshes[n].scen==N2_SC_BUILDING && meshes[n].wall_policy==0);
+        assert(!meshes[n].wall_verts && contact(meshes+n,10*n+.1f,0));
+        float face[9];assert(phys_wall_debug_face(meshes+n,0,.3f,face));
+        assert(!contact(meshes+n,10*n+.1f,6)); /* retain source height */
         N2Scene one={meshes+n,1,1};float anchor[]={10*n-2,0,.5f},eye[]={10*n+2,0,.5f};
-        assert(world_camera_clip(&one,NULL,anchor,eye,.1f)==1);
+        assert(world_camera_clip(&one,NULL,anchor,eye,.1f)<1);
     }
     assert(meshes[5].scen==N2_SC_STRUCT && meshes[6].scen==N2_SC_WALL);
     assert(contact(meshes+5,50.1f,6) && contact(meshes+6,60.1f,6));
     /* The same building policy applies without a matching map-specific export. */
     meshes[0].wall_policy=2;meshes[0].wall_height=8;
     assert(wce_wall(meshes,rules+1,0) && wce_apply(NULL,&s,0));
-    assert(meshes[0].wall_policy==1 && !meshes[0].wall_verts && !contact(meshes,.1f,0));
-    float obst[8][4],z[8][2];int src[8];assert(phys_collect_walls(&s,obst,src,z,8)==2);
+    assert(meshes[0].wall_policy==0 && !meshes[0].wall_verts && contact(meshes,.1f,0));
+    float obst[8][4],z[8][2];int src[8];assert(phys_collect_walls(&s,obst,src,z,8)==7);
+    assert(!cw_probe_contact(&s,0,.1f,4.8f,.4f,0,1.4f)); /* actual opening, inside full vertex bounds */
+    const float bb[]={-.8f,-.4f,0,.8f,.4f,1.4f};
+    for(int side=-1;side<=1;side+=2) {
+        float old[]={2*side,0,0},pos[]={-2*side,0,0},vel[]={-2*side,0};
+        assert(world_body_walls_move(&s,old,pos,vel,0,bb,.05f,1.4f,0,obst,z,7,src,NULL,0,NULL,NULL)>0);
+        assert(pos[0]*side>0);
+    }
     float ground=99;N2Scene terrain={meshes+7,1,1};
     assert(world_ground_at(&terrain,79,0,1,&ground)!=WSURF_NONE && fabsf(ground)<1e-6f);
     for(int n=0;n<8;n++) {free(meshes[n].verts);free(meshes[n].idx);
@@ -205,8 +215,148 @@ static void repeated_models(void) {
         free(s.meshes[n].wall_verts);free(s.meshes[n].wall_idx);}
     free(s.meshes);
 }
+static void source_building_walls(void) {
+    static const float front[][3]={{16,-4,0},{16,4,0}};
+    const WCollisionRule rules[]={{0,11,8,0,NULL},{1,202,12,2,front}};
+    const WCollisionEdits edits={"TEST",2,rules};
+    N2Mesh m[3]={mesh(11,202,0,0),mesh(11,202,0,0),mesh(11,203,30,0)};
+    N2Scene s={m,3,3};
+    for(int n=0;n<3;n++)m[n].scen=N2_SC_BUILDING;
+    float original[40];memcpy(original,m[0].verts,sizeof original);
+    assert(wce_roadside(&edits,&s,1));
+    assert(contact(m,16.1f,9) && contact(m,15.9f,9));
+    assert(!contact(m,.1f,0) && !contact(m,16.1f,13));
+    assert(!m[1].wall_verts && !contact(m+1,16.1f,9));
+    assert(contact(m+2,30.1f,0));
+    assert(!memcmp(original,m[0].verts,sizeof original));
+    float obst[3][4],z[3][2];int src[3];
+    assert(phys_collect_walls(&s,obst,src,z,3)==2);
+    float anchor[]={14,0,9},eye[]={18,0,9};
+    assert(world_camera_clip(&s,NULL,anchor,eye,.1f)<1);
+    float ground=99;assert(world_ground_at(&s,16,0,1,&ground)==WSURF_NONE);
+    assert(wce_roadside(&edits,&s,1) && phys_collect_walls(&s,obst,src,z,3)==2);
+    const WCollisionRule removed={1,202,0,0,NULL};
+    const WCollisionEdits removal={"TEST",1,&removed};
+    assert(wce_roadside(&removal,&s,1));
+    assert(!contact(m,.1f,0) && !contact(m+1,.1f,0) && contact(m+2,30.1f,0));
+    assert(wce_roadside(&edits,&s,0));
+    for(int n=0;n<3;n++) {
+        assert(!m[n].wall_verts && !contact(m+n,16.1f,9));
+        assert(contact(m+n,(n==2?30:0)+.1f,0));
+        free(m[n].verts);free(m[n].idx);
+    }
+}
+static void pilot_boundaries(void) {
+    const uint64_t ids[]={UINT64_C(0x4152344c0712004e),UINT64_C(0x4152344c02c50067),
+        UINT64_C(0x4152344c02c500d9),UINT64_C(0x4152344c02c500da)};
+    N2Mesh *m=calloc(5,sizeof *m);assert(m);N2Scene s={m,5,5};
+    for(int n=0;n<5;n++) {
+        m[n]=mesh(11,n<4?ids[n]:999,100*n,0);
+        m[n].scen=n==0 || n==4?N2_SC_BUILDING:n==1?N2_SC_TREE:N2_SC_WALL;
+    }
+    strcpy(m[1].sname,"XT_PILOT_HEDGE");
+    assert(wce_roadside(&city_collision_edits,&s,1));
+    m=s.meshes;
+    assert(cw_probe_contact(&s,0,-135.8f,94.6f,.35f,9,10.4f)); /* close decorative gap */
+    assert(cw_probe_contact(&s,0,-130,95.6f,.5f,9,10.4f)); /* shared street frontage */
+    assert(cw_probe_contact(&s,0,-142,93.75f,.5f,9,10.4f));
+    assert(!m[1].wall_verts && n2_world_body_disabled(m+1)); /* no individual flower box */
+    assert(!cw_probe_contact(&s,0,-155,95,.85f,2,3.4f)); /* outside passage stays open */
+    assert(cw_probe_contact(&s,2,-184.35f,102,.5f,33,34.4f));
+    assert(cw_probe_contact(&s,3,-183.15f,102,.5f,33,34.4f));
+    assert(!cw_probe_contact(&s,0,-130,95.6f,1,24,25.4f));
+    assert(!cw_probe_contact(&s,2,-184.35f,102,.5f,2,3.4f));
+    assert(contact(m+4,400.1f,0));
+    assert(wce_roadside(&city_collision_edits,&s,0));
+    assert(!cw_probe_contact(&s,0,-130,95.6f,1,9,10.4f));
+    assert(!cw_probe_contact(&s,1,-142,94,.5f,9,10.4f));
+    for(int n=0;n<s.count;n++) {free(m[n].verts);free(m[n].idx);
+        free(m[n].wall_verts);free(m[n].wall_idx);}
+    free(m);
+}
+static void pilot_roadside_boundary(void) {
+    const uint64_t ids[]={UINT64_C(0x4152344c02c50053),UINT64_C(0x4152344c02c6002d),
+        UINT64_C(0x1f2dfe7f7045e19f),UINT64_C(0x33668dcc71aa1b84)};
+    N2Mesh *m=calloc(4,sizeof *m);assert(m);N2Scene s={m,4,4};
+    for(int n=0;n<4;n++)m[n]=mesh(n==1?0xfa2a3df8:11,ids[n],40*n,n>=2);
+    m[1].scen=N2_SC_PROP;strcpy(m[1].sname,"XO_PATHGUARDC_1A_00");
+    assert(wce_roadside(&city_collision_edits,&s,1));m=s.meshes;
+    assert(cw_probe_contact(&s,0,-130,79.3f,.5f,9,10.4f));
+    assert(cw_probe_contact(&s,0,-95,88.6f,.5f,9,10.4f)); /* former cyan/pink seam */
+    assert(!cw_probe_contact(&s,0,-130,90,.85f,2,3.4f)); /* main road */
+    assert(!cw_probe_contact(&s,0,-130,79.3f,.5f,24,25.4f));
+    assert(!m[1].wall_verts && n2_world_body_disabled(m+1));
+    for(int n=2;n<4;n++) {
+        N2Scene one={m+n,1,1};float ground=99,anchor[]={40*n-2,0,.5f},eye[]={40*n+2,0,.5f};
+        assert(!m[n].ground_disabled && !contact(m+n,40*n+.1f,0));
+        assert(world_ground_at(&one,40*n-1,0,1,&ground)==WSURF_TERRAIN && fabsf(ground)<1e-6f);
+        assert(world_camera_clip(&one,NULL,anchor,eye,.1f)==1);
+    }
+    assert(wce_roadside(&city_collision_edits,&s,0));
+    assert(contact(m,.1f,0) && contact(m+1,35.1f,0));
+    for(int n=2;n<4;n++)assert(contact(m+n,40*n+.1f,0));
+    for(int n=0;n<s.count;n++){free(m[n].verts);free(m[n].idx);free(m[n].wall_verts);free(m[n].wall_idx);}
+    free(m);
+}
+static void bun_walls(void) {
+    N2Mesh *m=calloc(3,sizeof *m);assert(m);N2Scene scene={m,3,3};
+    m[0]=mesh(1,1,0,0);m[0].scen=N2_SC_BUILDING;
+    m[1]=mesh(2,2,20,1);m[2]=mesh(3,3,40,0);m[2].prop_id=3;
+    UG2TrackPolygon polys[2]={{0}};UG2TrackPolygon *poly=polys;
+    poly->source_offset=104;poly->section=121;
+    const float corners[4][3]={{10,-4,0},{10,4,0},{10,4,12},{10,-4,12}};
+    memcpy(poly->corners,corners,sizeof corners);
+    const float horizontal[4][3]={{-4,-4,20},{4,-4,20},{4,4,20},{-4,4,20}};
+    memcpy(polys[1].corners,horizontal,sizeof horizontal);
+    UG2TrackCollision data={.polygons=polys,.count=2,.groups=1,.total=2};
+    data.activation.count=1;strcpy((char*)data.activation.records[0]+9,"NONE");
+    assert(wce_bun(&scene,&data,0x12345678,0));
+    assert(scene.count==4 && !contact(scene.meshes,.1f,0));
+    assert(contact(scene.meshes+3,10.1f,9) && !contact(scene.meshes+3,10.1f,13));
+    assert(contact(scene.meshes+2,40.1f,0)); /* independent breakable object */
+    assert(scene.meshes[3].cat==N2_COLLISION && scene.meshes[3].ground_disabled);
+    float ground;N2Scene floor={scene.meshes+1,1,1};
+    assert(world_ground_at(&floor,19,0,1,&ground)==WSURF_TERRAIN);
+    float a[]={8,0,9},b[]={12,0,9};assert(world_camera_clip(&scene,NULL,a,b,.1f)<1);
+    uint64_t id=n2_world_source_id(scene.meshes+3);memset(poly->corners,0,sizeof poly->corners);
+    assert(id && contact(scene.meshes+3,10.1f,9)); /* scene owns its geometry */
+    for(int k=0;k<scene.count;k++){free(scene.meshes[k].verts);free(scene.meshes[k].idx);free(scene.meshes[k].wall_verts);free(scene.meshes[k].wall_idx);}
+    free(scene.meshes);
+}
+static int bun_probe(const N2Scene *scene,float x) {
+    for(int k=0;k<scene->count;k++)if(cw_probe_contact(scene,k,x,0,.5f,1,2.5f))return 1;
+    return 0;
+}
+static void bun_event_walls(void) {
+    static const char *names[]={"NONE","PLAYER_BARRIERS_4004","BARRIERS_4103","COMMON_UNKNOWN","BARRIERS_CAREER0","BARRIERS_DEMO"};
+    UG2TrackPolygon polygons[6]={{0}};UG2TrackCollision data={0};data.polygons=polygons;data.count=6;data.activation.count=6;
+    for(int k=0;k<6;k++) {
+        float x=10+10*k;
+        float points[4][3]={{x,-4,0},{x,4,0},{x,4,8},{x,-4,8}};
+        memcpy(polygons[k].corners,points,sizeof points);polygons[k].metadata[0]=(unsigned char)k;polygons[k].source_offset=32*k;
+        strcpy((char*)data.activation.records[k]+9,names[k]);
+    }
+    const int events[]={-1,4004,4103,4999,0};
+    for(int q=0;q<5;q++) {
+        int event=events[q];N2Scene scene={0};assert(wce_bun(&scene,&data,7,event));
+        float obst[6][4],z[6][2];int src[6];int count=phys_collect_walls(&scene,obst,src,z,6);
+        assert(count==(event==-1?4:event==4004||event==4103?3:6));
+        assert(bun_probe(&scene,10.1f));
+        assert(bun_probe(&scene,40.1f)); /* unknown/common retained */
+        assert(!!bun_probe(&scene,20.1f)==(event==4004||event==4999||event==0));
+        assert(!!bun_probe(&scene,30.1f)==(event==4103||event==4999||event==0));
+        assert(!!bun_probe(&scene,50.1f)==(event==-1||event==4999||event==0));
+        assert(!!bun_probe(&scene,60.1f)==(event==-1||event==4999||event==0));
+        for(int k=0;k<scene.count;k++){free(scene.meshes[k].verts);free(scene.meshes[k].idx);}free(scene.meshes);
+    }
+    N2Mesh *m=calloc(1,sizeof *m);assert(m);m[0]=mesh(1,1,0,0);N2Scene scene={m,1,1};
+    polygons[5].metadata[0]=6;
+    assert(!wce_bun(&scene,&data,7,-1) && scene.count==1 && contact(scene.meshes,.1f,0));
+    free(scene.meshes[0].verts);free(scene.meshes[0].idx);free(scene.meshes);
+}
 int main(void) {
-    roadside();boundary_outline();planter_materials();sloped_boundary();compiled_rules();buildings();repeated_models();
+    bun_walls();bun_event_walls();
+    roadside();boundary_outline();planter_materials();sloped_boundary();compiled_rules();buildings();repeated_models();source_building_walls();pilot_boundaries();pilot_roadside_boundary();
     static const float replacement[][3]={{16,-4,0},{16,4,0}},standalone[][3]={{40,-4,0},{40,4,0}};
     static const WCollisionRule rules[]={
         {0,10,0,0,NULL},{0,11,8,0,NULL},{1,202,8,2,replacement},{2,0,8,2,standalone}

@@ -46,6 +46,7 @@ int main(void) {
         d.min_filter = (RhiFilter)min; d.mip_filter = (RhiMipFilter)mip;
         d.mag_filter = RHI_FILTER_LINEAR; d.wrap_u = d.wrap_v = RHI_WRAP_CLAMP;
         assert(rhi_texture_set_sampler(texture, rhi_sampler_create(&d)) == RHI_OK);
+        glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(texture));
         GLint actual; glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, &actual);
         assert(actual == filters[min][mip]);
         glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, &actual);
@@ -57,6 +58,20 @@ int main(void) {
            d.wrap_u == RHI_WRAP_CLAMP && d.wrap_v == RHI_WRAP_CLAMP);
     RhiTexture guard = rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D, RHI_FORMAT_RGBA8, 1, 1, RHI_TEXTURE_SAMPLED});
     assert(guard.id);
+    /* Texture work leaves the caller's active unit and its binding alone. */
+    glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(guard));
+    assert(rhi_texture_set_sampler(texture, rhi_texture_sampler(texture)) == RHI_OK);
+    assert(rhi_texture_upload(texture, 0, 0, rgb, 0) == RHI_OK);
+    RhiTexture made = rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_CUBE, RHI_FORMAT_RGBA8, 2, 2, RHI_TEXTURE_SAMPLED});
+    assert(made.id);
+    {
+        GLint active, bound, cube;
+        glGetIntegerv(GL_ACTIVE_TEXTURE, &active); glGetIntegerv(GL_TEXTURE_BINDING_2D, &bound);
+        glGetIntegerv(GL_TEXTURE_BINDING_CUBE_MAP, &cube);
+        assert(active == GL_TEXTURE2 && (GLuint)bound == rhi_gl_texture_name(guard) && !cube);
+    }
+    rhi_texture_destroy(made); glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, rhi_gl_texture_name(guard));
     g_tex_aniso_max = (int)rhi_caps()->max_anisotropy;
     if (g_tex_aniso_max > 1) {
         render_texture_detail(2);

@@ -40,6 +40,8 @@ HDRS += src/options_menu.h src/settings.h src/controls_bind.h src/controls_menu.
 GUI_ART_SRC := src/gui_timing.c src/pause_entries.c src/gui_carousel.c src/gui_dialog.c src/gui_layout.c src/pause_screen.c src/controls_bind.c src/controls_menu.c
 GUI_ART_HDR := $(wildcard src/gui_*.h) src/pause_entries.h src/pause_screen.h src/controls_bind.h src/controls_menu.h
 
+HDRS += src/ug2_track_collision.h
+
 .DEFAULT_GOAL := nfsu2   # keep `make` building the binary, not the generated header
 
 # Auto-embed the F3 debug shaders so world_mesh.c has a CWD-independent fallback
@@ -167,6 +169,13 @@ ground-motion-test: tools/ground_motion_test.c src/ground_motion.h src/world.c s
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/ground_motion_test.c src/world.c src/resource.c src/world_instance.c src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c -o build/ground_motion_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
 	./build/ground_motion_test
+
+ug2-track-collision-test: tools/ug2_track_collision_test.c src/ug2_track_collision.h src/asset_chunks.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Isrc tools/ug2_track_collision_test.c -o build/ug2_track_collision_test -lm
+	./build/ug2_track_collision_test
+
+.PHONY: ug2-track-collision-test
 
 world-collision-test: tools/world_collision_test.c src/world.c src/resource.c src/world_instance.c src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/physics.c $(HDRS) src/generated_shaders.h
 	@mkdir -p build
@@ -461,7 +470,16 @@ controls-test: build/controls_test build/controls_sdl_test
 	SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=1 ./build/controls_sdl_test
 .PHONY: controls-test
 
-# RHI main-target clear, upload results, texture limit, state snapshots and GPU timers.
+
+# Every frontend screen in a hidden 16:9 window: menu area drawn, side bars
+# and caller state untouched.
+frontend-draw-test: tools/frontend_draw_test.c src/frontend/frontend.c src/frontend/frontend_draw.c src/rhi_gl.c src/rhi_gl_state.c $(HDRS) $(GEN)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/frontend_draw_test.c src/frontend/frontend.c src/frontend/frontend_draw.c src/rhi_gl.c src/rhi_gl_state.c -o build/frontend_draw_test $(SDL_LIBS) $(GL_LIBS) -lm
+	./build/frontend_draw_test
+.PHONY: frontend-draw-test
+
+# RHI main-target clear, upload results, texture limit, state snapshots, viewport and GPU timers.
 rhi-frame-test: tools/rhi_frame_test.c src/rhi_gl.c src/rhi_gl_state.c src/rhi.h src/rhi_gl.h src/rhi_gl_state.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/rhi_frame_test.c src/rhi_gl.c src/rhi_gl_state.c -o build/rhi_frame_test $(SDL_LIBS) $(GL_LIBS) -lm
@@ -511,7 +529,7 @@ ugui-gl-state-test: tools/ugui_gl_state_test.c $(UGUI_SRC) src/ugui/ugui_gl.c sr
 	./build/ugui_gl_state_test
 
 PAUSE_TEST_INC := $(wildcard tools/pause_menu_*_test.inc)
-build/pause_menu_test: tools/pause_menu_test.c $(PAUSE_TEST_INC) tools/synth_pkgs.h tools/synth_fng.h src/pause_menu.c src/gui_view.c $(GUI_ART_SRC) $(HDRS) $(UGUI_SRC)
+build/pause_menu_test: tools/pause_menu_test.c $(PAUSE_TEST_INC) tools/synth_pkgs.h tools/synth_fng.h src/pause_menu.c src/gui_view.c src/options_menu.c src/settings.c $(GUI_ART_SRC) $(HDRS) $(UGUI_SRC)
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/pause_menu_test.c src/gui_view.c $(GUI_ART_SRC) src/options_menu.c src/settings.c src/controls_store.c src/controls_sdl.c $(UGUI_SRC) src/ugui/ugui_gl.c src/rhi_gl_state.c -o $@ $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) $(SETTINGS_LIBS) -lm
 pause-menu-test: build/pause_menu_test

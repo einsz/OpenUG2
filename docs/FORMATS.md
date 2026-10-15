@@ -1,8 +1,8 @@
 # NFS: Underground 2 — file format reference
 
 Clean-room interoperability notes for the retail PC data files. This document
-records the layouts that OpenUG2 currently consumes, the evidence behind each
-claim, and the source function that implements it. All integers are
+records consumed layouts and bounded research observations, the evidence behind
+each claim, and the reader where implemented. All integers are
 little-endian unless a section explicitly says otherwise.
 
 > These are independent, clean-room notes on the *layout* of a game's data
@@ -14,10 +14,12 @@ little-endian unless a section explicitly says otherwise.
 
 ## How to read this document
 
-Every non-trivial claim belongs to one of three evidence levels:
+Every non-trivial claim belongs to one of four evidence levels:
 
 - **PROVEN** — byte layout and meaning agree across multiple records or files,
   and a production parser/test exercises the relationship end to end.
+- **OBSERVED** — bounded original-file checks establish the stored layout or
+  relationship, but production consumption or retail runtime use is unverified.
 - **PLAUSIBLE** — the values are consistent and useful, but no structural link
   or independent cross-check proves the field's meaning yet.
 - **UNKNOWN** — bytes or a relationship exist, but assigning semantics would be
@@ -39,12 +41,43 @@ guard that makes the assumption safe.
 | file mapping and content discovery | `src/resource.c` | caller |
 | car axle/track anchors in `GLOBALB.BUN` | `n2_global_wheel_attr` in `src/nfsu2.h` | `N2WheelAttr` |
 | generic `0x00135200` attribute records | `src/attrib.h` | diagnostic `N2Attrib` view |
+| packed track polygons and activation-group rows | `src/ug2_track_collision.h` | `UG2TrackCollision`; wall selection in `src/world_collision.h` |
+| FEng packages, UI scripts, textures and compression | `src/ugui/ugui_{bundle,fng,anim,tex,codec}.c` | decoded UI package/resource owners |
+| vehicle presets and career opponent descriptors | local research readers only | no production roster importer |
 | ABK, Ginsu and XAS audio | `src/audio.c` | `EngineAudio` and decoded PCM |
 
 The parser is deliberately defensive. A format observation is not permission
 to index unchecked data: validate the chunk boundary, filler, record stride,
 index range, material slot, allocation, and output count before emitting a
 runtime object.
+
+### Retail data by subsystem
+
+Paths below are relative to the user's original game-data root. Stored data,
+executing code and OpenUG2 policy are separate evidence categories.
+
+| Subsystem | Original files | Format section / boundary |
+|---|---|---|
+| Racer identities and career associations | `GLOBAL/GLOBALB.BUN`, equivalent decoded `GLOBAL/GlobalB.lzc` | [Vehicle presets](#named-ai-vehicle-presets-0x00030220), [career records](#career-events-and-opponent-descriptors); exact roaming-rival selection unresolved |
+| Free-roam navigation and connections | `TRACKS/ROUTES<region>/RoutesFreeRoam.bin`, `PathsFreeRoam.bin`, `TrackPosMarkersFreeRoam.bin` | [Route/path split](#freeroam-vs-race-event--the-split-is-the-games-own); route records are not vehicle counts |
+| Event navigation and grids | Same directory, `Paths<id>.bin`, `Routes<id>F.bin`, `Routes<id>B.bin`, `TrackPosMarkersAll.bin` | [Racing lines](#racing-lines--circuits-tracksroutespathsbin); geometry does not identify the selected opponents |
+| Static track collision | `TRACKS/STREAM<region>.BUN`; group table in companion `TRACKS/<region>.BUN` | [Packed polygons](#packed-track-collision-0x80034130); material/contact semantics partly unknown |
+| Local prop shapes and physical-property candidates | Companion `TRACKS/<region>.BUN` | [Local shapes](#scripted--dynamic-objects-zcv_--zcs_--companion-l4rbun); world placement unresolved |
+| In-game interface, HUD and shared art | `GLOBAL/InGameCommon.bun`, `InGameFreeRoam.bun`, `InGameRace.bun`, `HUD_CustomTextures_ALL.bin` | [HUD packages](#in-game-hud-and-interface-bundles); package presence does not prove mode activation |
+
+The supplied `speed2.exe` has encounter/controller/action and traffic-level
+labels, but no recovered loader/controller call chain binds them to a complete
+behavior schema. Density, intersection timing, off-screen simulation and rival
+selection must not be inferred from those labels or bundle filenames.
+
+Local evidence for the October 13–15, 2026 audit is retained under ignored
+`scratchpad/`: `original-racer-ai-files-2026-10-15/`,
+`speed2-freeroam-traffic-2026-10-15/`, `superpowers/bun-collision-oct13/`,
+`ingame-freeroam-bun-2026-10-15/` and `ingame-common-bun-2026-10-15/`.
+Those reports retain original-file hashes, offsets, check scope and reproduction
+helpers locally; they are optional audit material, not dependencies of these
+docs or files to add to Git. Public notes contain layouts and aggregate results
+only, with no original bytes, full asset tables or executable extracts.
 
 ## Chunk container (`.BIN` / `.BUN`)
 
@@ -83,6 +116,46 @@ parent end; that is a known hardening gap, not a contract to copy. New readers
 must keep the explicit overflow/bounds check. Never search beyond the current
 container merely because a magic value happens to occur in texture pixels or
 compressed data.
+
+## Packed track collision (`0x80034130`)
+
+The eight inspected `TRACKS/STREAM<region>.BUN` files contain a polygon store
+separate from drawable `0x134xxx` meshes: 599 groups, 417,572 packed polygons,
+620,291 spatial references and 37,671 grid cells. The bounded production reader
+is `ug2_track_collision_read` in `src/ug2_track_collision.h`; synthetic checks
+are in `tools/ug2_track_collision_test.c`.
+
+Each `0x80034130` contains these leaves. Offsets are leaf/record-relative.
+
+| Leaf | Layout |
+|---|---|
+| `0x34131` | 48-byte header: `u32` section at +0; `u16` grid width/height at +4/+6; `f32` XY origin at +8/+12; minimum XYZ at +16/+20/+24; maximum XYZ at +32/+36/+40 |
+| `0x34134` | 32-byte polygon: group index byte +0; opaque byte +1 and `u16` +2; signed Z base +4; `u16 0xffff` +6; four `i16` X at +8, Y at +16, Z deltas at +24 |
+| `0x34136` | 4-byte reference: `u16` polygon index followed by opaque `u16` metadata |
+| `0x34137` | 4-byte cell: `u16` reference start and `u16` reference count |
+
+**PROVEN decoding:** `x = packed_x / 8`, `y = packed_y / 8`,
+`z = signed_z_base + packed_z_delta / 256`. A triangle-shaped record repeats
+its third corner as the fourth. Cells use X-fast row-major order and a 32-unit
+XY width. All inspected references are bounded and their polygon XY bounds
+overlap the referenced cell. Empty groups use sentinel bounds; do not require
+ordered geometric min/max for an empty polygon leaf.
+
+Companion leaf `0x3412f` supplies 32-byte activation-group rows: name hash at
++0, a bounded NUL-terminated name at +9, and opaque intervening fields. The
+first row is the special unnamed-hash/NONE entry. The reader validates later
+name hashes with seed `0xffffffff`, `h = 33*h + byte`, modulo 2^32, and checks
+each polygon's group index against the table. This is a stored association;
+the retail activation flags and contact rules are not fully decoded.
+
+OpenUG2 defaults to the BUN wall source (`WCOLLISION_BUN`); explicit
+`--collision-source legacy` retains the drawable/authored wall path for
+comparison. `wce_bun` filters named event groups and emits wall-only meshes;
+existing ROAD/TERRAIN support and local prop handling remain separate. This
+selection is an OpenUG2 policy, not proof of retail activation equivalence.
+The original grid structure does not establish a measured runtime speedup.
+Surface/grip IDs, one-sidedness and the retail loader-to-contact binding remain
+**UNKNOWN**; do not turn every metadata value into a named physics material.
 
 ## Track and car geometry (family `0x134xxx`)
 
@@ -950,9 +1023,9 @@ Each `ROUTES<REG>/` holds one `Paths<id>.bin` per race event **plus** a single
 `0x3414a`/`0x3414d` are the shared per-region city data (same MD5 in every file
 of a region); the other three are per-event. The free-roam path file has no
 race-event overlay. `Routes<id>F/B.bin` confirms the distinction from the other
-side: `Routes4001F.bin`
-names only 6 route sectors (`TrackRoutesA21`, `A30`–`A34`) where
-`RoutesFreeRoam.bin` names all 20 (`A10`–`A44`).
+side: the current bounded inventory finds nine distinct sector names in
+`Routes4001F.bin`. Earlier notes reporting six were incomplete. Sector names
+identify route geometry, not a car roster.
 
 The actual ordered free-roam road points are in `RoutesFreeRoam.bin` leaf
 `0x34121`, not in the shared `PathsFreeRoam.bin` leaves. After the 8-byte leaf
@@ -969,6 +1042,34 @@ traffic toward the right lane, then checks the shifted point against ROAD.
 No speed, headway, spawn timing or camera-visibility rule has been decoded from
 these records. Current traffic pacing and off-screen spawn selection are
 OpenUG2 behavior built on the authored road geometry, not recovered retail rules.
+
+### Authored route connections (`0x34122` / `0x34123`)
+
+**OBSERVED:** each `0x34121` route body starts with a `u16` type and a unique
+per-file `u16` route ID; the name starts at +8. Leaf `0x34122` begins with four
+zero bytes followed by 32-byte connection records:
+
+| Record offsets | Stored fields |
+|---|---|
+| +0, +20 | zero `u32` words in the inspected files |
+| +4/+6 | primary A/B point indices (`u16`) |
+| +8/+10 | primary A/B route IDs (`u16`) |
+| +12, +16 | opaque packed words; do not assign turn/right-of-way semantics |
+| +24/+26 | secondary A/B route IDs, or paired `0xffff` |
+| +28/+30 | secondary A/B point indices, or paired `0xffff` |
+
+Across six populated free-roam files, all 3,951 primary and 1,489 non-sentinel
+secondary pairs resolve to bounded points in the same file. Primary tuples
+have reversed counterparts, sometimes with different metadata; serialization
+symmetry is not proof of legal travel in both directions. Some linked points
+are over five coordinate units apart, so proximity welding cannot reproduce
+the authored table exactly. Check road support, height/layer and body clearance
+before using a pair as a drivable connection.
+
+In the inspected L4RA file, `0x34123` contains 38 records of 276 bytes. Each
+has two bounded route/point references and sixteen 16-byte slots after a
+20-byte prefix. Its operational purpose is **UNKNOWN**: neither the record
+count nor slot count establishes traffic emitters, signal phases or car limits.
 
 Event `Routes<id>F.bin` uses the same record reader. If a car lies beyond the
 conservative local search and that search finds no clear line, race avoidance
@@ -997,11 +1098,13 @@ A flat table of that region's events, **272-byte records**:
 ```
 
 Only the first `N` points are live (the array is a fixed 33 slots and the tail
-holds stale values from a longer record); the polygon is closed, `pts[N-1] ==
-pts[0]`, verified on every record. Census over the shipped regions: **105 events
+holds unused values). Closure is not universal: 42 of the 105 inspected live
+outlines have different first/last XY points. Repeated catalog copies agree
+in their live prefix, but unused tails vary in 99 entries; compare live fields,
+not entire padded records. Census over the shipped regions: **105 events
 — L4RA 60, L4RB 9, L4RC 12, L4RD 3, L4RF 8, L4RG 13.** `ROUTESL4RH` and
-`ROUTESL4RR` carry only `PathsFreeRoam.bin`: those regions are isolated arenas
-with no AI route network.
+`ROUTESL4RR` have no numeric event Paths files and empty `RoutesFreeRoam`
+route bodies in this dump. This does not prove absence of runtime AI there.
 
 ### `0x34146` — start grids (`TrackPosMarkers*.bin`)
 
@@ -1177,11 +1280,81 @@ OpenUG2 does not currently consume this table.
 
 The race `Paths` and `Routes` files above provide authored geometry and event
 metadata. No verified aggression, overtaking, catch-up, braking or spawn-policy
-field has been decoded from the inspected GLOBAL/route data. `InGameRace.bun`
-contains frontend/HUD package records, including `race.fng`; its filename alone
-is not evidence of an AI controller. Hash-keyed/unknown tables remain unresolved,
-so this is not a claim that behavior parameters are absent. Current race pace,
+field has been decoded from the inspected GLOBAL/route data. Current race pace,
 passing and steering decisions are OpenUG2 policies in `src/ai.c`.
+
+### Career events and opponent descriptors
+
+**OBSERVED layout, PLAUSIBLE opponent semantics.** Two `0x80034a10`
+containers in the inspected GLOBALB have a `0x34a1d` string pool and a
+`0x34a11` event-record leaf. Their leaves contain 224 and 8 records of
+**136 bytes**, respectively. This is separate from the 272-byte route catalog.
+
+| Event-record offset | Observation |
+|---|---|
+| +0/+2/+4/+6 | Four `u16` offsets to bounded strings in that container's pool |
+| +8 | `u32` hash of the +0-resolved event name; seed `0xffffffff`, multiply 33 and add each byte |
+| +24/+28/+32/+36 | Nonzero `u16` values match track IDs in GLOBALB leaf `0x34201` |
+| +64 | Five candidate opponent descriptors, each 12 bytes |
+| +124 | Byte in 0..5; that many prefix descriptors have nonempty bounded names |
+
+Each descriptor has a pool-name offset (`u16` +0), an undecoded `u16` +2,
+a preset-like hash (`u32` +4), and four opaque bytes at +8. Seven counted
+descriptor hashes match named character car presets, with matching character
+names. The other 690 counted hashes equal the rolling hash of `RANDOM`.
+That equality supports a generic opponent-selection hypothesis; it does not
+recover the random pool, weights, difficulty fields or actual spawn loop.
+Unused descriptor slots can retain stale values: do not count all five slots.
+
+The track-definition leaf `0x34201` has 131 records of 296 bytes in this
+dump, with a name at +0 and track ID at +140. These links establish static
+event/name/track/preset associations, not executed race rosters. Validate each
+record stride, string start/termination, count and reference before importing.
+OpenUG2 currently has no production importer for these career descriptors.
+
+The exact free-roaming rival selection table is **UNKNOWN**. Outrun-related
+message identifiers in the pools do not bind an event record to roaming-car
+selection. AI-named presets include demo cars and are not a proven free-roam
+roster. Executable encounter labels remain leads until their consumers are traced.
+
+## In-game HUD and interface bundles
+
+The supplied shared file is `GLOBAL/InGameCommon.bun` (with an equivalent
+JDLZ-compressed `InGameCommon.lzc`), not `InGameCommon.bin`.
+`InGameMemoryFile.bin` is a separate resource and must not be substituted.
+Full-buffer decoding also verifies `GlobalB.lzc` equals `GLOBALB.BUN`; these
+comparisons establish stored equivalence, not which copy retail opens at runtime.
+
+**OBSERVED inventory**, using the existing GL-free `src/ugui` readers over
+original files:
+
+| Bundle | Decoded FEng packages / objects | Embedded textures | Additional content / boundary |
+|---|---:|---:|---|
+| `InGameFreeRoam.bun` | 1 / 258 | 43 | Stored package is `HUD_SingleRace.fng`; trailing `0x8003b201` has 38 unresolved `0x3b210` records |
+| `InGameRace.bun` | 13 / 1,332 | 43 | Race HUD plus pre/post-race screens; includes `HUD_SingleRace.fng` and `HUD_Short_Track.fng` |
+| `InGameCommon.bun` | 27 / 2,179 | 113 across two packs | Shared dialogs, pause, split-screen/Outrun HUD, 14 model records, cinematic references and unresolved binary blocks |
+
+Bundle FEng chunk `0x30203` carries a raw package. `0x30210` carries a
+four-byte screen-hash prefix before the package; the package body can itself
+be compressed. Use `ug_package_from_chunk` / `ug_fng_parse`, not a whole-file
+printable-string search. The parsed object graph includes resource references,
+image/text/group types, transforms, UI scripts, animation tracks and responses.
+These scripts animate/handle the interface; they are not recovered vehicle AI.
+
+Embedded texture catalogs use 124-byte records in the inspected packs, with
+separate keys and pixel storage. A screen's image/font reference does not imply
+that its bytes are embedded in that bundle. In the free-roam screen, only
+21 of 47 image references resolve to that pack's keys; dependencies remain
+external or unresolved. A successful pixel decode does not certify usable art.
+See [HUD_SPRITES.md](HUD_SPRITES.md) for runtime sprite selection/fallbacks and
+[FRONTEND_ASSETS.md](FRONTEND_ASSETS.md) for the broader resource graph.
+
+`HUD_CustomTextures_ALL.bin` supplies the custom dial artwork used by the
+current HUD. The numbered `HUD_CustomTextures_00..10.bin` files have no TPK
+records in this dump; do not select a texture source solely by its name.
+Stored placeholders and multi-mode HUD objects do not prove retail activation,
+live telemetry, density controls or collision behavior. Unclassified trailing
+blocks prevent a whole-file claim that such settings are absent.
 
 ## Engine sound banks (`SOUND/ENGINE/CAR_*_ENG_MB_SPU.abk`)
 
@@ -1277,13 +1450,11 @@ panels share one UV layout; most carry no texture key of their own).
 
 ## Scripted / dynamic objects (`ZCV_` / `ZCS_`) — companion `L4R*.BUN`
 
-Each district has a small companion bundle (`TRACKS/L4RA.BUN` … `L4RR.BUN`,
-0.1–0.4 MB) alongside its big `STREAM*.BUN`. It holds the **dynamic and
-scripted set-dressing**: `ZCV_` names are moving vehicles (trains, trolleys,
-drawbridges, warehouse doors, traffic semis) and `ZCS_` names are static props
-(barrels, benches, boxes, signs). This is the format of the entity **definition
-table**, decoded from `L4RA.BUN` (Phase 49). *Placement into the world and any
-animation driver are NOT wired yet — see "Open" below.*
+Each district has a small companion bundle (`TRACKS/L4RA.BUN` … `L4RR.BUN`)
+alongside its `STREAM*.BUN`. It contains named local shape definitions for
+vehicle/scripted set-dressing (`ZCV_`) and props (`ZCS_`), plus separate parameter
+tables. These names and shapes do not establish world placement or animation.
+The bounded eight-companion census found 646 shape triples and 89 unique names.
 
 ### Entity definition table
 
@@ -1291,9 +1462,9 @@ Container `0x80034020` holds a bundle-dependent number of named definitions.
 Each entity is a **triple** of consecutive chunks in this order:
 
 ```
-0x39200  header   (name, hash, type)        0x5c bytes
-0x39201  hull verts (8-corner bounding box)  0x180 bytes (fixed)
-0x39202  hull faces (12 triangles)           0x50 bytes (fixed)
+0x39200  named local-shape header
+0x39201  variable array of 48-byte vertex records
+0x39202  8-byte filler prefix, then u16 adjacency indices
 ```
 
 **`0x39200` header** (0x5c body). Offsets are into the chunk body (past the
@@ -1308,66 +1479,57 @@ was shifted 16 bytes because it missed the leading preamble:
 | 0x0c | u32       | per-record instance id (varies)                            |
 | 0x10 | u32       | 0                                                          |
 | 0x14 | u32       | 1                                                          |
-| 0x18 | u32       | 8 — class tag, constant across every entity                |
-| 0x1c | u32       | **name hash** (FNV-32 of the name; e.g. DrawBridgeA = `0xca1d510d`) |
+| 0x18 | u32       | observed value 8; semantic purpose unknown                  |
+| 0x1c | u32       | **name hash**, seed `0xffffffff`, `h = 33*h + byte` modulo 2^32; not FNV |
 | 0x20 | char[32]  | **name**, NUL-padded (`ZCV_TrainEngineA`, `ZCS_Barrel_A`, …)|
 | 0x40 | u32       | `0x24` — record type / sub-size, constant                  |
-| 0x44 | u8[…]     | zero in this file — reserved / local-transform slot (unused)|
+| 0x44 | u8[…]     | opaque trailing bytes; no transform interpretation established |
 
 The engine parses these string-anchored (find the `ZCV_`/`ZCS_` token, verify
 the constant `1, 8` at name-12 / name-8, take the hash at name-4) — robust
 against the preamble, since the chunk body always ends `… 1, 8, hash, name`.
 See `world_scripted_defs()` / the inspector's "Entity Definitions" tab.
 
-**`0x39201` hull vertices** (always 0x180 = 384 B):
+**`0x39201` local vertices**, 48 bytes per record (**OBSERVED**):
 
 | off  | type        | meaning                                                  |
 |------|-------------|----------------------------------------------------------|
-| 0x00 | u32, u32    | `3, 3` — constant (matrix/row dims)                       |
-| 0x08 | u16, u16    | linked index pair, e.g. DrawBridgeA `(5,13)`; role TBD (grid cell or link id) |
-| 0x0c | u32         | 0                                                        |
-| 0x10 | 8 × 48 B    | **8 OBB corners**; each slot = `vec3 position` + 9 pad floats (0). **Local space** (centred near origin). |
+| 0x00 | u32, u32    | observed values `3, 3`; semantic purpose unknown          |
+| 0x08 | u16, u16    | neighbor count and start index into `0x39202` |
+| 0x0c | u32         | vertex identifier |
+| 0x10 | f32[3]      | local XYZ |
 
-Decoded corner boxes match real proportions: **DrawBridgeA** 20.4 × 37.2 × 2.1,
-**TrainEngineA** 2.7 × 15.25 × 3.4, **TrolleyA** 14.3 × 5.9 × 1.5 (W×L×H units).
+Vertex counts vary; the arrays are not universally eight box corners.
+Bound the complete record array and each adjacency range before use.
 
-**`0x39202` hull faces** (always 0x50 = 80 B):
+**`0x39202` connectivity**, variable length (**OBSERVED**):
 
 | off  | type        | meaning                                                  |
 |------|-------------|----------------------------------------------------------|
 | 0x00 | u32, u32    | `0x11111111 0x11111111` — the standard 8-byte `0x11` filler prefix (as everywhere in this format) |
-| 0x08 | u16 × 36    | **36 indices, range 0–7 = 12 triangles** = the 6 faces of the corner box (2 tris/face) |
+| 0x08 | u16[]       | vertex-neighbor indices, addressed by each vertex's count/start |
 
-So a `ZCV_`/`ZCS_` entity is `name + hash + a local box hull`. There is **no
-world position, orientation, or animation channel inside the triple.**
+All 646 inspected shapes have bounded, symmetric, non-self adjacency; the
+vertex ranges partition the index array. These are not explicit triangle
+triplets. The triple establishes a named local shape, not a decoded world
+transform or animation channel. The existing `world_scripted_defs` diagnostic
+uses a legacy bounds approximation; it is not a general adjacency importer.
 
-### World placement — NOT present for these entities (Phase 50, re-measured)
+### Physical-property candidates and unresolved placement
 
-**Correction.** A first draft of this section claimed placements "live in a
-separate family… linked to the entity defs by name hash." That was wrong, and
-the retraction matters because it blocks the obvious next step:
+Companion `0x34026` contains 256-byte named records associated with local shape
+keys. Scalar +32 and diagonal values +48/+68/+88 fit box mass/inertia
+predictions within 1% for 67 of 79 inspected L4RA records. This makes physical
+authoring **PLAUSIBLE**; units, remaining fields and retail initialization are
+unresolved. The earlier scale/state-only interpretation was unsupported.
 
-- **The `ZCV_` vehicles (trains, drawbridges, trolleys, semis, sweeper) have no
-  placement record anywhere.** Each vehicle hash occurs **exactly once in each
-  companion `L4R*.BUN` — inside its own `0x39200` def — and zero times in the
-  `STREAM*.BUN` geometry.** Nothing gives them a world position or orientation.
-- **`0x37090` is not entity placement.** All 45 records in L4RA carry the *same*
-  constant tag `0xb8a18038` (57 copies in the file), **not** a per-entity name
-  hash — **0 of 45 match any `0x39200` def**. They hold world-scale coordinates
-  and are a different system (traffic/AI spline or spawn grid, undecoded).
-- **`0x34026`** holds 62 records keyed by `ZCS_` *static-prop* hashes (no
-  vehicles) with small parameter floats (`… 1.0, 1.0, 0, 0`) — looks like
-  per-prop scale/state, **not** a world transform (no world-scale translation).
-- **`0x39200` triples carry only a local 8-corner bounding box — no renderable
-  mesh.** There is no train/bridge model in the decoded chunks.
-
-**Consequence:** the runtime placement + animation of these entities is **not
-implementable from the currently decoded data** — the hash→placement linkage,
-the per-vehicle world transform, and the entity meshes are all absent here.
-Recovering them needs a further RE pass: decode what `0x37090`/`0x34026`
-actually drive, and find where (if anywhere) the vehicle instances and their
-models are authored — most likely the retail spawn/script system, which may not
-survive in these data files at all.
+No world-placement/animation linkage for these definitions has been recovered
+from the inspected data. Missing literal hash occurrences cannot establish
+that no placement exists elsewhere or under another encoding. `0x37090` has
+no verified per-entity mapping; its operational purpose stays **UNKNOWN**.
+Likewise, `0x8003b601` groups validate as bounded typed parameter fields,
+not the vertex/index meshes assumed by an older helper. Do not derive a
+world instance, render mesh or AI spawn rule from any of these shapes alone.
 
 ## The retail executable
 

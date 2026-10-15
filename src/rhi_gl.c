@@ -435,6 +435,21 @@ static int format_compressed(RhiFormat f) {
     return f == RHI_FORMAT_BC1 || f == RHI_FORMAT_BC2 || f == RHI_FORMAT_BC3;
 }
 
+/* Texture work (create, upload, sampler, mips, copies) binds on the unit after
+ * the last bindable slot, then the caller's active unit is selected again, so the
+ * bindings rhi_cmd_bind_texture made stay as they were. */
+#define RHI_GL_WORK_UNIT (GL_TEXTURE0 + RHI_TEXTURE_SLOTS)
+static GLint work_unit_bind(GLenum target, GLuint name) {
+    GLint active = 0;
+    gls_get_integerv(GL_ACTIVE_TEXTURE, &active);
+    if (active != (GLint)RHI_GL_WORK_UNIT) glActiveTexture(RHI_GL_WORK_UNIT);
+    glBindTexture(target, name);
+    return active;
+}
+static void work_unit_done(GLint active) {
+    if (active != (GLint)RHI_GL_WORK_UNIT) glActiveTexture((GLenum)active);
+}
+
 RhiTexture rhi_texture_create(const RhiTextureDesc *desc) {
     RhiTexture out = {0};
     int depth = desc && desc->format == RHI_FORMAT_D16;
@@ -489,7 +504,7 @@ RhiTexture rhi_texture_create(const RhiTextureDesc *desc) {
         }
         return out;
     }
-    glBindTexture(t->target, name);
+    work_unit_done(work_unit_bind(t->target, name));
     return out;
 }
 
@@ -504,9 +519,9 @@ RhiResult rhi_texture_upload(RhiTexture tex, int32_t face, int32_t level,
     if (w < 1) w = 1;
     if (h < 1) h = 1;
     GLenum target = faces == 6 ? (GLenum)(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face) : GL_TEXTURE_2D;
-    glBindTexture(t->target, t->name);
+    if (format_compressed(t->format) && (!data || !size || size > 0x7fffffff)) return RHI_ERR_INVALID;
+    GLint active = work_unit_bind(t->target, t->name);
     if (format_compressed(t->format)) {
-        if (!data || !size || size > 0x7fffffff) return RHI_ERR_INVALID;
         GLenum fmt = t->format == RHI_FORMAT_BC1 ? GL_COMPRESSED_RGBA_S3TC_DXT1_EXT
                    : t->format == RHI_FORMAT_BC2 ? GL_COMPRESSED_RGBA_S3TC_DXT3_EXT
                                                  : GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
@@ -515,6 +530,7 @@ RhiResult rhi_texture_upload(RhiTexture tex, int32_t face, int32_t level,
         GLenum fmt = t->format == RHI_FORMAT_RGB8 ? GL_RGB : GL_RGBA;
         glTexImage2D(target, level, (GLint)fmt, w, h, 0, fmt, GL_UNSIGNED_BYTE, data);
     }
+    work_unit_done(active);
     return gl_result();
 }
 
@@ -522,8 +538,9 @@ RhiResult rhi_texture_generate_mips(RhiTexture tex) {
     RhiGlTexture *t = texture_lookup(tex, "texture_generate_mips");
     if (!t || t->target != GL_TEXTURE_2D ||
         (t->format != RHI_FORMAT_RGB8 && t->format != RHI_FORMAT_RGBA8)) return RHI_ERR_INVALID;
-    glBindTexture(GL_TEXTURE_2D, t->name);
+    GLint active = work_unit_bind(GL_TEXTURE_2D, t->name);
     glGenerateMipmap(GL_TEXTURE_2D);
+    work_unit_done(active);
     return gl_result();
 }
 
@@ -620,7 +637,7 @@ RhiResult rhi_texture_set_sampler(RhiTexture tex, RhiSampler sampler) {
     if (g_rhi.caps.max_anisotropy > 1.0f)
         aniso = d->max_anisotropy < g_rhi.caps.max_anisotropy ? d->max_anisotropy
                                                               : g_rhi.caps.max_anisotropy;
-    glBindTexture(t->target, t->name);
+    GLint active = work_unit_bind(t->target, t->name);
     if (wrap_s != t->wrap_s) glTexParameteri(t->target, GL_TEXTURE_WRAP_S, wrap_s);
     if (wrap_t != t->wrap_t) glTexParameteri(t->target, GL_TEXTURE_WRAP_T, wrap_t);
     if (min_filter != t->min_filter) glTexParameteri(t->target, GL_TEXTURE_MIN_FILTER, min_filter);
@@ -631,6 +648,7 @@ RhiResult rhi_texture_set_sampler(RhiTexture tex, RhiSampler sampler) {
     t->min_filter = min_filter; t->mag_filter = mag_filter;
     t->anisotropy = aniso;
     t->sampler = sampler;
+    work_unit_done(active);
     return RHI_OK;
 }
 
@@ -1025,6 +1043,7 @@ void rhi_cmd_bind_pipeline(RhiPipeline pipeline) {
             glBlendFuncSeparate(want[0], want[1], want[2], want[3]);
     }
     set_cap(GL_CULL_FACE, d->cull != RHI_CULL_NONE);
+    set_cap(GL_POLYGON_OFFSET_FILL, 0);
     if (d->cull != RHI_CULL_NONE) glCullFace(d->cull == RHI_CULL_BACK ? GL_BACK : GL_FRONT);
     GLboolean cm[4];
     gls_get_booleanv(GL_COLOR_WRITEMASK, cm);
@@ -1051,6 +1070,10 @@ void rhi_cmd_bind_vertex_buffer(uint32_t stream, RhiBuffer buffer, uint32_t offs
 void rhi_cmd_bind_index_buffer(RhiBuffer buffer) { g_cmd.index = buffer; }
 
 void rhi_cmd_bind_texture(uint32_t slot, RhiTexture texture) {
+    if (slot >= RHI_TEXTURE_SLOTS) {
+        fprintf(stderr, "rhi: bind_texture: slot %u out of range\n", (unsigned)slot);
+        return;
+    }
     const RhiGlTexture *t = texture_lookup(texture, "bind_texture");
     if (t && !(t->usage & RHI_TEXTURE_SAMPLED)) t = NULL;   /* not sampleable */
     GLint active = 0;
@@ -1254,6 +1277,7 @@ RhiResult rhi_cmd_begin_pass(const RhiPassDesc *desc) {
     }
     glViewport(0, 0, color->width, color->height);
     set_cap(GL_SCISSOR_TEST, 0);
+    set_cap(GL_DITHER, 0);
     clear_target((desc->color_load == RHI_LOAD_CLEAR ? GL_COLOR_BUFFER_BIT : 0) |
                  (desc->depth_load == RHI_LOAD_CLEAR && depth ? GL_DEPTH_BUFFER_BIT : 0),
                  desc->clear_color, desc->clear_depth);
@@ -1352,6 +1376,12 @@ void rhi_cmd_restore_state(const RhiStateSnapshot *state) {
     if (active != g.active) glActiveTexture((GLenum)g.active);
 }
 
+void rhi_viewport(int32_t viewport[4]) {
+    GLint v[4];
+    gls_get_integerv(GL_VIEWPORT, v);
+    for (int i = 0; i < 4; i++) viewport[i] = v[i];
+}
+
 RhiResult rhi_cmd_clear_main(const float color[4], float depth) {
     if (!color || !g_rhi.in_frame || g_in_pass) return RHI_ERR_INVALID;
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -1364,8 +1394,7 @@ RhiResult rhi_cmd_clear_main(const float color[4], float depth) {
 /* ------------------------------------------------------------------------------ */
 /* Copies from the main target                                                    */
 /* ------------------------------------------------------------------------------ */
-/* The texture is bound on the active unit. The first copy (or one of a new
- * size) allocates level 0 with glCopyTexImage2D, later ones overwrite it. */
+/* The first copy (or one of a new size) allocates level 0 with glCopyTexImage2D, later ones overwrite it. */
 RhiResult rhi_cmd_copy_main_to_texture(RhiTexture texture, int32_t x, int32_t y,
                                        int32_t w, int32_t h) {
     RhiGlTexture *t = texture_lookup(texture, "copy_main_to_texture");
@@ -1384,7 +1413,7 @@ RhiResult rhi_cmd_copy_main_to_texture(RhiTexture texture, int32_t x, int32_t y,
     GLint framebuffer;
     gls_get_integerv(GL_FRAMEBUFFER_BINDING, &framebuffer);
     if (framebuffer) glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glBindTexture(GL_TEXTURE_2D, t->name);
+    GLint active = work_unit_bind(GL_TEXTURE_2D, t->name);
     if (t->copied_w != w || t->copied_h != h) {
         glCopyTexImage2D(GL_TEXTURE_2D, 0, t->format == RHI_FORMAT_DEPTH ? GL_DEPTH_COMPONENT : GL_RGBA,
                          x, y, w, h, 0);
@@ -1392,10 +1421,17 @@ RhiResult rhi_cmd_copy_main_to_texture(RhiTexture texture, int32_t x, int32_t y,
             if (g_fbos[i].color_name == t->name) g_fbos[i].complete = 0;
     } else glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, x, y, w, h);
     RhiResult result = glGetError() == GL_NO_ERROR ? RHI_OK : RHI_ERR_UNSUPPORTED;
+    work_unit_done(active);
     if (framebuffer) glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)framebuffer);
     if (result != RHI_OK) return result;
     t->copied_w = w; t->copied_h = h;
     t->width = w; t->height = h;
+    return RHI_OK;
+}
+
+RhiResult rhi_cmd_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height) {
+    if (width < 0 || height < 0) return RHI_ERR_INVALID;
+    glViewport(x, y, width, height);
     return RHI_OK;
 }
 

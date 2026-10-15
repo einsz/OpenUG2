@@ -893,6 +893,16 @@ passing these tests is not evidence of retail handling or a playable lap.
 
 ### Collision
 
+Original static wall data now comes from `0x80034130` packed polygons in
+`TRACKS/STREAM<region>.BUN`, with a companion `0x3412f` group table. The default
+is `WCOLLISION_BUN`; `--collision-source legacy` selects the saved
+drawable/authored wall path. See [the packed format](FORMATS.md#packed-track-collision-0x80034130).
+`src/ug2_track_collision.h` validates/owns decoded polygons;
+`src/world_collision.h` selects named groups and emits wall-only meshes.
+ROAD/TERRAIN ground support and local prop handling remain separate. Retail
+material/activation semantics and loader-to-contact binding are incomplete;
+the original spatial grid is not by itself proof of a runtime performance gain.
+
 Building rectangles are broad phase only. `cw_mesh_feature` confirms a nearby
 source-mesh face clipped to the car's vertical envelope, rejects combined wall
 spans below `WALL_MIN_FACE_SPAN`, and returns the closest feature normal and
@@ -952,6 +962,29 @@ estimates must not create additional walls across a drivable race course.
 Authored scenery barriers, walls and vehicle contacts remain physical.
 
 ## 10. Racing, navigation and AI
+
+### Original data and implementation boundaries
+
+The [retail data map](FORMATS.md#retail-data-by-subsystem) distinguishes
+vehicle identity, navigation, encounter handling and UI resources:
+
+| Concern | Original source / current owner |
+|---|---|
+| Car presets and static career opponent associations | `GLOBAL/GLOBALB.BUN`: `0x30220` presets and `0x34a1d`/`0x34a11` career records; no production roster importer |
+| Roaming rival selection | Exact table/pool unresolved; executable encounter labels are investigation leads |
+| Free-roam route geometry and authored joins | Regional `RoutesFreeRoam.bin`, leaves `0x34121`/`0x34122`; bounded connectivity does not establish turn legality |
+| Event route geometry and start grids | Regional `Paths<id>.bin`, `Routes<id>F/B.bin`, `TrackPosMarkersAll.bin` |
+| Driving, density and off-screen policy | Current OpenUG2 decisions in `src/ai.c`; retail field bindings/scheduler untraced |
+
+The career descriptor stride is 136 bytes, separate from the 272-byte Paths
+catalog. Static name/preset/track associations do not certify an executed roster.
+Do not treat all AI-named presets as roaming rivals, all connection records as
+traffic emitters, or HUD script records as vehicle behavior. Keep unknown
+flags opaque and validate road support, layer and body clearance when using
+authored navigation links. See [career layouts](FORMATS.md#career-events-and-opponent-descriptors)
+before adding an importer.
+
+### Current navigation and racing flow
 
 Content discovery maps `STREAM<stem>.BUN` to `ROUTES<stem>/`. Circuit lists
 contain only closed `Paths*.bin` files from that region. When a region has no
@@ -1500,6 +1533,14 @@ When one of these reappears, reuse its existing invariant and test. Do not add a
 second workaround in the camera, shader or spawn code.
 
 ## Player HUD (`--hud`)
+
+For original package contents, compression and unresolved dependencies, see
+[in-game HUD formats](FORMATS.md#in-game-hud-and-interface-bundles).
+`InGameCommon.bun` is shared presentation data; `InGameFreeRoam.bun` itself
+stores a `HUD_SingleRace.fng` package. Filenames do not define the activation
+of each screen object. `src/ugui` owns bundle/FEng/texture/animation decoding;
+`src/hud.c` owns the current gameplay HUD and its telemetry/fallback decisions.
+Keep stored placeholder values separate from live `HudState` availability.
 
 ```bash
 ./nfsu2 .. --world2 --track STREAML4RA --hud
