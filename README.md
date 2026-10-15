@@ -29,6 +29,11 @@ source; you bring your own copy of the game.**
 > directory. Not affiliated with, authorized, or endorsed by Electronic Arts —
 > see [Legal Notice & Disclaimer](#legal-notice--disclaimer).
 
+Try the opt-in stock Stage-1 drivetrain with `--drivetrain --hud` after
+`make debug`. Engine/clutch/gearbox drive the player while existing chassis
+adapters handle steering, suspension and collisions. See
+[controls, limits and checks](docs/DRIVETRAIN.md).
+
 ## Project status
 
 OpenUG2 is an **early clean-room engine prototype**, not yet a finished or
