@@ -1,0 +1,654 @@
+{
+  "vectors": [
+    {
+      "id": "initial-status-control",
+      "provenance": "synthetic arithmetic from inferred OM-1\u2013OM-3 + approved BR-2/S2-6",
+      "input": {
+        "session_status": 0,
+        "event_family_label": "free-roam",
+        "vehicle_state": 0,
+        "shaped_throttle_at_refresh": 1,
+        "previous_contacts": 4,
+        "previous_forward_z": 0,
+        "z": 1,
+        "P": [
+          0.5,
+          0,
+          0
+        ],
+        "F": [
+          4,
+          0,
+          0
+        ],
+        "L": [
+          0.2,
+          0,
+          0
+        ],
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "held_angular_speed": 0,
+        "force_threshold_disabled": true
+      },
+      "expected": {
+        "stabilize": true,
+        "curve": true,
+        "Pdot": [
+          0,
+          0,
+          0
+        ],
+        "Ldot": [
+          -0.41,
+          0,
+          0
+        ],
+        "z_unchanged_by_mode_refresh": 1
+      }
+    },
+    {
+      "id": "active-free-roam-full-throttle",
+      "provenance": "synthetic arithmetic from inferred OM-1\u2013OM-3 + approved BR-2/S2-6",
+      "input": {
+        "session_status": 4,
+        "event_family_label": "free-roam",
+        "vehicle_state": 0,
+        "shaped_throttle_at_refresh": 1,
+        "previous_contacts": 4,
+        "previous_forward_z": 0,
+        "z": 1,
+        "P": [
+          0.5,
+          0,
+          0
+        ],
+        "F": [
+          4,
+          0,
+          0
+        ],
+        "L": [
+          0.2,
+          0,
+          0
+        ],
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "held_angular_speed": 0,
+        "force_threshold_disabled": true
+      },
+      "expected": {
+        "stabilize": false,
+        "curve": true,
+        "Pdot": [
+          4,
+          0,
+          0
+        ],
+        "Ldot": [
+          -0.01,
+          0,
+          0
+        ],
+        "z_unchanged_by_mode_refresh": 1
+      }
+    },
+    {
+      "id": "active-circuit-full-throttle",
+      "provenance": "synthetic arithmetic from inferred OM-1\u2013OM-3 + approved BR-2/S2-6",
+      "input": {
+        "session_status": 4,
+        "event_family_label": "circuit",
+        "vehicle_state": 0,
+        "shaped_throttle_at_refresh": 1,
+        "previous_contacts": 4,
+        "previous_forward_z": 0,
+        "z": 1,
+        "P": [
+          0.5,
+          0,
+          0
+        ],
+        "F": [
+          4,
+          0,
+          0
+        ],
+        "L": [
+          0.2,
+          0,
+          0
+        ],
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "held_angular_speed": 0,
+        "force_threshold_disabled": true
+      },
+      "expected": {
+        "stabilize": false,
+        "curve": true,
+        "Pdot": [
+          4,
+          0,
+          0
+        ],
+        "Ldot": [
+          -0.01,
+          0,
+          0
+        ],
+        "z_unchanged_by_mode_refresh": 1
+      }
+    },
+    {
+      "id": "active-sprint-full-throttle",
+      "provenance": "synthetic arithmetic from inferred OM-1\u2013OM-3 + approved BR-2/S2-6",
+      "input": {
+        "session_status": 4,
+        "event_family_label": "sprint",
+        "vehicle_state": 0,
+        "shaped_throttle_at_refresh": 1,
+        "previous_contacts": 4,
+        "previous_forward_z": 0,
+        "z": 1,
+        "P": [
+          0.5,
+          0,
+          0
+        ],
+        "F": [
+          4,
+          0,
+          0
+        ],
+        "L": [
+          0.2,
+          0,
+          0
+        ],
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "held_angular_speed": 0,
+        "force_threshold_disabled": true
+      },
+      "expected": {
+        "stabilize": false,
+        "curve": true,
+        "Pdot": [
+          4,
+          0,
+          0
+        ],
+        "Ldot": [
+          -0.01,
+          0,
+          0
+        ],
+        "z_unchanged_by_mode_refresh": 1
+      }
+    },
+    {
+      "id": "release-after-positive-history",
+      "provenance": "synthetic arithmetic from inferred OM-1\u2013OM-3 + approved BR-2/S2-6",
+      "input": {
+        "session_status": 4,
+        "event_family_label": "free-roam",
+        "vehicle_state": 0,
+        "shaped_throttle_at_refresh": 0,
+        "previous_contacts": 4,
+        "previous_forward_z": 0,
+        "z": 1,
+        "P": [
+          0.5,
+          0,
+          0
+        ],
+        "F": [
+          4,
+          0,
+          0
+        ],
+        "L": [
+          0.2,
+          0,
+          0
+        ],
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "held_angular_speed": 0,
+        "force_threshold_disabled": true
+      },
+      "expected": {
+        "stabilize": true,
+        "curve": true,
+        "Pdot": [
+          0,
+          0,
+          0
+        ],
+        "Ldot": [
+          -0.41,
+          0,
+          0
+        ],
+        "z_unchanged_by_mode_refresh": 1
+      }
+    },
+    {
+      "id": "reapply-after-positive-history",
+      "provenance": "synthetic arithmetic from inferred OM-1\u2013OM-3 + approved BR-2/S2-6",
+      "input": {
+        "session_status": 4,
+        "event_family_label": "free-roam",
+        "vehicle_state": 0,
+        "shaped_throttle_at_refresh": 1,
+        "previous_contacts": 4,
+        "previous_forward_z": 0,
+        "z": 1,
+        "P": [
+          0.5,
+          0,
+          0
+        ],
+        "F": [
+          4,
+          0,
+          0
+        ],
+        "L": [
+          0.2,
+          0,
+          0
+        ],
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "held_angular_speed": 0,
+        "force_threshold_disabled": true
+      },
+      "expected": {
+        "stabilize": false,
+        "curve": true,
+        "Pdot": [
+          4,
+          0,
+          0
+        ],
+        "Ldot": [
+          -0.01,
+          0,
+          0
+        ],
+        "z_unchanged_by_mode_refresh": 1
+      }
+    },
+    {
+      "id": "threshold-equality",
+      "provenance": "synthetic arithmetic from inferred OM-1\u2013OM-3 + approved BR-2/S2-6",
+      "input": {
+        "session_status": 4,
+        "event_family_label": "free-roam",
+        "vehicle_state": 0,
+        "shaped_throttle_at_refresh": 0.30000001192092896,
+        "previous_contacts": 4,
+        "previous_forward_z": 0,
+        "z": 1,
+        "P": [
+          0.5,
+          0,
+          0
+        ],
+        "F": [
+          4,
+          0,
+          0
+        ],
+        "L": [
+          0.2,
+          0,
+          0
+        ],
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "held_angular_speed": 0,
+        "force_threshold_disabled": true
+      },
+      "expected": {
+        "stabilize": true,
+        "curve": true,
+        "Pdot": [
+          0,
+          0,
+          0
+        ],
+        "Ldot": [
+          -0.41,
+          0,
+          0
+        ],
+        "z_unchanged_by_mode_refresh": 1
+      }
+    },
+    {
+      "id": "threshold-next-float",
+      "provenance": "synthetic arithmetic from inferred OM-1\u2013OM-3 + approved BR-2/S2-6",
+      "input": {
+        "session_status": 4,
+        "event_family_label": "free-roam",
+        "vehicle_state": 0,
+        "shaped_throttle_at_refresh": 0.30000004172325134,
+        "previous_contacts": 4,
+        "previous_forward_z": 0,
+        "z": 1,
+        "P": [
+          0.5,
+          0,
+          0
+        ],
+        "F": [
+          4,
+          0,
+          0
+        ],
+        "L": [
+          0.2,
+          0,
+          0
+        ],
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "held_angular_speed": 0,
+        "force_threshold_disabled": true
+      },
+      "expected": {
+        "stabilize": false,
+        "curve": true,
+        "Pdot": [
+          4,
+          0,
+          0
+        ],
+        "Ldot": [
+          -0.01,
+          0,
+          0
+        ],
+        "z_unchanged_by_mode_refresh": 1
+      }
+    },
+    {
+      "id": "slope-equality",
+      "provenance": "synthetic arithmetic from inferred OM-1\u2013OM-3 + approved BR-2/S2-6",
+      "input": {
+        "session_status": 4,
+        "event_family_label": "free-roam",
+        "vehicle_state": 0,
+        "shaped_throttle_at_refresh": 0,
+        "previous_contacts": 4,
+        "previous_forward_z": 0.15000000596046448,
+        "z": 1,
+        "P": [
+          0.5,
+          0,
+          0
+        ],
+        "F": [
+          4,
+          0,
+          0
+        ],
+        "L": [
+          0.2,
+          0,
+          0
+        ],
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "held_angular_speed": 0,
+        "force_threshold_disabled": true
+      },
+      "expected": {
+        "stabilize": true,
+        "curve": true,
+        "Pdot": [
+          0,
+          0,
+          0
+        ],
+        "Ldot": [
+          -0.41,
+          0,
+          0
+        ],
+        "z_unchanged_by_mode_refresh": 1
+      }
+    },
+    {
+      "id": "slope-over",
+      "provenance": "synthetic arithmetic from inferred OM-1\u2013OM-3 + approved BR-2/S2-6",
+      "input": {
+        "session_status": 4,
+        "event_family_label": "free-roam",
+        "vehicle_state": 0,
+        "shaped_throttle_at_refresh": 0,
+        "previous_contacts": 4,
+        "previous_forward_z": 0.16,
+        "z": 1,
+        "P": [
+          0.5,
+          0,
+          0
+        ],
+        "F": [
+          4,
+          0,
+          0
+        ],
+        "L": [
+          0.2,
+          0,
+          0
+        ],
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "held_angular_speed": 0,
+        "force_threshold_disabled": true
+      },
+      "expected": {
+        "stabilize": false,
+        "curve": true,
+        "Pdot": [
+          4,
+          0,
+          0
+        ],
+        "Ldot": [
+          -0.01,
+          0,
+          0
+        ],
+        "z_unchanged_by_mode_refresh": 1
+      }
+    },
+    {
+      "id": "three-contacts-slope",
+      "provenance": "synthetic arithmetic from inferred OM-1\u2013OM-3 + approved BR-2/S2-6",
+      "input": {
+        "session_status": 4,
+        "event_family_label": "free-roam",
+        "vehicle_state": 0,
+        "shaped_throttle_at_refresh": 0,
+        "previous_contacts": 3,
+        "previous_forward_z": 0.16,
+        "z": 1,
+        "P": [
+          0.5,
+          0,
+          0
+        ],
+        "F": [
+          4,
+          0,
+          0
+        ],
+        "L": [
+          0.2,
+          0,
+          0
+        ],
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "held_angular_speed": 0,
+        "force_threshold_disabled": true
+      },
+      "expected": {
+        "stabilize": true,
+        "curve": true,
+        "Pdot": [
+          0,
+          0,
+          0
+        ],
+        "Ldot": [
+          -0.41,
+          0,
+          0
+        ],
+        "z_unchanged_by_mode_refresh": 1
+      }
+    },
+    {
+      "id": "state2-active",
+      "provenance": "synthetic arithmetic from inferred OM-1\u2013OM-3 + approved BR-2/S2-6",
+      "input": {
+        "session_status": 4,
+        "event_family_label": "free-roam",
+        "vehicle_state": 2,
+        "shaped_throttle_at_refresh": 1,
+        "previous_contacts": 4,
+        "previous_forward_z": 0,
+        "z": 1,
+        "P": [
+          0.5,
+          0,
+          0
+        ],
+        "F": [
+          4,
+          0,
+          0
+        ],
+        "L": [
+          0.2,
+          0,
+          0
+        ],
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "held_angular_speed": 0,
+        "force_threshold_disabled": true
+      },
+      "expected": {
+        "stabilize": false,
+        "curve": true,
+        "Pdot": [
+          4,
+          0,
+          0
+        ],
+        "Ldot": [
+          -0.01,
+          0,
+          0
+        ],
+        "z_unchanged_by_mode_refresh": 1
+      }
+    },
+    {
+      "id": "pre-active-full-throttle",
+      "provenance": "synthetic arithmetic from inferred OM-1\u2013OM-3 + approved BR-2/S2-6",
+      "input": {
+        "session_status": 3,
+        "event_family_label": "circuit",
+        "vehicle_state": 0,
+        "shaped_throttle_at_refresh": 1,
+        "previous_contacts": 4,
+        "previous_forward_z": 0,
+        "z": 1,
+        "P": [
+          0.5,
+          0,
+          0
+        ],
+        "F": [
+          4,
+          0,
+          0
+        ],
+        "L": [
+          0.2,
+          0,
+          0
+        ],
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "held_angular_speed": 0,
+        "force_threshold_disabled": true
+      },
+      "expected": {
+        "stabilize": true,
+        "curve": true,
+        "Pdot": [
+          0,
+          0,
+          0
+        ],
+        "Ldot": [
+          -0.41,
+          0,
+          0
+        ],
+        "z_unchanged_by_mode_refresh": 1
+      }
+    }
+  ]
+}

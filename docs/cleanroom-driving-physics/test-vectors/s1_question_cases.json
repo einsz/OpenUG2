@@ -1,0 +1,302 @@
+{
+  "provenance": "Synthetic inputs and mathematically derived expected outputs from this SPEC revision; not retail runtime captures.",
+  "numeric_tolerance": 1e-05,
+  "cases": [
+    {
+      "id": "Q1-low-bias",
+      "kind": "axle_share",
+      "input": {
+        "omega_a": 20,
+        "omega_b": 10,
+        "both_contact": true
+      },
+      "expected": {
+        "share_b": 0.825
+      }
+    },
+    {
+      "id": "Q3-spinning-stationary",
+      "kind": "tyre_branch",
+      "input": {
+        "radius": 0.3,
+        "omega": 100,
+        "vx": 0,
+        "vy": 0,
+        "locked": false
+      },
+      "expected": {
+        "slip": 30,
+        "branch": "gripping"
+      }
+    },
+    {
+      "id": "Q3-dragged-locked",
+      "kind": "tyre_branch",
+      "input": {
+        "radius": 0.3,
+        "omega": 0,
+        "vx": 10,
+        "vy": 0,
+        "locked": true
+      },
+      "expected": {
+        "slip": -10,
+        "branch": "sliding"
+      }
+    },
+    {
+      "id": "Q5-idle-first",
+      "kind": "automatic_downshift",
+      "input": {
+        "g": 2,
+        "mode": 3,
+        "rpm": 800,
+        "idle_rpm": 800,
+        "throttle": 0
+      },
+      "expected": {
+        "d1": 900,
+        "d2": 0,
+        "requests_neutral": false
+      }
+    },
+    {
+      "id": "Q6-remembered-upshift",
+      "kind": "assist_report",
+      "input": {
+        "gs": 3,
+        "target": 3,
+        "g": 3,
+        "remembered_gear": 2,
+        "elapsed": 1,
+        "rpm": 6800,
+        "max_rpm": 7000
+      },
+      "expected": {
+        "report_auto": true
+      }
+    },
+    {
+      "id": "Q6-timer-equality",
+      "kind": "assist_report",
+      "input": {
+        "gs": 3,
+        "target": 3,
+        "g": 3,
+        "remembered_gear": 3,
+        "elapsed": 10,
+        "rpm": 5000,
+        "max_rpm": 7000
+      },
+      "expected": {
+        "report_auto": false
+      }
+    },
+    {
+      "id": "Q7-awd-shared-speed",
+      "kind": "slip_sync",
+      "input": {
+        "g_ratio": 2,
+        "front_final": 4,
+        "rear_final": 3,
+        "omega": [
+          10,
+          20,
+          30,
+          50
+        ],
+        "engine_omega": 300,
+        "body_speed_mps": 30,
+        "contact": [
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      "expected": {
+        "old_wheel_side_speed": 180,
+        "omega": [
+          25,
+          35,
+          50,
+          70
+        ],
+        "new_wheel_side_speed": 300
+      }
+    },
+    {
+      "id": "Q8-open-first-reaction",
+      "kind": "first_gear_feedback",
+      "input": {
+        "gear": 2,
+        "mode": 1,
+        "contacts": 0,
+        "engine_torque": 0,
+        "feedback": -10,
+        "class": 1
+      },
+      "expected": {
+        "feedback": -8
+      }
+    },
+    {
+      "id": "Q9-saturated-driving-force",
+      "kind": "friction_limit",
+      "input": {
+        "drive_torque": 1,
+        "locked": false,
+        "longitudinal_force": 8,
+        "lateral_force": 0,
+        "force_limit": 6,
+        "vx": 0
+      },
+      "expected": {
+        "stored_longitudinal_force": 6,
+        "body_longitudinal_force": 6,
+        "wheel_derivative_force": 6
+      }
+    },
+    {
+      "id": "Q9-unsaturated-driving-force",
+      "kind": "friction_limit",
+      "input": {
+        "drive_torque": 1,
+        "locked": false,
+        "longitudinal_force": 2,
+        "lateral_force": 0,
+        "force_limit": 6,
+        "vx": 0
+      },
+      "expected": {
+        "stored_longitudinal_force": 2
+      }
+    },
+    {
+      "id": "Q10-angle-one-turn",
+      "kind": "angle_adjustment",
+      "input": {
+        "phi": 7
+      },
+      "expected": {
+        "phi": 7
+      }
+    },
+    {
+      "id": "Q10-angle-positive",
+      "kind": "angle_adjustment",
+      "input": {
+        "phi": 700
+      },
+      "expected": {
+        "phi": 71.6820068359375
+      }
+    },
+    {
+      "id": "Q10-angle-negative",
+      "kind": "angle_adjustment",
+      "input": {
+        "phi": -700
+      },
+      "expected": {
+        "phi": -71.6820068359375
+      }
+    },
+    {
+      "id": "Q10-angle-reset",
+      "kind": "angle_adjustment",
+      "input": {
+        "phi": 8000
+      },
+      "expected": {
+        "phi": 0
+      }
+    },
+    {
+      "id": "Q12-shift-speed-cache",
+      "kind": "initial_coupling_speed",
+      "input": {
+        "old_ratio": 0,
+        "new_ratio": 3,
+        "axle_final": 4,
+        "wheel_omega": [
+          10,
+          10
+        ],
+        "engine_omega": 100,
+        "engagement": 0
+      },
+      "expected": {
+        "stored_wheel_side_speed": 0,
+        "initial_slip_delta": 100,
+        "distributed_slip_torque": 0
+      }
+    },
+    {
+      "id": "Q13-creation-neutral",
+      "kind": "creation_poststep",
+      "input": {
+        "gear": 1,
+        "mode": 2,
+        "engagement": 0,
+        "pending_shift": false
+      },
+      "expected": {
+        "engine_feedback": 0,
+        "throttle_multiplier": 0.7
+      }
+    },
+    {
+      "id": "Q15-moment-sign",
+      "kind": "planar_body",
+      "input": {
+        "mass": 2,
+        "inverse_yaw_inertia": 0.25,
+        "force": [
+          0,
+          4
+        ],
+        "arm": [
+          2,
+          0
+        ]
+      },
+      "expected": {
+        "ax": 0,
+        "ay": 2,
+        "yaw_acceleration": 2
+      }
+    },
+    {
+      "id": "Q4-current-pass-acceleration",
+      "kind": "lock_correction",
+      "input": {
+        "rear_share": 0,
+        "ratio": 2,
+        "front_final": 4,
+        "wheel_inertia": 0.01,
+        "engine_inertia": 0.1,
+        "engine_torque": 0.2,
+        "engine_feedback": 0,
+        "front_drive_torques": [
+          1,
+          1
+        ],
+        "front_radii": [
+          0.5,
+          0.5
+        ],
+        "updated_front_forces": [
+          1,
+          1
+        ]
+      },
+      "expected": {
+        "wheel_side_acceleration": 400,
+        "engine_acceleration": 2,
+        "lock_denominator": 3210,
+        "correction_torque": -0.12398753894080997
+      }
+    }
+  ]
+}

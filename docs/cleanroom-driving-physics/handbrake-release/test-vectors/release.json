@@ -1,0 +1,1801 @@
+{
+  "status": "synthetic inferred; no original runtime",
+  "vectors": [
+    {
+      "id": "release_rest",
+      "boundary": "HR-1",
+      "inputs": {
+        "vx": 0,
+        "vy": 0,
+        "omega": 0,
+        "R": 0.5,
+        "B": 0,
+        "H": 0,
+        "N": 1,
+        "mu": 1,
+        "lock": true
+      },
+      "expected": {
+        "evaluated": false,
+        "lock": true,
+        "omega": 0,
+        "cached_slip": 0.0
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "release_forward",
+      "boundary": "HR-1",
+      "inputs": {
+        "vx": 0.0001,
+        "vy": 0,
+        "omega": 0,
+        "R": 0.5,
+        "B": 0,
+        "H": 0,
+        "N": 1,
+        "mu": 1,
+        "lock": true
+      },
+      "expected": {
+        "evaluated": true,
+        "lock": false,
+        "omega": 0,
+        "cached_slip": -0.0001
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "release_reverse",
+      "boundary": "HR-1",
+      "inputs": {
+        "vx": -0.0001,
+        "vy": 0,
+        "omega": 0,
+        "R": 0.5,
+        "B": 0,
+        "H": 0,
+        "N": 1,
+        "mu": 1,
+        "lock": true
+      },
+      "expected": {
+        "evaluated": true,
+        "lock": false,
+        "omega": 0,
+        "cached_slip": 0.0001
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "release_lateral",
+      "boundary": "HR-1",
+      "inputs": {
+        "vx": 0,
+        "vy": 0.0001,
+        "omega": 0,
+        "R": 0.5,
+        "B": 0,
+        "H": 0,
+        "N": 1,
+        "mu": 1,
+        "lock": true
+      },
+      "expected": {
+        "evaluated": true,
+        "lock": false,
+        "omega": 0,
+        "cached_slip": 0.0
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "release_spinning_stationary",
+      "boundary": "HR-1",
+      "inputs": {
+        "vx": 0,
+        "vy": 0,
+        "omega": 10,
+        "R": 0.5,
+        "B": 0,
+        "H": 0,
+        "N": 1,
+        "mu": 1,
+        "lock": true
+      },
+      "expected": {
+        "evaluated": false,
+        "lock": true,
+        "omega": 10,
+        "cached_slip": 5.0
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "release_rolling",
+      "boundary": "HR-1",
+      "inputs": {
+        "vx": 1,
+        "vy": 0,
+        "omega": 2,
+        "R": 0.5,
+        "B": 0,
+        "H": 0,
+        "N": 1,
+        "mu": 1,
+        "lock": true
+      },
+      "expected": {
+        "evaluated": false,
+        "lock": true,
+        "omega": 2,
+        "cached_slip": 0.0
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "handbrake_lock",
+      "boundary": "HR-1",
+      "inputs": {
+        "vx": 0.125,
+        "vy": 0,
+        "omega": 0.25,
+        "R": 0.5,
+        "B": 0,
+        "H": 2,
+        "N": 1,
+        "mu": 1,
+        "lock": false
+      },
+      "expected": {
+        "evaluated": false,
+        "lock": false,
+        "omega": 0.25,
+        "cached_slip": 0
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "handbrake_drag",
+      "boundary": "HR-1",
+      "inputs": {
+        "vx": 0.125,
+        "vy": 0,
+        "omega": 0,
+        "R": 0.5,
+        "B": 0,
+        "H": 2,
+        "N": 1,
+        "mu": 1,
+        "lock": false
+      },
+      "expected": {
+        "evaluated": true,
+        "lock": true,
+        "omega": 0,
+        "cached_slip": -0.125
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "rest_released",
+      "boundary": "HR-2",
+      "inputs": {
+        "lift_inputs": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lift_states": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "t": 0,
+        "g": 2,
+        "c": 1,
+        "d": 4,
+        "V": [
+          0,
+          0,
+          0
+        ],
+        "Omega": [
+          0,
+          0,
+          0
+        ],
+        "f_z": 0,
+        "l_z": 0,
+        "reset_pending": false,
+        "touching": true,
+        "previous": 0
+      },
+      "expected": {
+        "rest_class": 2
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "rest_held_forward",
+      "boundary": "HR-2",
+      "inputs": {
+        "lift_inputs": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lift_states": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "t": 1,
+        "g": 2,
+        "c": 1,
+        "d": 4,
+        "V": [
+          0,
+          0,
+          0
+        ],
+        "Omega": [
+          0,
+          0,
+          0
+        ],
+        "f_z": 0,
+        "l_z": 0,
+        "reset_pending": false,
+        "touching": true,
+        "previous": 0
+      },
+      "expected": {
+        "rest_class": 0
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "rest_held_reverse",
+      "boundary": "HR-2",
+      "inputs": {
+        "lift_inputs": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lift_states": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "t": 1,
+        "g": 0,
+        "c": 1,
+        "d": 4,
+        "V": [
+          0,
+          0,
+          0
+        ],
+        "Omega": [
+          0,
+          0,
+          0
+        ],
+        "f_z": 0,
+        "l_z": 0,
+        "reset_pending": false,
+        "touching": true,
+        "previous": 0
+      },
+      "expected": {
+        "rest_class": 0
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "rest_held_neutral",
+      "boundary": "HR-2",
+      "inputs": {
+        "lift_inputs": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lift_states": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "t": 1,
+        "g": 1,
+        "c": 1,
+        "d": 4,
+        "V": [
+          0,
+          0,
+          0
+        ],
+        "Omega": [
+          0,
+          0,
+          0
+        ],
+        "f_z": 0,
+        "l_z": 0,
+        "reset_pending": false,
+        "touching": true,
+        "previous": 0
+      },
+      "expected": {
+        "rest_class": 2
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "rest_threshold_throttle",
+      "boundary": "HR-2",
+      "inputs": {
+        "lift_inputs": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lift_states": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "t": 0.30000001192092896,
+        "g": 2,
+        "c": 1,
+        "d": 4,
+        "V": [
+          0,
+          0,
+          0
+        ],
+        "Omega": [
+          0,
+          0,
+          0
+        ],
+        "f_z": 0,
+        "l_z": 0,
+        "reset_pending": false,
+        "touching": true,
+        "previous": 0
+      },
+      "expected": {
+        "rest_class": 2
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "rest_missing_d",
+      "boundary": "HR-2",
+      "inputs": {
+        "lift_inputs": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lift_states": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "t": 1,
+        "g": 2,
+        "c": 1,
+        "d": 2,
+        "V": [
+          0,
+          0,
+          0
+        ],
+        "Omega": [
+          0,
+          0,
+          0
+        ],
+        "f_z": 0,
+        "l_z": 0,
+        "reset_pending": false,
+        "touching": true,
+        "previous": 0
+      },
+      "expected": {
+        "rest_class": 2
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "rest_settled_boundary",
+      "boundary": "HR-2",
+      "inputs": {
+        "lift_inputs": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lift_states": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "t": 0,
+        "g": 2,
+        "c": 1,
+        "d": 4,
+        "V": [
+          0.25,
+          0,
+          0
+        ],
+        "Omega": [
+          0,
+          0,
+          0
+        ],
+        "f_z": 0,
+        "l_z": 0,
+        "reset_pending": false,
+        "touching": true,
+        "previous": 0
+      },
+      "expected": {
+        "rest_class": 2
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "rest_slowing",
+      "boundary": "HR-2",
+      "inputs": {
+        "lift_inputs": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lift_states": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "t": 0,
+        "g": 2,
+        "c": 1,
+        "d": 4,
+        "V": [
+          0.5,
+          0,
+          0
+        ],
+        "Omega": [
+          0,
+          0,
+          0
+        ],
+        "f_z": 0,
+        "l_z": 0,
+        "reset_pending": false,
+        "touching": true,
+        "previous": 0
+      },
+      "expected": {
+        "rest_class": 1
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "rest_moving_boundary",
+      "boundary": "HR-2",
+      "inputs": {
+        "lift_inputs": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lift_states": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "t": 0,
+        "g": 2,
+        "c": 1,
+        "d": 4,
+        "V": [
+          0.699999988079071,
+          0,
+          0
+        ],
+        "Omega": [
+          0,
+          0,
+          0
+        ],
+        "f_z": 0,
+        "l_z": 0,
+        "reset_pending": false,
+        "touching": true,
+        "previous": 0
+      },
+      "expected": {
+        "rest_class": 1
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "rest_over_moving_boundary",
+      "boundary": "HR-2",
+      "inputs": {
+        "lift_inputs": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lift_states": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "t": 0,
+        "g": 2,
+        "c": 1,
+        "d": 4,
+        "V": [
+          0.7000010013580322,
+          0,
+          0
+        ],
+        "Omega": [
+          0,
+          0,
+          0
+        ],
+        "f_z": 0,
+        "l_z": 0,
+        "reset_pending": false,
+        "touching": true,
+        "previous": 0
+      },
+      "expected": {
+        "rest_class": 0
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "rest_lift_moving",
+      "boundary": "HR-2",
+      "inputs": {
+        "lift_inputs": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lift_states": [
+          0,
+          0,
+          2,
+          0
+        ],
+        "t": 0,
+        "g": 2,
+        "c": 1,
+        "d": 4,
+        "V": [
+          0,
+          0,
+          0
+        ],
+        "Omega": [
+          0,
+          0,
+          0
+        ],
+        "f_z": 0,
+        "l_z": 0,
+        "reset_pending": false,
+        "touching": true,
+        "previous": 0
+      },
+      "expected": {
+        "rest_class": 0
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "rest_no_touch_new",
+      "boundary": "HR-2",
+      "inputs": {
+        "lift_inputs": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lift_states": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "t": 0,
+        "g": 2,
+        "c": 0,
+        "d": 4,
+        "V": [
+          0,
+          0,
+          0
+        ],
+        "Omega": [
+          0,
+          0,
+          0
+        ],
+        "f_z": 0,
+        "l_z": 0,
+        "reset_pending": false,
+        "touching": false,
+        "previous": 0
+      },
+      "expected": {
+        "rest_class": 0
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "rest_no_touch_retained",
+      "boundary": "HR-2",
+      "inputs": {
+        "lift_inputs": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lift_states": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "t": 0,
+        "g": 2,
+        "c": 0,
+        "d": 4,
+        "V": [
+          0,
+          0,
+          0
+        ],
+        "Omega": [
+          0,
+          0,
+          0
+        ],
+        "f_z": 0,
+        "l_z": 0,
+        "reset_pending": false,
+        "touching": false,
+        "previous": 2
+      },
+      "expected": {
+        "rest_class": 2
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "full_rest_retains_lock_history",
+      "boundary": "HR-3",
+      "inputs": {
+        "rest_class": 2,
+        "c": 1,
+        "P": [
+          0.1,
+          0,
+          0
+        ],
+        "L": [
+          0.2,
+          0,
+          0
+        ],
+        "spin": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "lock": [
+          false,
+          false,
+          true,
+          true
+        ],
+        "z": 1.25
+      },
+      "expected": {
+        "P": [
+          0,
+          0,
+          0
+        ],
+        "L": [
+          0,
+          0,
+          0
+        ],
+        "spin": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lock": [
+          false,
+          false,
+          true,
+          true
+        ],
+        "z": 1.25,
+        "gravity": 0,
+        "active": false,
+        "zero_duration_sweep": true
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "selector_zero_rest_retains_spin",
+      "boundary": "HR-3",
+      "inputs": {
+        "rest_class": 2,
+        "c": 0,
+        "P": [
+          0.1,
+          0,
+          0
+        ],
+        "L": [
+          0.2,
+          0,
+          0
+        ],
+        "spin": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "lock": [
+          false,
+          false,
+          true,
+          true
+        ],
+        "z": 1.25
+      },
+      "expected": {
+        "P": [
+          0,
+          0,
+          0
+        ],
+        "L": [
+          0,
+          0,
+          0
+        ],
+        "spin": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "lock": [
+          false,
+          false,
+          true,
+          true
+        ],
+        "z": 1.25
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "slowing_damps_once",
+      "boundary": "HR-3",
+      "inputs": {
+        "rest_class": 1,
+        "c": 0,
+        "P": [
+          2,
+          -2,
+          0
+        ],
+        "L": [
+          1,
+          0,
+          -1
+        ],
+        "spin": [
+          2,
+          -2,
+          0,
+          0
+        ],
+        "z": 1.25
+      },
+      "expected": {
+        "P": [
+          1.899999976158142,
+          -1.899999976158142,
+          0
+        ],
+        "L": [
+          0.949999988079071,
+          0,
+          -0.949999988079071
+        ],
+        "spin": [
+          1.899999976158142,
+          -1.899999976158142,
+          0,
+          0
+        ],
+        "z": 1.25
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "unlock_timing_clutch_1",
+      "boundary": "HR-1",
+      "inputs": {
+        "incoming_lock": true,
+        "evaluated_lock": false,
+        "clutch_mode": 1,
+        "nonneutral": true
+      },
+      "expected": {
+        "initial_distribution_skipped": true,
+        "brake_additions_skipped": true,
+        "later_clutch_correction_eligible": false,
+        "rerun_initial_distribution": false
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "unlock_timing_clutch_2",
+      "boundary": "HR-1",
+      "inputs": {
+        "incoming_lock": true,
+        "evaluated_lock": false,
+        "clutch_mode": 2,
+        "nonneutral": true
+      },
+      "expected": {
+        "initial_distribution_skipped": true,
+        "brake_additions_skipped": true,
+        "later_clutch_correction_eligible": false,
+        "rerun_initial_distribution": false
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "unlock_timing_clutch_3",
+      "boundary": "HR-1",
+      "inputs": {
+        "incoming_lock": true,
+        "evaluated_lock": false,
+        "clutch_mode": 3,
+        "nonneutral": true
+      },
+      "expected": {
+        "initial_distribution_skipped": true,
+        "brake_additions_skipped": true,
+        "later_clutch_correction_eligible": true,
+        "rerun_initial_distribution": false
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "stabilization_gate_0_1_0",
+      "boundary": "HR-4",
+      "inputs": {
+        "race": 0,
+        "t": 1,
+        "state": 0,
+        "all_contacts": true,
+        "f_z": 0,
+        "z": 1.25,
+        "P": [
+          0.4,
+          0,
+          0
+        ],
+        "F": [
+          4,
+          0,
+          0
+        ],
+        "threshold_mutation": false
+      },
+      "expected": {
+        "stabilize": true,
+        "Pdot": [
+          0,
+          0,
+          0
+        ],
+        "z_retained": true
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "stabilization_gate_4_1_0",
+      "boundary": "HR-4",
+      "inputs": {
+        "race": 4,
+        "t": 1,
+        "state": 0,
+        "all_contacts": true,
+        "f_z": 0,
+        "z": 1.25,
+        "P": [
+          0.4,
+          0,
+          0
+        ],
+        "F": [
+          4,
+          0,
+          0
+        ],
+        "threshold_mutation": false
+      },
+      "expected": {
+        "stabilize": false,
+        "Pdot": [
+          4,
+          0,
+          0
+        ],
+        "z_retained": true
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "stabilization_gate_4_0.30000001192092896_0",
+      "boundary": "HR-4",
+      "inputs": {
+        "race": 4,
+        "t": 0.30000001192092896,
+        "state": 0,
+        "all_contacts": true,
+        "f_z": 0,
+        "z": 1.25,
+        "P": [
+          0.4,
+          0,
+          0
+        ],
+        "F": [
+          4,
+          0,
+          0
+        ],
+        "threshold_mutation": false
+      },
+      "expected": {
+        "stabilize": true,
+        "Pdot": [
+          0,
+          0,
+          0
+        ],
+        "z_retained": true
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "stabilization_gate_0_1_1",
+      "boundary": "HR-4",
+      "inputs": {
+        "race": 0,
+        "t": 1,
+        "state": 1,
+        "all_contacts": true,
+        "f_z": 0,
+        "z": 1.25,
+        "P": [
+          0.4,
+          0,
+          0
+        ],
+        "F": [
+          4,
+          0,
+          0
+        ],
+        "threshold_mutation": false
+      },
+      "expected": {
+        "stabilize": false,
+        "Pdot": [
+          4,
+          0,
+          0
+        ],
+        "z_retained": true
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "damping_fresh",
+      "boundary": "HR-4",
+      "inputs": {
+        "z": 0,
+        "P": 0.4,
+        "F": 4,
+        "stabilize": true,
+        "threshold_mutation": false
+      },
+      "expected": {
+        "Pdot": 4.0
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "damping_history",
+      "boundary": "HR-4",
+      "inputs": {
+        "z": 1.25,
+        "P": 0.4,
+        "F": 4,
+        "stabilize": true,
+        "threshold_mutation": false
+      },
+      "expected": {
+        "Pdot": 0.0
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "damping_reverse",
+      "boundary": "HR-4",
+      "inputs": {
+        "z": 1.25,
+        "P": -0.4,
+        "F": -4,
+        "stabilize": true,
+        "threshold_mutation": false
+      },
+      "expected": {
+        "Pdot": 0.0
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "damping_exact_zero",
+      "boundary": "HR-4",
+      "inputs": {
+        "z": 1.25,
+        "P": 0,
+        "F": 4,
+        "stabilize": true,
+        "threshold_mutation": false
+      },
+      "expected": {
+        "Pdot": 4.0
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "equal_stationary_wait_histories",
+      "boundary": "HR-4",
+      "inputs": {
+        "h": 0.009999999776482582,
+        "steps": 1500,
+        "V": [
+          0,
+          0,
+          0
+        ],
+        "Omega": [
+          0,
+          0,
+          0
+        ],
+        "z_initial": 0,
+        "handbrake_cases": [
+          0,
+          1
+        ],
+        "rest_cases": [
+          0,
+          2
+        ],
+        "stabilize_cases": [
+          false,
+          true
+        ]
+      },
+      "expected": {
+        "checkpoints": [
+          {
+            "step": 100,
+            "z": 0.10000002384185791
+          },
+          {
+            "step": 1000,
+            "z": 0.999990701675415
+          },
+          {
+            "step": 1500,
+            "z": 1.500014066696167
+          }
+        ],
+        "same_for_every_case": true
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "initialization_is_not_pose_import",
+      "boundary": "HR-4",
+      "inputs": {
+        "z_existing": 1.25,
+        "pose_velocity": [
+          0,
+          0,
+          0
+        ],
+        "pose_angular": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "existing_body_pose_import_z": 1.25,
+        "new_body_z": 0,
+        "full_retail_reset_z": "unknown"
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "locked_gripping_derivative",
+      "boundary": "HR-1",
+      "inputs": {
+        "lock": true,
+        "gripping": true,
+        "slip": -0.125,
+        "R": 0.5,
+        "h": 0.01
+      },
+      "expected": {
+        "angular_acceleration": 25
+      },
+      "provenance": "synthetic arithmetic; original static inference; not original execution"
+    },
+    {
+      "id": "rest_lift_input_positive",
+      "boundary": "HR-2",
+      "inputs": {
+        "lift_inputs": [
+          0,
+          0,
+          0.0001,
+          0
+        ],
+        "lift_states": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "t": 0,
+        "g": 2,
+        "c": 1,
+        "d": 4,
+        "V": [
+          0,
+          0,
+          0
+        ],
+        "Omega": [
+          0,
+          0,
+          0
+        ],
+        "f_z": 0,
+        "l_z": 0,
+        "reset_pending": false,
+        "touching": true,
+        "previous": 0
+      },
+      "expected": {
+        "rest_class": 0
+      },
+      "provenance": "reviewer synthetic behavioral consequence of HR-1\u20264 and approved companions; original static inference; not original execution"
+    },
+    {
+      "id": "rest_lift_state_decreasing",
+      "boundary": "HR-2",
+      "inputs": {
+        "lift_inputs": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lift_states": [
+          0,
+          3,
+          0,
+          0
+        ],
+        "t": 0,
+        "g": 2,
+        "c": 1,
+        "d": 4,
+        "V": [
+          0,
+          0,
+          0
+        ],
+        "Omega": [
+          0,
+          0,
+          0
+        ],
+        "f_z": 0,
+        "l_z": 0,
+        "reset_pending": false,
+        "touching": true,
+        "previous": 0
+      },
+      "expected": {
+        "rest_class": 0
+      },
+      "provenance": "reviewer synthetic behavioral consequence of HR-1\u20264 and approved companions; original static inference; not original execution"
+    },
+    {
+      "id": "rest_lift_state_reached",
+      "boundary": "HR-2",
+      "inputs": {
+        "lift_inputs": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lift_states": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "t": 0,
+        "g": 2,
+        "c": 1,
+        "d": 4,
+        "V": [
+          0,
+          0,
+          0
+        ],
+        "Omega": [
+          0,
+          0,
+          0
+        ],
+        "f_z": 0,
+        "l_z": 0,
+        "reset_pending": false,
+        "touching": true,
+        "previous": 0
+      },
+      "expected": {
+        "rest_class": 2
+      },
+      "provenance": "reviewer synthetic behavioral consequence of HR-1\u20264 and approved companions; original static inference; not original execution"
+    },
+    {
+      "id": "rest_reset_pending",
+      "boundary": "HR-2",
+      "inputs": {
+        "lift_inputs": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lift_states": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "t": 0,
+        "g": 2,
+        "c": 1,
+        "d": 4,
+        "V": [
+          0,
+          0,
+          0
+        ],
+        "Omega": [
+          0,
+          0,
+          0
+        ],
+        "f_z": 0,
+        "l_z": 0,
+        "reset_pending": true,
+        "touching": true,
+        "previous": 0
+      },
+      "expected": {
+        "rest_class": 0
+      },
+      "provenance": "reviewer synthetic behavioral consequence of HR-1\u20264 and approved companions; original static inference; not original execution"
+    },
+    {
+      "id": "rest_tilt_equal",
+      "boundary": "HR-2",
+      "inputs": {
+        "lift_inputs": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lift_states": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "t": 0,
+        "g": 2,
+        "c": 1,
+        "d": 4,
+        "V": [
+          0,
+          0,
+          0
+        ],
+        "Omega": [
+          0,
+          0,
+          0
+        ],
+        "f_z": 0.15000000596046448,
+        "l_z": -0.15000000596046448,
+        "reset_pending": false,
+        "touching": true,
+        "previous": 0
+      },
+      "expected": {
+        "rest_class": 2
+      },
+      "provenance": "reviewer synthetic behavioral consequence of HR-1\u20264 and approved companions; original static inference; not original execution"
+    },
+    {
+      "id": "rest_tilt_over",
+      "boundary": "HR-2",
+      "inputs": {
+        "lift_inputs": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lift_states": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "t": 0,
+        "g": 2,
+        "c": 1,
+        "d": 4,
+        "V": [
+          0,
+          0,
+          0
+        ],
+        "Omega": [
+          0,
+          0,
+          0
+        ],
+        "f_z": 0,
+        "l_z": -0.15000100433826447,
+        "reset_pending": false,
+        "touching": true,
+        "previous": 0
+      },
+      "expected": {
+        "rest_class": 0
+      },
+      "provenance": "reviewer synthetic behavioral consequence of HR-1\u20264 and approved companions; original static inference; not original execution"
+    },
+    {
+      "id": "rest_tilt_c_zero",
+      "boundary": "HR-2",
+      "inputs": {
+        "lift_inputs": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lift_states": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "t": 0,
+        "g": 2,
+        "c": 0,
+        "d": 4,
+        "V": [
+          0,
+          0,
+          0
+        ],
+        "Omega": [
+          0,
+          0,
+          0
+        ],
+        "f_z": 1,
+        "l_z": 0,
+        "reset_pending": false,
+        "touching": true,
+        "previous": 0
+      },
+      "expected": {
+        "rest_class": 2
+      },
+      "provenance": "reviewer synthetic behavioral consequence of HR-1\u20264 and approved companions; original static inference; not original execution"
+    },
+    {
+      "id": "rest_throttle_c_zero",
+      "boundary": "HR-2",
+      "inputs": {
+        "lift_inputs": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lift_states": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "t": 1,
+        "g": 2,
+        "c": 0,
+        "d": 4,
+        "V": [
+          0,
+          0,
+          0
+        ],
+        "Omega": [
+          0,
+          0,
+          0
+        ],
+        "f_z": 0,
+        "l_z": 0,
+        "reset_pending": false,
+        "touching": true,
+        "previous": 0
+      },
+      "expected": {
+        "rest_class": 2
+      },
+      "provenance": "reviewer synthetic behavioral consequence of HR-1\u20264 and approved companions; original static inference; not original execution"
+    },
+    {
+      "id": "rest_angular_equal_quarter",
+      "boundary": "HR-2",
+      "inputs": {
+        "lift_inputs": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lift_states": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "t": 0,
+        "g": 2,
+        "c": 1,
+        "d": 4,
+        "V": [
+          0,
+          0,
+          0
+        ],
+        "Omega": [
+          0,
+          0.25,
+          0
+        ],
+        "f_z": 0,
+        "l_z": 0,
+        "reset_pending": false,
+        "touching": true,
+        "previous": 0
+      },
+      "expected": {
+        "rest_class": 2
+      },
+      "provenance": "reviewer synthetic behavioral consequence of HR-1\u20264 and approved companions; original static inference; not original execution"
+    },
+    {
+      "id": "rest_angular_equal_moving",
+      "boundary": "HR-2",
+      "inputs": {
+        "lift_inputs": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lift_states": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "t": 0,
+        "g": 2,
+        "c": 1,
+        "d": 4,
+        "V": [
+          0,
+          0,
+          0
+        ],
+        "Omega": [
+          0,
+          0.699999988079071,
+          0
+        ],
+        "f_z": 0,
+        "l_z": 0,
+        "reset_pending": false,
+        "touching": true,
+        "previous": 0
+      },
+      "expected": {
+        "rest_class": 1
+      },
+      "provenance": "reviewer synthetic behavioral consequence of HR-1\u20264 and approved companions; original static inference; not original execution"
+    },
+    {
+      "id": "rest_angular_over_moving",
+      "boundary": "HR-2",
+      "inputs": {
+        "lift_inputs": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lift_states": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "t": 0,
+        "g": 2,
+        "c": 1,
+        "d": 4,
+        "V": [
+          0,
+          0,
+          0
+        ],
+        "Omega": [
+          0,
+          0.7000010013580322,
+          0
+        ],
+        "f_z": 0,
+        "l_z": 0,
+        "reset_pending": false,
+        "touching": true,
+        "previous": 0
+      },
+      "expected": {
+        "rest_class": 0
+      },
+      "provenance": "reviewer synthetic behavioral consequence of HR-1\u20264 and approved companions; original static inference; not original execution"
+    },
+    {
+      "id": "stabilization_tilt_equal",
+      "boundary": "HR-4",
+      "inputs": {
+        "race": 4,
+        "t": 0,
+        "state": 0,
+        "all_contacts": true,
+        "f_z": 0.15000000596046448
+      },
+      "expected": {
+        "stabilize": true
+      },
+      "provenance": "reviewer synthetic behavioral consequence of HR-1\u20264 and approved companions; original static inference; not original execution"
+    },
+    {
+      "id": "stabilization_tilt_over",
+      "boundary": "HR-4",
+      "inputs": {
+        "race": 4,
+        "t": 0,
+        "state": 0,
+        "all_contacts": true,
+        "f_z": -0.15000100433826447
+      },
+      "expected": {
+        "stabilize": false
+      },
+      "provenance": "reviewer synthetic behavioral consequence of HR-1\u20264 and approved companions; original static inference; not original execution"
+    },
+    {
+      "id": "stabilization_tilt_missing_contact",
+      "boundary": "HR-4",
+      "inputs": {
+        "race": 4,
+        "t": 0,
+        "state": 0,
+        "all_contacts": false,
+        "f_z": 1
+      },
+      "expected": {
+        "stabilize": true
+      },
+      "provenance": "reviewer synthetic behavioral consequence of HR-1\u20264 and approved companions; original static inference; not original execution"
+    },
+    {
+      "id": "stabilization_state_two",
+      "boundary": "HR-4",
+      "inputs": {
+        "race": 4,
+        "t": 0,
+        "state": 2,
+        "all_contacts": true,
+        "f_z": 0
+      },
+      "expected": {
+        "stabilize": true
+      },
+      "provenance": "reviewer synthetic behavioral consequence of HR-1\u20264 and approved companions; original static inference; not original execution"
+    },
+    {
+      "id": "rest_publication_order",
+      "boundary": "HR-3",
+      "inputs": {
+        "rest_class": 2,
+        "c": 1,
+        "reset_request_side_path": false
+      },
+      "expected": {
+        "ordered_boundaries": [
+          "ordinary_post_step",
+          "rest_classification_and_effects",
+          "zero_duration_post_step",
+          "controller_force_preparation",
+          "following_derivative"
+        ],
+        "extra_euler_updates": 0,
+        "recursive_rest_evaluations": 0
+      },
+      "provenance": "reviewer synthetic behavioral consequence of HR-1\u20264 and approved companions; original static inference; not original execution"
+    },
+    {
+      "id": "slowing_repeats_per_completion",
+      "boundary": "HR-3",
+      "inputs": {
+        "rest_classes": [
+          1,
+          1
+        ],
+        "P_initial": [
+          2,
+          0,
+          0
+        ],
+        "spin_initial": [
+          2,
+          0,
+          0,
+          0
+        ],
+        "c": 0,
+        "reset_request_side_path": false
+      },
+      "expected": {
+        "P": [
+          1.8049999475479126,
+          0,
+          0
+        ],
+        "spin": [
+          1.8049999475479126,
+          0,
+          0,
+          0
+        ],
+        "rest_evaluations": 2,
+        "extra_euler_updates": 0
+      },
+      "provenance": "reviewer synthetic behavioral consequence of HR-1\u20264 and approved companions; original static inference; not original execution"
+    },
+    {
+      "id": "z_equal_target_decay",
+      "boundary": "HR-4",
+      "inputs": {
+        "V": [
+          0,
+          0,
+          0
+        ],
+        "Omega": [
+          0,
+          0,
+          0
+        ],
+        "z": 1.5,
+        "h": 0.009999999776482582,
+        "stabilize": false
+      },
+      "expected": {
+        "zdot": -10,
+        "z_after_post_step": 1.399999976158142
+      },
+      "provenance": "reviewer synthetic behavioral consequence of HR-1\u20264 and approved companions; original static inference; not original execution"
+    }
+  ]
+}

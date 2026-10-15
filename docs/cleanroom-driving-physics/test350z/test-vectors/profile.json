@@ -1,0 +1,13 @@
+{
+  "identity": "temporary-opening-350z-provisional",
+  "base_vehicle": "350Z",
+  "aggregate_performance_tier": 2,
+  "selection_source": "local_asset_package_composition",
+  "manual_tuning": "unchanged_default_assumption",
+  "additional_instance_bonuses": "none_assumed",
+  "handling_family": "ordinary_road_assumption",
+  "parity_status": "unproven",
+  "expected_component_count_for_inspected_asset": 34,
+  "provenance": "Provisional contract: locally observed base/tier, statically inferred composition; tuning, bonuses and handling family are explicit host assumptions, not runtime observations.",
+  "inspected_uncompressed_source_sha256": "07e1c37a2e5ba4b3e6a17b257e653409c31d5f0b3f9df3464aec36adbbced9d0"
+}
