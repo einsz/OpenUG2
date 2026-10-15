@@ -179,3 +179,19 @@ result is bounded conformance, not complete Stage5 gameplay or retail parity.
 Original-runtime differential remains unperformed without isolated no-network
 snapshot environment. Future producer contracts require analyst/reviewer/fresh
 implementer; legal sufficiency remains a question for counsel.
+
+
+## Host W/S actual/pending gear handoff — 2026-10-15
+
+Fresh independent verifier gives bounded PASS: Stage1–5 components/adapters,
+clock/district/track/ground/world/fence/trace suites exit0; strict and ASan/UBSan
+independent oracle passes 2520 state combinations/40320 substep queries.
+Source/spec/vector trees were not edited by verifier; approved hashes match.
+Completed updated native trace has W/actual-reverse ticks346–347 with throttle0;
+baseline has25 such rows with throttle1. Trajectories differ, so no matched
+performance comparison or complete stationary-stall resolution is claimed.
+No ARM64 runtime or original-runtime parity verified. This is independent host
+device policy, not recovered original behavior. No outstanding divergence or
+new normative review cycle required. See stage5/DIRECTION_HANDOFF_VERIFICATION.md
+and private cleanroom/verification/direction-handoff/. Preserve manual trace
+workflow for the unreproduced persistent stationary wheelspin/bog symptom.

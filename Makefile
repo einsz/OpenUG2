@@ -41,6 +41,7 @@ GUI_ART_SRC := src/gui_timing.c src/pause_entries.c src/gui_carousel.c src/gui_d
 GUI_ART_HDR := $(wildcard src/gui_*.h) src/pause_entries.h src/pause_screen.h
 
 HDRS += src/ug2_track_collision.h src/drivetrain.h src/braking.h src/resistance.h src/lateral.h src/drive_stage1.h src/contact.h
+HDRS += src/drive_trace.h
 
 .DEFAULT_GOAL := nfsu2   # keep `make` building the binary, not the generated header
 
@@ -622,3 +623,9 @@ drive-stage5-test: tools/drive_stage5_test.c tools/drive_stage4_test.c tools/dri
 	$(CC) $(CFLAGS) -Isrc tools/drive_stage5_test.c src/drive_contact.c src/contact.c src/drive_stage1.c src/drivetrain.c src/braking.c src/lateral.c src/resistance.c src/physics.c -o build/drive_stage5_test -lm
 	./build/drive_stage5_test
 .PHONY: drive-stage5-test
+
+drive-trace-test: tools/drive_trace_test.c src/drive_trace.h $(HDRS)
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Isrc tools/drive_trace_test.c -o build/drive_trace_test -lm
+	./build/drive_trace_test
+.PHONY: drive-trace-test

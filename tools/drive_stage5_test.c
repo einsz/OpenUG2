@@ -61,4 +61,78 @@ static void integration5(void){
  contact_init(&a,10);tick5(&a,.2f,.1f,0,&ride);float spin=a.drive.drivetrain.wheel[0].omega;a.v[0]=0;a.v[1]=.04f;float beforewall[2]={.1f,.04f};assert(phys_ride_wall_response(&ride,beforewall,a.v)>0);tick5(&a,0,0,0,&ride);assert(isfinite(spin)&&a.drive.drivetrain.wheel[0].omega!=a.drive.drivetrain.env.wheel[0].vx/.32f);
 }
 static void clock5(void){Trace ref,a;PhysRideState ride={.contact_mask=15};contact_init(&ref,10);for(int k=0;k<180;k++)tick5(&ref,k<120?.4f:-1,k<60?.2f:k<120?-.2f:0,k>=75&&k<90,&ride);int rates[]={30,60,90,144,240};for(unsigned i=0;i<sizeof rates/sizeof*rates;i++){contact_init(&a,10);PhysClock c={0};for(int frame=0;frame<3*rates[i];frame++){int count=phys_clock_steps(&c,1.0/rates[i]);for(int k=0;k<count;k++)tick5(&a,a.tick<120?.4f:-1,a.tick<60?.2f:a.tick<120?-.2f:0,a.tick>=75&&a.tick<90,&ride);}assert(a.tick==180&&a.h==ref.h&&a.p[0]==ref.p[0]&&!memcmp(&a.drive,&ref.drive,sizeof a.drive));}}
-int main(void){components_extra();parser5();integration5();clock5();puts("Stage5 adapter: contact lifecycle, force accounting, handbrake/recovery, host pose, surfaces, reset/collision/clock passed");return 0;}
+/* Independent keyboard policy: a direction request is not an accelerator for
+ * the opposite actual gear. Inspect each post-step query, not only tick exit:
+ * an Open clutch can change gear in the middle of a host tick. */
+static Stage1Drive *direction_observed;
+static int direction_samples;
+static float direction_first_velocity;
+static int direction_frame_samples;
+static CtGround direction_query(void *u,const float q[3],int wheel){
+ Stage1Drive *s=direction_observed;Drivetrain *d=&s->drivetrain;
+ int opposite=s->reverse?d->gear>DRV_GEAR_N:d->gear==DRV_GEAR_R;
+ assert(!opposite||d->throttle==0);
+ assert(s->resistance_input.throttle==d->throttle);
+ if(!direction_frame_samples++)direction_first_velocity=s->body.velocity[0];
+ direction_samples++;return query(u,q,wheel);
+}
+static void watch_direction(Trace *t){direction_observed=&t->drive;t->drive.contact_query=direction_query;}
+static void direction_handoff5(void){
+ PhysRideState ride={.contact_mask=15};
+ Trace launch;contact_init(&launch,0);watch_direction(&launch);
+ tick5(&launch,1,0,0,&ride);assert(launch.drive.drivetrain.throttle==1);
+ for(int k=0;k<600;k++)tick5(&launch,1,0,0,&ride);
+ assert(launch.s>.05f&&launch.drive.drivetrain.gear>DRV_GEAR_N);
+ for(int reverse=0;reverse<=1;reverse++)for(int mode=0;mode<4;mode++){
+  Trace t;contact_init(&t,reverse?.1f:-.1f);tick5(&t,0,0,0,&ride);
+  Drivetrain *d=&t.drive.drivetrain;int actual=reverse?2:DRV_GEAR_R;
+  d->gear=d->target_gear=actual;d->mode=mode;
+  d->engage=mode==DRV_CLUTCH_OPEN?0:mode==DRV_CLUTCH_LOCKED?1:.6f;
+  d->pending_shift=0;t.drive.reverse=!reverse;
+  float pedal=reverse?-1:1;watch_direction(&t);
+  float h;drv_substep_count(1/PHYS_TICKRATE,&h);
+  float incoming=t.drive.body.velocity[0]+h*t.drive.body.force[0]/t.drive.body.mass;
+  direction_frame_samples=0;
+  tick5(&t,pedal,0,0,&ride);
+  assert(fabsf(direction_first_velocity-incoming)<2e-6f);
+  assert(d->throttle==0&&d->brake==0);
+  assert(d->target_gear==(reverse?DRV_GEAR_R:2));
+  for(int k=0;k<600;k++)tick5(&t,pedal,0,0,&ride);
+  assert(reverse?t.s<-.02f:t.s>.02f);
+  assert(reverse?d->gear==DRV_GEAR_R:d->gear>DRV_GEAR_N);
+  assert(d->throttle==1&&stage1_drive_rpm(&t.drive)>=d->car.idle_rpm-.01f);
+ }
+ /* The safety hold does not alter ordinary in-gear demand or the existing
+  * forward anti-stall floor. Neutral launches are exercised by integration. */
+ for(int reverse=0;reverse<=1;reverse++)for(int mode=0;mode<4;mode++){
+  Trace t;contact_init(&t,0);tick5(&t,0,0,0,&ride);
+  Drivetrain *d=&t.drive.drivetrain;d->gear=d->target_gear=reverse?DRV_GEAR_R:2;
+  d->mode=mode;d->engage=mode==DRV_CLUTCH_OPEN?0:mode==DRV_CLUTCH_LOCKED?1:.6f;
+  t.drive.reverse=reverse;watch_direction(&t);
+  tick5(&t,reverse?-.3f:.3f,0,0,&ride);
+  assert(d->throttle==(reverse?.3f:.5f)&&d->brake==0);
+ }
+ /* Cancel/reissue a direction while an Open clutch still has the previous
+  * target. This exercises gear changes within the tick and rapid W/S changes. */
+ for(int reverse=0;reverse<=1;reverse++){
+  Trace t;contact_init(&t,0);tick5(&t,0,0,0,&ride);
+  Drivetrain *d=&t.drive.drivetrain;d->gear=reverse?DRV_GEAR_R:2;
+  d->target_gear=reverse?2:DRV_GEAR_R;d->mode=DRV_CLUTCH_OPEN;
+  d->engage=0;d->pending_shift=1;t.drive.reverse=reverse;watch_direction(&t);
+  tick5(&t,reverse?-1:1,0,0,&ride);
+  for(int k=0;k<240;k++)tick5(&t,k&1?-1:1,0,0,&ride);
+  for(int k=0;k<900;k++)tick5(&t,1,0,0,&ride);
+  assert(t.s>.05f&&d->gear>DRV_GEAR_N&&d->throttle==1);
+ }
+ /* Actual movement still determines service braking, including a direction
+  * latch retained from an interrupted transition or external collision. */
+ for(int reverse=0;reverse<=1;reverse++){
+  Trace t;contact_init(&t,reverse?5:-5);tick5(&t,0,0,0,&ride);
+  t.drive.reverse=reverse;watch_direction(&t);
+  tick5(&t,reverse?-1:1,0,0,&ride);
+  assert(t.drive.drivetrain.brake==1&&t.drive.drivetrain.throttle==0);
+ }
+ assert(direction_samples>10000);
+ printf("Stage5 direction handoff: %d substep observations passed\n",direction_samples);
+}
+int main(void){direction_handoff5();components_extra();parser5();integration5();clock5();puts("Stage5 adapter: contact lifecycle, force accounting, handbrake/recovery, host pose, surfaces, reset/collision/clock passed");return 0;}

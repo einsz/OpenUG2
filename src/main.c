@@ -32,6 +32,7 @@
 #include "rhi_gl.h"   /* GL names behind texture handles for the draw code */
 #include "physics.h"
 #include "drive_stage1.h"
+#include "drive_trace.h"
 #include "ai.h"
 #include "audio.h"
 #include "resource.h"
@@ -2108,6 +2109,7 @@ int main(int argc, char **argv) {
     /* Point at your own NFSU2 install/data directory (contains TRACKS/, CARS/).
        Usage: nfsu2 [DATA_DIR] [options]
          --drivetrain     opt in to stock Stage-1/2/3/4/5 drivetrain (docs/DRIVETRAIN.md)
+         --drivetrain-trace FILE  record manual driving diagnostics to CSV
          --car NAME       car folder under CARS/ (default HUMMER)
          --track NAME     STREAM .BUN under TRACKS/ (default STREAML4RA).
                           The bundles overlap as route/event supersets; ALL is
@@ -2281,6 +2283,7 @@ int main(int argc, char **argv) {
     int world2_spawn_set = 0, world2_heading_set = 0;
     float world2_spawn_xy[2] = {0, 0}, world2_heading_deg = 0.0f;
     const char *carname = "HUMMER", *trackname = "STREAML4RA";
+    const char *drive_trace_path = NULL;
     const char *circuit = "ROUTESL4RF/Paths4602.bin"; int explicit_circuit = 0;
     int want_event_id = 0;   /* --event <id>: boot straight into a race event */
     int shotframes = 40;     /* --frames N: how long --shot drives before the grab */
@@ -2507,6 +2510,12 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--b02-probe") && i+1 < argc) {
             b02probe = argv[++i]; fbcensus = 1; n2_m102 = 1; }
         else if (!strcmp(argv[i], "--drivetrain")) g_stage1_requested = 1;
+        else if (!strcmp(argv[i], "--drivetrain-trace")) {
+            if(i+1>=argc || !argv[i+1][0] || argv[i+1][0]=='-') {
+                fprintf(stderr,"--drivetrain-trace requires a CSV file path\n");return 2;
+            }
+            drive_trace_path=argv[++i];g_stage1_requested=1;
+        }
         else if (!strcmp(argv[i], "--hud")) hud_opt = 1;
         else if (!strcmp(argv[i], "--hud-skin") && i + 1 < argc) {
             char *end = NULL;
@@ -6150,6 +6159,17 @@ int main(int argc, char **argv) {
     if(g_stage1_requested && !g_stage1.ready) {
         fprintf(stderr,"--drivetrain requires a loaded car with valid stock tuning\n");return 2;
     }
+    FILE *drive_trace_file=NULL;
+    unsigned long long drive_trace_tick=0;
+    if(drive_trace_path) {
+        drive_trace_file=fopen(drive_trace_path,"w");
+        if(!drive_trace_file || !drive_trace_header(drive_trace_file)) {
+            fprintf(stderr,"Cannot start drivetrain trace: %s\n",drive_trace_path);
+            if(drive_trace_file)fclose(drive_trace_file);
+            return 1;
+        }
+        printf("Driving trace: %s (manual controls remain active)\n",drive_trace_path);
+    }
     int gear = 1; float shift_t = 0.0f;   /* virtual gearbox (engine audio) */
     int gear_changing = 0;                /* host gear-change interval, for the HUD (F1) */
     float menuspin = 0.0f;   /* orbit-camera angle on the menu screen */
@@ -7721,6 +7741,9 @@ int main(int argc, char **argv) {
             heading += da;
         }
         float ground_old[3]={carpos[0],carpos[1],carpos[2]}, ground_oldh=heading;
+        float drive_trace_incoming[3];
+        memcpy(drive_trace_incoming,g_stage1.body.force,sizeof drive_trace_incoming);
+        float drive_trace_ground_fraction=1;
         float dmag = 0.0f, load_lat = 0.0f;
         if (!sstatic && !capture_policy.freeze_motion) {
             float oldvx = vel[0], oldvy = vel[1];
@@ -7760,6 +7783,7 @@ int main(int argc, char **argv) {
             WGroundHit h;
             float fraction=ground_motion_limit(&scene,&g_ride,&g_sup,ground_old,ground_oldh,
                                                carpos,&heading,vel,&h);
+            drive_trace_ground_fraction=fraction;
             if(fraction<1) {
                 speed=vel[0]*cosf(heading)+vel[1]*sinf(heading);
                 dmag=fabsf(vel[0]*sinf(heading)-vel[1]*cosf(heading));
@@ -8385,6 +8409,21 @@ int main(int argc, char **argv) {
           if(thud>g_hit)g_hit=thud;
           memcpy(carpos,player.pos,sizeof player.pos);memcpy(vel,player.vel,sizeof player.vel);
           speed=player.spd;g_ride=player.ride;g_sup=player.support;
+        }
+        if(drive_trace_file) {
+            DriveTraceSample sample={.tick=drive_trace_tick++,.active=stage1_active,
+                .race_state=race_state,.pedal=throttle,.steer=steer_filtered,.handbrake=handbrake,
+                .heading=heading,.ground_fraction=drive_trace_ground_fraction,
+                .walls=nwc,.rails=rpushed,.vehicle_contact=race_contact,
+                .ride=g_ride_ready?&g_ride:NULL};
+            memcpy(sample.position,carpos,sizeof sample.position);
+            memcpy(sample.velocity,vel,sizeof sample.velocity);
+            memcpy(sample.prepared_force,drive_trace_incoming,sizeof sample.prepared_force);
+            if(!drive_trace_row(drive_trace_file,&g_stage1,&sample) ||
+               (drive_trace_tick%60==0 && fflush(drive_trace_file))) {
+                fprintf(stderr,"Driving trace write failed: %s\n",drive_trace_path);
+                fclose(drive_trace_file);drive_trace_file=NULL;
+            }
         }
         /* Score and gates see the final pose, including vehicle contacts. */
         if(race_state==1 && !sstatic && !capture_policy.freeze_motion) {
@@ -11513,6 +11552,8 @@ int main(int argc, char **argv) {
     }
 
     race_log_stop(&race_log);g_dbg.race_log=NULL;
+    if(drive_trace_file && fclose(drive_trace_file))
+        fprintf(stderr,"Driving trace close failed: %s\n",drive_trace_path);
     pause_menu_destroy(pause_menu);
     if (opt_store_open) st_reg_close(&opt_store);
 #ifdef DEBUG_UI

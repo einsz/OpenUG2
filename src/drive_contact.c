@@ -71,8 +71,16 @@ float stage5_drive_step(Stage1Drive*s,float pos[3],float vel[2],float*heading,fl
  res_frame_inputs(r,s->state_code,s->alternate_movement,s->disable_stabilize,c->exported_mask,s->body_surface);
  d->tune.torque_scale=r->scale;d->tune.torque_bonus=r->bonus;
  float forward=c->exported_forward;if(pedal<0&&forward<=.3f)s->reverse=1;if(pedal>0&&forward>=-.3f)s->reverse=0;
- int braking=(pedal<0&&!s->reverse)||(pedal>0&&s->reverse);
- DrvInput input={.throttle=braking?0:fabsf(pedal),.brake=braking?fabsf(pedal):0,.handbrake=hb?1:0,.gear_cmd=s->reverse?DRV_GEAR_R:DRV_CMD_AUTO};
+ /* Independent keyboard policy (U3-1/U5-4): oppose actual motion with the
+  * service brake, and hold the accelerator until both actual and pending
+  * gears agree with the requested direction. The pending target matters when
+  * an interrupted handoff changes gear during this tick. Keep this as a raw
+  * frame input: shaping, selector/clutch progress and all frame consumers
+  * retain their usual cadence, with no shaft/wheel/lock/force resets. */
+ int braking=(pedal<0&&forward>.3f)||(pedal>0&&forward<-.3f);
+ int opposite=s->reverse?(d->gear>DRV_GEAR_N||d->target_gear>DRV_GEAR_N):
+     (d->gear==DRV_GEAR_R||d->target_gear==DRV_GEAR_R);
+ DrvInput input={.throttle=braking||opposite?0:fabsf(pedal),.brake=braking?fabsf(pedal):0,.handbrake=hb?1:0,.gear_cmd=s->reverse?DRV_GEAR_R:DRV_CMD_AUTO};
  /* Distribution reads the exported frame snapshot. Shaping/exclusivity occurs
   * once inside drv_frame_begin, before hb/grip, and never in each substep. */
  d->env.body_speed=c->exported_speed;d->env.signed_forward=c->exported_forward;drv_frame_begin(d,&input,dt,-1);r->throttle=d->throttle;

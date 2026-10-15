@@ -80,3 +80,19 @@ responses=106, rails=0, nonfinite/bounds flags=0. All masks=f, so native air
 transitions/alternate IDs remain unobserved. Build/native exit0 are implementer
 reported; telemetry/image analysis is verifier-observed. No original runtime
 was launched. Final bounded result PASS; I5-1 remains OPEN.
+
+
+## Host W/S actual/pending gear handoff — 2026-10-15
+
+Fresh independent verifier gives bounded PASS: Stage1–5 components/adapters,
+clock/district/track/ground/world/fence/trace suites exit0; strict and ASan/UBSan
+independent oracle passes 2520 state combinations/40320 substep queries.
+Source/spec/vector trees were not edited by verifier; approved hashes match.
+Completed updated native trace has W/actual-reverse ticks346–347 with throttle0;
+baseline has25 such rows with throttle1. Trajectories differ, so no matched
+performance comparison or complete stationary-stall resolution is claimed.
+No ARM64 runtime or original-runtime parity verified. This is independent host
+device policy, not recovered original behavior. No outstanding divergence or
+new normative review cycle required. See stage5/DIRECTION_HANDOFF_VERIFICATION.md
+and private cleanroom/verification/direction-handoff/. Preserve manual trace
+workflow for the unreproduced persistent stationary wheelspin/bog symptom.

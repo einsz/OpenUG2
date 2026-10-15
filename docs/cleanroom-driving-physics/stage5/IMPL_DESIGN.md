@@ -219,3 +219,146 @@ Approved Stage1–5 SPEC hashes and all Stage5 vector/README hashes remain uncha
 The only appended shared question is I5-1; PROVENANCE/HANDOFF/report artifacts
 belong to the coordinator/verifier and were not edited or read by this role.
 No stage/commit/push was performed.
+
+## Intermittent 240SX braking investigation and manual trace — 2026-10-15
+
+The reported intermittent wheelspin/standstill or bog after service braking
+was not reproduced as an isolated implementation defect. No tyre, clutch,
+brake-lock, suspension, collision or force-lifecycle equation was changed.
+S3-4 expressly retains locks when its motion predicate is false; pedal release
+alone cannot justify an unconditional unlock. S5-0 excludes complete rest/stuck
+handling, and the existing unknowns remain open. No shared requirement or vector
+was changed and no new normative answer was inferred from these experiments.
+
+Independent diagnostic design: `src/drive_trace.h` writes only supplied const
+state to a caller-owned stream. The opt-in `--drivetrain-trace FILE` selects the
+same drivetrain as `--drivetrain` and records each actual simulation tick after
+world and vehicle collision responses. It never produces driver inputs or
+advances physics. `active` identifies legacy race modes. The CLI opens/closes
+the stream and flushes every 60 ticks. The trace does not read original assets;
+the native application's existing loaders remain the only runtime data path.
+
+The recorded distinctions follow S1-2/S3-7/S5-8: incoming prepared force,
+final next-prepared force, pre-host body velocity, final host velocity, and
+wheel/contact snapshots remain separate. S3-4/5 lock/torque/spin, S5-3/4 travel
+and aligned loads, S5-5 final wheel forces, and external collision observations
+allow classification without changing their contracts. `ride_*`/pitch/roll are
+the host's updated pose after its ride step; contact forces belong to the
+preceding drivetrain preparation. Ordinary UI and default simulation behavior
+are unchanged. Usage and units are in `docs/DRIVETRAIN.md`.
+
+Tests-first: `tools/drive_trace_test.c` initially failed to compile at the absent
+`drive_trace.h` (`/tmp/drive_trace_red.log`). Its completed test verifies matching
+CSV schemas, representative values distinguishing host/body velocity and old/new
+forces, zero-load contacting wheels, lock/spin/torque/blocker columns, and bytewise
+immutability of both input structures. `make drive-trace-test` passes. Strict
+C99 compilation passes with the baseline static parser's unused-function and
+misleading-indentation warnings disabled. ASan+UBSan passes with leak detection
+disabled. The trace test also compiles with `aarch64-linux-gnu-gcc`; no ARM64
+runtime/emulator was available, so this is a build check only.
+
+The existing component/adapter/clock/collision targets all pass in
+`/tmp/stationary-tests.log`: contact, drive-stage5, lateral, drive-stage4,
+braking, resistance, drivetrain, drive-stage1, physics-clock, district-collision,
+plus the new trace test. Approved SPEC hashes remain unchanged.
+
+Reproduction limits: a 900-case synthetic sweep of drive share, ordinary/strong
+service brakes and 1–150 braking ticks recovered. Additional supported synthetic
+ride offsets, recontact and 0–12% plane grades recovered; the grade experiment
+used approved Stage1 240SX parameters with invented suspension geometry, not a
+claim of complete stock-car tuning. Native 240SX default-heading service brake,
+coast and relaunch runs recovered. A native uphill-heading variant displayed
+800 RPM and roughly 0.8–1.3 m/s during part of full-throttle recovery, but also
+encountered repeated wall responses (100 by tick600); it does not isolate the
+reported persistent stall and is not evidence for a tyre or clutch fix.
+
+Final native trace smoke uses normal loaders and `--drive-audit` only as its
+control producer (`/tmp/stationary-trace-smoke.log/.csv`): 420 unique monotonic
+ticks, 133 columns per row, all finite, service/HB/release recorded. W still
+requests service brake for two ticks while reversing at the release transition,
+then service coefficients clear; this is the existing keyboard policy. A
+separate no-audit `--shot --perf-still` smoke checks that enabling capture does
+not inject acceleration. No successful physical keyboard injection is claimed:
+the available xdotool could not access a display. Manual-user capture remains
+necessary to classify the intermittent occurrence. No commit or push performed.
+
+## Host direction handoff accelerator hold — 2026-10-15
+
+This is independent host keyboard policy at U3-1/U5-4, where original device and
+reverse mapping are outside the approved contract. The five SPEC.md hashes were
+checked against their current REVIEW.md approvals before implementation and
+remain unchanged. No new original-behavior requirement or vector is inferred.
+
+Root cause in the Stage5 adapter: the near-rest direction latch changed before
+the actual gearbox completed its clutch transition. The adapter then supplied
+the new W/S accelerator demand through the still-opposite actual gear. An
+Engaging clutch could remain powered while its target was already the other
+direction. The independently generated pre-fix `/tmp/stationary-repeat.csv`
+contains 25 W/actual-reverse/nonzero-throttle rows; tick310 has pedal1,
+displayed gear-1, displayed target1, mode2, engagement .3875 and throttle1.
+Trace/HUD gear indices are R=-1, N=0 and first=1; these differ from the core's
+R=0, N=1 and first=2. An initial temporary diagnostic query used the core index
+for the CSV and was corrected; the baseline capture was not modified.
+
+`src/drive_contact.c` now withholds the raw accelerator when either the actual
+gear or the still-pending target opposes the latched requested direction.
+Checking the target also covers an interrupted handoff whose gear changes
+inside the tick. The conservative hold may last until the following 60 Hz tick.
+Service braking uses the existing signed-motion snapshot beyond the +/-0.3 m/s
+handoff window, including a latch left by an interrupted transition/collision.
+The selector still receives automatic-forward or direct-reverse command.
+
+S1-5 pedal exclusivity, dead zone and anti-stall shaping still run exactly once
+per frame in `drv_frame_begin`; shaped throttle stays held throughout its
+substeps. S2 frame resistance inputs, S4 steering and S5 grip/brake consumers
+therefore see coherent frame inputs. S1-4 clutch/selector equations, S1-3 engine,
+S1-7 tyre coupling, S3 lock handling and S5 contacts are unchanged. Following
+S1-2/S3-7/S5-8, previously prepared forces and stored engine/wheel energy remain;
+the policy prevents fresh opposite-direction accelerator demand, without
+promising instantaneous removal of all opposite-directed force or motion.
+Lower Stage1–4 supplied-input fixtures and default/alternate legacy models are
+unchanged.
+
+Tests were written first. `/tmp/direction-handoff-red.log` records the existing
+code failing the opposite-actual-gear throttle assertion during a substep query.
+`tools/drive_stage5_test.c` now checks both directions in all four clutch modes,
+actual/target disagreement within a tick, rapid alternating W/S followed by a
+sustained launch, ordinary neutral launch, normal partial throttle and the
+forward anti-stall floor, motion-opposing brakes with a mismatched latch, finite
+recovery and preservation of the incoming prepared-force derivative. Its final
+123,220 substep observations pass. These are invented host regression states,
+not additions to approved original-behavior vectors.
+
+Validation: contact, drive-stage5, lateral, drive-stage4, braking, resistance,
+drivetrain, drive-stage1, physics-clock, district-collision and drive-trace
+targets pass (`/tmp/direction-handoff-tests.log`, plus final Stage5 output in
+`/tmp/direction-handoff-final-test.log`). Strict C99 `-Wall -Wextra -Werror`
+passes with the baseline parser's unused-function and misleading-indentation
+warnings suppressed. Final Stage5 ASan+UBSan passes with leak detection disabled.
+ARM64 cross-compilation passes; no ARM64 runtime/emulator was available, so no
+ARM64 runtime result is claimed. GLES and debug builds pass, and the final
+debug executable is left at `nfsu2`.
+
+Final native check used normal stock loaders, existing input-only `--drive-audit`
+and observational `--drivetrain-trace`:
+
+```sh
+DISPLAY=:0 SDL_AUDIODRIVER=dummy ./nfsu2 '/home/dq/Games/Need for Speed Underground 2' --car 240SX --drivetrain --track STREAML4RA --resolution 640x360 --drive-audit /tmp/direction-handoff-native --drivetrain-trace /tmp/direction-handoff-native.csv --frames 900
+```
+
+Exit0; 900 unique ticks, 133 columns each, all finite. At ticks346–347 W is
+held with displayed actual R=-1, target first=1 and throttle0. First is selected
+at348; throttle resumes at349; signed speed becomes positive at351 and reaches
+4.8886 m/s at420 with no wall response through this recovery. No row supplies
+nonzero throttle in an actual gear opposite the latched requested direction.
+Later wall responses occur; the viewed ending capture shows the car beside a
+wall. This does not reproduce or resolve every persistent stall, or establish
+original-runtime parity. Physical keyboard injection was unavailable; the
+existing script supplies inputs only. No original runtime, raw asset analysis,
+analyst material or verification report was accessed. No shared questions or
+vectors were edited, and no commit/push was performed.
+
+Frozen implementation SHA-256: `drive_contact.c`
+`7fb35d1f09fdcab2ed00e70d021072695397a841dc08c10f0f5355a7dd3c316d`;
+`drive_stage5_test.c`
+`c64f58bd2938b969bb3930799980c18dc26f0fa981c24ddf2338f780d88bf993`.

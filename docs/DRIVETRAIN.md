@@ -16,6 +16,14 @@ and car switching continue to use the composed simulation state. Stock tuning
 is required at loading and switching; malformed fields reject the candidate.
 Upgrades, nitrous and alternate race handling are outside this opt-in.
 
+During a forward/reverse handoff, the host withholds accelerator input while
+either the actual gear or its pending target opposes the requested direction.
+The selector and clutch continue their normal transition; service braking still
+opposes actual motion. This independent keyboard policy can delay acceleration
+until the next 60 Hz tick after a handoff. Existing wheel/engine energy and the
+preceding prepared force remain in the simulation, so it does not erase motion
+instantly or establish a fix for every intermittent post-braking stall.
+
 ## Contact and body boundary
 
 Stage5 computes frame preload from stock mass, centre, wheel mounts and the
@@ -101,6 +109,27 @@ ride pose, body forces/moments, signed speed and wall/rail counts. Later scripte
 segments can meet obstacles; S near rest may select reverse. `--frames` controls
 the bound (default audit 2,220). The audit writes spawn/end captures under the
 selected prefix. Dummy audio may be omitted for normal interactive sound.
+
+For an intermittent problem during manual driving, record a CSV capture:
+
+```sh
+./nfsu2 '/path/to/your/NFSU2 installation' --car 240SX \
+  --drivetrain-trace /tmp/240sx-driving.csv
+```
+
+The trace option enables the stock drivetrain and keeps W/S/Space and steering
+under your control. Reproduce the problem, wait a few seconds, then quit normally.
+It writes one row per simulation tick, flushes every second of simulated time,
+and replaces the named file. Pause produces no rows. Each row includes pedal,
+gear/clutch/RPM, wheel spin/lock/torque, suspension travel/load, tyre forces and
+ground/wall/rail/vehicle collision observations. `host_vx/host_vy` are the final
+world velocity after collisions; `body_vx/body_vy` are the drivetrain's velocity
+before those host responses. `incoming_f*` is the previous preparation consumed
+at tick entry, while `prepared_f*` is the next prepared force at tick exit.
+Forces are kN, torques kN·m, velocities m/s, angular speeds rad/s and travel m.
+`active=0` marks a legacy race mode where drivetrain fields are inactive snapshots.
+The capture reads only independent simulation state; it does not dump car assets.
+`make drive-trace-test` checks the CSV schema and that recording leaves state intact.
 
 All vectors are synthetic calculations from static-inferred approved contracts.
 Component agreement, host tests and native captures do not establish original
