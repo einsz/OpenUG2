@@ -2093,7 +2093,7 @@ int main(int argc, char **argv) {
     audio_selftest();
     /* Point at your own NFSU2 install/data directory (contains TRACKS/, CARS/).
        Usage: nfsu2 [DATA_DIR] [options]
-         --drivetrain     opt in to stock Stage-1/2/3 drivetrain (docs/DRIVETRAIN.md)
+         --drivetrain     opt in to stock Stage-1/2/3/4 drivetrain (docs/DRIVETRAIN.md)
          --car NAME       car folder under CARS/ (default HUMMER)
          --track NAME     STREAM .BUN under TRACKS/ (default STREAML4RA).
                           The bundles overlap as route/event supersets; ALL is
@@ -4619,17 +4619,19 @@ int main(int argc, char **argv) {
             N2PhysicsAttr pa;
             int physics_from_global=n2_global_physics_attr(globdata,globlen,carname,&pa);
             if(g_stage1_requested) {
-                DrvCar stock;ResCar resistance;BrkCar brakes;
+                DrvCar stock;ResCar resistance;BrkCar brakes;LatCar lateral;
                 if(!stage1_car_read(globdata,globlen,carname,&stock) ||
                    !stage2_car_read(globdata,globlen,carname,&resistance) ||
-                   !stage3_car_read(globdata,globlen,carname,&brakes) || stage1_drive_init(&g_stage1,&stock,&resistance,0) ||
-                   stage3_drive_brakes(&g_stage1,&brakes,0,0)) {
-                    fprintf(stderr,"--drivetrain: no valid stock Stage-1/2/3 tuning for %s\n",carname);
+                   !stage3_car_read(globdata,globlen,carname,&brakes) ||
+                   !stage4_car_read(globdata,globlen,carname,&lateral) || stage1_drive_init(&g_stage1,&stock,&resistance,0) ||
+                   stage3_drive_brakes(&g_stage1,&brakes,0,0) ||
+                   stage4_drive_lateral(&g_stage1,&lateral,1/lat_inertia(stock.mass,lateral.dimensions),0)) {
+                    fprintf(stderr,"--drivetrain: no valid stock Stage-1/2/3/4 tuning for %s\n",carname);
                     return 2;
                 }
-                printf("Stage-1/2/3 drivetrain enabled: stock tuning, automatic; W forward, S brake/reverse, Space hold.\n"
-                       "  Planar chassis/suspension and Space hold adapters; Stage-2 resistance/caps; Stage-3 service brakes; nitrous/upgrades disabled; drag/drift use legacy physics.\n"
-                       "  Supplied ordinary fixture: G=1 a=0, unit body/wheel surface factors, no bonus/damage/alternate aero, w=0; level XY projection; initial locks=0, relief enabled.\n");
+                printf("Stage-1/2/3/4 drivetrain enabled: stock tuning, automatic; W forward, S brake/reverse, Space hold.\n"
+                       "  Stage-4 steering/tyres and planar yaw; host suspension, load/contact/history and Space hold adapters; nitrous/upgrades disabled; drag/drift use legacy physics.\n"
+                       "  Supplied ordinary fixture: G=1 a=0, unit body/wheel surface factors, no bonus/damage/alternate aero; yaw inertia from stock dimensions, angular damping=0; level XY projection; initial locks=0, relief enabled.\n");
             }
             g_vehicle_source_valid=physics_from_global;
             if(physics_from_global)g_vehicle_source=pa;
@@ -6660,11 +6662,12 @@ int main(int argc, char **argv) {
                     printf("car switch deferred: stop the car before selecting %s\n", next_car);
                 } else {
                     CarSwitchCandidate candidate;
-                    DrvCar next_stage1;ResCar next_resistance;BrkCar next_brakes;
+                    DrvCar next_stage1;ResCar next_resistance;BrkCar next_brakes;LatCar next_lateral;
                     if (!prepare_car_switch(&candidate, dataroot, next_car) ||
                         (g_stage1_requested && (!stage1_car_read(candidate.globaldata,candidate.globallen,next_car,&next_stage1) ||
                          !stage2_car_read(candidate.globaldata,candidate.globallen,next_car,&next_resistance) ||
-                         !stage3_car_read(candidate.globaldata,candidate.globallen,next_car,&next_brakes)))) {
+                         !stage3_car_read(candidate.globaldata,candidate.globallen,next_car,&next_brakes) ||
+                         !stage4_car_read(candidate.globaldata,candidate.globallen,next_car,&next_lateral)))) {
                         car_switch_release(&candidate);
                         fprintf(stderr, "car switch failed for %s; keeping %s\n",
                                 next_car, carname);
@@ -6736,6 +6739,7 @@ int main(int argc, char **argv) {
                         if(g_stage1_requested) {
                             stage1_drive_init(&g_stage1,&next_stage1,&next_resistance,0);
                             stage3_drive_brakes(&g_stage1,&next_brakes,0,0);
+                            stage4_drive_lateral(&g_stage1,&next_lateral,1/lat_inertia(next_stage1.mass,next_lateral.dimensions),0);
                         }
                         g_dbg.body_kit_current = 0; g_dbg.mod_current = carcfg;
                         g_ride_ready = 0;
@@ -7423,7 +7427,7 @@ int main(int argc, char **argv) {
         static int stage1_previous=-1;
         if(g_stage1_requested && stage1_active!=stage1_previous) {
             stage1_drive_reset(&g_stage1,vel,heading);
-            printf("drivetrain: %s\n",stage1_active?"Stage 1/2/3 (stock service brakes/resistance, planar host chassis adapters)":"legacy race-mode physics (drag/drift outside Stage 1)");
+            printf("drivetrain: %s\n",stage1_active?"Stage 1/2/3/4 (stock steering/tyres/brakes/resistance, planar host adapters)":"legacy race-mode physics (drag/drift outside Stage 1)");
             stage1_previous=stage1_active;
         }
         int pf_spawns=0;
@@ -7449,6 +7453,7 @@ int main(int argc, char **argv) {
         cam_set_look_back(&gc.cam,gc.look_back);
         AiCar live_pose={.pos={carpos[0],carpos[1],carpos[2]},.vel={vel[0],vel[1]},.head=heading,.spd=speed,
             .wheel_angle=player_wheel_angle,.steer=steer_filtered,.ride=g_ride,.ride_ready=g_ride_ready};
+        if(stage1_active)memcpy(live_pose.wheel_steer,g_stage1.wheel_angle,sizeof live_pose.wheel_steer);
         /* Loads, grid placement and debug moves can happen outside ticks. */
         int pose_snap=!pose_ready || sim_reset || memcmp(live_pose.pos,pose_now.pos,sizeof live_pose.pos) ||
            live_pose.head!=pose_now.head || live_pose.ride_ready!=pose_now.ride_ready;
@@ -7501,6 +7506,10 @@ int main(int argc, char **argv) {
                the later S phase can instead select reverse after an obstacle. */
             else if (stage1_active && da_f >= 300 && da_f < 345)
                                  { throttle = -1.0f; steer = 0.0f; }
+            else if (stage1_active && da_f >= 210 && da_f < 240)
+                                 { throttle = 1.0f; steer = .35f; }
+            else if (stage1_active && da_f >= 255 && da_f < 285)
+                                 { throttle = 1.0f; steer = -.35f; }
             else if (da_f < 720)  { throttle =  1.0f; steer = 0.0f; }
             else if (da_f < 1920) { throttle =  1.0f;
                                     steer = ((da_f - 720) / 120) % 2 ? -1.0f : 1.0f; }
@@ -7671,7 +7680,7 @@ int main(int argc, char **argv) {
                 steer=fmaxf(-1,fminf(1,atan2f(sinf(error),cosf(error))/.5f));
             }
         }
-        steer_filtered=phys_steer_response(steer_filtered,steer);
+        steer_filtered=stage1_active?steer:phys_steer_response(steer_filtered,steer);
         /* push the ImGui handling sliders into the physics tune (stock when untouched) */
         g_phys_tune.accel = g_dbg.tune_accel; g_phys_tune.brake = g_dbg.tune_brake;
         g_phys_tune.turn = g_dbg.tune_turn;   g_phys_tune.top_kmh = g_dbg.tune_top;
@@ -8140,6 +8149,11 @@ int main(int argc, char **argv) {
                        g_stage1.aero.load,g_stage1.resistance_car.limit_mph,
                        g_stage1.resistance_input.scale,g_stage1.resistance_input.reduction);
                 const Drivetrain *drive=&g_stage1.drivetrain;
+                printf("STAGE4 tick=%ld command=%u angles=(%.6f,%.6f) contact=(%.4f,%.4f) slip=%.6f lateral=(%.6f,%.6f) yawRate=%.6f moment=%.6f heading=%.6f velocity=(%.4f,%.4f) walls=%d rails=%d\n",
+                    da_f,(unsigned)g_stage1.steering.command,g_stage1.wheel_angle[0],g_stage1.wheel_angle[1],
+                    drive->env.wheel[0].vx,drive->env.wheel[0].vy,drive->env.wheel[0].slip_angle,
+                    drive->force_lat[0],drive->force_lat[2],g_stage1.yaw_rate,g_stage1.body.moment[2],
+                    heading,vel[0]*PHYS_TICKRATE,vel[1]*PHYS_TICKRATE,da_walls,da_rails);
                 printf("STAGE3 tick=%ld brake=%.3f strength=%.6f rearShare=%.3f reliefDisabled=%d locks=%d%d%d%d requested=(%.6f,%.6f) force=(%.6f,%.6f) spin=(%.3f,%.3f)\n",
                        da_f,drive->brake,drive->brakes.car.service,drive->brakes.car.rear_share,
                        drive->brakes.relief_disabled,drive->brakes.locked[0],drive->brakes.locked[1],
@@ -8515,6 +8529,7 @@ int main(int argc, char **argv) {
         drag_shift=drag_change=0;
         pose_now=(AiCar){.pos={carpos[0],carpos[1],carpos[2]},.vel={vel[0],vel[1]},.head=heading,.spd=speed,
             .wheel_angle=player_wheel_angle,.steer=steer_filtered,.ride=g_ride,.ride_ready=g_ride_ready};
+        if(stage1_active)memcpy(pose_now.wheel_steer,g_stage1.wheel_angle,sizeof pose_now.wheel_steer);
         /* Use the actual angular travel, even when a fast wheel turns > pi
            or its bounded phase wraps through zero during this tick. */
         pose_before.wheel_angle=player_wheel_angle-(stage1_active?g_stage1.wheel_travel:
@@ -9306,11 +9321,11 @@ int main(int argc, char **argv) {
                   vsteer += (sinf(dt) * 0.5f - vsteer) * (1-powf(.75f,frame_scale));    /* +/-0.5 rad oscillation */
               } else {
                   wang = render_player.wheel_angle;
-                  vsteer = render_player.steer*0.50f;
+                  vsteer = stage1_active?.5f*(render_player.wheel_steer[0]+render_player.wheel_steer[1]):render_player.steer*0.50f;
               }
               wang = fmodf(wang, 6.2831853f);
               float c = cosf(wang), sn = sinf(wang);
-              float sc = cosf(vsteer), ss = sinf(vsteer);
+
               /* telemetry: wheel RPM from w=v/r (rad/s -> RPM) and steer angle */
               g_dbg.wheel_rpm = fabsf(speed / wR) * 60.0f * 9.5493f;
               if(stage1_active) {
@@ -9327,6 +9342,8 @@ int main(int argc, char **argv) {
               float wp[4][2]={{g_dbg.wheel.front_axle, fht},{g_dbg.wheel.front_axle,-fht},
                               {g_dbg.wheel.rear_axle,  rht},{g_dbg.wheel.rear_axle, -rht}};
               for(int k=0;k<4;k++){ float sy=(k&1)?-s:s;
+                  float angle=stage1_active&&!g_dbg.wheel_demo?(k<2?render_player.wheel_steer[k]:0):vsteer;
+                  float sc=cosf(angle),ss=sinf(angle);
                   /* M130: each wheel carries its OWN suspension travel, so a
                      grounded wheel stays on its contact while the sprung body
                      heaves, pitches and rolls above it. A single shared height

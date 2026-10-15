@@ -66,6 +66,7 @@ void drv_env_default(DrvEnv *e) {
     for (int i = 0; i < 4; i++) {
         e->wheel[i].contact = 1;
         e->wheel[i].mu_peak_surface = 1.0f;
+        e->wheel[i].peak_scale = 1.0f;
         e->wheel[i].mu_slide_surface = 1.0f;
         e->wheel[i].roll_drag = 1.0f;
     }
@@ -147,7 +148,7 @@ void drv_body_accel_straight(void *ud, const float F[4], const float Fy[4], floa
 
 void drv_body_accel_planar(void *ud, const float F[4], const float Fy[4], float A[4]) {
     const DrvBodyPlanar *b = (const DrvBodyPlanar *)ud;
-    double fx = b->ex, fy = b->ey, mom = 0.0;
+    double fx = b->ex, fy = b->ey, mom = b->external_moment;
     for (int i = 0; i < 4; i++) {
         double cx = (double)F[i] * b->head[i][0] + (double)Fy[i] * b->lat[i][0];
         double cy = (double)F[i] * b->head[i][1] + (double)Fy[i] * b->lat[i][1];
@@ -536,7 +537,7 @@ void drv_prepare_tyre(Drivetrain *d,int i) {
         if(fabs(slip)>.5 || fabs((double)e->slip_angle)>d->car.theta_max[axle] || e->locked) {
             double force=w->w_long*slip*load*mu/mag;
             double lateral=-e->vy*load*mu/mag*w->w_lat;
-            if((double)d->env.body_speed*MPS_TO_MPH<1 && mu>.1){force/=mu;lateral/=mu;}
+            if((double)(d->env.planar_tyres?d->env.signed_forward:d->env.body_speed)*MPS_TO_MPH<1 && mu>.1){force/=mu;lateral/=mu;}
             w->force=(float)force;w->force_lat=(float)lateral;w->gripping=0;
         }
     }
@@ -592,7 +593,7 @@ void drv_couple(Drivetrain *d, const DrvEnv *env, DrvBodyAccelFn body, void *bod
         DrvWheel *w = &d->wheel[i];
         const DrvWheelEnv *e = &env->wheel[i];
         const int ax = i > 1;
-        const double Fmax = (double)e->mu_peak_surface * (double)c->mu_peak[ax] * grip_multiplier(d,i) * (double)e->load * rear_speed_multiplier(d,i);
+        const double Fmax = (double)e->mu_peak_surface * (double)c->mu_peak[ax] * grip_multiplier(d,i) * (double)e->load * rear_speed_multiplier(d,i) * (env->planar_tyres?e->peak_scale:1);
         const int boosted = w->tau > 0.0f && !e->locked;
         double F = (double)w->force, Fy = (double)w->force_lat;
         double Ft = boosted ? 1.5 * F : F;
@@ -601,7 +602,7 @@ void drv_couple(Drivetrain *d, const DrvEnv *env, DrvBodyAccelFn body, void *bod
             double k = Fmax / mag;
             F = Ft * k; Fy *= k;            /* the 1.5 factor is kept when scaling happened */
         }
-        if (fabs((double)e->vx) > 1.0) F -= 0.15 * sin((double)e->slip_angle) * Fy;
+        if (fabs((double)e->vx) > 1.0) F -= (double).15f * sin((double)e->slip_angle) * Fy;
         w->force = (float)F; w->force_lat = (float)Fy;
         d->force_long[i] = w->force; d->force_lat[i] = w->force_lat; d->load[i] = e->load;
     }

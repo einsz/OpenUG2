@@ -198,7 +198,9 @@ static void render_timing(void) {
     assert(vd.vel[0]==0 && vd.vel[1]==0); /* a reversal stays finite at rest */
     AiCar a={.head=3.12f,.wheel_angle=-4.25f},b={.head=-3.12f,.wheel_angle=.25f},draw;
     b.pos[2]=b.ride.z=1;for(int k=0;k<4;k++)b.ride.compression[k]=-1;
+    a.wheel_steer[0]=.1f;a.wheel_steer[1]=.2f;b.wheel_steer[0]=.3f;b.wheel_steer[1]=.4f;
     ai_render_pose(&draw,&a,&b,.5f);
+    assert(fabsf(draw.wheel_steer[0]-.2f)<1e-6f&&fabsf(draw.wheel_steer[1]-.3f)<1e-6f);
     assert(fabsf(fabsf(draw.head)-3.14159265f)<.00001f);
     assert(draw.wheel_angle==-2); /* full angular travel, not a reverse short arc */
     for(int k=0;k<4;k++)assert(draw.pos[2]+draw.ride.compression[k]==0);

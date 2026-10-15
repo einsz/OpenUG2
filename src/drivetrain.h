@@ -124,12 +124,15 @@ typedef struct DrvWheelEnv {
     float roll_drag;        /* rho_S, surface rolling-drag factor (1.0) */
     int   locked;           /* Stage1 supplied input; Stage3 current-lock mirror */
     int   drag_flag;        /* zeta_i (0/1) */
+    float peak_scale;      /* S4-6 effective scale; initialized to 1 by drv_env_default */
     float lateral_grip_force; /* gripping-branch lateral force before wT (Stage 4); default 0 */
 } DrvWheelEnv;
 
 typedef struct DrvEnv {
     DrvWheelEnv wheel[4];
-    float body_speed;           /* m/s */
+    float body_speed;           /* magnitude, m/s */
+    float signed_forward;      /* S4-5 low-speed normalization snapshot */
+    int planar_tyres;          /* enables supplied Stage4 signed speed/peak_scale */
     float rear_grip_multiplier; /* Full rear multiplier supplied by Stage 4/5 (S1-11/Q-11); no retail default. */
 } DrvEnv;
 /* Synthetic level/straight/no-handbrake environment: rear multiplier 1,
@@ -151,7 +154,7 @@ void drv_body_accel_straight(void *ud, const float F[4], const float Fy[4], floa
 typedef struct DrvBodyPlanar {
     float mass, inv_iz;
     float pos[4][2], head[4][2], lat[4][2];
-    float ex, ey;
+    float ex, ey, external_moment;
 } DrvBodyPlanar;
 void drv_body_accel_planar(void *ud, const float F[4], const float Fy[4], float A[4]);
 

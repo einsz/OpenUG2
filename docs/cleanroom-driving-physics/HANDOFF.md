@@ -114,3 +114,31 @@ no further phase needed for this diagnostic delta. Core tests were not repeated;
 build/exit0 are implementer-reported. This closes the old native-pedal evidence
 gap while preserving the old report's historical observations. Original-runtime
 parity, retail stopping curve and Stage4/5 behavior remain unverified.
+
+## Stage4 steering/lateral verification — 2026-10-15
+
+Fresh roles `stage4_lateral_implementation` and `stage4_lateral_verification`
+completed the bounded round. Stage4 approved hash remains
+`02144d187323c6d74a6fb21e6e0b3e2842097cd0e28c935eea97907c1cbc911a`;
+all Stage1/2/3 companion hashes independently match approvals.
+Independent ten-suite run passes: Stage4 208 checks/all 72 derived vectors,
+prior 3606/348/479 component checks, both adapters, clock, district/track collision
+and race/render fixtures. Independent numerical/property oracle passes 366,506
+checks; strict components and fresh ASan/UBSan adapter pass (leaks disabled).
+No divergence/amendment/new review needed for the tested bounded contracts.
+
+Verifier inspected final 275-tick native log/end PNG: moving positive/negative
+steering with signed yaw response, 34.91 km/h final, 10.38 m travel, wall/rail and
+nonfinite/bounds flags zero. Builds and native exit are implementer-reported;
+no duplicate game/build run by verifier. This native segment ends before braking;
+synthetic fixtures cover brake+turn, air, reset/replacement, collision and rates.
+See stage4/VERIFICATION.md, VERIFIER_AMENDMENTS.md and PROVENANCE.md; private
+checks/logs live ignored under cleanroom/verification/stage4/.
+
+Q4-I1 history and Q4-I2 angular-law producers remain unresolved. The gameplay
+FIFO, supplied stock box inertia and zero additional damping are documented
+independent host choices. Full load/contact/slope/handbrake/grip/3D/assistance
+producers, exact retail precision and runtime differential remain unverified.
+Current result covers standalone Stage4 and the documented opt-in planar host,
+not complete retail vehicle parity. Future producer resolution goes through
+fresh analyst/reviewer/fresh implementer; no original runtime without isolation.

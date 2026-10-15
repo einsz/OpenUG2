@@ -75,6 +75,38 @@ int stage3_car_read(const unsigned char *data,long length,const char *name,BrkCa
        !isfinite(car.rear_share)||car.rear_share<0||car.rear_share>1)return 0;
     *out=car;return 1;
 }
+static int valid_lateral(const LatCar *c) {
+    if(!c||!isfinite(c->gain)||c->gain<=0)return 0;
+    for(int i=0;i<4;i++)for(int k=0;k<3;k++)if(!isfinite(c->mount[i][k]))return 0;
+    if(c->mount[0][0]<=c->mount[3][0]||c->mount[0][1]<=c->mount[1][1])return 0;
+    for(int k=0;k<2;k++)if(!isfinite(c->angle[k])||c->angle[k]<=0||
+        !isfinite(c->reference[k])||c->reference[k]<=0||!isfinite(c->factor[k])||c->factor[k]<0)return 0;
+    for(int k=0;k<3;k++)if(!isfinite(c->dimensions[k])||c->dimensions[k]<=0)return 0;
+    return 1;
+}
+int stage4_car_read(const unsigned char *data,long length,const char *name,LatCar *out) {
+    if(!data||!name||!out)return 0;
+    long row=n2_global_car_record(data,length,name);if(row<0||row>length-0x890)return 0;
+    LatCar c={0};
+    for(int i=0;i<4;i++)memcpy(c.mount[i],data+row+0x120+0x30*i,12);
+    for(int a=0;a<2;a++){
+        memcpy(&c.angle[a],data+row+0x1e0+0x20*a,4);
+        memcpy(&c.reference[a],data+row+0x1e4+0x20*a,4);
+        memcpy(&c.factor[a],data+row+0x1e8+0x20*a,4);
+    }
+    memcpy(c.dimensions,data+row+0x224,12);memcpy(&c.gain,data+row+0x380,4);
+    if(!valid_lateral(&c))return 0;
+    *out=c;return 1;
+}
+int stage4_drive_lateral(Stage1Drive *s,const LatCar *car,float inverse,float damping) {
+    if(!s||!s->ready||!valid_lateral(car)||!isfinite(inverse)||inverse<=0||!isfinite(damping)||damping<0)return -1;
+    s->lateral_car=*car;s->lateral_ready=1;s->inverse_yaw_inertia=inverse;s->yaw_damping=damping;
+    s->steering=(LatCommand){.previous_limit=45};s->yaw_rate=s->yaw_momentum=0;
+    memset(s->wheel_angle,0,sizeof s->wheel_angle);memset(s->input_history,0,sizeof s->input_history);
+    s->previous_mapped=0;s->input_cursor=s->rate_cursor=0;
+    for(int k=0;k<9;k++)s->rate_history[k]=1;
+    return 0;
+}
 int stage3_drive_brakes(Stage1Drive *s,const BrkCar *car,unsigned locks,int relief_disabled) {
     if(!s || !s->ready || drv_brakes_supply(&s->drivetrain,car,locks,relief_disabled,1))return -1;
     s->initial_lock_mask=locks;
@@ -100,6 +132,7 @@ void stage1_drive_reset(Stage1Drive *s,const float velocity[2],float heading) {
     stage1_drive_init(s,&previous.drivetrain.car,&previous.resistance_car,previous.resistance_input.reduction);
     if(previous.drivetrain.brakes.enabled)
         stage3_drive_brakes(s,&previous.drivetrain.brakes.car,previous.initial_lock_mask,previous.drivetrain.brakes.relief_disabled);
+    if(previous.lateral_ready)stage4_drive_lateral(s,&previous.lateral_car,previous.inverse_yaw_inertia,previous.yaw_damping);
     s->resistance_input=previous.resistance_input;
     memcpy(s->body_surface,previous.body_surface,sizeof s->body_surface);
     memcpy(s->rolling_surface,previous.rolling_surface,sizeof s->rolling_surface);
@@ -113,6 +146,7 @@ void stage1_drive_reset(Stage1Drive *s,const float velocity[2],float heading) {
     }
     for(int k=0;k<2;k++)s->body.momentum[k]=s->body.mass*velocity[k]*PHYS_TICKRATE;
     res_post(&s->body,0);
+    s->exported_forward=v;
 }
 float stage1_drive_rpm(const Stage1Drive *s){return s->drivetrain.omega_e*DRV_KR;}
 int stage1_drive_gear(const Stage1Drive *s){return s->drivetrain.gear-1;}
@@ -123,16 +157,68 @@ static void prepare(Stage1Drive *s,DrvEnv *env,const ResBasis *basis,int host_ho
     Drivetrain *d=&s->drivetrain;
     res_prepare_aero(&s->body,&s->resistance_car,&s->resistance_input,basis,&s->aero);
     s->body.force[2]=0;
-    DrvBodyStraight coupling={.mass=d->car.mass,
-        .ex=(float)res_dot(s->body.force,basis->forward)};
-    drv_couple(d,env,drv_body_accel_straight,&coupling);
-    memset(s->prepared_wheel,0,sizeof s->prepared_wheel);
-    for(int i=0;i<4;i++)if(env->wheel[i].contact&&!host_hold)
+    if(s->lateral_ready) {
+        DrvBodyPlanar coupling={.mass=d->car.mass,.inv_iz=s->inverse_yaw_inertia,
+            .ex=(float)res_dot(s->body.force,basis->forward),
+            .ey=(float)res_dot(s->body.force,basis->lateral),.external_moment=s->body.moment[2]};
+        for(int i=0;i<4;i++) {
+            memcpy(coupling.pos[i],s->lateral_car.mount[i],sizeof coupling.pos[i]);
+            float a=s->wheel_angle[i];coupling.head[i][0]=cosf(a);coupling.head[i][1]=sinf(a);
+            coupling.lat[i][0]=-sinf(a);coupling.lat[i][1]=cosf(a);
+            /* drv_prepare_tyre applies wT once, after this unweighted curve. */
+            env->wheel[i].lateral_grip_force=lat_grip(env->wheel[i].load,s->lateral_car.angle[i/2],
+                s->lateral_car.reference[i/2],s->lateral_car.factor[i/2],
+                env->wheel[i].slip_angle,env->wheel[i].vx,1);
+        }
+        drv_couple(d,env,drv_body_accel_planar,&coupling);
+    } else {
+        DrvBodyStraight coupling={.mass=d->car.mass,.ex=(float)res_dot(s->body.force,basis->forward)};
+        drv_couple(d,env,drv_body_accel_straight,&coupling);
+    }
+    memset(s->prepared_wheel,0,sizeof s->prepared_wheel);memset(s->prepared_moment,0,sizeof s->prepared_moment);
+    for(int i=0;i<4;i++)if(env->wheel[i].contact&&!host_hold) {
+        float f[2]={d->force_long[i],0},m=0;
+        if(s->lateral_ready) {
+            f[0]=0;lat_accumulate(f,&m,s->lateral_car.mount[i],s->wheel_angle[i],d->force_long[i],d->force_lat[i]);
+        }
         for(int k=0;k<2;k++) {
-            s->prepared_wheel[i][k]=d->force_long[i]*basis->forward[k];
+            s->prepared_wheel[i][k]=f[0]*basis->forward[k]+f[1]*basis->lateral[k];
             s->body.force[k]+=s->prepared_wheel[i][k];
         }
+        s->prepared_moment[i]=m;s->body.moment[2]+=m;
+    }
     s->prepared=1;
+}
+static void sample_contacts(Stage1Drive *s,DrvEnv *env,const ResBasis *basis) {
+    float forward=(float)res_dot(s->body.velocity,basis->forward);
+    env->body_speed=hypotf(s->body.velocity[0],s->body.velocity[1]);
+    env->signed_forward=forward;env->planar_tyres=s->lateral_ready;
+    float v[2]={forward,(float)res_dot(s->body.velocity,basis->lateral)};
+    for(int i=0;i<4;i++) {
+        if(s->lateral_ready){
+            float u[2];lat_contact(v,s->yaw_rate,s->lateral_car.mount[i],s->wheel_angle[i],u,&env->wheel[i].vx,&env->wheel[i].vy);
+            env->wheel[i].slip_angle=lat_slip(env->wheel[i].vx,env->wheel[i].vy);
+        }else env->wheel[i].vx=forward;
+    }
+}
+static void steering_frame(Stage1Drive *s,float raw,const ResBasis *basis) {
+    /* Host U4-1/2 choice: fixed 60 Hz box averages, zero input/one rate seeds.
+     * These are explicit producers, not asserted original timed histories. */
+    float history=0,rate=0,mapped=lat_curve("I",raw);
+    for(int i=0;i<33;i++)history+=s->input_history[i]/33;
+    float sample=lat_curve("E",fabsf((mapped-s->previous_mapped)*PHYS_TICKRATE));
+    s->rate_history[s->rate_cursor]=sample;s->rate_cursor=(s->rate_cursor+1)%9;
+    for(int i=0;i<9;i++)rate+=s->rate_history[i]/9;
+    LatFilter in={.raw=raw,.vctl=s->exported_forward,.history=history,.rate_history=rate,
+        .old_degrees=lat_decode(s->steering.command),.previous_limit=s->steering.previous_limit,
+        .sigma=lat_body_slip((float)res_dot(s->body.velocity,basis->forward),basis->forward,s->body.velocity),
+        .latch=s->steering.latch,.speed=hypotf(s->body.velocity[0],s->body.velocity[1]),
+        .throttle=s->drivetrain.throttle,.brake=s->drivetrain.brake,.handbrake=0,
+        .gain=s->lateral_car.gain,.dt=1/PHYS_TICKRATE};
+    s->steering=lat_filter(&in);s->previous_mapped=mapped;
+    s->input_history[s->input_cursor]=mapped;s->input_cursor=(s->input_cursor+1)%33;
+    lat_geometry(s->steering.command,s->lateral_car.mount[0][0]-s->lateral_car.mount[3][0],
+        s->lateral_car.mount[0][1]-s->lateral_car.mount[1][1],s->wheel_angle);
 }
 float stage1_drive_step(Stage1Drive *s,float pos[3],float vel[2],float *heading,
     float *speed,float pedal,float steer,int handbrake,const PhysSurface *sf,
@@ -166,13 +252,14 @@ float stage1_drive_step(Stage1Drive *s,float pos[3],float vel[2],float *heading,
         env.wheel[k].drag_flag=(s->damage_mask>>k)&1u;
         env.wheel[k].vx=forward;
     }
-    env.body_speed=hypotf(b->velocity[0],b->velocity[1]);
+    sample_contacts(s,&env,&basis);
     /* Finish creation with zero pedals before this frame changes coefficients.
      * Existing prepared forces survive subsequent frame input changes (S3-7). */
     if(!s->prepared)prepare(s,&env,&basis,handbrake);
     d->env=env;
     if(d->brakes.enabled)for(int i=0;i<4;i++)d->env.wheel[i].locked=d->brakes.locked[i];
     drv_frame_begin(d,&input,1/PHYS_TICKRATE,-1);r->throttle=d->throttle;
+    if(s->lateral_ready)steering_frame(s,steer,&basis);
     float h;int n=drv_substep_count(1/PHYS_TICKRATE,&h);
     for(int k=0;k<n;k++){
         /* Remove previous tyre force when support is lost or Space hold engages.
@@ -182,14 +269,23 @@ float stage1_drive_step(Stage1Drive *s,float pos[3],float vel[2],float *heading,
                 b->force[axis]-=s->prepared_wheel[i][axis];
                 s->prepared_wheel[i][axis]=0;
             }
+            b->moment[2]-=s->prepared_moment[i];s->prepared_moment[i]=0;
         }
-        ResDerivative derivative;res_derivative(b,&s->resistance_car,r,&basis,0,&derivative);
+        ResDerivative derivative;res_derivative(b,&s->resistance_car,r,&basis,fabsf(s->yaw_rate),&derivative);
         /* Body derivative is collected before wheel/shaft integration. The
          * independent blocks share no state mutated by either Euler update. */
         for(int i=0;i<4;i++)s->wheel_travel+=h*d->wheel[i].omega*.25f;
+        if(s->lateral_ready) {
+            float rate=s->yaw_rate;
+            s->yaw_momentum=(float)(s->yaw_momentum+(double)h*(b->moment[2]-s->yaw_damping*s->yaw_momentum));
+            s->yaw_rate=s->yaw_momentum*s->inverse_yaw_inertia;
+            if(handbrake){rate=0;s->yaw_rate=s->yaw_momentum=0;}
+            *heading=(float)(*heading+(double)h*rate);
+        }
         res_integrate(b,&derivative,h);
         res_post(b,0);
         drv_integrate(d,h);
+        basis=res_basis_level(*heading);
         forward=(float)res_dot(b->velocity,basis.forward);
         for(int i=0;i<4;i++){
             env.wheel[i].vx=forward;
@@ -197,10 +293,16 @@ float stage1_drive_step(Stage1Drive *s,float pos[3],float vel[2],float *heading,
              * nonzero handbrake producer. It does not assign service locks. */
             if(handbrake)d->wheel[i].omega=0;
         }
-        env.body_speed=hypotf(b->velocity[0],b->velocity[1]);
+        sample_contacts(s,&env,&basis);
         prepare(s,&env,&basis,handbrake);
     }
     vel[0]=b->velocity[0]/PHYS_TICKRATE;vel[1]=b->velocity[1]/PHYS_TICKRATE;
+    s->exported_forward=forward;
+    if(s->lateral_ready) {
+        if(mask)return phys_stage4_chassis_step(pos,vel,heading,speed,handbrake,sf,vh);
+        pos[0]+=vel[0];pos[1]+=vel[1];*speed=forward/PHYS_TICKRATE;
+        return fabsf(vel[0]*basis.forward[1]-vel[1]*basis.forward[0]);
+    }
     if(mask)return phys_stage1_chassis_step(pos,vel,heading,speed,steer,handbrake,sf,vh);
     pos[0]+=vel[0];pos[1]+=vel[1];*speed=forward/PHYS_TICKRATE;
     return fabsf(vel[0]*basis.forward[1]-vel[1]*basis.forward[0]);

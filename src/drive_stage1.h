@@ -4,6 +4,7 @@
 #define OPENUG2_DRIVE_STAGE1_H
 #include "drivetrain.h"
 #include "resistance.h"
+#include "lateral.h"
 #include "physics.h"
 typedef struct {
     Drivetrain drivetrain;
@@ -12,7 +13,14 @@ typedef struct {
     ResInput resistance_input;
     ResBody body;
     ResAero aero;
-    float prepared_wheel[4][2];
+    float prepared_wheel[4][2],prepared_moment[4];
+    int lateral_ready;
+    LatCar lateral_car;
+    LatCommand steering;
+    float wheel_angle[4],exported_forward,yaw_rate,yaw_momentum,inverse_yaw_inertia;
+    /* Explicit host choices for U4-2/5: 60 Hz box histories; supplied angular damping. */
+    float input_history[33],rate_history[9],previous_mapped,yaw_damping;
+    unsigned input_cursor,rate_cursor;
     /* Supplied host channels; independent of existing arcade surface.drag. */
     float body_surface[4],rolling_surface[4];
     unsigned damage_mask;
@@ -26,6 +34,10 @@ int stage1_car_read(const unsigned char *data,long length,const char *name,DrvCa
 int stage2_car_read(const unsigned char *data,long length,const char *name,ResCar *out);
 /* Read only approved S3-1 stock fields via the same framing. */
 int stage3_car_read(const unsigned char *data,long length,const char *name,BrkCar *out);
+int stage4_car_read(const unsigned char *data,long length,const char *name,LatCar *out);
+/* Configure stock geometry. Host supplies inertia inverse/damping explicitly.
+ * Mounts are also contact arms in this level, zero-centre host approximation. */
+int stage4_drive_lateral(Stage1Drive *state,const LatCar *car,float inverse_inertia,float angular_damping);
 /* Stage3 configuration is mandatory for gameplay service brakes. Initial lock
  * mask and relief switch are explicit host inputs (U3-2/3), not retail defaults. */
 int stage3_drive_brakes(Stage1Drive *state,const BrkCar *car,unsigned initial_lock_mask,int relief_disabled);

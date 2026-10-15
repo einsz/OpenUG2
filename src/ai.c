@@ -23,6 +23,7 @@ void ai_render_pose(AiCar *out,const AiCar *before,const AiCar *after,float alph
     pose.head=before->head+t*atan2f(sinf(after->head-before->head),cosf(after->head-before->head));
     pose.wheel_angle=before->wheel_angle+t*(after->wheel_angle-before->wheel_angle);
     pose.steer=before->steer+t*(after->steer-before->steer);
+    for(int k=0;k<2;k++)pose.wheel_steer[k]=before->wheel_steer[k]+t*(after->wheel_steer[k]-before->wheel_steer[k]);
     pose.ride.z=before->ride.z+t*(after->ride.z-before->ride.z);
     pose.ride.pitch=before->ride.pitch+t*(after->ride.pitch-before->ride.pitch);
     pose.ride.roll=before->ride.roll+t*(after->ride.roll-before->ride.roll);

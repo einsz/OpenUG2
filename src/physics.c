@@ -383,7 +383,7 @@ static float chassis_step(float pos[3], float vel[2], float *heading, float *spe
     float dir = (vel[0]*hf[0]+vel[1]*hf[1]) < 0 ? -1.f : 1.f;  /* fwd vs reverse */
     float sfac = spd/(PHYS_MAXSPD*TURN_RAMP_FRAC); if (sfac > 1) sfac = 1;
     float hifrac = spd/PHYS_MAXSPD; if (hifrac > 1) hifrac = 1;
-    *heading += steer * PHYS_TURN * g_phys_tune.turn * sfac
+    if(stage1!=2)*heading += steer * PHYS_TURN * g_phys_tune.turn * sfac
                 * (1.0f - TURN_HISPD_DROP*hifrac) * dir * sf->steer * vh->steer;
     /* decompose velocity in the new heading frame, clamp forward, scrub side */
     float nf[2] = { cosf(*heading), sinf(*heading) }, nr[2] = { nf[1], -nf[0] };
@@ -395,7 +395,7 @@ static float chassis_step(float pos[3], float vel[2], float *heading, float *spe
         vf = copysignf(fmaxf(limit,fabsf(vf)-PHYS_ACCEL*BRAKE_ACCEL),vf);
     /* surface and vehicle both scale retention; keep the product a contraction
        so a slide can never be amplified. */
-    { float lat = sf->lat * vh->lat;
+    if(stage1!=2) { float lat = sf->lat * vh->lat;
       if (lat > 0.99f) lat = 0.99f; if (lat < 0.50f) lat = 0.50f;
       vl *= handbrake ? fminf(HANDBRAKE_GRIP,lat+0.07f) : lat; }
     if (handbrake) {
@@ -421,6 +421,13 @@ float phys_stage1_chassis_step(float pos[3],float vel[2],float *heading,float *s
                     float steer,int handbrake,const PhysSurface *surface,
                     const PhysVehicle *vehicle) {
     return chassis_step(pos,vel,heading,speed,0,steer,handbrake,surface,vehicle,1);
+}
+
+/* Stage4 already integrates yaw and lateral forces; retain only host Space
+ * stop/hold and position publication from the existing chassis helper. */
+float phys_stage4_chassis_step(float pos[3],float vel[2],float *heading,float *speed,
+                    int handbrake,const PhysSurface *surface,const PhysVehicle *vehicle) {
+    return chassis_step(pos,vel,heading,speed,0,0,handbrake,surface,vehicle,2);
 }
 
 /* Full throttle settles where the tapered thrust equals road drag:
