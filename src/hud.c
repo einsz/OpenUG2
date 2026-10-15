@@ -3,6 +3,8 @@
 #include "hud_asset.h"
 #include "hud_texture.h"
 #include "hud_baseline.h"
+#include "hud_race.h"
+#include "race.h"
 #include "rhi_gl.h"   /* GL names behind texture handles for the draw code */
 #include <stdlib.h>
 #include <stdio.h>
@@ -12,7 +14,7 @@
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
-#define PACK_COUNT 19
+#define PACK_COUNT 22
 #define FONT_COUNT 64
 typedef struct { const unsigned char *slots; uint32_t size; } Slots;
 typedef struct { unsigned char *data; size_t len; N2Tpk tpk; Slots *slots; size_t slot_count; } Pack;
@@ -27,7 +29,8 @@ struct Hud {
  Texture *textures; GLuint shader,vbo; GLint pos,uv,maskuv,tint,road,tex,mask;
  int speed,gear,needle,unit,mapnode,masknode,north,player,border,gauge_root;
  struct { int node,skin,scale; Texture texture; } skin_cache[256]; size_t skin_cache_count;
- HaMapFrame pick_frame; HudState pick_state; int pick_race; unsigned char *mask_alpha; int mask_width,mask_height;
+ HaMapFrame pick_frame; unsigned char *mask_alpha; int mask_width,mask_height;
+ int layout_mode,layout_ready,race_nodes[HR_FIELD_COUNT];
  double origin[3]; int track_ok,preview,skin; char missing[1024]; unsigned reported,resolved,drawn;
  /* Capture-amendment targets resolved by the C3-8 key rule, and settings. */
  HudSettings settings; GLint clipu,halfu;
@@ -35,6 +38,7 @@ struct Hud {
  int widget_backing,widget_dpad,widget_highlight,widget_centre,widget_mail,widget_ok;
  int nos_backing,nos_alpha,shift_icon,glow_node,glow_active; double glow_start; HaShiftPhase shift_phase;
  Texture centre_texture;
+ float text_offset[2];
  int tint_on; unsigned char tint_rgba[4]; float clip[4];
  /* Project widescreen policy: per node, the classification centre (logical x) of its
     top-level group, computed once at load; NaN = the group is never moved. */
@@ -95,10 +99,25 @@ static Texture named(Hud*h,const char*s,int first,int last){return lookup(h,ha_h
 static int equalfont(const char*a,const char*b){size_t n=strlen(a),m=strlen(b);if(n>4&&!strcmp(a+n-4,".ffn"))n-=4;if(m>4&&!strcmp(b+m-4,".ffn"))m-=4;if(n!=m)return 0;for(size_t i=0;i<n;i++){unsigned char x=a[i],y=b[i];if(x>='A'&&x<='Z')x+=32;if(y>='A'&&y<='Z')y+=32;if(x!=y)return 0;}return 1;}
 static void metadata(Hud*h,const unsigned char*d,size_t n,unsigned depth){if(depth>HA_DEPTH){diagnostic(h,"archive depth limit");return;}for(size_t at=0;at<n;){if(n-at<8){diagnostic(h,"truncated archive");return;}uint32_t type=n2_u32(d+at);size_t z=n2_u32(d+at+4);if(z>n-at-8){diagnostic(h,"archive extent exceeds container");return;}const unsigned char*b=d+at+8;if(type==0x30201&&h->font_count<FONT_COUNT){Font*f=h->fonts+h->font_count;if(ha_font(b,z,&f->metrics)){font_atlas(h,f);h->font_count++;}else diagnostic(h,"unsupported font header; fallback required");}else if(type==0x34201){if(z%296)diagnostic(h,"unsupported track metadata extent");else for(size_t j=0;j<z;j+=296)if((int32_t)n2_u32(b+j+140)==4000){for(int k=0;k<3;k++){uint32_t q=n2_u32(b+j+172+4*k);float f;memcpy(&f,&q,4);h->origin[k]=f;}h->track_ok=isfinite(h->origin[0])&&isfinite(h->origin[1])&&isfinite(h->origin[2])&&h->origin[2]>0;}}else if(type&0x80000000u)metadata(h,b,z,depth+1);at+=8+z;}}
 static int node_named(Hud*h,const char*s){uint32_t key=ha_hash(s);for(size_t i=0;i<h->package.count;i++)if(h->package.nodes[i].valid&&h->package.nodes[i].name==key)return (int)i;return -1;}
+static int node_key(Hud*h,uint32_t key,uint32_t kind){
+ int found=-1;for(size_t i=0;i<h->package.count;i++)if(h->package.nodes[i].name==key){
+  if(found>=0)return -1;found=(int)i;}
+ return found>=0&&h->package.nodes[found].valid&&h->package.nodes[found].kind==kind?found:-1;
+}
 static int descendant(Hud*h,int i,int root){for(unsigned d=0;i>=0&&d<HA_DEPTH;d++,i=h->package.nodes[i].parent)if(i==root)return 1;return 0;}
 static const char *resource_name(Hud*h,HaNode*n){return n->resource<h->package.resource_count?h->package.resources[n->resource].name:NULL;}
 static int node_resource(Hud*h,const char*s){for(size_t i=0;i<h->package.count;i++){const char*r=resource_name(h,h->package.nodes+i);if(r&&!strcmp(r,s))return (int)i;}return -1;}
 static int skin_resource(const char*r);
+static int race_image(Hud*h,int i){
+ const char*r=resource_name(h,h->package.nodes+i);if(!r)return 0;
+ return !strcmp(r,"3rdperson_BoxCorner.tga")||(!strcmp(r,"3rdperson_BoxTime.tga")&&h->layout_mode!=3)||
+   !strncmp(r,"Drag_Position_Backing_",22)||
+   (h->layout_mode==3&&(!strcmp(r,"Drift_Angle_Backing1.tga")||!strcmp(r,"Drift_Angle_Backing2.tga")));
+}
+static int drag_gauge(Hud*h,int i){
+ const char*r=resource_name(h,h->package.nodes+i);
+ return h->layout_mode==2&&descendant(h,i,h->gauge_root)&&r&&!strncmp(r,"Drag_RPM_",9);
+}
 /* Project policy: widescreen HUD fitment (not original behaviour). Logical translation of the
  * top-level group containing node i under the selected policy at this viewport. */
 static double fit_shift(const Hud*h,int i,int w,int ht){
@@ -109,8 +128,9 @@ static double fit_shift(const Hud*h,int i,int w,int ht){
  * elements, readout text). Authoring sample items and event widgets are excluded. */
 static int fit_eligible(Hud*h,int i){
  const HaNode*n=h->package.nodes+i;if(!n->valid||!n->appearance)return 0;
- if(n->kind==HA_KIND_TEXT)return i==h->speed||i==h->gear||i==h->unit||i==h->bank_label||i==h->bank_value;
+ if(n->kind==HA_KIND_TEXT){for(int k=0;k<HR_FIELD_COUNT;k++)if(i==h->race_nodes[k])return 1;return i==h->speed||i==h->gear||i==h->unit||i==h->bank_label||i==h->bank_value;}
  if(n->kind!=HA_KIND_IMAGE)return 0;
+ if(race_image(h,i)||drag_gauge(h,i))return 1;
  const char*r=resource_name(h,(HaNode*)n);
  if(i==h->needle||i==h->mapnode||i==h->masknode||i==h->north||i==h->player||descendant(h,i,h->border))return 1;
  if(i==h->bank_backing||i==h->widget_backing||i==h->widget_dpad||i==h->widget_highlight||i==h->widget_centre||i==h->widget_mail||i==h->nos_backing||i==h->nos_alpha||i==h->shift_icon||i==h->glow_node)return 1;
@@ -142,7 +162,7 @@ static void init_shader(Hud*h){
  const char*vertex="attribute vec2 position;attribute vec2 sampleUV;attribute vec2 clipUV;varying vec2 uv;varying vec2 muv;varying vec2 ndc;void main(){uv=sampleUV;muv=clipUV;ndc=position;gl_Position=vec4(position,0.0,1.0);}";
  /* dialClip: centre (NDC), limit (radians), mode 0 off / 1 keep <= / 2 keep >=,
     with dial angle 0 straight down increasing screen-clockwise (C1-4). */
- const char*fragment="varying vec2 uv;varying vec2 muv;varying vec2 ndc;uniform sampler2D art;uniform sampler2D silhouette;uniform vec4 tint;uniform float roads;uniform vec4 dialClip;uniform vec2 halfSize;void main(){if(dialClip.w>0.5){vec2 d=(ndc-dialClip.xy)*halfSize;float a=atan(-d.x,-d.y);if(a<0.0)a+=6.28318531;if(dialClip.w<1.5){if(a>dialClip.z)discard;}else if(a<dialClip.z)discard;}vec4 c=texture2D(art,uv);if(roads>0.5)c.a=texture2D(silhouette,muv).a;gl_FragColor=c*tint;}";
+ const char*fragment="varying vec2 uv;varying vec2 muv;varying vec2 ndc;uniform sampler2D art;uniform sampler2D silhouette;uniform vec4 tint;uniform float roads;uniform vec4 dialClip;uniform vec2 halfSize;void main(){if(dialClip.w>0.5){vec2 d=(ndc-dialClip.xy)*halfSize;float a=atan(-d.x,-d.y);if(a<0.0)a+=6.28318531;if(dialClip.w<1.5){if(a>dialClip.z)discard;}else if(a<dialClip.z)discard;}if(roads>1.5&&(muv.x<0.0||muv.x>1.0||muv.y<0.0||muv.y>1.0))discard;vec4 c=roads>1.5?vec4(1.0):texture2D(art,uv);if(roads>0.5)c.a=texture2D(silhouette,muv).a;gl_FragColor=c*tint;}";
  char vs[1024],fs[2048];snprintf(vs,sizeof vs,"%s%s",prefix,vertex);snprintf(fs,sizeof fs,"%s%s",prefix,fragment);GLuint v=shader(GL_VERTEX_SHADER,vs),f=shader(GL_FRAGMENT_SHADER,fs);if(!v||!f){if(v)glDeleteShader(v);if(f)glDeleteShader(f);diagnostic(h,"HUD shader unavailable");return;}h->shader=glCreateProgram();glAttachShader(h->shader,v);glAttachShader(h->shader,f);glLinkProgram(h->shader);glDeleteShader(v);glDeleteShader(f);GLint ok;glGetProgramiv(h->shader,GL_LINK_STATUS,&ok);if(!ok){glDeleteProgram(h->shader);h->shader=0;diagnostic(h,"HUD shader link failed");return;}h->pos=glGetAttribLocation(h->shader,"position");h->uv=glGetAttribLocation(h->shader,"sampleUV");h->maskuv=glGetAttribLocation(h->shader,"clipUV");h->tint=glGetUniformLocation(h->shader,"tint");h->road=glGetUniformLocation(h->shader,"roads");h->tex=glGetUniformLocation(h->shader,"art");h->mask=glGetUniformLocation(h->shader,"silhouette");h->clipu=glGetUniformLocation(h->shader,"dialClip");h->halfu=glGetUniformLocation(h->shader,"halfSize");glGenBuffers(1,&h->vbo);}
 /* C3-8 lookup keys (whitelisted capture set 3 data keys). Stored name ids are
  * opaque data values; lookup names use the case-folded name hash. */
@@ -169,7 +189,7 @@ static void resolve_amendment_targets(Hud*h){
  h->glow_node=amend_key(h,0xFE2467E3u,HA_KIND_IMAGE,1,0,"Tach_NOS_Gamebreaker.tga");
  /* Centre figure: catalog texture id from the free-roam texture pack only;
     never the slot's referenced image or a generated imitation. */
- h->centre_texture=lookup(h,0xEA570722u,0,1);
+ if(!h->centre_texture.id.id)h->centre_texture=lookup(h,0xEA570722u,0,1);
 }
 void hud_default_settings(HudSettings*o){if(!o)return;memset(o,0,sizeof *o);o->gear_colour[0]=255;o->gear_colour[1]=128;o->gear_colour[2]=64;o->highlight_colour[0]=255;o->highlight_colour[1]=190;o->highlight_colour[2]=50;o->highlight_colour[3]=255;ha_shift_default_colour(o->shift_colour);o->shift_indicator=1;o->shift_flash=1;o->shift_icon_automatic=1;o->nos_a0_degrees=91;o->nos_a1_degrees=239;o->gear_standstill_mps=HA_STANDSTILL_MPS;o->glow_ms_per_unit=HA_GLOW_MS_PER_UNIT;o->fit_policy=HA_FIT_WIDE;}
 void hud_configure(Hud*h,const HudSettings*s){if(h&&s){h->settings=*s;if(h->settings.fit_policy!=HA_FIT_43)h->settings.fit_policy=HA_FIT_WIDE;hud_baseline_set_fit_policy(h->auxiliary,h->settings.fit_policy);}}
@@ -177,51 +197,163 @@ int hud_nos_glow_event(Hud*h,double now_ms){
  if(!h||!ha_glow_trigger(h->settings.nos_glow,now_ms,h->glow_active,h->glow_start,h->settings.glow_ms_per_unit))return 0;
  h->glow_active=1;h->glow_start=now_ms;return 1;
 }
-Hud *hud_init(const char*root){Hud*h=calloc(1,sizeof *h);if(!h)return NULL;hud_default_settings(&h->settings);h->bank_value=h->bank_label=h->bank_backing=h->widget_backing=h->widget_dpad=h->widget_highlight=h->widget_centre=h->widget_mail=h->nos_backing=h->nos_alpha=h->shift_icon=h->glow_node=-1;h->speed=h->gear=h->needle=h->unit=h->mapnode=h->masknode=h->north=h->player=h->border=h->gauge_root=-1;if(!root)root=".";h->auxiliary=hud_baseline_init(root);
- const char*paths[]={"GLOBAL/InGameFreeRoam.bun","LANGUAGES/English.bin","LANGUAGES/LanguageTextures.bin","GLOBAL/GLOBALA.BUN","GLOBAL/HUD_CustomTextures_ALL.bin","GLOBAL/GLOBALB.BUN","TRACKS/TRACKMAP4000.BIN"};
- for(int i=0;i<PACK_COUNT;i++){char skin[128];const char*path;if(i<7)path=paths[i];else if(i==18)path="GLOBAL/InGameCommon.bun";else{snprintf(skin,sizeof skin,"GLOBAL/HUD_CustomTextures_%02d.bin",i-7);path=skin;}h->packs[i].data=readfile(root,path,&h->packs[i].len);if(h->packs[i].data){h->packs[i].tpk=n2_tpk_open(h->packs[i].data,(long)h->packs[i].len);catalog(h->packs+i,h->packs[i].data,h->packs[i].len,0);}else diagnostic(h,path);}
- if(!h->packs[0].data||!ha_package(h->packs[0].data,h->packs[0].len,&h->package))diagnostic(h,"driving package unavailable or ambiguous");
+static void release_layout(Hud*h){
+ for(size_t c=0;c<h->skin_cache_count;c++)rhi_texture_destroy(h->skin_cache[c].texture.id);
+ for(size_t i=0;i<h->package.resource_count;i++)if(h->textures&&h->textures[i].id.id)rhi_texture_destroy(h->textures[i].id);
+ free(h->textures);h->textures=NULL;free(h->mask_alpha);h->mask_alpha=NULL;h->mask_width=h->mask_height=0;
+ free(h->group_cx);h->group_cx=NULL;ha_free(&h->package);h->skin_cache_count=0;
+ h->speed=h->gear=h->needle=h->unit=h->mapnode=h->masknode=h->north=h->player=h->border=h->gauge_root=-1;
+ for(int k=0;k<HR_FIELD_COUNT;k++)h->race_nodes[k]=-1;
+ h->shift_phase=(HaShiftPhase){0};h->glow_active=0;h->layout_ready=0;
+}
+static int layout_mode(const HudState*s){
+ if(!s->racing)return 0;
+ return s->race_kind==N2_RACE_DRAG?2:s->race_kind==N2_RACE_DRIFT?3:s->race_kind==N2_RACE_STREETX?4:1;
+}
+static int load_layout(Hud*h,int mode){
+ if(h->layout_mode==mode)return h->layout_ready;
+ int pack=mode==2?20:mode==3?21:mode?19:0;
+ int kind=mode==2?N2_RACE_DRAG:mode==3?N2_RACE_DRIFT:mode==4?N2_RACE_STREETX:N2_RACE_CIRCUIT;
+ HaPackage next={0};Pack*p=h->packs+pack;
+ int ok=p->data&&hud_race_package_read(p->data,p->len,hud_race_package(kind),&next);
+ Texture*textures=ok?calloc(next.resource_count?next.resource_count:1,sizeof *textures):NULL;
+ release_layout(h);h->layout_mode=mode;
+ if(!textures){ha_free(&next);diagnostic(h,"requested driving HUD package unavailable");return 0;}
+ h->package=next;h->textures=textures;
  if(h->package.diagnostics)diagnostic(h,"rejected package objects or references");
- h->textures=calloc(h->package.resource_count,sizeof *h->textures);
- for(size_t i=0;i<h->package.resource_count;i++){HaResource*r=h->package.resources+i;if(r->kind==1){if(r->name){h->textures[i]=lookup(h,ha_texture_hash(r->name),0,7);if(!h->textures[i].id.id)h->textures[i]=lookup(h,ha_texture_hash(r->name),18,19);}if(!h->textures[i].id.id)diagnostic(h,"unresolved package image");}}
+ for(size_t i=0;i<h->package.resource_count;i++){HaResource*r=h->package.resources+i;
+  if(r->kind!=1||!r->name)continue;uint32_t key=ha_texture_hash(r->name);
+  h->textures[i]=lookup(h,key,pack,pack+1);
+  if(!h->textures[i].id.id)h->textures[i]=lookup(h,key,0,7);
+  if(!h->textures[i].id.id)h->textures[i]=lookup(h,key,18,19);
+  if(!h->textures[i].id.id)diagnostic(h,"unresolved package image");
+ }
+ h->speed=node_named(h,"3rdPersonSpeed");h->gear=node_named(h,"3rdPersonGear");h->needle=node_named(h,"3rdPersonNeedle");
+ h->unit=node_key(h,0xc3383b63,HA_KIND_TEXT);
+ h->gauge_root=node_key(h,0x5164d4ea,HA_KIND_GROUP);
+ h->border=node_named(h,"TrackMapTargetRing");h->player=node_named(h,"PLAYERCARINDICATOR_1");
+ h->mapnode=node_resource(h,"Track4000_map.tga");h->masknode=node_resource(h,"Minimap_Mask.tga");h->north=node_resource(h,"Minimap_North_indicator.tga");
+ if(mode!=2&&h->needle>=0&&!ha_needle_calibrate(h->package.nodes+h->needle)){
+  h->package.nodes[h->needle].appearance=0;diagnostic(h,"unsupported needle quaternion decomposition; needle omitted");}
+ resolve_amendment_targets(h);
+ /* Drag's NOS targets belong to a separate group. */
+ if(mode==2){h->shift_icon=node_key(h,0x25cf2f74,HA_KIND_IMAGE);h->nos_backing=node_resource(h,"Drag_NOS_Backing.tga");h->nos_alpha=node_key(h,0x11495cd6,HA_KIND_IMAGE);}
+ for(int k=0;k<HR_FIELD_COUNT;k++)h->race_nodes[k]=mode?node_key(h,hud_race_field_key(kind,k),HA_KIND_TEXT):-1;
+ fit_classify(h);h->layout_ready=1;return 1;
+}
+Hud *hud_init(const char*root){
+ Hud*h=calloc(1,sizeof *h);if(!h)return NULL;hud_default_settings(&h->settings);h->layout_mode=-1;
+ if(!root)root=".";h->auxiliary=hud_baseline_init(root);
+ const char*paths[]={"GLOBAL/InGameFreeRoam.bun","LANGUAGES/English.bin","LANGUAGES/LanguageTextures.bin","GLOBAL/GLOBALA.BUN","GLOBAL/HUD_CustomTextures_ALL.bin","GLOBAL/GLOBALB.BUN","TRACKS/TRACKMAP4000.BIN"};
+ const char*events[]={"GLOBAL/InGameCommon.bun","GLOBAL/InGameRace.bun","GLOBAL/InGameDrag.bun","GLOBAL/InGameDrift.bun"};
+ for(int i=0;i<PACK_COUNT;i++){char skin[128];const char*path;
+  if(i<7)path=paths[i];else if(i>=18)path=events[i-18];else{snprintf(skin,sizeof skin,"GLOBAL/HUD_CustomTextures_%02d.bin",i-7);path=skin;}
+  h->packs[i].data=readfile(root,path,&h->packs[i].len);
+  if(h->packs[i].data){h->packs[i].tpk=n2_tpk_open(h->packs[i].data,(long)h->packs[i].len);catalog(h->packs+i,h->packs[i].data,h->packs[i].len,0);}else diagnostic(h,path);
+ }
  for(int i=0;i<7;i++)if(h->packs[i].data)metadata(h,h->packs[i].data,h->packs[i].len,0);
  if(!h->track_ok)diagnostic(h,"city track metadata missing or invalid");
- h->speed=node_named(h,"3rdPersonSpeed");h->gear=node_named(h,"3rdPersonGear");h->needle=node_named(h,"3rdPersonNeedle");h->border=node_named(h,"TrackMapTargetRing");h->player=node_named(h,"PLAYERCARINDICATOR_1");h->mapnode=node_resource(h,"Track4000_map.tga");h->masknode=node_resource(h,"Minimap_Mask.tga");h->north=node_resource(h,"Minimap_North_indicator.tga");
- if(h->needle>=0&&!ha_needle_calibrate(h->package.nodes+h->needle)){h->package.nodes[h->needle].appearance=0;diagnostic(h,"unsupported needle quaternion decomposition; needle omitted");}
- int rootnode=h->speed;while(rootnode>=0){if(descendant(h,h->gear,rootnode)&&descendant(h,h->needle,rootnode)){h->gauge_root=rootnode;break;}rootnode=h->package.nodes[rootnode].parent;}
- for(size_t i=0;i<h->package.count;i++){HaNode*n=h->package.nodes+i;if(n->kind==2&&n->sample&&(!strcmp(n->sample,"MPH")||!strcmp(n->sample,"KM/H"))&&descendant(h,(int)i,h->gauge_root))h->unit=(int)i;}
- resolve_amendment_targets(h);
- fit_classify(h);
- init_shader(h);return h;}
-void hud_free(Hud**hp){if(!hp||!*hp)return;Hud*h=*hp;if(h->centre_texture.id.id)rhi_texture_destroy(h->centre_texture.id);hud_baseline_free(&h->auxiliary);for(size_t c=0;c<h->skin_cache_count;c++)rhi_texture_destroy(h->skin_cache[c].texture.id);for(size_t i=0;i<h->package.resource_count;i++)if(h->textures&&h->textures[i].id.id)rhi_texture_destroy(h->textures[i].id);for(size_t i=0;i<h->font_count;i++){free(h->fonts[i].metrics.glyphs);free(h->fonts[i].cells);if(h->fonts[i].atlas.id.id)rhi_texture_destroy(h->fonts[i].atlas.id);}for(int i=0;i<PACK_COUNT;i++){free(h->packs[i].slots);free(h->packs[i].tpk.blk);free(h->packs[i].data);}ha_free(&h->package);free(h->textures);free(h->mask_alpha);free(h->group_cx);if(h->shader)glDeleteProgram(h->shader);if(h->vbo)glDeleteBuffers(1,&h->vbo);free(h);*hp=NULL;}
+ load_layout(h,0);init_shader(h);return h;
+}
+void hud_free(Hud**hp){
+ if(!hp||!*hp)return;Hud*h=*hp;release_layout(h);
+ if(h->centre_texture.id.id)rhi_texture_destroy(h->centre_texture.id);hud_baseline_free(&h->auxiliary);
+ for(size_t i=0;i<h->font_count;i++){free(h->fonts[i].metrics.glyphs);free(h->fonts[i].cells);if(h->fonts[i].atlas.id.id)rhi_texture_destroy(h->fonts[i].atlas.id);}
+ for(int i=0;i<PACK_COUNT;i++){free(h->packs[i].slots);free(h->packs[i].tpk.blk);free(h->packs[i].data);}
+ if(h->shader)glDeleteProgram(h->shader);if(h->vbo)glDeleteBuffers(1,&h->vbo);free(h);*hp=NULL;
+}
 void hud_set_preview(Hud*h,int on){if(h){h->preview=!!on;hud_baseline_set_preview(h->auxiliary,on);}}
 int hud_preview(const Hud*h){return h&&h->preview;}
 const char *hud_missing(const Hud*h){return h?h->missing:"HUD allocation failed";}
 static Texture node_texture(Hud*h,int i){Texture t={0};if(i<0)return t;HaNode*n=h->package.nodes+i;if(n->resource<h->package.resource_count)t=h->textures[n->resource];return t;}
-static int skin_resource(const char*r){return r&&(!strcmp(r,"Tach_Fill.tga")||!strcmp(r,"3rdperson_10500lines.tga"));}
+static int skin_resource(const char*r){
+ if(!r)return 0;if(!strcmp(r,"Tach_Fill.tga"))return 1;
+ const char*prefix="3rdperson_";if(strncmp(r,prefix,strlen(prefix)))return 0;r+=strlen(prefix);
+ if(*r<'0'||*r>'9')return 0;while(*r>='0'&&*r<='9')r++;return !strcmp(r,"lines.tga");
+}
 static Texture image_texture(Hud*h,int i,int skin,int scale,int*owned){HaNode*n=h->package.nodes+i;const char*r=resource_name(h,n);*owned=0;Texture t={0};for(size_t c=0;c<h->skin_cache_count;c++)if(h->skin_cache[c].node==i&&h->skin_cache[c].skin==skin&&h->skin_cache[c].scale==scale)return h->skin_cache[c].texture;
- if((i==h->needle||skin_resource(r))&&descendant(h,i,h->gauge_root)){char key[128];if(i==h->needle)snprintf(key,sizeof key,"3RDPERSON_RPMDIAL_CUSTOM_%02d",skin);else if(!strcmp(r,"Tach_Fill.tga"))snprintf(key,sizeof key,"TACH_FILL_CUSTOM_%02d",skin);else if(!strcmp(r,"3rdperson_rpmdial.tga"))snprintf(key,sizeof key,"3RDPERSON_RPMDIAL_CUSTOM_%02d",skin);else snprintf(key,sizeof key,"3RDPERSON_%dLINES_CUSTOM_%02d",scale,skin);t=named(h,key,4,5);if(!t.id.id)t=named(h,key,7+skin,8+skin);if(!t.id.id&&skin){diagnostic(h,"skin resource fallback to 00");if(i==h->needle)snprintf(key,sizeof key,"3RDPERSON_RPMDIAL_CUSTOM_00");else if(!strcmp(r,"Tach_Fill.tga"))snprintf(key,sizeof key,"TACH_FILL_CUSTOM_00");else if(!strcmp(r,"3rdperson_rpmdial.tga"))snprintf(key,sizeof key,"3RDPERSON_RPMDIAL_CUSTOM_00");else snprintf(key,sizeof key,"3RDPERSON_%dLINES_CUSTOM_00",scale);t=named(h,key,4,5);if(!t.id.id)t=named(h,key,7,8);}if(t.id.id){if(h->skin_cache_count<256){size_t c=h->skin_cache_count++;h->skin_cache[c].node=i;h->skin_cache[c].skin=skin;h->skin_cache[c].scale=scale;h->skin_cache[c].texture=t;}else *owned=1;}else diagnostic(h,"skin resource fallback to authored image");}if(!t.id.id)t=node_texture(h,i);return t;}
+ if(h->layout_mode!=2&&(i==h->needle||skin_resource(r))&&descendant(h,i,h->gauge_root)){char key[128];if(i==h->needle)snprintf(key,sizeof key,"3RDPERSON_RPMDIAL_CUSTOM_%02d",skin);else if(!strcmp(r,"Tach_Fill.tga"))snprintf(key,sizeof key,"TACH_FILL_CUSTOM_%02d",skin);else if(!strcmp(r,"3rdperson_rpmdial.tga"))snprintf(key,sizeof key,"3RDPERSON_RPMDIAL_CUSTOM_%02d",skin);else snprintf(key,sizeof key,"3RDPERSON_%dLINES_CUSTOM_%02d",scale,skin);t=named(h,key,4,5);if(!t.id.id)t=named(h,key,7+skin,8+skin);if(!t.id.id&&skin){diagnostic(h,"skin resource fallback to 00");if(i==h->needle)snprintf(key,sizeof key,"3RDPERSON_RPMDIAL_CUSTOM_00");else if(!strcmp(r,"Tach_Fill.tga"))snprintf(key,sizeof key,"TACH_FILL_CUSTOM_00");else if(!strcmp(r,"3rdperson_rpmdial.tga"))snprintf(key,sizeof key,"3RDPERSON_RPMDIAL_CUSTOM_00");else snprintf(key,sizeof key,"3RDPERSON_%dLINES_CUSTOM_00",scale);t=named(h,key,4,5);if(!t.id.id)t=named(h,key,7,8);}if(t.id.id){if(h->skin_cache_count<256){size_t c=h->skin_cache_count++;h->skin_cache[c].node=i;h->skin_cache[c].skin=skin;h->skin_cache[c].scale=scale;h->skin_cache[c].texture=t;}else *owned=1;}else diagnostic(h,"skin resource fallback to authored image");}if(!t.id.id)t=node_texture(h,i);return t;}
 /* Per-feature acceptance bits: needle/dial/scale/fill/font/road/mask/north/player/border. */
 static unsigned feature(Hud*h,int i){const char*r=resource_name(h,h->package.nodes+i);if(i==h->needle)return 1u<<0;if(i==h->bank_backing)return 1u<<10;if(i==h->widget_backing||i==h->widget_dpad)return 1u<<11;if(i==h->widget_centre)return 1u<<12;if(i==h->widget_mail)return 1u<<13;if(i==h->widget_highlight)return 1u<<14;if(i==h->nos_backing)return 1u<<15;if(i==h->nos_alpha)return 1u<<16;if(i==h->shift_icon)return 1u<<17;if(i==h->glow_node)return 1u<<18;if(i==h->mapnode)return 1u<<5;if(i==h->masknode)return 1u<<6;if(i==h->north)return 1u<<7;if(i==h->player)return 1u<<8;if(descendant(h,i,h->border))return 1u<<9;if(r&&!strcmp(r,"3rdperson_redline.tga"))return 1u<<1;if(r&&!strcmp(r,"3rdperson_10500lines.tga"))return 1u<<2;if(r&&!strcmp(r,"Tach_Fill.tga"))return 1u<<3;if(h->package.nodes[i].kind==2)return 1u<<4;return 0;}
 static void quad(Hud*h,int i,const float rect[4],const float uv[4],Texture t,float angle,int width,int height,int recenter,int roads,const double mapuv[3],double heading){if(!t.id.id)return;h->resolved|=feature(h,i);HaNode*n=h->package.nodes+i;float v[24],scale=fminf(width/640.0f,height/480.0f);float center[3]={0},old[3]={0};if(recenter&&h->mapnode>=0){ha_point(&h->package,(size_t)h->mapnode,old,center,0);ha_point(&h->package,(size_t)i,old,old,0);}
  /* wide policy: translation of this node's group; a recentred indicator follows the map's group */
  double sh=fit_shift(h,recenter&&h->mapnode>=0?h->mapnode:i,width,height),shm=fit_shift(h,h->masknode,width,height);
- for(int j=0;j<4;j++){float local[3]={rect[(j==1||j==2)?2:0],rect[j>=2?3:1],0},p[3];ha_point(&h->package,(size_t)i,local,p,angle);if(recenter){p[0]+=center[0]-old[0];p[1]+=center[1]-old[1];}v[j*6]=(float)((p[0]+sh)*scale*2/width);v[j*6+1]=-p[1]*scale*2/height;float a=(j==1||j==2)?1:0,b=j>=2?1:0;v[j*6+2]=uv[0]+a*(uv[2]-uv[0]);v[j*6+3]=uv[1]+b*(uv[3]-uv[1]);v[j*6+4]=a;v[j*6+5]=b;if(roads){HaNode*mn=h->package.nodes+h->masknode;float origin[3],bx[3],by[3],z[3]={0},xx[3]={1,0,0},yy[3]={0,1,0};ha_point(&h->package,(size_t)h->masknode,z,origin,0);ha_point(&h->package,(size_t)h->masknode,xx,bx,0);ha_point(&h->package,(size_t)h->masknode,yy,by,0);float ax=bx[0]-origin[0],ay=bx[1]-origin[1],cx=by[0]-origin[0],cy=by[1]-origin[1],det=ax*cy-ay*cx;float dx=(float)(p[0]+sh-(origin[0]+shm)),dy=p[1]-origin[1];if(fabsf(det)>1e-8f&&mn->size[0]!=0&&mn->size[1]!=0){float mx=(cy*dx-cx*dy)/det/mn->size[0]+.5f,my=(-ay*dx+ax*dy)/det/mn->size[1]+.5f;v[j*6+4]=mn->uv[0]+mx*(mn->uv[2]-mn->uv[0]);v[j*6+5]=mn->uv[1]+my*(mn->uv[3]-mn->uv[1]);}double x=(a-.5)*mapuv[2],y=(b-.5)*mapuv[2],c=cos(heading),s=sin(heading);v[j*6+2]=(float)(mapuv[0]+c*x-s*y);v[j*6+3]=(float)(mapuv[1]+s*x+c*y);}}
+ for(int j=0;j<4;j++){float local[3]={rect[(j==1||j==2)?2:0],rect[j>=2?3:1],0},p[3];ha_point(&h->package,(size_t)i,local,p,angle);if(recenter){p[0]+=center[0]-old[0];p[1]+=center[1]-old[1];}if(n->kind==HA_KIND_TEXT){p[0]+=h->text_offset[0];p[1]+=h->text_offset[1];}v[j*6]=(float)((p[0]+sh)*scale*2/width);v[j*6+1]=-p[1]*scale*2/height;float a=(j==1||j==2)?1:0,b=j>=2?1:0;v[j*6+2]=uv[0]+a*(uv[2]-uv[0]);v[j*6+3]=uv[1]+b*(uv[3]-uv[1]);v[j*6+4]=a;v[j*6+5]=b;if(roads){HaNode*mn=h->package.nodes+h->masknode;float origin[3],bx[3],by[3],z[3]={0},xx[3]={1,0,0},yy[3]={0,1,0};ha_point(&h->package,(size_t)h->masknode,z,origin,0);ha_point(&h->package,(size_t)h->masknode,xx,bx,0);ha_point(&h->package,(size_t)h->masknode,yy,by,0);float ax=bx[0]-origin[0],ay=bx[1]-origin[1],cx=by[0]-origin[0],cy=by[1]-origin[1],det=ax*cy-ay*cx;float dx=(float)(p[0]+sh-(origin[0]+shm)),dy=p[1]-origin[1];if(fabsf(det)>1e-8f&&mn->size[0]!=0&&mn->size[1]!=0){float mx=(cy*dx-cx*dy)/det/mn->size[0]+.5f,my=(-ay*dx+ax*dy)/det/mn->size[1]+.5f;v[j*6+4]=mn->uv[0]+mx*(mn->uv[2]-mn->uv[0]);v[j*6+5]=mn->uv[1]+my*(mn->uv[3]-mn->uv[1]);}double x=(a-.5)*mapuv[2],y=(b-.5)*mapuv[2],c=cos(heading),s=sin(heading);v[j*6+2]=(float)(mapuv[0]+c*x-s*y);v[j*6+3]=(float)(mapuv[1]+s*x+c*y);}}
  glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,rhi_gl_texture_name(t.id));glUniform1i(h->tex,0);glUniform1i(h->mask,1);glUniform1f(h->road,(float)roads);const unsigned char*c=h->tint_on?h->tint_rgba:n->color;glUniform4f(h->tint,c[0]/255.0f,c[1]/255.0f,c[2]/255.0f,c[3]/255.0f);glUniform4f(h->clipu,h->clip[0],h->clip[1],h->clip[2],h->clip[3]);glBindBuffer(GL_ARRAY_BUFFER,h->vbo);glBufferData(GL_ARRAY_BUFFER,sizeof v,v,GL_STREAM_DRAW);glVertexAttribPointer((GLuint)h->pos,2,GL_FLOAT,GL_FALSE,6*sizeof(float),(void*)0);glVertexAttribPointer((GLuint)h->uv,2,GL_FLOAT,GL_FALSE,6*sizeof(float),(void*)(2*sizeof(float)));glVertexAttribPointer((GLuint)h->maskuv,2,GL_FLOAT,GL_FALSE,6*sizeof(float),(void*)(4*sizeof(float)));glDrawArrays(GL_TRIANGLE_FAN,0,4);h->drawn|=feature(h,i);if(roads){h->resolved|=1u<<6;h->drawn|=1u<<6;}}
 static Font *font_for(Hud*h,HaNode*n){const char*name=resource_name(h,n);if(name)for(size_t i=0;i<h->font_count;i++)if(equalfont(name,h->fonts[i].metrics.name)&&h->fonts[i].atlas.id.id)return h->fonts+i;diagnostic(h,"requested original font missing; trying original 21i");for(size_t i=0;i<h->font_count;i++)if(equalfont("conduitmditc_tt21i",h->fonts[i].metrics.name)&&h->fonts[i].atlas.id.id)return h->fonts+i;diagnostic(h,"no original font available; text omitted");return NULL;}
 static HaGlyph *glyph(Font*f,unsigned char c){HaGlyph*question=NULL;for(size_t i=0;i<f->metrics.count;i++){HaGlyph*g=f->metrics.glyphs+i;if(g->code==c)return g;if(g->code=='?')question=g;}return question;}
 static void text(Hud*h,int i,const char*s,int w,int height){if(i<0||!*s)return;HaNode*n=h->package.nodes+i;if(!n->valid||!n->appearance)return;if(n->resource>=h->package.resource_count||h->package.resources[n->resource].kind!=2||!resource_name(h,n)){diagnostic(h,"unresolved text resource; text omitted");return;}Font*f=font_for(h,n);if(!f)return;float advance=0;for(const char*q=s;*q;q++){HaGlyph*g=glyph(f,(unsigned char)*q);advance+=g?g->advance:f->metrics.line;}float x=ha_text_start(0,n->size[0],n->justification,advance);for(const char*q=s;*q;q++){HaGlyph*g=glyph(f,(unsigned char)*q);if(g){HaGlyph cell=*g;int inside;if(f->cells){const HaGlyphCell*c=f->cells+(g-f->metrics.glyphs);inside=c->ok;cell.x=c->x;cell.y=c->y;}else inside=(unsigned)g->x+g->width<=(unsigned)f->atlas.w&&(unsigned)g->y+g->height<=(unsigned)f->atlas.h;if(!inside){diagnostic(h,"glyph outside resolved atlas");}else{/* G3: whole cell, unclipped, independent of the advance; drawn in string order (provisional overlap order). G6: edge to edge, no inset unless the compatibility setting is on. */HaGlyphQuad gq;if(ha_glyph_quad(&cell,f->inv_w,f->inv_h,x,0,n->size[0],n->size[1],h->settings.glyph_half_texel_inset,&gq)){float rect[]={(float)gq.x0,(float)gq.y0,(float)gq.x1,(float)gq.y1},uv[]={(float)gq.u0,(float)gq.v0,(float)gq.u1,(float)gq.v1};quad(h,i,rect,uv,f->atlas,0,w,height,0,0,NULL,0);}}x+=g->advance*n->size[0];}else{x+=f->metrics.line*n->size[0];diagnostic(h,"missing font character; advance only");}}}
+/* Runtime event placement is project policy: the static rank/lap poses overlap.
+ * Keep data anchors, combine the rank, and fit it into the supplied corner art. */
+static void race_text(Hud*h,const HudState*s,int w,int height){
+ char buf[64];
+ for(int k=0;k<HR_FIELD_COUNT;k++){
+  int i=h->race_nodes[k];if(i<0||k==HR_ORDINAL||k==HR_CARS||!hud_race_text(s,k,buf))continue;
+  HaNode*n=h->package.nodes+i;unsigned justification=n->justification;
+  if(k==HR_POSITION){
+   char ordinal[64],cars[64];hud_race_text(s,HR_ORDINAL,ordinal);hud_race_text(s,HR_CARS,cars);
+   snprintf(buf,sizeof buf,"%d%.2s %.16s",s->position,ordinal,cars);
+   int corner=node_resource(h,h->layout_mode==2?"Drag_Position_Backing_01.tga":"3rdperson_BoxCorner.tga");
+   int right=h->race_nodes[HR_TIME]>=0?h->race_nodes[HR_TIME]:h->race_nodes[HR_LAPS];
+   if(corner>=0&&right>=0){float z[3]={0},p[3],c[3],r[3];ha_point(&h->package,i,z,p,0);ha_point(&h->package,corner,z,c,0);ha_point(&h->package,right,z,r,0);
+    h->text_offset[0]=r[0]-p[0];h->text_offset[1]=c[1]-h->package.nodes[corner].size[1]*.25f-p[1];n->justification=2;}
+  }
+  if(k==HR_BANNER){memset(h->tint_rgba,255,4);h->tint_on=1;}
+  text(h,i,buf,w,height);h->tint_on=0;n->justification=justification;h->text_offset[0]=h->text_offset[1]=0;
+ }
+}
+static int map_vertex(Hud*h,double x,double y,float*v){
+ HaMapFrame*f=&h->pick_frame;double p[2];if(!hud_race_map_point(f,x,y,p))return 0;
+ float z[3]={0},xx[3]={1,0,0},yy[3]={0,1,0},o[3],bx[3],by[3];
+ ha_point(&h->package,h->masknode,z,o,0);ha_point(&h->package,h->masknode,xx,bx,0);ha_point(&h->package,h->masknode,yy,by,0);
+ double a=bx[0]-o[0],b=bx[1]-o[1],c=by[0]-o[0],d=by[1]-o[1],det=a*d-b*c;
+ HaNode*n=h->package.nodes+h->masknode;if(fabs(det)<1e-12||!n->size[0]||!n->size[1])return 0;
+ double dx=p[0]-o[0]-fit_shift(h,h->masknode,f->width,f->height),dy=p[1]-o[1],scale=fmin(f->width/640.0,f->height/480.0);
+ double u=(d*dx-c*dy)/det/n->size[0]+.5,vv=(-b*dx+a*dy)/det/n->size[1]+.5;
+ v[0]=(float)(p[0]*scale*2/f->width);v[1]=(float)(-p[1]*scale*2/f->height);v[2]=v[3]=0;
+ v[4]=(float)(n->uv[0]+u*(n->uv[2]-n->uv[0]));v[5]=(float)(n->uv[1]+vv*(n->uv[3]-n->uv[1]));return 1;
+}
+static void map_vertices(Hud*h,const float*v,int count,GLenum mode,float r,float g,float b){
+ glUniform1f(h->road,2);glUniform4f(h->tint,r,g,b,1);glUniform4f(h->clipu,0,0,0,0);
+ glBindBuffer(GL_ARRAY_BUFFER,h->vbo);glBufferData(GL_ARRAY_BUFFER,(GLsizeiptr)count*6*sizeof(float),v,GL_STREAM_DRAW);
+ glVertexAttribPointer(h->pos,2,GL_FLOAT,GL_FALSE,6*sizeof(float),(void*)0);
+ glVertexAttribPointer(h->uv,2,GL_FLOAT,GL_FALSE,6*sizeof(float),(void*)(2*sizeof(float)));
+ glVertexAttribPointer(h->maskuv,2,GL_FLOAT,GL_FALSE,6*sizeof(float),(void*)(4*sizeof(float)));
+ glDrawArrays(mode,0,count);
+}
+static void map_overlay(Hud*h,const HudState*s){
+ if(!h->pick_frame.enabled||!s->racing)return;
+ float vertices[(HA_LIMIT+1)*6];
+ /* shortcut: overlays accept up to HA_LIMIT points; stream larger decoded courses when needed. */
+ if(s->route_xy&&s->route_n>1&&s->route_n<=HA_LIMIT){
+  int ok=1;for(int i=0;i<s->route_n;i++)if(!map_vertex(h,s->route_xy[i*2],s->route_xy[i*2+1],vertices+i*6)){ok=0;break;}
+  if(ok){int n=s->route_n;if(s->route_loop){memcpy(vertices+n*6,vertices,6*sizeof(float));n++;}
+   GLfloat width;glGetFloatv(GL_LINE_WIDTH,&width);glLineWidth(2);map_vertices(h,vertices,n,GL_LINE_STRIP,.2f,.8f,1);glLineWidth(width);}
+ }
+ for(int i=0;i<s->opponent_n&&i<64&&s->opponent_xy;i++){
+  float center[6];if(!map_vertex(h,s->opponent_xy[i*2],s->opponent_xy[i*2+1],center))continue;
+  /* Marker size is a display policy in world metres, following the same mask. */
+  double d=h->pick_frame.window*.025;
+  const double offsets[4][2]={{-1,0},{0,-1},{1,0},{0,1}};int ok=1;
+  for(int j=0;j<4;j++)if(!map_vertex(h,s->opponent_xy[i*2]+offsets[j][0]*d,s->opponent_xy[i*2+1]+offsets[j][1]*d,vertices+j*6))ok=0;
+  if(ok)map_vertices(h,vertices,4,GL_TRIANGLE_FAN,1,.3f,.15f);
+ }
+}
 /* Text with its role's tint (C1-3/E1 gear colour; others authored). */
 static void role_text(Hud*h,int i,int role,int gear,int change,double speed_mps,const char*s,int w,int height){if(i<0)return;HaNode*n=h->package.nodes+i;ha_text_tint(role,gear,change,speed_mps,h->settings.gear_standstill_mps,n->color,h->settings.gear_colour,h->tint_rgba);h->tint_on=1;text(h,i,s,w,height);h->tint_on=0;}
 /* Snapshot includes complete vertex attribute descriptions because this HUD
  * streams its own vertices instead of altering the engine quad. */
 typedef struct { GLint enabled,size,stride,type,normalized,buffer; void*pointer; } Attribute;
 void hud_draw(Hud*h,const RProg*rp,GpuMesh*unused,const HudState*s,int w,int height){if(!h)return;
- h->pick_frame.enabled=0;h->pick_race=0;if(!s||w<=0||height<=0)return;h->pick_state=*s;h->pick_frame.width=w;h->pick_frame.height=height;
- if(s->racing&&rp&&unused){h->pick_race=1;h->shift_phase.shown=0;hud_baseline_draw(h->auxiliary,rp,unused,s,w,height);return;}
+ h->pick_frame.enabled=0;if(!s||w<=0||height<=0)return;h->pick_frame.width=w;h->pick_frame.height=height;
+ if(!load_layout(h,layout_mode(s)))return;
  {HaWidget shown;ha_widget(s->career_context,s->message_waiting!=0,h->widget_ok,1,&shown);
   /* Set 4 D4: while the authored widget is drawn, inherited message visuals are suppressed. */
-  if(rp&&unused){HudState base=*s;if(!ha_inherited_message_visuals(0,shown.visible,s->message_waiting!=0))base.message_waiting=0;hud_baseline_draw(h->auxiliary,rp,unused,&base,w,height);}}
+  if(rp&&unused&&(!s->racing||s->nav_active)){HudState base=*s;
+   base.racing=0;
+   if(s->racing||!ha_inherited_message_visuals(0,shown.visible,s->message_waiting!=0))base.message_waiting=0;
+   hud_baseline_set_preview(h->auxiliary,h->preview&&!s->racing);
+   hud_baseline_draw(h->auxiliary,rp,unused,&base,w,height);}}
  if(!h->shader)return;
  h->resolved=h->drawn=0;
  GLint program,array,active,tex0,tex1,srcRGB,dstRGB,srcA,dstA,eqRGB,eqA;GLboolean depth=glIsEnabled(GL_DEPTH_TEST),blend=glIsEnabled(GL_BLEND),cull=glIsEnabled(GL_CULL_FACE),depthmask;glGetBooleanv(GL_DEPTH_WRITEMASK,&depthmask);glGetIntegerv(GL_CURRENT_PROGRAM,&program);glGetIntegerv(GL_ARRAY_BUFFER_BINDING,&array);glGetIntegerv(GL_ACTIVE_TEXTURE,&active);glActiveTexture(GL_TEXTURE0);glGetIntegerv(GL_TEXTURE_BINDING_2D,&tex0);glActiveTexture(GL_TEXTURE1);glGetIntegerv(GL_TEXTURE_BINDING_2D,&tex1);glGetIntegerv(GL_BLEND_SRC_RGB,&srcRGB);glGetIntegerv(GL_BLEND_DST_RGB,&dstRGB);glGetIntegerv(GL_BLEND_SRC_ALPHA,&srcA);glGetIntegerv(GL_BLEND_DST_ALPHA,&dstA);glGetIntegerv(GL_BLEND_EQUATION_RGB,&eqRGB);glGetIntegerv(GL_BLEND_EQUATION_ALPHA,&eqA);
@@ -239,6 +371,7 @@ void hud_draw(Hud*h,const RProg*rp,GpuMesh*unused,const HudState*s,int w,int hei
  double nos_limit=0;int nos=s->hide_gauge?0:ha_nos_level(cfg->inferred_nos_level,s->have_nos,s->have_nitro_tank,s->nitro_tank,cfg->nos_a0_degrees,cfg->nos_a1_degrees,&nos_limit);
  if(nos<0)diagnostic(h,"inferred NOS level hidden: nonfinite level or span");
  if(nos>0&&(h->nos_backing<0||h->nos_alpha<0)){diagnostic(h,"NOS level targets unresolved; NOS level hidden");nos=0;}
+ if(!s->hide_gauge&&h->layout_mode==2&&s->have_nos){nos=s->have_nitro_tank&&isfinite(s->nitro_tank)&&s->nitro_tank>0?2:1;}
  if(nos==2&&!dial_ok){diagnostic(h,"NOS level arc hidden: needle rotation centre unavailable");nos=1;}
  int shift=s->hide_gauge?0:ha_shift_mode(cfg->shift_indicator,s->have_shift_rpm,s->shift_rpm,s->gear,s->rpm,s->rpm_maximum,s->transmission,cfg->shift_icon_automatic);
  if(shift<0){diagnostic(h,"shift indicator hidden: nonfinite or nonpositive shift RPM");shift=0;}
@@ -260,13 +393,14 @@ void hud_draw(Hud*h,const RProg*rp,GpuMesh*unused,const HudState*s,int w,int hei
  glUniform2f(h->halfu,w*.5f,height*.5f);h->tint_on=0;h->clip[3]=0;
  /* Stable insertion sort by transformed depth. Higher z first. */
  size_t count=h->package.count;size_t order[HA_LIMIT];float depthvalues[HA_LIMIT];for(size_t i=0;i<count;i++){float zero[3]={0},p[3];ha_point(&h->package,i,zero,p,0);order[i]=i;depthvalues[i]=p[2];size_t j=i;while(j&&depthvalues[order[j-1]]<depthvalues[i]){order[j]=order[j-1];j--;}order[j]=i;}
- for(size_t k=0;k<count;k++){int i=(int)order[k];HaNode*n=h->package.nodes+i;if(!n->valid||!n->appearance||n->kind!=1)continue;const char*r=resource_name(h,n);int gauge=!s->hide_gauge&&(i==h->needle||(descendant(h,i,h->gauge_root)&&r&&(skin_resource(r)||!strcmp(r,"3rdperson_rpmdial.tga")||(redline>0&&!strcmp(r,"3rdperson_redline.tga")))));int map=mapon&&(i==h->mapnode||i==h->north||i==h->player||descendant(h,i,h->border));
- int extra=(bank>0&&i==h->bank_backing)||(wid.backing&&i==h->widget_backing)||(wid.dpad&&i==h->widget_dpad)||(wid.centre&&i==h->widget_centre)||(wid.mail&&i==h->widget_mail)||(wid.highlight_right&&i==h->widget_highlight)||(nos>=1&&i==h->nos_backing)||(nos==2&&i==h->nos_alpha)||(shift&&i==h->shift_icon)||(glow_on&&i==h->glow_node);
- if(!gauge&&!map&&!extra)continue;
+ for(size_t k=0;k<count;k++){int i=(int)order[k];HaNode*n=h->package.nodes+i;if(!n->valid||!n->appearance||n->kind!=1)continue;const char*r=resource_name(h,n);int gauge=!s->hide_gauge&&(drag_gauge(h,i)||i==h->needle||(descendant(h,i,h->gauge_root)&&r&&(skin_resource(r)||!strcmp(r,"3rdperson_rpmdial.tga")||(redline>0&&!strcmp(r,"3rdperson_redline.tga")))));int map=mapon&&(i==h->mapnode||i==h->north||i==h->player||descendant(h,i,h->border));
+ int heat=!s->hide_gauge&&h->layout_mode==2&&s->have_rpm&&isfinite(s->engine_heat)&&r&&!strcmp(r,"Drag_HEAT_Fill.tga");
+ int extra=heat||(bank>0&&i==h->bank_backing)||(wid.backing&&i==h->widget_backing)||(wid.dpad&&i==h->widget_dpad)||(wid.centre&&i==h->widget_centre)||(wid.mail&&i==h->widget_mail)||(wid.highlight_right&&i==h->widget_highlight)||(nos>=1&&i==h->nos_backing)||(nos==2&&i==h->nos_alpha)||(shift&&i==h->shift_icon)||(glow_on&&i==h->glow_node);
+ if(!gauge&&!map&&!extra&&!(s->racing&&race_image(h,i)))continue;
  h->tint_on=0;h->clip[3]=0;
  if(i==h->widget_highlight){ha_setting_rgba(cfg->highlight_colour,h->tint_rgba);h->tint_on=1;}
  if(i==h->shift_icon){ha_setting_tint(n->color,cfg->shift_colour,h->tint_rgba);h->tint_rgba[3]=(unsigned char)lround(n->color[3]*shift_env);h->tint_on=1;} /* H3 item 6: alpha = authored x envelope */
- if(i==h->nos_alpha){h->clip[0]=dial[0];h->clip[1]=dial[1];h->clip[2]=(float)(nos_limit*M_PI/180);h->clip[3]=1;}
+ if(i==h->nos_alpha&&h->layout_mode!=2){h->clip[0]=dial[0];h->clip[1]=dial[1];h->clip[2]=(float)(nos_limit*M_PI/180);h->clip[3]=1;}
  if(gauge&&r&&!strcmp(r,"3rdperson_redline.tga")){h->clip[0]=dial[0];h->clip[1]=dial[1];h->clip[2]=(float)(redline_start*M_PI/180);h->clip[3]=2;}
  if(i==h->glow_node){/* E3: authored centre and RGB; size, rotation (counter-clockwise) and alpha follow the curve; source-over. */
   int owned_g=0;Texture gt=image_texture(h,i,skin,scale,&owned_g);float pv[3];memcpy(pv,n->pivot,sizeof pv);memset(n->pivot,0,sizeof n->pivot);
@@ -274,9 +408,12 @@ void hud_draw(Hud*h,const RProg*rp,GpuMesh*unused,const HudState*s,int w,int hei
   float grect[]={(float)(-glow.width/2),(float)(-glow.height/2),(float)(glow.width/2),(float)(glow.height/2)};quad(h,i,grect,n->uv,gt,(float)(-glow.rotation_ccw_deg*M_PI/180),w,height,0,0,NULL,0);
   memcpy(n->pivot,pv,sizeof pv);if(owned_g)rhi_texture_destroy(gt.id);continue;}
  if(i==h->widget_centre){float full[4]={0,0,1,1},rect[]={-n->size[0]/2,-n->size[1]/2,n->size[0]/2,n->size[1]/2};quad(h,i,rect,full,h->centre_texture,0,w,height,0,0,NULL,0);continue;}
- int roads=i==h->mapnode,owned=0;Texture t=image_texture(h,i,skin,scale,&owned);float angle=0;if(i==h->needle)angle=(float)(ha_rpm_angle(s->rpm,s->rpm_maximum,0)*M_PI/180);if(i==h->north)angle=(float)-heading;if(roads){Texture mask=node_texture(h,h->masknode);if(!mask.id.id){diagnostic(h,"map mask missing; roads omitted");if(owned)rhi_texture_destroy(t.id);continue;}glActiveTexture(GL_TEXTURE1);glBindTexture(GL_TEXTURE_2D,rhi_gl_texture_name(mask.id));if(t.id.id&&h->mask_alpha){HaMapFrame*f=&h->pick_frame;float zero[3]={0},bx[3]={1,0,0},by[3]={0,1,0},o[3],x[3],y[3];ha_point(&h->package,(size_t)i,zero,o,0);ha_point(&h->package,(size_t)i,bx,x,0);ha_point(&h->package,(size_t)i,by,y,0);f->center[0]=o[0]+fit_shift(h,i,w,height);f->center[1]=o[1];f->basis[0]=x[0]-o[0];f->basis[1]=x[1]-o[1];f->basis[2]=y[0]-o[0];f->basis[3]=y[1]-o[1];f->size[0]=n->size[0];f->size[1]=n->size[1];f->world[0]=s->car_x;f->world[1]=s->car_y;f->heading=heading;f->window=s->map_window_world>0?s->map_window_world:500;f->enabled=1;}}float rect[]={-n->size[0]/2,-n->size[1]/2,n->size[0]/2,n->size[1]/2};quad(h,i,rect,n->uv,t,angle,w,height,i==h->player,roads,mapuv,heading);if(owned)rhi_texture_destroy(t.id);}
+ int roads=i==h->mapnode,owned=0;Texture t=image_texture(h,i,skin,scale,&owned);float angle=0;if(i==h->needle)angle=h->layout_mode==2?hud_race_drag_angle(n,s->rpm):(float)(ha_rpm_angle(s->rpm,s->rpm_maximum,0)*M_PI/180);if(i==h->north)angle=(float)-heading;if(roads){Texture mask=node_texture(h,h->masknode);if(!mask.id.id){diagnostic(h,"map mask missing; roads omitted");if(owned)rhi_texture_destroy(t.id);continue;}glActiveTexture(GL_TEXTURE1);glBindTexture(GL_TEXTURE_2D,rhi_gl_texture_name(mask.id));if(t.id.id&&h->mask_alpha){HaMapFrame*f=&h->pick_frame;float zero[3]={0},bx[3]={1,0,0},by[3]={0,1,0},o[3],x[3],y[3];ha_point(&h->package,(size_t)i,zero,o,0);ha_point(&h->package,(size_t)i,bx,x,0);ha_point(&h->package,(size_t)i,by,y,0);f->center[0]=o[0]+fit_shift(h,i,w,height);f->center[1]=o[1];f->basis[0]=x[0]-o[0];f->basis[1]=x[1]-o[1];f->basis[2]=y[0]-o[0];f->basis[3]=y[1]-o[1];f->size[0]=n->size[0];f->size[1]=n->size[1];f->world[0]=s->car_x;f->world[1]=s->car_y;f->heading=heading;f->window=s->map_window_world>0?s->map_window_world:500;f->enabled=1;}}float rect[]={-n->size[0]/2,-n->size[1]/2,n->size[0]/2,n->size[1]/2};float uv[4];memcpy(uv,n->uv,sizeof uv);
+ if(heat||(h->layout_mode==2&&i==h->nos_alpha)){float fraction=heat?s->engine_heat:s->nitro_tank;fraction=fminf(1,fmaxf(0,fraction));rect[1]=rect[3]-(rect[3]-rect[1])*fraction;uv[1]=uv[3]-(uv[3]-uv[1])*fraction;}
+ quad(h,i,rect,uv,t,angle,w,height,i==h->player,roads,mapuv,heading);if(owned)rhi_texture_destroy(t.id);if(roads)map_overlay(h,s);}
  h->tint_on=0;h->clip[3]=0;
  if(!s->hide_gauge){char buf[32];if(ha_speed(s->speed_kmh/3.6,!s->imperial_units,buf))text(h,h->speed,buf,w,height);else diagnostic(h,"speed suppressed: invalid or outside 0..INT_MAX");if(!ha_gear(s->gear,buf))diagnostic(h,"unsupported gear state");role_text(h,h->gear,HA_TEXT_GEAR,s->gear,s->gear_change_in_progress!=0,s->speed_kmh/3.6,buf,w,height);text(h,h->unit,s->imperial_units?"MPH":"KM/H",w,height);}
+ if(s->racing)race_text(h,s,w,height);
  if(bank>0){role_text(h,h->bank_label,HA_TEXT_BANK_LABEL,0,0,0,ha_bank_label,w,height);role_text(h,h->bank_value,HA_TEXT_BANK_VALUE,0,0,0,bankbuf,w,height);}
  for(int j=0;j<3;j++){glBindBuffer(GL_ARRAY_BUFFER,(GLuint)old[j].buffer);glVertexAttribPointer(attrs[j],old[j].size,(GLenum)old[j].type,(GLboolean)old[j].normalized,old[j].stride,old[j].pointer);if(!old[j].enabled)glDisableVertexAttribArray(attrs[j]);}glBindBuffer(GL_ARRAY_BUFFER,(GLuint)array);glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,(GLuint)tex0);glActiveTexture(GL_TEXTURE1);glBindTexture(GL_TEXTURE_2D,(GLuint)tex1);glActiveTexture((GLenum)active);glUseProgram((GLuint)program);glDepthMask(depthmask);if(cull)glEnable(GL_CULL_FACE);else glDisable(GL_CULL_FACE);if(depth)glEnable(GL_DEPTH_TEST);else glDisable(GL_DEPTH_TEST);if(blend)glEnable(GL_BLEND);else glDisable(GL_BLEND);glBlendFuncSeparate((GLenum)srcRGB,(GLenum)dstRGB,(GLenum)srcA,(GLenum)dstA);glBlendEquationSeparate((GLenum)eqRGB,(GLenum)eqA);
 }
@@ -373,7 +510,7 @@ int hud_catalog_has(const unsigned char*data,size_t len,uint32_t key){Pack p={0}
 
 int hud_pick(Hud*h,float nx,float ny,float*wx,float*wy){
  if(!h||!wx||!wy)return 0;
- if(h->pick_race)return hud_baseline_map_pick_fit(h->settings.fit_policy,nx,ny,h->pick_frame.width,h->pick_frame.height,&h->pick_state,wx,wy);
+
  HaMapFrame*f=&h->pick_frame;double screenx=(nx+1)*f->width*.5,screeny=(1-ny)*f->height*.5,result[2];if(!ha_map_pick(f,screenx,screeny,1,result)||!h->mask_alpha||h->masknode<0)return 0;
  float zero[3]={0},one[3]={1,0,0},two[3]={0,1,0},o[3],x[3],y[3];ha_point(&h->package,(size_t)h->masknode,zero,o,0);ha_point(&h->package,(size_t)h->masknode,one,x,0);ha_point(&h->package,(size_t)h->masknode,two,y,0);double scale=fmin(f->width/640.0,f->height/480.0),dx=(screenx-f->width*.5)/scale-(o[0]+fit_shift(h,h->masknode,f->width,f->height)),dy=(screeny-f->height*.5)/scale-o[1],a=x[0]-o[0],b=x[1]-o[1],c=y[0]-o[0],d=y[1]-o[1],det=a*d-b*c;
  HaNode*n=h->package.nodes+h->masknode;if(fabs(det)<1e-12||!n->size[0]||!n->size[1])return 0;double mx=(d*dx-c*dy)/det/n->size[0]+.5,my=(-b*dx+a*dy)/det/n->size[1]+.5,u=n->uv[0]+mx*(n->uv[2]-n->uv[0]),v=n->uv[1]+my*(n->uv[3]-n->uv[1]);double px=fmax(0,fmin(h->mask_width-1,u*h->mask_width-.5)),py=fmax(0,fmin(h->mask_height-1,v*h->mask_height-.5));int ix=(int)px,iy=(int)py,jx=ix+1<h->mask_width?ix+1:ix,jy=iy+1<h->mask_height?iy+1:iy;double tx=px-ix,ty=py-iy;double coverage=(1-ty)*((1-tx)*h->mask_alpha[iy*h->mask_width+ix]+tx*h->mask_alpha[iy*h->mask_width+jx])+ty*((1-tx)*h->mask_alpha[jy*h->mask_width+ix]+tx*h->mask_alpha[jy*h->mask_width+jx]);if(coverage<=0)return 0;*wx=(float)result[0];*wy=(float)result[1];return 1;

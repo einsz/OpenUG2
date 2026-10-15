@@ -368,10 +368,10 @@ static void test_host_preview_shows_every_free_roam_element(void) {
     l.have_nitro_tank = 1; l.nitro_tank = 0.1f;
     hud_host_preview_apply(&l, 0.9f);
     assert(l.money == 42 && near(l.nitro_tank, 0.1f, 1e-6f));
-    /* in an event only the tank is sampled; the career panels stay absent */
+    /* Race layouts have no preview banner: no sampled telemetry is admitted. */
     HudState r; memset(&r, 0, sizeof r); r.racing = 1;
     hud_host_context(&r); hud_host_preview_apply(&r, 0.5f);
-    assert(!r.career_context && !r.have_money && !r.message_waiting && r.have_nitro_tank);
+    assert(!r.career_context && !r.have_money && !r.message_waiting && !r.have_nitro_tank);
     /* NOS not fitted: the sample tank alone does not show the arc */
     HudState n; memset(&n, 0, sizeof n);
     hud_host_context(&n); hud_host_preview_apply(&n, 0.5f);
@@ -432,7 +432,8 @@ static void test_shift_icon_defaults_and_host_inputs(void) {
     assert(ha_shift_mode(1, s.have_shift_rpm, s.shift_rpm, s.gear, s.rpm, s.rpm_maximum, s.transmission, 1) == 1);
     assert(ha_shift_mode(1, s.have_shift_rpm, s.shift_rpm, s.gear, s.rpm, s.rpm_maximum, s.transmission, 0) == 0);
     hud_host_shift(&s, ENG_UPSHIFT_RPM_FOR_TEST, 1);
-    assert(s.transmission == HA_TRANSMISSION_MANUAL);
+    assert(s.transmission == HA_TRANSMISSION_MANUAL && s.shift_rpm==ENG_UPSHIFT_RPM_FOR_TEST);
+    assert(!ha_shift_mode(1,s.have_shift_rpm,s.shift_rpm,3,ENG_UPSHIFT_RPM_FOR_TEST-1,8000,s.transmission,1));
     hud_host_shift(&s, NAN, 0);                   /* withheld, not supplied as 0 */
     assert(!s.have_shift_rpm && ha_shift_mode(1, s.have_shift_rpm, s.shift_rpm, 3, 7000, 8000, s.transmission, 1) == 0);
     printf("  shift icon: default on, authored colour, host inputs   PASS\n");

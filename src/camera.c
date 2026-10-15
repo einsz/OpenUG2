@@ -462,6 +462,26 @@ void cam_pose(const CamState *s, const CamCarFrame *car, CamPose *o) {
     o->znear = eff == CAM_DRIVER ? 0.4f : 0.5f;
 }
 
+void cam_render_pose(const CamState *before, const CamState *after,
+                     const CamCarFrame *car, float alpha, CamPose *out) {
+    if (!isfinite(alpha) || alpha >= 1 || !before->started || before->snap || after->snap ||
+        before->effective != after->effective || before->look_back != after->look_back ||
+        before->variant_f != after->variant_f) {
+        cam_pose(after, car, out);
+        return;
+    }
+    float t = fmaxf(0, alpha);
+    CamState display = *after;
+    for (int i = 0; i < 3; i++) {
+        display.head[i].p = before->head[i].p + t * (after->head[i].p - before->head[i].p);
+        display.eye[i].p = before->eye[i].p + t * (after->eye[i].p - before->eye[i].p);
+        display.look[i].p = before->look[i].p + t * (after->look[i].p - before->look[i].p);
+        display.up[i].p = before->up[i].p + t * (after->up[i].p - before->up[i].p);
+    }
+    display.fov.p = before->fov.p + t * (after->fov.p - before->fov.p);
+    cam_pose(&display, car, out);
+}
+
 /* ---- projection (SPEC 7, 7.1) --------------------------------------------------------------- */
 /* SPEC 7 exactly, for a viewport whose height/width ratio is `aspect`. */
 static void cam_scales_original(int fov_bau, float aspect, int main_view, float *xs, float *ys) {

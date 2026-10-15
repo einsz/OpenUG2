@@ -23,6 +23,10 @@ DATA    ?= .
 
 UNAME := $(shell uname)
 ifeq ($(UNAME),Darwin)
+  # Keep C and C++ on the SDK belonging to the selected Xcode toolchain.
+  ifndef SDKROOT
+    export SDKROOT := $(shell xcrun --sdk macosx --show-sdk-path)
+  endif
   GL_LIBS := -framework OpenGL
 else
   GL_LIBS := -lGL
@@ -41,6 +45,14 @@ GUI_ART_SRC := src/gui_timing.c src/pause_entries.c src/gui_carousel.c src/gui_d
 GUI_ART_HDR := $(wildcard src/gui_*.h) src/pause_entries.h src/pause_screen.h
 
 HDRS += src/ug2_track_collision.h
+SRC += src/hud_race.c
+HDRS += src/hud_race.h
+
+hud-race-test: tools/hud_race_test.c src/hud_race.c src/hud_race.h src/hud.h src/hud_asset.c src/hud_asset.h src/ugui/ugui_codec.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/hud_race_test.c src/hud_race.c src/hud_asset.c src/ugui/ugui_codec.c -o build/hud_race_test -lm
+	./build/hud_race_test
+.PHONY: hud-race-test
 
 .DEFAULT_GOAL := nfsu2   # keep `make` building the binary, not the generated header
 
@@ -129,9 +141,9 @@ car-material-test: tools/car_material_test.c src/nfsu2.h src/car_config.h src/ca
 
 # HUD maths only: no GL calls are executed, but hud.c still references the GL
 # symbols, so the link needs the same libraries as the engine.
-hud-test: tools/hud_test.c src/hud.c src/hud.h src/hud_host.h src/hud_asset.h src/hud_baseline.h src/hud_texture.h src/audio.h src/render.c src/render_params.c src/render.h src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/nfsu2.h src/generated_shaders.h
+hud-test: tools/hud_test.c src/hud.c src/hud_race.c src/hud_race.h src/ugui/ugui_codec.c src/hud.h src/hud_host.h src/hud_asset.h src/hud_baseline.h src/hud_texture.h src/audio.h src/render.c src/render_params.c src/render.h src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/nfsu2.h src/generated_shaders.h
 	@mkdir -p build
-	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/hud_test.c src/hud.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c \
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/hud_test.c src/hud.c src/hud_race.c src/ugui/ugui_codec.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c \
 		-o build/hud_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
 	./build/hud_test
 
@@ -423,9 +435,9 @@ hud-spec-test: hud-asset-probe
 
 hud-asset-probe: build/hud_asset_probe
 
-build/hud_asset_probe: src/tex_override.c tools/hud_asset_probe.c src/hud.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/hud.h src/hud_asset.h src/hud_texture.h src/hud_baseline.h src/render.h src/nfsu2.h src/generated_shaders.h
+build/hud_asset_probe: src/tex_override.c tools/hud_asset_probe.c src/hud.c src/hud_race.c src/ugui/ugui_codec.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/hud.h src/hud_asset.h src/hud_texture.h src/hud_baseline.h src/render.h src/nfsu2.h src/generated_shaders.h
 	@mkdir -p build
-	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/hud_asset_probe.c src/hud.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c -o build/hud_asset_probe $(SDL_LIBS) $(GL_LIBS) -lz -lm
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/hud_asset_probe.c src/hud.c src/hud_race.c src/ugui/ugui_codec.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c -o build/hud_asset_probe $(SDL_LIBS) $(GL_LIBS) -lz -lm
 
 # RHI readback contract: coordinates, row layout, bounds and arithmetic overflow.
 rhi-readback-test: tools/rhi_readback_test.c src/rhi_gl.c src/rhi_gl_state.c src/rhi.h src/rhi_gl.h src/rhi_gl_state.h

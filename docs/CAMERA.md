@@ -100,8 +100,9 @@ The "unknown" decisions are isolated behind a named constant or input flag.
   update. The engine already ticks the player at 60 Hz, so smoothers, the
   acceleration filter and `tGround` advance inside the tick loop
   (`gamecam_tick`, dt = 1/60), independent of frame rate. The final eye/look
-  are evaluated every render frame from the interpolated car pose
-  (`cam_pose`), so the camera is rigid to the displayed car (SPEC 6.14). The
+  are evaluated every render frame from camera channels and the car pose
+  interpolated over the same tick interval (`cam_render_pose`). Camera cuts
+  and deterministic captures retain the current tick exactly. The
   shake clock is the tick clock plus the render fraction.
 * **D3 (SPEC 2.2) Persistence.** The engine has no save profile, so the stored
   option lives in `camera.cfg` (above). Two slots are kept for fidelity with

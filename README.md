@@ -104,10 +104,15 @@ a design at launch. Changing cars clears the vinyl and loads that car’s catalo
   torque, gearbox and steering values; measured geometry supplies lateral grip
   and load transfer. Stock engine input combines the primary and secondary
   nine-sample curves; torque units and upgraded retail behavior remain provisional.
-- **Player HUD** — `--hud` enables speed, RPM, gear, minimap and race readouts.
+- **Player HUD** — races automatically enable the asset-driven HUD; `--hud` also
+  enables it in free roam. Circuit/Sprint, Street X, Drag and Drift select their
+  supplied layouts. Rank, laps/progress, simulation time, countdown and results
+  use live race state; drift adds the measured angle and score, drag adds engine
+  heat and the manual shift light. Map routes and rivals follow the displayed car.
   Speed uses the current magnitude with integer truncation; `--hud-mph` selects
   MPH for display only. RPM is bounded separately from redline, and the standard
-  needle uses the player's skin-00 sprite with a procedural fallback. See the
+  needle uses the selected original skin. The drag sweep is fitted to its
+  supplied 10,000 RPM artwork; retail animation timing remains provisional. See the
   [speed](docs/HUD_SPEED_READOUT.md), [tachometer](docs/HUD_TACHOMETER.md) and
   [sprite](docs/HUD_SPRITES.md) notes for remaining limits.
   On windows wider than 4:3 the HUD defaults to a `wide` fitment that hangs the
@@ -322,7 +327,7 @@ the nearest safe authored road; no internal world-mode or spawn flag is needed.
   `--collision-source legacy` selects the previous facade/correction walls for
   comparison and `--track ALL` diagnostics. Ground and breakable objects keep
   their existing handling; original career-stage activation remains incomplete.
-- `--hud` — enable the prototype player HUD, including live speed/RPM readouts.
+- `--hud` — also enable the asset-driven player HUD in free roam; races enable it automatically.
 - `--hud-mph` — enable the same HUD with MPH speed presentation; physics remains
   in its existing units.
 - `--hud-fit wide|4:3` — widescreen HUD fitment (enables the HUD). `wide` (the

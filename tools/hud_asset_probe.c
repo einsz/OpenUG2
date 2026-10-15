@@ -1,5 +1,8 @@
 /* Native GL smoke/visual probe; consumes assets only through the implementation. */
 #include "hud.h"
+#include "hud_race.h"
+#include "race.h"
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -21,4 +24,41 @@ if(argc<3){fprintf(stderr,"usage: hud_asset_probe DATA_ROOT OUTPUT_DIR [east nor
   for(int k=0;k<3;k++){if(k==2){cfg.nos_glow=1;c.gear_change_in_progress=1;c.clock_ms=1000+410*cfg.glow_ms_per_unit;}if(k==1){cfg.inferred_redline=cfg.inferred_nos_level=cfg.shift_indicator=1;c.money=25;c.gear=2;c.speed_kmh=96.56f;c.rpm=7600;c.message_waiting=1;c.have_nos=1;c.have_nitro_tank=1;c.nitro_tank=.05f;c.have_redline_rpm=1;c.rpm_redline=7600;c.have_shift_rpm=1;c.shift_rpm=7500;}
    hud_configure(h,&cfg);if(k==2)hud_nos_glow_event(h,1000);glViewport(0,0,1280,720);glClear(GL_COLOR_BUFFER_BIT);hud_draw(h,NULL,NULL,&c,1280,720);char path[4096];snprintf(path,sizeof path,"%s/%s",argv[2],names[k]);capture(path,1280,720);hud_audit(h,&audit);resolved|=audit.resource_resolved;drawn|=audit.resource_drawn;printf("%s: resource resolved mask=0x%x drawn mask=0x%x\n",names[k],audit.resource_resolved,audit.resource_drawn);GLenum err=glGetError();if(err){fprintf(stderr,"GL error amendment state %d: 0x%x\n",k,err);return 1;}}
   hud_default_settings(&cfg);hud_configure(h,&cfg);}
+ /* Same handle switches between all event packages and returns to free roam. */
+ {const int kinds[]={N2_RACE_CIRCUIT,N2_RACE_SPRINT,N2_RACE_STREETX,N2_RACE_DRAG,N2_RACE_DRIFT};
+  const unsigned counts[]={258,258,120,95,137};
+  GLuint state_buffer,state_tex[2];glGenBuffers(1,&state_buffer);glGenTextures(2,state_tex);
+  for(int k=0;k<5;k++)for(int aspect=0;aspect<2;aspect++)for(int phase=0;phase<3;phase++){
+   HudState c=s;c.racing=1;c.race_kind=kinds[k];c.circuit=k!=1&&k!=3;
+   c.lap=2;c.laps=3;c.position=2;c.cars=4;c.have_race_time=1;c.elapsed_seconds=83.45;
+   c.race_phase=phase==0?HUD_RACE_COUNTDOWN:phase==1?HUD_RACE_RUNNING:HUD_RACE_FINISHED;
+   c.countdown_seconds=2.5;c.drift_score=12345;c.drift_chain=678;c.drift_angle=27;
+   c.engine_heat=.6;c.have_rpm=1;c.rpm=5000;c.rpm_maximum=10000;
+   c.have_shift_rpm=1;c.shift_rpm=4800;c.clock_ms=1000+phase*100;
+   float route[]={c.car_x-100,c.car_y-100,c.car_x,c.car_y,c.car_x+100,c.car_y+100};
+   float rival[]={c.car_x+40,c.car_y+20};c.route_xy=route;c.route_n=3;c.route_next=2;c.opponent_xy=rival;c.opponent_n=1;
+   int width=aspect?1280:960;glViewport(0,0,width,720);glClear(GL_COLOR_BUFFER_BIT);
+   glEnable(GL_CULL_FACE);glEnable(GL_DEPTH_TEST);glDepthMask(GL_TRUE);
+   glBindBuffer(GL_ARRAY_BUFFER,state_buffer);glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,state_tex[0]);
+   glActiveTexture(GL_TEXTURE1);glBindTexture(GL_TEXTURE_2D,state_tex[1]);glBlendFuncSeparate(GL_ONE,GL_ZERO,GL_ZERO,GL_ONE);glDisable(GL_BLEND);
+   hud_draw(h,NULL,NULL,&c,width,720);
+   GLint value;glGetIntegerv(GL_ARRAY_BUFFER_BINDING,&value);assert((GLuint)value==state_buffer);
+   glGetIntegerv(GL_ACTIVE_TEXTURE,&value);assert(value==GL_TEXTURE1);glGetIntegerv(GL_TEXTURE_BINDING_2D,&value);assert((GLuint)value==state_tex[1]);
+   glActiveTexture(GL_TEXTURE0);glGetIntegerv(GL_TEXTURE_BINDING_2D,&value);assert((GLuint)value==state_tex[0]);
+   glGetIntegerv(GL_BLEND_SRC_RGB,&value);assert(value==GL_ONE);glGetIntegerv(GL_BLEND_DST_RGB,&value);assert(value==GL_ZERO);
+   assert(!glIsEnabled(GL_BLEND));
+   assert(glIsEnabled(GL_CULL_FACE)&&glIsEnabled(GL_DEPTH_TEST));GLboolean dm;glGetBooleanv(GL_DEPTH_WRITEMASK,&dm);assert(dm);
+   hud_audit(h,&audit);assert(audit.nodes==counts[k]&&audit.gauge_targets);
+   float wx,wy;int picked=hud_pick(h,-.7f,-.5f,&wx,&wy);
+   if(kinds[k]==N2_RACE_DRAG)assert(!picked);
+   char path[4096];snprintf(path,sizeof path,"%s/race-%d-%s-%d.png",argv[2],kinds[k],aspect?"169":"43",phase);capture(path,width,720);
+   GLenum err=glGetError();if(err){fprintf(stderr,"race GL error %d: %x\n",kinds[k],err);return 1;}
+   printf("race kind=%d aspect=%d phase=%d nodes=%u gauge=%d map=%d\n",kinds[k],aspect,phase,audit.nodes,audit.gauge_targets,audit.map_targets);
+  }
+  HudState hidden=s;hidden.racing=1;hidden.race_kind=N2_RACE_DRAG;hidden.have_nos=hidden.have_nitro_tank=1;
+  hidden.nitro_tank=.5f;hidden.hide_gauge=1;hud_draw(h,NULL,NULL,&hidden,1280,720);hud_audit(h,&audit);
+  assert(!(audit.resource_drawn&((1u<<0)|(1u<<15)|(1u<<16)|(1u<<17))));
+  glBindBuffer(GL_ARRAY_BUFFER,0);glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,0);glActiveTexture(GL_TEXTURE1);glBindTexture(GL_TEXTURE_2D,0);glActiveTexture(GL_TEXTURE0);
+  glDeleteBuffers(1,&state_buffer);glDeleteTextures(2,state_tex);
+ }
  s.hide_map=1;s.speed_kmh=NAN;s.rpm=INFINITY;s.gear=-2;hud_draw(h,NULL,NULL,&s,1280,720);s.hide_map=0;s.car_x=NAN;hud_draw(h,NULL,NULL,&s,1280,720);hud_draw(h,NULL,NULL,&s,0,480);hud_audit(h,&audit);const char*features[]={"needle","authored-redline","scale","fill","numeric-font-atlas","roads","map-mask","north","player","border-children","bank-backing","widget-backing-dpad","widget-centre-figure","widget-mail","widget-right-highlight","nos-backing","nos-alpha-arc","shift-icon","n2o-glow"};for(unsigned j=0;j<19;j++)printf("resource %s: resolved=%u drawn=%u\n",features[j],(resolved>>j)&1,(drawn>>j)&1);printf("diagnostics: %s\n",hud_missing(h));hud_free(&h);SDL_GL_DeleteContext(context);SDL_DestroyWindow(window);SDL_Quit();return audit.nodes&&audit.original_atlases&&audit.gauge_targets?0:1;}

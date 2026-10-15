@@ -33,9 +33,10 @@ static inline float hud_host_shift_rpm(float auto_upshift_rpm) {
  * only produce the D5 diagnostic. No top-gear exclusion (H3 item 4: none is
  * specified; this host supplies the RPM in every gear). The transmission mode
  * is reported honestly: the free-roam virtual gearbox shifts by itself
- * (automatic); the drag drivetrain is shifted by the player (manual). */
+ * (automatic); the drag drivetrain is shifted by the player (manual), so its
+ * supplied shift point is used directly, without an automatic shift lead. */
 static inline void hud_host_shift(HudState *s, float auto_upshift_rpm, int manual) {
-    float rpm = hud_host_shift_rpm(auto_upshift_rpm);
+    float rpm = manual ? (isfinite(auto_upshift_rpm) && auto_upshift_rpm>0 ? auto_upshift_rpm : 0) : hud_host_shift_rpm(auto_upshift_rpm);
     s->have_shift_rpm = rpm > 0.0f;
     s->shift_rpm = rpm;
     s->transmission = (unsigned char)(manual ? HA_TRANSMISSION_MANUAL : HA_TRANSMISSION_AUTOMATIC);
@@ -51,8 +52,8 @@ static inline void hud_host_context(HudState *s) {
 }
 
 /* --hud-preview sample values. Used only for readouts with no live source;
- * a live value is never replaced. Every value is a labelled sample (the
- * auxiliary preview banner is drawn by the baseline whenever preview is on). */
+ * a live value is never replaced. Samples are limited to free roam, where
+ * the auxiliary renderer displays the preview banner. */
 #define HUD_PREVIEW_MONEY 250000L
 #define HUD_PREVIEW_TANK_START 0.75f
 #define HUD_PREVIEW_TANK_DRAIN_PER_S 0.25f   /* about 4 s from full (E4) */
@@ -69,6 +70,7 @@ static inline float hud_host_preview_tank_step(float level, int n_held, float dt
 }
 
 static inline void hud_host_preview_apply(HudState *s, float tank_level) {
+    if (s->racing) return; /* race layouts have no sample-value banner */
     if (!s->racing) {                     /* career free-roam readouts */
         s->career_context = 1;
         if (!s->have_money) { s->have_money = 1; s->money = HUD_PREVIEW_MONEY; }

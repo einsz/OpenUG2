@@ -1,6 +1,6 @@
 /* Native asset-driven HUD, independently implemented from the approved
  * bounded interoperability specification. Numeric telemetry comes from the
- * host; sample authoring text, event widgets and unknown cash targets are hidden.
+ * host; authoring samples and unavailable telemetry are hidden.
  * Font baseline, needle direction and minimap projection remain provisional. */
 #ifndef OPENUG2_HUD_H
 #define OPENUG2_HUD_H
@@ -51,14 +51,19 @@ typedef struct {
     int   lap, laps;          /* circuit only */
     float sprint_progress;    /* sprint only, 0..1 */
     int   position, cars;     /* 0 = unknown/no opponents */
+    int race_phase;           /* HUD_RACE_*; zero withholds phase/banner */
+    unsigned char have_race_time;
+    double elapsed_seconds, countdown_seconds;
+    float drift_angle;
 
     /* --- minimap geometry: world-space polyline, borrowed, not owned --- */
     const float *route_xy;    /* interleaved x,y */
     int   route_n;
     const float *nav_xy;      /* free-roam road network */
     int   nav_n;
-    float map_radius_m;       /* world metres to the panel edge; 0 = default.
-                                 A race sets this to fit the whole route. */
+    float map_radius_m;       /* retained baseline helper radius; asset maps use map_window_world */
+    const float *opponent_xy; /* interleaved live rival positions, borrowed */
+    int opponent_n;
     int   route_loop;         /* 1 = circuit: close the polyline */
     int   route_next;         /* index of the armed gate, -1 = none */
 
@@ -150,8 +155,7 @@ int hud_pick(Hud *h,float ndc_x,float ndc_y,float *world_x,float *world_y);
 void hud_audit(const Hud *h,HudAudit *out);
 
 /* Legacy helper API retained for engine compatibility. The standard driving
- * renderer uses the approved contracts in hud_asset.h. Map clicking/routes,
- * event text and nitrous are outside this bounded HUD and remain inactive. */
+ * renderer uses the asset contracts in hud_asset.h and race roles in hud_race.h. */
 float hud_angle_delta(float from,float to);
 int hud_speed_value(float speed_kmh,int imperial);
 float hud_tach_fraction(const HudState *s,float dial_scale);

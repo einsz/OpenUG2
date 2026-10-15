@@ -38,6 +38,7 @@
 #include "world_resident.h"
 #include "world_mesh.h"   /* F3 prelight/normal/wireframe debug pipeline */
 #include "hud.h"          /* stage 8: opt-in in-game player HUD (--hud) */
+#include "hud_race.h"
 #include "hud_host.h"     /* GL-free HUD context/preview policy */
 #include "tex_override.h" /* --tex-overrides DIR: optional HD DDS replacements */
 #include "world_capture_policy.h"
@@ -634,7 +635,7 @@ static float car_chase_distance(const float bb[6], float requested) {
  * The maths lives in camera.c. This block feeds it the player's tick state,
  * owns the stored option (persisted per player) and the in-car veto probes. */
 typedef struct {
-    CamState cam;
+    CamState cam, render_before;
     CamSettings settings;
     char settings_path[1024]; int have_path;
     char car_for[64];            /* car whose camera record is loaded */
@@ -737,6 +738,7 @@ static void gamecam_tick(GameCam *g, const float carpos[3], const float vel[2], 
                          const PhysRideState *ride, float body_ride, int drift,
                          const GameCamProbe *probe, int reset) {
     if (reset) { g->have_prev = 0; cam_request_snap(&g->cam); }
+    g->render_before = g->cam;
     const float dt = 1.0f / PHYS_TICKRATE;
     float up[3] = {0, 0, 1};
     if (ride) phys_ride_body_up(ride, heading, up);
@@ -6017,7 +6019,7 @@ int main(int argc, char **argv) {
     int hud_prev_nitro = 0;
     float hud_preview_tank = HUD_PREVIEW_TANK_START;   /* --hud-preview sample tank */
     double hud_preview_clock_ms = 0.0;
-    if (hud_opt) {
+    if (hud_opt || want_event_id) {
         hud = hud_init(dataroot);
         if (hud) {
             hud_set_preview(hud, hud_preview_opt);
@@ -6087,6 +6089,7 @@ int main(int argc, char **argv) {
         ai_race=1;nai=0;race_state=0;
     }
     int racetimer = 0, finish_place = 0;
+    HudRaceClock hud_race_clock={0};
 #ifdef OPENUG2_MENU
     Fe frontend;
     FeDraw *frontend_draw = NULL;
@@ -7400,6 +7403,7 @@ int main(int argc, char **argv) {
            live_pose.head!=pose_now.head || live_pose.ride_ready!=pose_now.ride_ready;
         if(pose_snap) {
             pose_before=live_pose;shake_before=shake_now=landing_offset;
+            gc.have_prev=0;cam_request_snap(&gc.cam);
         }
         pose_now=live_pose;
         for(int k=0;k<draw_nai;k++) {
@@ -8331,6 +8335,10 @@ int main(int argc, char **argv) {
             p_prev = prel;
         }
 
+        /* The display clock follows simulation time and freezes at the finish. */
+        hud_race_clock_step(&hud_race_clock,
+            world.city.race.active?world.city.race.ev:ai_race?world.city.nev:-1,
+            race_prepare_pending?0:race_state,1.0/PHYS_TICKRATE);
         /* race state machine: countdown -> racing -> finished */
         racetimer++;
         if (race_state == 0 && !race_prepare_pending && racetimer >= COUNTDOWN) {
@@ -8542,7 +8550,7 @@ int main(int argc, char **argv) {
                 phys_ride_body_up(&render_player.ride,render_player.head,gup);
             CamCarFrame gframe; cam_car_axes(render_player.head,gup,&gframe);
             for(int c=0;c<3;c++)gframe.pos[c]=render_player.pos[c]+gframe.up[c]*car_body_ride;
-            cam_pose(&gc.cam,&gframe,&gcam_pose);
+            cam_render_pose(&gc.render_before,&gc.cam,&gframe,render_alpha,&gcam_pose);
             for(int c=0;c<3;c++) {
                 cam[c]=gcam_pose.eye[c];camtgt[c]=gcam_pose.look[c];
                 look[c]=gcam_pose.look[c]-gcam_pose.eye[c];
@@ -10018,6 +10026,11 @@ int main(int argc, char **argv) {
             (const float (*)[4])world.neighborhood.mbb,obstsrc,nobst,
             g_dbg.freecam?cam:render_player.pos,render_player.pos,MVP);
 
+        if(!hud && (world.city.race.active || (ai_race && race_state!=3))) {
+            hud=hud_init(dataroot);
+            if(hud){hud_configure(hud,&hud_settings);hud_set_preview(hud,hud_preview_opt);}
+        }
+        int hud_active=hud && race_state!=3 && (hud_opt || world.city.race.active || ai_race);
         /* HUD: race-position leaderboard — one colour bar per car, ordered by
            progress along the racing line (leader on top); player bar wider. */
         /* race telemetry (position/lap/speed) always mirrored to g_dbg for
@@ -10043,7 +10056,7 @@ int main(int argc, char **argv) {
         int draw_race_hud = g_devui;
 #endif
         /* the stage-8 HUD REPLACES the diagnostic overlay; never both at once */
-        if (hud) draw_race_hud = 0;
+        if (hud_active) draw_race_hud = 0;
         if (ai_race && nai > 0 && race_state != 3 && draw_race_hud) {
             rhi_cmd_bind_pipeline(ovp->screen);   /* screen space, no depth test */
             rp.p->uUnlit = 1.0f; rp.p->uUseTex = 0.0f;
@@ -10152,8 +10165,7 @@ int main(int argc, char **argv) {
 #else
         int draw_menu_hud = g_devui;
 #endif
-        if (hud) draw_menu_hud=world.city.race.active &&
-            (race_state==0 || race_state==2 || (race_state==1 && racetimer<24));
+        if (hud_active) draw_menu_hud=0;
         if (race_state == 3 && draw_menu_hud) {
             /* car selector (Left/Right): a tight row of pips, chosen lit white */
             float cw = 0.02f, cx0 = -((ncars-1)*cw)/2.0f;
@@ -10305,16 +10317,16 @@ int main(int argc, char **argv) {
            Every field is taken from a system that exists; the availability
            flags below are how the HUD is told which readouts have no live
            source, so it can draw an empty slot instead of a plausible lie. */
-        if (hud) {
+        if (hud_active) {
             HudState hs; memset(&hs, 0, sizeof hs);
             hs.speed_kmh = PHYS_KMH(speed);
             hs.imperial_units = hud_imperial;
             hs.skin_index = hud_skin;
             /* Translate +X/CCW host heading to the provisional north/clockwise HUD boundary. */
             hs.map_heading_explicit = 1;
-            hs.map_heading_clockwise = M_PI * .5 - heading;
-            hs.car_x = carpos[0]; hs.car_y = carpos[1];
-            hs.car_heading = heading;
+            hs.map_heading_clockwise = M_PI * .5 - render_player.head;
+            hs.car_x = render_player.pos[0]; hs.car_y = render_player.pos[1];
+            hs.car_heading = render_player.head;
 
             /* PROVISIONAL: the virtual gearbox exists to drive engine AUDIO.
                It is a real, deterministic source, just not a drivetrain. */
@@ -10326,7 +10338,8 @@ int main(int argc, char **argv) {
             /* host shift RPM: a lead below the automatic upshift point, which the
                gearbox acts on before the HUD could ever see it; transmission
                mode for H4 (hud_host.h) */
-            hud_host_shift(&hs, ENG_UPSHIFT_RPM, world.city.race.active && world.city.race.kind == N2_RACE_DRAG && g_vehicle_source_valid);
+            int drag_hud=world.city.race.active && world.city.race.kind==N2_RACE_DRAG && g_vehicle_source_valid;
+            hud_host_shift(&hs,drag_hud?g_vehicle_source.redline_rpm:ENG_UPSHIFT_RPM,drag_hud);
             hs.gear = gear;
             hs.gear_change_in_progress = (unsigned char)gear_changing;
 
@@ -10368,6 +10381,7 @@ int main(int argc, char **argv) {
                            ? world.city.ev[ev].circuit : 1;
                 if(event_race) {
                     hs.race_kind=wr->kind;hs.drift_score=wr->drift.bank;hs.drift_chain=wr->drift.chain;
+                    hs.drift_angle=wr->drift.angle;
                     if(wr->kind==N2_RACE_DRAG && g_vehicle_source_valid) {
                         hs.rpm=drag_gear.rpm;hs.rpm_redline=g_vehicle_source.redline_rpm;hs.gear=drag_gear.gear;
                         hs.rpm_maximum=g_vehicle_source.limiter_rpm;
@@ -10387,7 +10401,16 @@ int main(int argc, char **argv) {
                     hs.sprint_progress = aipath.n > 1
                         ? (float)p_prev / (float)(aipath.n - 1) : 0.0f;
                 }
-                hs.position = g_dbg.race_pos; hs.cars = g_dbg.race_cars;
+                hs.position = g_dbg.race_cars>0?g_dbg.race_pos:1;
+                hs.cars = g_dbg.race_cars>0?g_dbg.race_cars:1;
+                hs.race_phase=race_state==0?HUD_RACE_COUNTDOWN:race_state==1?HUD_RACE_RUNNING:
+                    wr->failed?HUD_RACE_FAILED:HUD_RACE_FINISHED;
+                hs.have_race_time=1;hs.elapsed_seconds=hud_race_clock.elapsed;
+                hs.countdown_seconds=race_prepare_pending?3:fmax(0,(COUNTDOWN-racetimer)/PHYS_TICKRATE);
+                static float opponent_xy[N_RACE_AI*2];
+                int opponents=ai_race?nai:0;if(opponents>N_RACE_AI)opponents=N_RACE_AI;
+                for(int i=0;i<opponents;i++){opponent_xy[i*2]=render_ais[i].pos[0];opponent_xy[i*2+1]=render_ais[i].pos[1];}
+                hs.opponent_xy=opponent_xy;hs.opponent_n=opponents;
                 hs.route_next = -1;
                 if (event_race && wr->ngate > 1) {
                     /* Use the validated event course; gates remain the fallback
@@ -10403,17 +10426,7 @@ int main(int argc, char **argv) {
                     hs.route_loop = hs.circuit;
                     if (wr->next >= 0 && wr->next < ng) hs.route_next=hs.route_xy==gatexy?wr->next
                         :n2_nearest_wp(&aipath,wr->gate[wr->next].x,wr->gate[wr->next].y);
-                    /* zoom the panel out far enough to hold the whole route:
-                       a 260 m window shows almost none of a 5 km circuit */
-                    float far2 = 0.0f;
-                    for (int gi = 0; gi < hs.route_n; gi++) {
-                        float ddx = hs.route_xy[gi*2] - carpos[0];
-                        float ddy = hs.route_xy[gi*2+1] - carpos[1];
-                        float d2 = ddx*ddx + ddy*ddy;
-                        if (d2 > far2) far2 = d2;
-                    }
-                    hs.map_radius_m = sqrtf(far2) * 1.12f;
-                    if (hs.map_radius_m < 260.0f) hs.map_radius_m = 260.0f;
+
                 } else {
                     hs.route_xy = aipath.n > 1 ? aipath.xy : NULL;
                     hs.route_n  = aipath.n > 1 ? aipath.n : 0;
@@ -10464,7 +10477,7 @@ int main(int argc, char **argv) {
                career/free-roam context only; money, messages and the tank stay
                absent unless --hud-preview supplies labelled samples. */
             hud_host_context(&hs);
-            if (hud_preview_opt) {
+            if (hud_preview_opt && !hs.racing) {
                 double now = hs.clock_ms;
                 float dt = hud_preview_clock_ms > 0.0 ? (float)((now - hud_preview_clock_ms) * 0.001) : 0.0f;
                 hud_preview_clock_ms = now;
