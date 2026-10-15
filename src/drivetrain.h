@@ -224,6 +224,9 @@ void drv_axle_split(double omega_a, double omega_b, int both_contact, double *sh
 /* S1-7.5: correction from current forces/torques; does not distribute it. */
 double drv_lock_correction(const Drivetrain *d);
 
+/* S2-4 / S1-8.1: unsmoothed wheel resistance, including airborne wheels. */
+double drv_wheel_resistance(float omega,float surface,int damage);
+
 /* ---- per-frame and per-substep operations ---------------------------------- */
 /* S1-4.5 / U-2: supply initial selected gear, elapsed seconds and remembered
  * pre-change gear. Selected may be neutral or 2..top; remembered is 0..top.

@@ -230,7 +230,7 @@ float phys_drive_step(float pos[3], float vel[2], float *heading, float *speed,
                       const PhysSurface *sf, const PhysVehicle *vh,
                       const PhysRideState *ride);
 /* Stage-1 adapter: existing steering/lateral scrub/caps/handbrake and position.
- * No arcade propulsion, coasting drag or surface drag. */
+ * No arcade propulsion, coasting/surface drag or host forward/reverse cap. */
 float phys_stage1_chassis_step(float pos[3],float vel[2],float *heading,float *speed,
     float steer,int handbrake,const PhysSurface *surface,const PhysVehicle *vehicle);
 /* Refresh after world-wall resolution, not car/car impulses. Returns removed

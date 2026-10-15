@@ -394,6 +394,10 @@ static void engine_post(Drivetrain *d) {                /* S1-3.5 */
     else if (rpm > e2 - 25.0) d->limiter = 1;
 }
 
+double drv_wheel_resistance(float omega,float surface,int damage) {
+    return -(double).002f*surface*omega-(damage?(double).1f*omega:0);
+}
+
 void drv_integrate(Drivetrain *d, float h) {
     const double dh = (double)h;
     /* (a) derivatives from the current state */
@@ -409,8 +413,7 @@ void drv_integrate(Drivetrain *d, float h) {
         double tb = 0.5 * ((double)w->tau - R * (double)w->force + (double)w->tau_smooth);
         w->tau_smooth = (float)tb;
         if (e->locked) { w_dot[i] = 0.0; continue; }
-        double wd = (tb - 0.002 * (double)e->roll_drag * (double)w->omega
-                        - (e->drag_flag ? 1.0 : 0.0) * 0.1 * (double)w->omega) / (double)DRV_WHEEL_INERTIA;
+        double wd = (tb + drv_wheel_resistance(w->omega,e->roll_drag,e->drag_flag)) / (double)DRV_WHEEL_INERTIA;
         if (w->gripping && dh > 0.001) wd -= (double)w->slip_speed / (R * dh);
         w_dot[i] = wd;
     }

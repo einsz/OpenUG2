@@ -18,8 +18,9 @@ static DrvCar car(float mass) {
     for(int k=0;k<3;k++)c.engine_brake[k]=.03f;
     assert(drv_car_finalize(&c)==0);return c;
 }
+static const ResCar resistance={.drag=.0005f,.front=.12f,.rear=.18f,.limit_mph=0};
 typedef struct { Stage1Drive drive;float p[3],v[2],h,s;int tick; } Trace;
-static void init(Trace *t,float mass){memset(t,0,sizeof *t);DrvCar c=car(mass);assert(stage1_drive_init(&t->drive,&c)==0);}
+static void init(Trace *t,float mass){memset(t,0,sizeof *t);DrvCar c=car(mass);assert(stage1_drive_init(&t->drive,&c,&resistance,0)==0);}
 static void step(Trace *t,float pedal,int hb,unsigned contact){
     PhysRideState ride={.contact_mask=contact};
     stage1_drive_step(&t->drive,t->p,t->v,&t->h,&t->s,pedal,0,hb,NULL,NULL,&ride);
@@ -54,6 +55,13 @@ static void parser_test(void){
     PUT(c.torque_primary,0x310);PUT(c.torque_secondary,0x334);PUT(c.engine_brake,0x358);
     assert(stage1_car_read(bytes,sizeof bytes,"SYNTH",&out));
     assert(!memcmp(&out,&c,sizeof c));
+    ResCar air= { .drag=.0007f,.front=.13f,.rear=.27f,.limit_mph=137 },air_out;
+    PUT(air.drag,0x370);PUT(air.front,0x374);PUT(air.rear,0x378);PUT(air.limit_mph,0x3a0);
+    assert(stage2_car_read(bytes,sizeof bytes,"SYNTH",&air_out));assert(!memcmp(&air,&air_out,sizeof air));
+    assert(!stage2_car_read(bytes,sizeof bytes-1,"SYNTH",&air_out));
+    assert(!stage2_car_read(bytes,sizeof bytes,"MISSING",&air_out));
+    float invalid=-1;PUT(invalid,0x374);assert(!stage2_car_read(bytes,sizeof bytes,"SYNTH",&air_out));
+    invalid=NAN;PUT(invalid,0x374);assert(!stage2_car_read(bytes,sizeof bytes,"SYNTH",&air_out));
     assert(!stage1_car_read(bytes,sizeof bytes-1,"SYNTH",&out));
     assert(!stage1_car_read(bytes,sizeof bytes,"MISSING",&out));
     float bad=NAN;PUT(bad,0x30c);
@@ -90,19 +98,19 @@ static void tests(void){
     Stage1Drive snapshot=a.drive;PhysClock clock={0};assert(phys_clock_steps(&clock,0)==0);
     assert(!memcmp(&snapshot,&a.drive,sizeof snapshot));
     /* A fresh car replaces every engine/wheel/clutch state. */
-    DrvCar c=car(1.8f);assert(stage1_drive_init(&a.drive,&c)==0);
+    DrvCar c=car(1.8f);assert(stage1_drive_init(&a.drive,&c,&resistance,0)==0);
     assert(a.drive.drivetrain.car.mass==1.8f&&stage1_drive_gear(&a.drive)==0);
     /* No engine torque means no hidden arcade propulsion. */
     for(int k=0;k<9;k++)c.torque_primary[k]=0;
     c.clutch_k=0; /* disconnect the idle-clamped rotating engine as well */
-    assert(stage1_drive_init(&a.drive,&c)==0);memset(a.v,0,sizeof a.v);a.s=0;
+    assert(stage1_drive_init(&a.drive,&c,&resistance,0)==0);memset(a.v,0,sizeof a.v);a.s=0;
     for(int k=0;k<300;k++)step(&a,1,0,15);
     assert(a.s==0);
     /* Every axle class uses actual shaft torque, and steering stays live. */
     const float shares[]={0,.5f,1};
     for(unsigned i=0;i<sizeof shares/sizeof *shares;i++){
         Trace t;init(&t,1.2f);c=car(1.2f);c.rear_share=shares[i];
-        assert(stage1_drive_init(&t.drive,&c)==0);
+        assert(stage1_drive_init(&t.drive,&c,&resistance,0)==0);
         for(int k=0;k<600;k++)step(&t,1,0,15);
         assert(t.s>.05f&&stage1_drive_gear(&t.drive)>=2);
         float oldh=t.h;PhysRideState ride={.contact_mask=15};
@@ -115,7 +123,7 @@ static void tests(void){
         t.v[0]=.2f;t.v[1]=.1f;
         float airh=t.h;
         for(int k=0;k<30;k++)step(&t,1,0,0);
-        assert(t.h==airh&&t.v[1]==.1f);
+        assert(t.h==airh&&t.v[1]>0&&t.v[1]<.1f);
     }
     Trace reference;init(&reference,1.2f);
     for(int k=0;k<600;k++)step(&reference,k<420?1:0,0,15);
@@ -131,6 +139,58 @@ static void tests(void){
     }
     /* Refuse missing/invalid data instead of substituting invented car tuning. */
     DrvCar out;assert(!stage1_car_read(NULL,0,"SYNTH",&out));
-    c=car(1.2f);c.ratio[2]=NAN;assert(stage1_drive_init(&a.drive,&c)<0);
+    c=car(1.2f);c.ratio[2]=NAN;assert(stage1_drive_init(&a.drive,&c,&resistance,0)<0);
 }
-int main(void){parser_test();tests();phys_selftest();puts("Stage 1 gameplay adapter tests passed");return 0;}
+/* Controlled planar fixtures isolate the Stage-2 adapter boundary from tyres. */
+static void resistance_integration(void) {
+    Trace a;init(&a,1.25f);DrvCar c=car(1.25f);
+    c.clutch_k=0;for(int k=0;k<9;k++)c.torque_primary[k]=0;
+    ResCar air={.drag=.0005f,.front=.12f,.rear=.18f};
+    assert(stage1_drive_init(&a.drive,&c,&air,0)==0);
+    a.drive.resistance_input.stabilize=0;a.drive.disable_stabilize=1;
+    a.v[0]=30/PHYS_TICKRATE;
+    /* With no contact, drag still opposes motion. Independently calculate the
+     * exact four prepared-force Euler steps, including persistent b32 stores. */
+    float expected=30,force=(float)(-(double)air.drag*2*30*30),h;
+    int n=drv_substep_count(1/PHYS_TICKRATE,&h);float momentum=c.mass*expected;
+    for(int k=0;k<n;k++){
+        momentum=(float)(momentum+(double)h*force);expected=(float)((double)momentum/c.mass);
+        force=(float)(-(double)air.drag*2*expected*expected);
+    }
+    step(&a,0,0,0);assert(fabsf(a.s*PHYS_TICKRATE-expected)<.00001f);
+    assert(a.drive.aero.load>0&&a.drive.body.velocity[2]==0);
+    /* sf.drag and all host caps must have no influence on this mode. */
+    Trace b=a;PhysSurface strange=PHYS_SURF_ROAD;strange.drag=.1f;strange.topfrac=.01f;
+    PhysRideState ride={.contact_mask=15};
+    a.drive.prepared=b.drive.prepared=0;a.drive.body.force[0]=b.drive.body.force[0]=0;
+    float oldtop=g_phys_tune.top_kmh;g_phys_tune.top_kmh=1;
+    stage1_drive_step(&a.drive,a.p,a.v,&a.h,&a.s,0,0,0,NULL,NULL,&ride);
+    stage1_drive_step(&b.drive,b.p,b.v,&b.h,&b.s,0,0,0,&strange,NULL,&ride);
+    g_phys_tune.top_kmh=oldtop;
+    assert(a.s==b.s&&a.s*PHYS_TICKRATE>20);
+    /* Positive-force threshold replaces thrust without clamping speed. */
+    init(&a,1.25f);a.v[0]=80/PHYS_TICKRATE;a.drive.resistance_car=(ResCar){.limit_mph=50};
+    a.drive.disable_stabilize=1;a.drive.prepared=1;a.drive.body.force[0]=10;
+    step(&a,0,0,0);assert(a.s*PHYS_TICKRATE<80&&a.s*PHYS_TICKRATE>79);
+    assert(a.drive.body.saved_force[0]==0); /* final substep has no new thrust */
+    /* Absolute cap is symmetric and independent of host road speed settings. */
+    for(int sign=-1;sign<=1;sign+=2) {
+        init(&a,1.25f);a.drive.resistance_car=(ResCar){0};a.drive.disable_stabilize=1;
+        a.v[0]=sign*250/PHYS_TICKRATE;step(&a,0,0,0);
+        assert(fabsf(fabsf(a.s)*PHYS_TICKRATE-200)<.0001f);
+    }
+    /* Damage and the two surface channels are supplied separately every frame. */
+    init(&a,1.25f);a.drive.damage_mask=5;
+    a.drive.rolling_surface[0]=3;a.drive.body_surface[0]=9;a.drive.body_surface[2]=3;
+    step(&a,0,0,5);
+    assert(a.drive.resistance_input.surface==6&&a.drive.resistance_input.contacts==2);
+    assert(a.drive.drivetrain.env.wheel[0].roll_drag==3);
+    assert(a.drive.drivetrain.env.wheel[0].drag_flag==1&&a.drive.drivetrain.env.wheel[2].drag_flag==1);
+    assert(a.drive.drivetrain.env.wheel[1].drag_flag==0);
+    a.drive.body.z=.5f;a.drive.resistance_input.reduction=.4f;
+    stage1_drive_reset(&a.drive,a.v,a.h);
+    assert(a.drive.body.z==0&&a.drive.resistance_input.reduction==.4f&&a.drive.damage_mask==5);
+    air.drag=NAN;assert(stage1_drive_init(&a.drive,&c,&air,0)<0);
+    assert(stage1_drive_init(&a.drive,&c,&resistance,NAN)<0);
+}
+int main(void){parser_test();tests();resistance_integration();phys_selftest();puts("Stage 1 gameplay adapter tests passed");return 0;}

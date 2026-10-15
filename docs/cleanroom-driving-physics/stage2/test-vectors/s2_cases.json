@@ -1,0 +1,1595 @@
+{
+  "schema": "stage2-synthetic-cases-v1",
+  "provenance": "Derived mathematical examples, not original runtime outputs. All car/state choices synthetic.",
+  "cases": [
+    {
+      "id": "drag_forward_full",
+      "kind": "drag",
+      "input": {
+        "V": [
+          30,
+          0,
+          0
+        ],
+        "t": 1,
+        "G": 1,
+        "a": 0,
+        "e": 1,
+        "d": 1,
+        "cD": 0.0005000000237487257
+      },
+      "expected": {
+        "D": [
+          -0.45000001788139343,
+          -0.0,
+          -0.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-2, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "drag_reverse_full",
+      "kind": "drag",
+      "input": {
+        "V": [
+          -30,
+          0,
+          0
+        ],
+        "t": 1,
+        "G": 1,
+        "a": 0,
+        "e": 1,
+        "d": 1,
+        "cD": 0.0005000000237487257
+      },
+      "expected": {
+        "D": [
+          0.45000001788139343,
+          -0.0,
+          -0.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-2, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "drag_forward_coast",
+      "kind": "drag",
+      "input": {
+        "V": [
+          30,
+          0,
+          0
+        ],
+        "t": 0,
+        "G": 1,
+        "a": 0,
+        "e": 1,
+        "d": 1,
+        "cD": 0.0005000000237487257
+      },
+      "expected": {
+        "D": [
+          -0.9000000357627869,
+          -0.0,
+          -0.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-2, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "drag_reverse_coast",
+      "kind": "drag",
+      "input": {
+        "V": [
+          -30,
+          0,
+          0
+        ],
+        "t": 0,
+        "G": 1,
+        "a": 0,
+        "e": 1,
+        "d": 1,
+        "cD": 0.0005000000237487257
+      },
+      "expected": {
+        "D": [
+          0.9000000357627869,
+          -0.0,
+          -0.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-2, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "drag_stationary",
+      "kind": "drag",
+      "input": {
+        "V": [
+          0,
+          0,
+          0
+        ],
+        "t": 0,
+        "G": 1,
+        "a": 0,
+        "e": 1,
+        "d": 1,
+        "cD": 0.0005000000237487257
+      },
+      "expected": {
+        "D": [
+          -0.0,
+          -0.0,
+          -0.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-2, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "drag_vector",
+      "kind": "drag",
+      "input": {
+        "V": [
+          3,
+          4,
+          12
+        ],
+        "t": 0.25,
+        "G": 1,
+        "a": 0,
+        "e": 1,
+        "d": 1,
+        "cD": 0.0005000000237487257
+      },
+      "expected": {
+        "D": [
+          -0.03412500023841858,
+          -0.045500002801418304,
+          -0.13650000095367432
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-2, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "drag_double_scale",
+      "kind": "drag",
+      "input": {
+        "V": [
+          30,
+          0,
+          0
+        ],
+        "t": 1,
+        "G": 2,
+        "a": 0,
+        "e": 1,
+        "d": 1,
+        "cD": 0.0005000000237487257
+      },
+      "expected": {
+        "D": [
+          -0.22500000894069672,
+          -0.0,
+          -0.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-2, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "drag_half_reduction",
+      "kind": "drag",
+      "input": {
+        "V": [
+          30,
+          0,
+          0
+        ],
+        "t": 1,
+        "G": 1,
+        "a": 0.5,
+        "e": 1,
+        "d": 1,
+        "cD": 0.0005000000237487257
+      },
+      "expected": {
+        "D": [
+          -0.22500000894069672,
+          -0.0,
+          -0.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-2, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "drag_disabled",
+      "kind": "drag",
+      "input": {
+        "V": [
+          30,
+          0,
+          0
+        ],
+        "t": 1,
+        "G": 1,
+        "a": 0,
+        "e": 0,
+        "d": 1,
+        "cD": 0.0005000000237487257
+      },
+      "expected": {
+        "D": [
+          -0.0,
+          -0.0,
+          -0.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-2, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "drag_surface",
+      "kind": "drag",
+      "input": {
+        "V": [
+          30,
+          0,
+          0
+        ],
+        "t": 1,
+        "G": 1,
+        "a": 0,
+        "e": 1,
+        "d": 2,
+        "cD": 0.0005000000237487257
+      },
+      "expected": {
+        "D": [
+          -0.9000000357627869,
+          -0.0,
+          -0.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-2, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "aero_forward",
+      "kind": "vertical_aero",
+      "input": {
+        "V": [
+          20,
+          0,
+          0
+        ],
+        "n": 4,
+        "G": 1,
+        "j": false,
+        "e": 1,
+        "cF": 0.11999999731779099,
+        "cR": 0.18000000715255737,
+        "B": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "expected": {
+        "WF": 2.3999998569488525,
+        "WR": 3.6000001430511475,
+        "reported": 6.0,
+        "applied_front": [
+          0,
+          0,
+          -2.3999998569488525
+        ],
+        "applied_rear": [
+          0,
+          0,
+          -3.6000001430511475
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-3, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "aero_reverse",
+      "kind": "vertical_aero",
+      "input": {
+        "V": [
+          -20,
+          0,
+          0
+        ],
+        "n": 4,
+        "G": 1,
+        "j": false,
+        "e": 1,
+        "cF": 0.11999999731779099,
+        "cR": 0.18000000715255737,
+        "B": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "expected": {
+        "WF": 0.9599999785423279,
+        "WR": 1.440000057220459,
+        "reported": 2.4000000953674316,
+        "applied_front": [
+          0,
+          0,
+          -0.9599999785423279
+        ],
+        "applied_rear": [
+          0,
+          0,
+          -1.440000057220459
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-3, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "aero_airborne",
+      "kind": "vertical_aero",
+      "input": {
+        "V": [
+          20,
+          0,
+          0
+        ],
+        "n": 0,
+        "G": 1,
+        "j": false,
+        "e": 1,
+        "cF": 0.11999999731779099,
+        "cR": 0.18000000715255737,
+        "B": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "expected": {
+        "WF": 2.4000000953674316,
+        "WR": 2.4600000381469727,
+        "reported": 4.860000133514404,
+        "applied_front": [
+          0,
+          0,
+          -2.4000000953674316
+        ],
+        "applied_rear": [
+          0,
+          0,
+          -2.4600000381469727
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-3, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "aero_one_contact",
+      "kind": "vertical_aero",
+      "input": {
+        "V": [
+          20,
+          0,
+          0
+        ],
+        "n": 1,
+        "G": 1,
+        "j": false,
+        "e": 1,
+        "cF": 0.11999999731779099,
+        "cR": 0.18000000715255737,
+        "B": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "expected": {
+        "WF": 2.3999998569488525,
+        "WR": 3.6000001430511475,
+        "reported": 6.0,
+        "applied_front": [
+          0,
+          0,
+          -2.3999998569488525
+        ],
+        "applied_rear": [
+          0,
+          0,
+          -3.6000001430511475
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-3, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "aero_two_contact",
+      "kind": "vertical_aero",
+      "input": {
+        "V": [
+          20,
+          0,
+          0
+        ],
+        "n": 2,
+        "G": 1,
+        "j": false,
+        "e": 1,
+        "cF": 0.11999999731779099,
+        "cR": 0.18000000715255737,
+        "B": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "expected": {
+        "WF": 2.3999998569488525,
+        "WR": 3.6000001430511475,
+        "reported": 6.0,
+        "applied_front": [
+          0,
+          0,
+          -2.3999998569488525
+        ],
+        "applied_rear": [
+          0,
+          0,
+          -3.6000001430511475
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-3, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "aero_disabled",
+      "kind": "vertical_aero",
+      "input": {
+        "V": [
+          20,
+          0,
+          0
+        ],
+        "n": 4,
+        "G": 1,
+        "j": false,
+        "e": 0,
+        "cF": 0.11999999731779099,
+        "cR": 0.18000000715255737,
+        "B": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "expected": {
+        "WF": 2.3999998569488525,
+        "WR": 3.6000001430511475,
+        "reported": 6.0,
+        "applied_front": [
+          0,
+          0,
+          0.0
+        ],
+        "applied_rear": [
+          0,
+          0,
+          0.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-3, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "aero_scaled",
+      "kind": "vertical_aero",
+      "input": {
+        "V": [
+          20,
+          0,
+          0
+        ],
+        "n": 4,
+        "G": 2,
+        "j": false,
+        "e": 1,
+        "cF": 0.11999999731779099,
+        "cR": 0.18000000715255737,
+        "B": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "expected": {
+        "WF": 4.799999713897705,
+        "WR": 7.200000286102295,
+        "reported": 12.0,
+        "applied_front": [
+          0,
+          0,
+          -4.799999713897705
+        ],
+        "applied_rear": [
+          0,
+          0,
+          -7.200000286102295
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-3, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "aero_alternate_reverse",
+      "kind": "vertical_aero",
+      "input": {
+        "V": [
+          -20,
+          0,
+          0
+        ],
+        "n": 4,
+        "G": 1,
+        "j": true,
+        "e": 1,
+        "cF": 0.11999999731779099,
+        "cR": 0.18000000715255737,
+        "B": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "expected": {
+        "WF": 0.0,
+        "WR": 0.0,
+        "reported": 0.0,
+        "applied_front": [
+          0,
+          0,
+          -0.0
+        ],
+        "applied_rear": [
+          0,
+          0,
+          -0.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-3, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "aero_stationary",
+      "kind": "vertical_aero",
+      "input": {
+        "V": [
+          0,
+          0,
+          0
+        ],
+        "n": 0,
+        "G": 1,
+        "j": false,
+        "e": 1,
+        "cF": 0.11999999731779099,
+        "cR": 0.18000000715255737,
+        "B": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "expected": {
+        "WF": 0.0,
+        "WR": 0.0,
+        "reported": 0.0,
+        "applied_front": [
+          0,
+          0,
+          -0.0
+        ],
+        "applied_rear": [
+          0,
+          0,
+          -0.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-3, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "rolling_positive",
+      "kind": "rolling_torque",
+      "input": {
+        "omega": 100,
+        "rho": 1,
+        "damage": 0,
+        "contact": true,
+        "Iw": 0.009999999776482582,
+        "net_smoothed_torque": 0
+      },
+      "expected": {
+        "Troll": -0.20000000298023224,
+        "omega_dot_without_slip_correction": -20.000001907348633
+      },
+      "provenance": "Synthetic mathematical derivation from S2-4 and S1-8.1, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "rolling_negative",
+      "kind": "rolling_torque",
+      "input": {
+        "omega": -100,
+        "rho": 1,
+        "damage": 0,
+        "contact": true,
+        "Iw": 0.009999999776482582,
+        "net_smoothed_torque": 0
+      },
+      "expected": {
+        "Troll": 0.20000000298023224,
+        "omega_dot_without_slip_correction": 20.000001907348633
+      },
+      "provenance": "Synthetic mathematical derivation from S2-4 and S1-8.1, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "rolling_rest",
+      "kind": "rolling_torque",
+      "input": {
+        "omega": 0,
+        "rho": 1,
+        "damage": 1,
+        "contact": true,
+        "Iw": 0.009999999776482582,
+        "net_smoothed_torque": 0
+      },
+      "expected": {
+        "Troll": -0.0,
+        "omega_dot_without_slip_correction": -0.0
+      },
+      "provenance": "Synthetic mathematical derivation from S2-4 and S1-8.1, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "rolling_surface",
+      "kind": "rolling_torque",
+      "input": {
+        "omega": 100,
+        "rho": 3,
+        "damage": 0,
+        "contact": true,
+        "Iw": 0.009999999776482582,
+        "net_smoothed_torque": 0
+      },
+      "expected": {
+        "Troll": -0.6000000238418579,
+        "omega_dot_without_slip_correction": -60.000003814697266
+      },
+      "provenance": "Synthetic mathematical derivation from S2-4 and S1-8.1, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "rolling_damage",
+      "kind": "rolling_torque",
+      "input": {
+        "omega": 100,
+        "rho": 1,
+        "damage": 1,
+        "contact": true,
+        "Iw": 0.009999999776482582,
+        "net_smoothed_torque": 0
+      },
+      "expected": {
+        "Troll": -10.199999809265137,
+        "omega_dot_without_slip_correction": -1020.0000610351562
+      },
+      "provenance": "Synthetic mathematical derivation from S2-4 and S1-8.1, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "rolling_airborne",
+      "kind": "rolling_torque",
+      "input": {
+        "omega": 100,
+        "rho": 1,
+        "damage": 0,
+        "contact": false,
+        "Iw": 0.009999999776482582,
+        "net_smoothed_torque": 0
+      },
+      "expected": {
+        "Troll": -0.20000000298023224,
+        "omega_dot_without_slip_correction": -20.000001907348633
+      },
+      "provenance": "Synthetic mathematical derivation from S2-4 and S1-8.1, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "limiter_below",
+      "kind": "limiter_local_force",
+      "input": {
+        "horizontal_speed": 30,
+        "travel_forward_sign": 1,
+        "L": 120,
+        "G": 1,
+        "bonus": false,
+        "forward_z": 0.0,
+        "force_local": [
+          2,
+          3,
+          4
+        ]
+      },
+      "expected": {
+        "threshold_mph": 121.9000015258789,
+        "measured_mph": 67.08074951171875,
+        "activated": false,
+        "force_local": [
+          2.0,
+          3.0,
+          4.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-5, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "limiter_above",
+      "kind": "limiter_local_force",
+      "input": {
+        "horizontal_speed": 70,
+        "travel_forward_sign": 1,
+        "L": 120,
+        "G": 1,
+        "bonus": false,
+        "forward_z": 0.0,
+        "force_local": [
+          2,
+          3,
+          4
+        ]
+      },
+      "expected": {
+        "threshold_mph": 121.9000015258789,
+        "measured_mph": 156.52174377441406,
+        "activated": true,
+        "force_local": [
+          -0.5,
+          3.0,
+          4.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-5, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "limiter_zero_force",
+      "kind": "limiter_local_force",
+      "input": {
+        "horizontal_speed": 70,
+        "travel_forward_sign": 1,
+        "L": 120,
+        "G": 1,
+        "bonus": false,
+        "forward_z": 0.0,
+        "force_local": [
+          0,
+          3,
+          4
+        ]
+      },
+      "expected": {
+        "threshold_mph": 121.9000015258789,
+        "measured_mph": 156.52174377441406,
+        "activated": false,
+        "force_local": [
+          0.0,
+          3.0,
+          4.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-5, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "limiter_negative_force",
+      "kind": "limiter_local_force",
+      "input": {
+        "horizontal_speed": 70,
+        "travel_forward_sign": 1,
+        "L": 120,
+        "G": 1,
+        "bonus": false,
+        "forward_z": 0.0,
+        "force_local": [
+          -2,
+          3,
+          4
+        ]
+      },
+      "expected": {
+        "threshold_mph": 121.9000015258789,
+        "measured_mph": 156.52174377441406,
+        "activated": false,
+        "force_local": [
+          -2.0,
+          3.0,
+          4.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-5, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "limiter_reverse_propulsion",
+      "kind": "limiter_local_force",
+      "input": {
+        "horizontal_speed": 70,
+        "travel_forward_sign": -1,
+        "L": 120,
+        "G": 1,
+        "bonus": false,
+        "forward_z": 0.0,
+        "force_local": [
+          -2,
+          3,
+          4
+        ]
+      },
+      "expected": {
+        "threshold_mph": 121.9000015258789,
+        "measured_mph": 156.52174377441406,
+        "activated": false,
+        "force_local": [
+          -2.0,
+          3.0,
+          4.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-5, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "limiter_reverse_positive_force",
+      "kind": "limiter_local_force",
+      "input": {
+        "horizontal_speed": 70,
+        "travel_forward_sign": -1,
+        "L": 120,
+        "G": 1,
+        "bonus": false,
+        "forward_z": 0.0,
+        "force_local": [
+          2,
+          3,
+          4
+        ]
+      },
+      "expected": {
+        "threshold_mph": 121.9000015258789,
+        "measured_mph": 156.52174377441406,
+        "activated": true,
+        "force_local": [
+          -0.5,
+          3.0,
+          4.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-5, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "limiter_disabled",
+      "kind": "limiter_local_force",
+      "input": {
+        "horizontal_speed": 70,
+        "travel_forward_sign": 1,
+        "L": 0,
+        "G": 1,
+        "bonus": false,
+        "forward_z": 0.0,
+        "force_local": [
+          2,
+          3,
+          4
+        ]
+      },
+      "expected": {
+        "threshold_mph": 1.899999976158142,
+        "measured_mph": 156.52174377441406,
+        "activated": false,
+        "force_local": [
+          2.0,
+          3.0,
+          4.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-5, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "limiter_bonus",
+      "kind": "limiter_local_force",
+      "input": {
+        "horizontal_speed": 55,
+        "travel_forward_sign": 1,
+        "L": 120,
+        "G": 1,
+        "bonus": true,
+        "forward_z": 0.0,
+        "force_local": [
+          2,
+          3,
+          4
+        ]
+      },
+      "expected": {
+        "threshold_mph": 125.55699920654297,
+        "measured_mph": 122.98136901855469,
+        "activated": false,
+        "force_local": [
+          2.0,
+          3.0,
+          4.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-5, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "limiter_uphill",
+      "kind": "limiter_local_force",
+      "input": {
+        "horizontal_speed": 70,
+        "travel_forward_sign": 1,
+        "L": 120,
+        "G": 1,
+        "bonus": false,
+        "forward_z": 0.20000000298023224,
+        "force_local": [
+          2,
+          3,
+          4
+        ]
+      },
+      "expected": {
+        "threshold_mph": 113.77333068847656,
+        "measured_mph": 156.52174377441406,
+        "activated": true,
+        "force_local": [
+          -1.0,
+          3.0,
+          4.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-5, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "limiter_downhill",
+      "kind": "limiter_local_force",
+      "input": {
+        "horizontal_speed": 70,
+        "travel_forward_sign": 1,
+        "L": 120,
+        "G": 1,
+        "bonus": false,
+        "forward_z": -0.20000000298023224,
+        "force_local": [
+          2,
+          3,
+          4
+        ]
+      },
+      "expected": {
+        "threshold_mph": 130.02667236328125,
+        "measured_mph": 156.52174377441406,
+        "activated": true,
+        "force_local": [
+          -1.0,
+          3.0,
+          4.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-5, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "limiter_saturated_slope",
+      "kind": "limiter_local_force",
+      "input": {
+        "horizontal_speed": 70,
+        "travel_forward_sign": 1,
+        "L": 120,
+        "G": 1,
+        "bonus": false,
+        "forward_z": 0.6000000238418579,
+        "force_local": [
+          2,
+          3,
+          4
+        ]
+      },
+      "expected": {
+        "threshold_mph": 109.70999908447266,
+        "measured_mph": 156.52174377441406,
+        "activated": true,
+        "force_local": [
+          -1.5,
+          3.0,
+          4.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-5, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "limiter_scaled",
+      "kind": "limiter_local_force",
+      "input": {
+        "horizontal_speed": 70,
+        "travel_forward_sign": 1,
+        "L": 120,
+        "G": 2,
+        "bonus": false,
+        "forward_z": 0.0,
+        "force_local": [
+          2,
+          3,
+          4
+        ]
+      },
+      "expected": {
+        "threshold_mph": 241.89999389648438,
+        "measured_mph": 156.52174377441406,
+        "activated": false,
+        "force_local": [
+          2.0,
+          3.0,
+          4.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-5, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "stabilize_rest",
+      "kind": "stabilization",
+      "input": {
+        "V": [
+          0,
+          0,
+          0
+        ],
+        "w": 0,
+        "z": 0.0,
+        "stabilize": true,
+        "h": 0.004,
+        "m": 1.25,
+        "F": [
+          0.20000000298023224,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "curve": 1.5,
+        "zdot": 0.10000000149011612,
+        "Pdot": [
+          0.20000000298023224,
+          0.0,
+          0.0
+        ],
+        "z_post": 0.0004000000189989805
+      },
+      "provenance": "Synthetic mathematical derivation from S2-6, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "stabilize_rolling",
+      "kind": "stabilization",
+      "input": {
+        "V": [
+          1,
+          0,
+          0
+        ],
+        "w": 0,
+        "z": 0.20000000298023224,
+        "stabilize": true,
+        "h": 0.004,
+        "m": 1.25,
+        "F": [
+          0.20000000298023224,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "curve": 0.7000000476837158,
+        "zdot": 0.10000000149011612,
+        "Pdot": [
+          -1.8000000715255737,
+          0.0,
+          0.0
+        ],
+        "z_post": 0.20040000975131989
+      },
+      "provenance": "Synthetic mathematical derivation from S2-6, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "stabilize_reverse",
+      "kind": "stabilization",
+      "input": {
+        "V": [
+          -1,
+          0,
+          0
+        ],
+        "w": 0,
+        "z": 0.20000000298023224,
+        "stabilize": true,
+        "h": 0.004,
+        "m": 1.25,
+        "F": [
+          0.20000000298023224,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "curve": 0.7000000476837158,
+        "zdot": 0.10000000149011612,
+        "Pdot": [
+          2.200000047683716,
+          0.0,
+          0.0
+        ],
+        "z_post": 0.20040000975131989
+      },
+      "provenance": "Synthetic mathematical derivation from S2-6, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "stabilize_fast",
+      "kind": "stabilization",
+      "input": {
+        "V": [
+          20,
+          0,
+          0
+        ],
+        "w": 0,
+        "z": 0.019999999552965164,
+        "stabilize": true,
+        "h": 0.004,
+        "m": 1.25,
+        "F": [
+          0.20000000298023224,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "curve": 0.0,
+        "zdot": -10,
+        "Pdot": [
+          -3.799999952316284,
+          0.0,
+          0.0
+        ],
+        "z_post": 0.0
+      },
+      "provenance": "Synthetic mathematical derivation from S2-6, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "stabilize_disabled",
+      "kind": "stabilization",
+      "input": {
+        "V": [
+          1,
+          0,
+          0
+        ],
+        "w": 0,
+        "z": 0.20000000298023224,
+        "stabilize": false,
+        "h": 0.004,
+        "m": 1.25,
+        "F": [
+          0.20000000298023224,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "curve": 0.7000000476837158,
+        "zdot": 0.10000000149011612,
+        "Pdot": [
+          0.20000000298023224,
+          0.0,
+          0.0
+        ],
+        "z_post": 0.20040000975131989
+      },
+      "provenance": "Synthetic mathematical derivation from S2-6, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "stabilize_angular_input",
+      "kind": "stabilization",
+      "input": {
+        "V": [
+          0,
+          0,
+          0
+        ],
+        "w": 2,
+        "z": 0.10000000149011612,
+        "stabilize": true,
+        "h": 0.004,
+        "m": 1.25,
+        "F": [
+          0.20000000298023224,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "curve": 0.0,
+        "zdot": -10,
+        "Pdot": [
+          0.20000000298023224,
+          0.0,
+          0.0
+        ],
+        "z_post": 0.06000000238418579
+      },
+      "provenance": "Synthetic mathematical derivation from S2-6, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "stabilize_equality",
+      "kind": "stabilization",
+      "input": {
+        "V": [
+          4,
+          0,
+          0
+        ],
+        "w": 0,
+        "z": 0.0,
+        "stabilize": true,
+        "h": 0.004,
+        "m": 1.25,
+        "F": [
+          0.20000000298023224,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "curve": 0.0,
+        "zdot": -10,
+        "Pdot": [
+          0.20000000298023224,
+          0.0,
+          0.0
+        ],
+        "z_post": 0.0
+      },
+      "provenance": "Synthetic mathematical derivation from S2-6, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "cap_under",
+      "kind": "absolute_cap",
+      "input": {
+        "m": 1,
+        "P": [
+          100,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "activated": false,
+        "P": [
+          100.0,
+          0.0,
+          0.0
+        ],
+        "V": [
+          100.0,
+          0.0,
+          0.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-7, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "cap_equal",
+      "kind": "absolute_cap",
+      "input": {
+        "m": 1,
+        "P": [
+          200,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "activated": false,
+        "P": [
+          200.0,
+          0.0,
+          0.0
+        ],
+        "V": [
+          200.0,
+          0.0,
+          0.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-7, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "cap_forward",
+      "kind": "absolute_cap",
+      "input": {
+        "m": 1,
+        "P": [
+          250,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "activated": true,
+        "P": [
+          200.0,
+          0.0,
+          0.0
+        ],
+        "V": [
+          200.0,
+          0.0,
+          0.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-7, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "cap_reverse",
+      "kind": "absolute_cap",
+      "input": {
+        "m": 1,
+        "P": [
+          -250,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "activated": true,
+        "P": [
+          -200.0,
+          0.0,
+          0.0
+        ],
+        "V": [
+          -200.0,
+          0.0,
+          0.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-7, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "cap_three_dimensional",
+      "kind": "absolute_cap",
+      "input": {
+        "m": 1,
+        "P": [
+          150,
+          0,
+          200
+        ]
+      },
+      "expected": {
+        "activated": true,
+        "P": [
+          120.0,
+          0.0,
+          160.0
+        ],
+        "V": [
+          120.0,
+          0.0,
+          160.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-7, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "cap_mass_below",
+      "kind": "absolute_cap",
+      "input": {
+        "m": 0.699999988079071,
+        "P": [
+          174.99999701976776,
+          0.0,
+          0.0
+        ]
+      },
+      "expected": {
+        "activated": false,
+        "P": [
+          175.0,
+          0.0,
+          0.0
+        ],
+        "V": [
+          250.0,
+          0.0,
+          0.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-7, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "cap_mass_above",
+      "kind": "absolute_cap",
+      "input": {
+        "m": 0.7000000476837158,
+        "P": [
+          175.00001192092896,
+          0.0,
+          0.0
+        ]
+      },
+      "expected": {
+        "activated": true,
+        "P": [
+          140.00001525878906,
+          0.0,
+          0.0
+        ],
+        "V": [
+          200.0,
+          0.0,
+          0.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-7, using invented inputs and the README arithmetic convention; not an observed retail output."
+    },
+    {
+      "id": "once_only_force",
+      "kind": "prepared_force_euler",
+      "input": {
+        "m": 1.25,
+        "V": [
+          30,
+          0,
+          0
+        ],
+        "h": 0.004,
+        "cD": 0.0005000000237487257,
+        "t": 1,
+        "G": 1,
+        "a": 0,
+        "e": 1,
+        "d": 1,
+        "prepared_wheel_force": [
+          2.0,
+          0,
+          0
+        ],
+        "z": 0,
+        "stabilize": false,
+        "L": 0
+      },
+      "expected": {
+        "prepared_aero": [
+          -0.45000001788139343,
+          0,
+          0
+        ],
+        "Pdot": [
+          1.5499999523162842,
+          0,
+          0
+        ],
+        "P_after": [
+          37.50619888305664,
+          0.0,
+          0.0
+        ]
+      },
+      "provenance": "Synthetic mathematical derivation from S2-2 and S2-7, using invented inputs and the README arithmetic convention; not an observed retail output."
+    }
+  ]
+}

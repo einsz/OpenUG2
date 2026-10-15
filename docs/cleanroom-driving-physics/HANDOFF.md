@@ -64,3 +64,19 @@ Native smoke is an early idle/low-speed segment, not native upshift proof;
 interactive lifecycle/audio quality and original-game differential remain unverified.
 Implementation untouched by verifier; captures stay in /tmp. Clean repro/check
 scripts and logs are ignored under cleanroom/verification/integration/.
+
+## Stage-2 resistance verification — 2026-10-15
+
+Fresh implementer `stage2_resistance_implementation` and fresh verifier
+`stage2_resistance_verification` completed the approved Stage-2 round. Hashes:
+Stage 2 `d3072359aa25bf0ef541504805f70b3579829bb9b1310cda8ba1a568286c6cb6`;
+Stage 1 `61f14ebb5c850fa8aa414ee20baae001fb64d4fff692e9a7d6698dbabce399bb`.
+Five project suites pass (348 Stage-2 checks/all 52 cases; 3,606 Stage-1 checks;
+gameplay, clock and collision). Fresh ASan/UBSan with leaks disabled and 177,204
+independent numerical/property checks pass. No amendment/new review required.
+See stage2/VERIFICATION.md and stage2/VERIFIER_AMENDMENTS.md; independent evidence
+is ignored under cleanroom/verification/stage2/. Verifier edited no implementation.
+Standalone 3D resistance is tested; playable adapter remains an explicitly level
+XY fixture with deferred vertical/contact/angular coupling. Complete Stage-2
+world-motion fidelity and original runtime differential are not established.
+Implementer native smoke/build results were reported, not rerun by verifier.

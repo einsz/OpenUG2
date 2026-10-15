@@ -391,7 +391,7 @@ static float chassis_step(float pos[3], float vel[2], float *heading, float *spe
     /* Changing surface must not instantly delete half the car's speed.
        Above its surface limit, lose speed at the normal braking rate. */
     float limit = vf < 0 ? top*REVERSE_SPD_FRAC : top;
-    if (fabsf(vf) > limit)
+    if (!stage1 && fabsf(vf) > limit)
         vf = copysignf(fmaxf(limit,fabsf(vf)-PHYS_ACCEL*BRAKE_ACCEL),vf);
     /* surface and vehicle both scale retention; keep the product a contraction
        so a slide can never be amplified. */

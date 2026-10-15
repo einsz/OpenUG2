@@ -53,87 +53,142 @@ int stage1_car_read(const unsigned char *data,long length,const char *name,DrvCa
     *out=c;return 1;
 }
 
-int stage1_drive_init(Stage1Drive *s,const DrvCar *car) {
-    if(!s || !valid_car(car))return -1;
+int stage2_car_read(const unsigned char *data,long length,const char *name,ResCar *out) {
+    if(!data || !name || !out)return 0;
+    long row=n2_global_car_record(data,length,name);
+    if(row<0 || row>length-0x890)return 0;
+    ResCar c;
+    memcpy(&c.drag,data+row+0x370,4);memcpy(&c.front,data+row+0x374,4);
+    memcpy(&c.rear,data+row+0x378,4);memcpy(&c.limit_mph,data+row+0x3a0,4);
+    if(!isfinite(c.drag)||c.drag<0||!isfinite(c.front)||c.front<0||
+       !isfinite(c.rear)||c.rear<0||!isfinite(c.limit_mph)||c.limit_mph<0)return 0;
+    *out=c;return 1;
+}
+int stage1_drive_init(Stage1Drive *s,const DrvCar *car,const ResCar *resistance,float reduction) {
+    if(!s || !valid_car(car) || !resistance || !isfinite(reduction)||reduction<0||reduction>1)return -1;
+    const float fields[]={resistance->drag,resistance->front,resistance->rear,resistance->limit_mph};
+    for(unsigned k=0;k<sizeof fields/sizeof *fields;k++)if(!isfinite(fields[k])||fields[k]<0)return -1;
     Stage1Drive fresh={0};DrvTune tune;drv_tune_default(&tune);
-    tune.is_player=1; /* S1-7.8: this adapter belongs to the human player */
+    tune.is_player=1;
     if(drv_init(&fresh.drivetrain,car,&tune))return -1;
+    fresh.resistance_car=*resistance;
+    fresh.resistance_input=(ResInput){.scale=1,.reduction=reduction,.enable=1,.surface=1,.stabilize=1};
+    for(int k=0;k<4;k++)fresh.body_surface[k]=fresh.rolling_surface[k]=1;
+    fresh.body.mass=car->mass;res_post(&fresh.body,0);
     fresh.ready=1;*s=fresh;return 0;
 }
 void stage1_drive_reset(Stage1Drive *s,const float velocity[2],float heading) {
     if(!s || !s->ready)return;
-    DrvCar car=s->drivetrain.car;
-    stage1_drive_init(s,&car);
+    /* Keep supplied tuning/environment while resetting dynamic state. */
+    Stage1Drive previous=*s;
+    stage1_drive_init(s,&previous.drivetrain.car,&previous.resistance_car,previous.resistance_input.reduction);
+    s->resistance_input=previous.resistance_input;
+    memcpy(s->body_surface,previous.body_surface,sizeof s->body_surface);
+    memcpy(s->rolling_surface,previous.rolling_surface,sizeof s->rolling_surface);
+    s->damage_mask=previous.damage_mask;s->state_code=previous.state_code;
+    s->alternate_movement=previous.alternate_movement;s->disable_stabilize=previous.disable_stabilize;
     float v=(velocity[0]*cosf(heading)+velocity[1]*sinf(heading))*PHYS_TICKRATE;
-    for(int k=0;k<4;k++)s->drivetrain.wheel[k].omega=v/car.wheel_radius[k];
+    for(int k=0;k<4;k++)s->drivetrain.wheel[k].omega=v/s->drivetrain.car.wheel_radius[k];
+    for(int k=0;k<2;k++)s->body.momentum[k]=s->body.mass*velocity[k]*PHYS_TICKRATE;
+    res_post(&s->body,0);
 }
 float stage1_drive_rpm(const Stage1Drive *s){return s->drivetrain.omega_e*DRV_KR;}
 int stage1_drive_gear(const Stage1Drive *s){return s->drivetrain.gear-1;}
 
+/* Planar adapter: the independent suspension supplies the body-up constraint.
+ * Keep vertical aero load/moments as diagnostics; no invented load feedback. */
+static void prepare(Stage1Drive *s,DrvEnv *env,const ResBasis *basis,float brake_force) {
+    Drivetrain *d=&s->drivetrain;
+    res_prepare_aero(&s->body,&s->resistance_car,&s->resistance_input,basis,&s->aero);
+    s->body.force[2]=0;
+    DrvBodyStraight coupling={.mass=d->car.mass,
+        .ex=(float)res_dot(s->body.force,basis->forward)+brake_force};
+    drv_couple(d,env,drv_body_accel_straight,&coupling);
+    memset(s->prepared_wheel,0,sizeof s->prepared_wheel);
+    for(int i=0;i<4;i++)if(env->wheel[i].contact&&!env->wheel[i].locked)
+        for(int k=0;k<2;k++) {
+            s->prepared_wheel[i][k]=d->force_long[i]*basis->forward[k];
+            s->body.force[k]+=s->prepared_wheel[i][k];
+        }
+    s->prepared=1;
+}
 float stage1_drive_step(Stage1Drive *s,float pos[3],float vel[2],float *heading,
     float *speed,float pedal,float steer,int handbrake,const PhysSurface *sf,
     const PhysVehicle *vh,const PhysRideState *ride) {
     if(!s || !s->ready)return 0;
     if(!sf)sf=&PHYS_SURF_ROAD;
-    Drivetrain *d=&s->drivetrain;
+    Drivetrain *d=&s->drivetrain;ResBody *b=&s->body;
     s->wheel_travel=0;
-    float ch=cosf(*heading),sh=sinf(*heading);
-    float forward=(vel[0]*ch+vel[1]*sh)*PHYS_TICKRATE;
-    /* Host keyboard policy; not the unresolved retail menu mapping U-1/U-2. */
+    ResBasis basis=res_basis_level(*heading);
+    for(int k=0;k<2;k++) { b->velocity[k]=vel[k]*PHYS_TICKRATE;b->momentum[k]=b->mass*b->velocity[k]; }
+    float forward=(float)res_dot(b->velocity,basis.forward);
+    /* Host keyboard policy, retained from the Stage-1 playable adapter. */
     if(pedal<0 && forward<=.3f)s->reverse=1;
     if(pedal>0 && forward>=-.3f)s->reverse=0;
     int braking=(pedal<0 && !s->reverse)||(pedal>0 && s->reverse);
     DrvInput input={.throttle=braking||handbrake?0:fabsf(pedal),
         .brake=braking?fabsf(pedal):0,.handbrake=handbrake?1:0,
         .gear_cmd=s->reverse?DRV_GEAR_R:DRV_CMD_AUTO};
-    drv_frame_begin(d,&input,1/PHYS_TICKRATE,-1);
-    float h;int n=drv_substep_count(1/PHYS_TICKRATE,&h);
     unsigned mask=ride?ride->contact_mask:0;
-    DrvEnv env;drv_env_default(&env);
-    /* Explicit provisional Stage 4/5 interface: symmetric longitudinal slice,
-       equal static per-wheel preload, ordinary-road surface and rear factor 1.
-       Steering/lateral response remains in the host chassis, outside Stage 1. */
-    env.rear_grip_multiplier=1;
+    ResInput *r=&s->resistance_input;
+    res_frame_inputs(r,s->state_code,s->alternate_movement,s->disable_stabilize,mask,s->body_surface);
+    /* One shared scale/bonus; this ordinary adapter has no exceptional engine multiplier. */
+    d->tune.torque_scale=r->scale;d->tune.torque_bonus=r->bonus;
+    DrvEnv env;drv_env_default(&env);env.rear_grip_multiplier=1;
     for(int k=0;k<4;k++){
         env.wheel[k].contact=(mask>>k)&1u;
         env.wheel[k].load=env.wheel[k].contact?d->car.mass*9.8f/4:0;
         env.wheel[k].mu_peak_surface=env.wheel[k].mu_slide_surface=sf->accel;
         env.wheel[k].locked=handbrake;
+        env.wheel[k].roll_drag=s->rolling_surface[k];
+        env.wheel[k].drag_flag=(s->damage_mask>>k)&1u;
+        env.wheel[k].vx=forward;
     }
-    /* Body external-force input for the coupling passes. The next derivative
-       consumes the prior coupling forces, as required by S1-2.4. */
-    DrvBodyStraight body={.mass=d->car.mass};
+    /* Frame setup supplies a consistent current contact snapshot to selector/derivatives. */
+    d->env=env;drv_frame_begin(d,&input,1/PHYS_TICKRATE,-1);r->throttle=d->throttle;
+    float h;int n=drv_substep_count(1/PHYS_TICKRATE,&h);
+    float decel=mask && braking && !handbrake
+        ?10.5f*g_phys_tune.brake*(vh&&vh->brake>0?vh->brake:1)*d->brake:0;
+    if(!s->prepared)prepare(s,&env,&basis,-copysignf(decel*b->mass,forward));
     for(int k=0;k<n;k++){
-        d->env=env; /* current host contact/lock flags before wheel derivatives */
-        float force=0;
-        for(int i=0;i<4;i++)force+=env.wheel[i].contact&&!handbrake?d->force_long[i]:0;
-        float drag=mask?(powf(sf->drag,h*PHYS_TICKRATE)-1)*forward/h:0;
-        float decel=mask && braking && !handbrake
-            ?10.5f*g_phys_tune.brake*(vh&&vh->brake>0?vh->brake:1)*d->brake:0;
+        /* Remove previous contact thrust when the host releases/locks a wheel.
+         * Its prior prepared aero remains; there is no extra resistance pass. */
+        for(int i=0;i<4;i++)if(!env.wheel[i].contact||handbrake) {
+            for(int axis=0;axis<2;axis++) {
+                b->force[axis]-=s->prepared_wheel[i][axis];
+                s->prepared_wheel[i][axis]=0;
+            }
+        }
         float before=forward;
-        body.ex=d->car.mass*(drag-copysignf(decel,forward));
-        forward+=h*(force/d->car.mass+drag);
-        if(decel>0)forward=copysignf(fmaxf(0,fabsf(forward)-decel*h),forward);
-        if(decel>0 && before*forward<0)forward=0;
-        /* Locked-wheel forces are not added on top of the host handbrake.
-           The shared chassis applies its existing 5.5 m/s^2 stop once. */
+        float brake_force=-copysignf(fminf(decel*b->mass,fabsf(forward)*b->mass/h),forward);
+        for(int axis=0;axis<2;axis++)b->force[axis]+=brake_force*basis.forward[axis];
+        ResDerivative derivative;res_derivative(b,&s->resistance_car,r,&basis,0,&derivative);
+        /* Body derivative is collected before wheel/shaft integration. The
+         * independent blocks share no state mutated by either Euler update. */
         for(int i=0;i<4;i++)s->wheel_travel+=h*d->wheel[i].omega*.25f;
+        res_integrate(b,&derivative,h);
+        res_post(b,0);
         drv_integrate(d,h);
+        forward=(float)res_dot(b->velocity,basis.forward);
+        if(decel>0 && before*forward<0) {
+            for(int axis=0;axis<2;axis++) {
+                b->velocity[axis]-=forward*basis.forward[axis];
+                b->momentum[axis]=b->mass*b->velocity[axis];
+            }
+            forward=0;
+        }
         for(int i=0;i<4;i++){
             env.wheel[i].vx=forward;
-            /* Service-brake wheel torque is deferred. Host brake adapter keeps
-               supported wheels rolling; handbrake holds shaft/wheels at zero. */
             if(env.wheel[i].contact && (braking||handbrake)){
                 d->wheel[i].omega=handbrake?0:forward/d->car.wheel_radius[i];
                 d->wheel[i].tau_smooth=0;
             }
         }
-        env.body_speed=fabsf(forward);
-        drv_couple(d,&env,drv_body_accel_straight,&body);
+        env.body_speed=hypotf(b->velocity[0],b->velocity[1]);
+        prepare(s,&env,&basis,-copysignf(decel*b->mass,forward));
     }
-    float old=(vel[0]*ch+vel[1]*sh)*PHYS_TICKRATE;
-    vel[0]+=ch*(forward-old)/PHYS_TICKRATE;vel[1]+=sh*(forward-old)/PHYS_TICKRATE;
+    vel[0]=b->velocity[0]/PHYS_TICKRATE;vel[1]=b->velocity[1]/PHYS_TICKRATE;
     if(mask)return phys_stage1_chassis_step(pos,vel,heading,speed,steer,handbrake,sf,vh);
     pos[0]+=vel[0];pos[1]+=vel[1];*speed=forward/PHYS_TICKRATE;
-    return fabsf(vel[0]*sh-vel[1]*ch);
+    return fabsf(vel[0]*basis.forward[1]-vel[1]*basis.forward[0]);
 }
