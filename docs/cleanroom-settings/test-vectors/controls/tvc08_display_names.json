@@ -1,0 +1,72 @@
+{
+ "about": "Value-text formation rules (spec 6.2). OS name in, cell text out. English rules observed in the executable (static); the OS names themselves are platform data.",
+ "english": [
+  {
+   "device": "keyboard",
+   "os_name": "Shift",
+   "shown": "Left Shift"
+  },
+  {
+   "device": "keyboard",
+   "os_name": "shift",
+   "shown": "Left Shift"
+  },
+  {
+   "device": "keyboard",
+   "os_name": "Alt",
+   "shown": "Left Alt"
+  },
+  {
+   "device": "keyboard",
+   "os_name": "Ctrl",
+   "shown": "Left Ctrl"
+  },
+  {
+   "device": "keyboard",
+   "os_name": "Right Shift",
+   "shown": "Right Shift"
+  },
+  {
+   "device": "keyboard",
+   "os_name": "W",
+   "shown": "W"
+  },
+  {
+   "device": "joystick",
+   "os_name": "Button 0",
+   "shown": "Button 1"
+  },
+  {
+   "device": "joystick",
+   "os_name": "Button 11",
+   "shown": "Button 12"
+  },
+  {
+   "device": "joystick",
+   "os_name": "button 3",
+   "shown": "Button 4"
+  },
+  {
+   "device": "joystick",
+   "os_name": "X Axis",
+   "shown": "X Axis"
+  },
+  {
+   "device": "any",
+   "os_name": "",
+   "shown": "---"
+  },
+  {
+   "device": "any",
+   "os_name": null,
+   "shown": "---",
+   "note": "nothing bound"
+  },
+  {
+   "device": "any",
+   "os_name": "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+   "shown": "ABCDEFGHIJKLMNOPQRSTUVW",
+   "note": "at most 23 characters are shown"
+  }
+ ]
+}

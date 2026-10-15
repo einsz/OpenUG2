@@ -1,0 +1,742 @@
+{
+ "about": "Row lists per device class (observed in the executable, static). slot n binds option_name_n / option_data_n / OPTION_DATA_2_n / Options_Backing_n.",
+ "title_key": {
+  "keyboard": "0x5CF08EB7",
+  "joypad": "0xF91FBA4D",
+  "wheel": "0x14D4BD3B"
+ },
+ "keyboard": [
+  {
+   "slot": 1,
+   "label_key": "0x153E7337",
+   "english": "Steering (Left)",
+   "action": 3,
+   "primary": {
+    "capture_action": 3,
+    "display_action": 3
+   },
+   "secondary": {
+    "capture_action": 3,
+    "display_action": 3
+   }
+  },
+  {
+   "slot": 2,
+   "label_key": "0xBD7BA1AA",
+   "english": "Steering (Right)",
+   "action": 4,
+   "primary": {
+    "capture_action": 4,
+    "display_action": 4
+   },
+   "secondary": {
+    "capture_action": 4,
+    "display_action": 4
+   }
+  },
+  {
+   "slot": 3,
+   "label_key": "0x409607E2",
+   "english": "Throttle",
+   "action": 1,
+   "primary": {
+    "capture_action": 1,
+    "display_action": 1
+   },
+   "secondary": {
+    "capture_action": 1,
+    "display_action": 1
+   }
+  },
+  {
+   "slot": 4,
+   "label_key": "0x82EBCC98",
+   "english": "Back / Reverse",
+   "action": 2,
+   "primary": {
+    "capture_action": 2,
+    "display_action": 2
+   },
+   "secondary": {
+    "capture_action": 2,
+    "display_action": 2
+   }
+  },
+  {
+   "slot": 5,
+   "label_key": "0x3EB318CE",
+   "english": "Shift Up",
+   "action": 7,
+   "primary": {
+    "capture_action": 7,
+    "display_action": 7
+   },
+   "secondary": {
+    "capture_action": 7,
+    "display_action": 7
+   }
+  },
+  {
+   "slot": 6,
+   "label_key": "0xB7D33921",
+   "english": "Shift Down",
+   "action": 8,
+   "primary": {
+    "capture_action": 8,
+    "display_action": 8
+   },
+   "secondary": {
+    "capture_action": 8,
+    "display_action": 8
+   }
+  },
+  {
+   "slot": 7,
+   "label_key": "0xB3D1EA35",
+   "english": "Handbrake",
+   "action": 5,
+   "primary": {
+    "capture_action": 5,
+    "display_action": 5
+   },
+   "secondary": {
+    "capture_action": 5,
+    "display_action": 5
+   }
+  },
+  {
+   "slot": 8,
+   "label_key": "0xDF5AEF26",
+   "english": "Nitrous Boost",
+   "action": 6,
+   "primary": {
+    "capture_action": 6,
+    "display_action": 6
+   },
+   "secondary": {
+    "capture_action": 6,
+    "display_action": 6
+   }
+  },
+  {
+   "slot": 9,
+   "label_key": "0x419CA63A",
+   "english": "Camera",
+   "action": 10,
+   "primary": {
+    "capture_action": 10,
+    "display_action": 10
+   },
+   "secondary": {
+    "capture_action": 10,
+    "display_action": 10
+   }
+  },
+  {
+   "slot": 10,
+   "label_key": "0x35B9F571",
+   "english": "Look Back",
+   "action": 9,
+   "primary": {
+    "capture_action": 9,
+    "display_action": 9
+   },
+   "secondary": {
+    "capture_action": 9,
+    "display_action": 9
+   }
+  },
+  {
+   "slot": 11,
+   "label_key": "0x4A1341B3",
+   "english": "Enter Race / Shop",
+   "action": 15,
+   "primary": {
+    "capture_action": 15,
+    "display_action": 15
+   },
+   "secondary": {
+    "capture_action": 15,
+    "display_action": 15
+   }
+  },
+  {
+   "slot": 12,
+   "label_key": "0x1E7E3391",
+   "english": "World Map",
+   "action": 16,
+   "primary": {
+    "capture_action": 16,
+    "display_action": 16
+   },
+   "secondary": {
+    "capture_action": 16,
+    "display_action": 16
+   }
+  },
+  {
+   "slot": 13,
+   "label_key": "0x58BAEBBA",
+   "english": "Read SMS",
+   "action": 17,
+   "primary": {
+    "capture_action": 17,
+    "display_action": 17
+   },
+   "secondary": {
+    "capture_action": 17,
+    "display_action": 17
+   }
+  },
+  {
+   "slot": 14,
+   "label_key": "0x735B2E6C",
+   "english": "Career Statistics",
+   "action": 18,
+   "primary": {
+    "capture_action": 18,
+    "display_action": 18
+   },
+   "secondary": {
+    "capture_action": 18,
+    "display_action": 18
+   }
+  },
+  {
+   "slot": 15,
+   "label_key": "0x6FC04E6F",
+   "english": "Reset Car",
+   "action": 14,
+   "primary": {
+    "capture_action": 14,
+    "display_action": 14
+   },
+   "secondary": {
+    "capture_action": 14,
+    "display_action": 14
+   }
+  },
+  {
+   "slot": 16,
+   "label_key": "0xA081F0CC",
+   "english": "Hydraulics Pressure",
+   "action": 22,
+   "primary": {
+    "capture_action": 22,
+    "display_action": 22
+   },
+   "secondary": {
+    "capture_action": 22,
+    "display_action": 22
+   }
+  },
+  {
+   "slot": 17,
+   "label_key": "0x64730AAC",
+   "english": "Hydraulics Bounce",
+   "action": 19,
+   "primary": {
+    "capture_action": 19,
+    "display_action": 19
+   },
+   "secondary": {
+    "capture_action": 19,
+    "display_action": 19
+   }
+  },
+  {
+   "slot": 18,
+   "label_key": "0x6F99F62A",
+   "english": "Pause",
+   "action": 12,
+   "primary": {
+    "capture_action": 12,
+    "display_action": 12
+   },
+   "secondary": {
+    "capture_action": 12,
+    "display_action": 12
+   }
+  }
+ ],
+ "joypad": [
+  {
+   "slot": 1,
+   "label_key": "0x153E7337",
+   "english": "Steering (Left)",
+   "action": 3,
+   "primary": {
+    "capture_action": 3,
+    "display_action": 3
+   },
+   "secondary": {
+    "capture_action": 3,
+    "display_action": 3
+   }
+  },
+  {
+   "slot": 2,
+   "label_key": "0xBD7BA1AA",
+   "english": "Steering (Right)",
+   "action": 4,
+   "primary": {
+    "capture_action": 4,
+    "display_action": 4
+   },
+   "secondary": {
+    "capture_action": 4,
+    "display_action": 4
+   }
+  },
+  {
+   "slot": 3,
+   "label_key": "0x409607E2",
+   "english": "Throttle",
+   "action": 1,
+   "primary": {
+    "capture_action": 1,
+    "display_action": 1
+   },
+   "secondary": {
+    "capture_action": 1,
+    "display_action": 1
+   }
+  },
+  {
+   "slot": 4,
+   "label_key": "0x82EBCC98",
+   "english": "Back / Reverse",
+   "action": 2,
+   "primary": {
+    "capture_action": 2,
+    "display_action": 2
+   },
+   "secondary": {
+    "capture_action": 2,
+    "display_action": 2
+   }
+  },
+  {
+   "slot": 5,
+   "label_key": "0x3EB318CE",
+   "english": "Shift Up",
+   "action": 7,
+   "primary": {
+    "capture_action": 7,
+    "display_action": 7
+   },
+   "secondary": {
+    "capture_action": 7,
+    "display_action": 7
+   }
+  },
+  {
+   "slot": 6,
+   "label_key": "0xB7D33921",
+   "english": "Shift Down",
+   "action": 8,
+   "primary": {
+    "capture_action": 8,
+    "display_action": 8
+   },
+   "secondary": {
+    "capture_action": 8,
+    "display_action": 8
+   }
+  },
+  {
+   "slot": 7,
+   "label_key": "0xB3D1EA35",
+   "english": "Handbrake",
+   "action": 5,
+   "primary": {
+    "capture_action": 5,
+    "display_action": 5
+   },
+   "secondary": {
+    "capture_action": 5,
+    "display_action": 5
+   }
+  },
+  {
+   "slot": 8,
+   "label_key": "0xDF5AEF26",
+   "english": "Nitrous Boost",
+   "action": 6,
+   "primary": {
+    "capture_action": 6,
+    "display_action": 6
+   },
+   "secondary": {
+    "capture_action": 6,
+    "display_action": 6
+   }
+  },
+  {
+   "slot": 9,
+   "label_key": "0x419CA63A",
+   "english": "Camera",
+   "action": 10,
+   "primary": {
+    "capture_action": 10,
+    "display_action": 10
+   },
+   "secondary": {
+    "capture_action": 10,
+    "display_action": 10
+   }
+  },
+  {
+   "slot": 10,
+   "label_key": "0x35B9F571",
+   "english": "Look Back",
+   "action": 9,
+   "primary": {
+    "capture_action": 9,
+    "display_action": 9
+   },
+   "secondary": {
+    "capture_action": 9,
+    "display_action": 9
+   }
+  },
+  {
+   "slot": 11,
+   "label_key": "0x4A1341B3",
+   "english": "Enter Race / Shop",
+   "action": 15,
+   "primary": {
+    "capture_action": 15,
+    "display_action": 15
+   },
+   "secondary": {
+    "capture_action": 15,
+    "display_action": 15
+   }
+  },
+  {
+   "slot": 12,
+   "label_key": "0x1E7E3391",
+   "english": "World Map",
+   "action": 16,
+   "primary": {
+    "capture_action": 16,
+    "display_action": 16
+   },
+   "secondary": {
+    "capture_action": 16,
+    "display_action": 16
+   }
+  },
+  {
+   "slot": 13,
+   "label_key": "0x58BAEBBA",
+   "english": "Read SMS",
+   "action": 17,
+   "primary": {
+    "capture_action": 17,
+    "display_action": 17
+   },
+   "secondary": {
+    "capture_action": 17,
+    "display_action": 17
+   }
+  },
+  {
+   "slot": 14,
+   "label_key": "0x735B2E6C",
+   "english": "Career Statistics",
+   "action": 18,
+   "primary": {
+    "capture_action": 18,
+    "display_action": 18
+   },
+   "secondary": {
+    "capture_action": 18,
+    "display_action": 18
+   }
+  },
+  {
+   "slot": 15,
+   "label_key": "0x6FC04E6F",
+   "english": "Reset Car",
+   "action": 14,
+   "primary": {
+    "capture_action": 14,
+    "display_action": 14
+   },
+   "secondary": {
+    "capture_action": 14,
+    "display_action": 14
+   }
+  },
+  {
+   "slot": 16,
+   "label_key": "0xA081F0CC",
+   "english": "Hydraulics Pressure",
+   "action": 22,
+   "primary": {
+    "capture_action": 22,
+    "display_action": 22
+   },
+   "secondary": {
+    "capture_action": 22,
+    "display_action": 22
+   }
+  },
+  {
+   "slot": 17,
+   "label_key": "0x64730AAC",
+   "english": "Hydraulics Bounce",
+   "action": 19,
+   "primary": {
+    "capture_action": 19,
+    "display_action": 19
+   },
+   "secondary": {
+    "capture_action": 19,
+    "display_action": 19
+   }
+  },
+  {
+   "slot": 18,
+   "label_key": "0x6F99F62A",
+   "english": "Pause",
+   "action": 12,
+   "primary": {
+    "capture_action": 12,
+    "display_action": 12
+   },
+   "secondary": {
+    "capture_action": 12,
+    "display_action": 12
+   }
+  }
+ ],
+ "wheel": [
+  {
+   "slot": 1,
+   "label_key": "0x409607E2",
+   "english": "Throttle",
+   "action": 1,
+   "primary": {
+    "capture_action": 1,
+    "display_action": 1
+   },
+   "secondary": {
+    "capture_action": 1,
+    "display_action": 1
+   }
+  },
+  {
+   "slot": 2,
+   "label_key": "0x82EBCC98",
+   "english": "Back / Reverse",
+   "action": 2,
+   "primary": {
+    "capture_action": 2,
+    "display_action": 2
+   },
+   "secondary": {
+    "capture_action": 2,
+    "display_action": 2
+   }
+  },
+  {
+   "slot": 3,
+   "label_key": "0x3EB318CE",
+   "english": "Shift Up",
+   "action": 7,
+   "primary": {
+    "capture_action": 7,
+    "display_action": 7
+   },
+   "secondary": {
+    "capture_action": 7,
+    "display_action": 7
+   }
+  },
+  {
+   "slot": 4,
+   "label_key": "0xB7D33921",
+   "english": "Shift Down",
+   "action": 8,
+   "primary": {
+    "capture_action": 8,
+    "display_action": 8
+   },
+   "secondary": {
+    "capture_action": 8,
+    "display_action": 8
+   }
+  },
+  {
+   "slot": 5,
+   "label_key": "0xB3D1EA35",
+   "english": "Handbrake",
+   "action": 5,
+   "primary": {
+    "capture_action": 5,
+    "display_action": 5
+   },
+   "secondary": {
+    "capture_action": 5,
+    "display_action": 5
+   }
+  },
+  {
+   "slot": 6,
+   "label_key": "0xDF5AEF26",
+   "english": "Nitrous Boost",
+   "action": 6,
+   "primary": {
+    "capture_action": 6,
+    "display_action": 6
+   },
+   "secondary": {
+    "capture_action": 6,
+    "display_action": 6
+   }
+  },
+  {
+   "slot": 7,
+   "label_key": "0x419CA63A",
+   "english": "Camera",
+   "action": 10,
+   "primary": {
+    "capture_action": 10,
+    "display_action": 10
+   },
+   "secondary": {
+    "capture_action": 10,
+    "display_action": 10
+   }
+  },
+  {
+   "slot": 8,
+   "label_key": "0x35B9F571",
+   "english": "Look Back",
+   "action": 9,
+   "primary": {
+    "capture_action": 9,
+    "display_action": 9
+   },
+   "secondary": {
+    "capture_action": 9,
+    "display_action": 9
+   }
+  },
+  {
+   "slot": 9,
+   "label_key": "0x4A1341B3",
+   "english": "Enter Race / Shop",
+   "action": 15,
+   "primary": {
+    "capture_action": 15,
+    "display_action": 15
+   },
+   "secondary": {
+    "capture_action": 15,
+    "display_action": 15
+   }
+  },
+  {
+   "slot": 10,
+   "label_key": "0x1E7E3391",
+   "english": "World Map",
+   "action": 16,
+   "primary": {
+    "capture_action": 16,
+    "display_action": 16
+   },
+   "secondary": {
+    "capture_action": 16,
+    "display_action": 16
+   }
+  },
+  {
+   "slot": 11,
+   "label_key": "0x58BAEBBA",
+   "english": "Read SMS",
+   "action": 17,
+   "primary": {
+    "capture_action": 17,
+    "display_action": 17
+   },
+   "secondary": {
+    "capture_action": 17,
+    "display_action": 17
+   }
+  },
+  {
+   "slot": 12,
+   "label_key": "0x735B2E6C",
+   "english": "Career Statistics",
+   "action": 18,
+   "primary": {
+    "capture_action": 18,
+    "display_action": 18
+   },
+   "secondary": {
+    "capture_action": 18,
+    "display_action": 17
+   }
+  },
+  {
+   "slot": 13,
+   "label_key": "0x6FC04E6F",
+   "english": "Reset Car",
+   "action": 14,
+   "primary": {
+    "capture_action": 14,
+    "display_action": 14
+   },
+   "secondary": {
+    "capture_action": 14,
+    "display_action": 14
+   }
+  },
+  {
+   "slot": 14,
+   "label_key": "0xA081F0CC",
+   "english": "Hydraulics Pressure",
+   "action": 22,
+   "primary": {
+    "capture_action": 22,
+    "display_action": 22
+   },
+   "secondary": {
+    "capture_action": 22,
+    "display_action": 22
+   }
+  },
+  {
+   "slot": 15,
+   "label_key": "0x64730AAC",
+   "english": "Hydraulics Bounce",
+   "action": 19,
+   "primary": {
+    "capture_action": 19,
+    "display_action": 19
+   },
+   "secondary": {
+    "capture_action": 19,
+    "display_action": 19
+   }
+  },
+  {
+   "slot": 16,
+   "label_key": "0x6F99F62A",
+   "english": "Pause",
+   "action": 12,
+   "primary": {
+    "capture_action": 12,
+    "display_action": 12
+   },
+   "secondary": {
+    "capture_action": 12,
+    "display_action": 12
+   }
+  }
+ ]
+}

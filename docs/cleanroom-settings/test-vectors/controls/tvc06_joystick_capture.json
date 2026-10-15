@@ -1,0 +1,1002 @@
+{
+ "about": "Synthetic joystick rebinding scenarios evaluated with spec 6.4/6.5 (analyst model). display: [primary, secondary] where each is [\"axis\", offset] | [\"button\", index] | [\"pov\", pov_number] | null (shown as \"---\"). Later axis cases start from the previous result.",
+ "pov_direction": [
+  {
+   "centidegrees": 0,
+   "dir": 1
+  },
+  {
+   "centidegrees": 4000,
+   "dir": 1
+  },
+  {
+   "centidegrees": 9000,
+   "dir": 3
+  },
+  {
+   "centidegrees": 13000,
+   "dir": 3
+  },
+  {
+   "centidegrees": 18000,
+   "dir": 0
+  },
+  {
+   "centidegrees": 22000,
+   "dir": 0
+  },
+  {
+   "centidegrees": 27000,
+   "dir": 2
+  },
+  {
+   "centidegrees": 31000,
+   "dir": 2
+  },
+  {
+   "centidegrees": 35999,
+   "dir": 1
+  }
+ ],
+ "cases": [
+  {
+   "name": "display of the 10-button defaults",
+   "binding32": [
+    2,
+    1,
+    9,
+    10,
+    6,
+    5,
+    8,
+    7,
+    22,
+    19,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    3,
+    4,
+    0,
+    0,
+    3,
+    4,
+    0,
+    0,
+    3,
+    4,
+    0,
+    0,
+    3,
+    4
+   ],
+   "axes": {
+    "steer_axis": 0,
+    "throttle_axis": 0,
+    "brake_axis": 0,
+    "combined_axis": 20,
+    "steer_dir": 1,
+    "throttle_dir": -1,
+    "brake_dir": -1,
+    "combined_dir": 1,
+    "assigned": [
+     1,
+     0,
+     0,
+     1
+    ],
+    "combined_mode": 1
+   },
+   "display": {
+    "1": [
+     [
+      "axis",
+      20
+     ],
+     [
+      "button",
+      1
+     ]
+    ],
+    "2": [
+     [
+      "axis",
+      20
+     ],
+     [
+      "button",
+      0
+     ]
+    ],
+    "3": [
+     [
+      "axis",
+      0
+     ],
+     [
+      "pov",
+      0
+     ]
+    ],
+    "4": [
+     [
+      "axis",
+      0
+     ],
+     [
+      "pov",
+      0
+     ]
+    ],
+    "5": [
+     [
+      "button",
+      5
+     ],
+     null
+    ],
+    "6": [
+     [
+      "button",
+      4
+     ],
+     null
+    ],
+    "7": [
+     [
+      "button",
+      7
+     ],
+     null
+    ],
+    "8": [
+     [
+      "button",
+      6
+     ],
+     null
+    ],
+    "9": [
+     [
+      "button",
+      2
+     ],
+     null
+    ],
+    "10": [
+     [
+      "button",
+      3
+     ],
+     null
+    ],
+    "12": [
+     null,
+     null
+    ],
+    "14": [
+     null,
+     null
+    ],
+    "15": [
+     null,
+     null
+    ],
+    "16": [
+     null,
+     null
+    ],
+    "17": [
+     null,
+     null
+    ],
+    "18": [
+     null,
+     null
+    ],
+    "19": [
+     [
+      "button",
+      9
+     ],
+     null
+    ],
+    "22": [
+     [
+      "button",
+      8
+     ],
+     null
+    ]
+   }
+  },
+  {
+   "name": "Nitrous primary := button 0 (steals from Brake; old Nitrous button cleared)",
+   "capture": {
+    "action": 6,
+    "column": 0,
+    "input": "button",
+    "arg": 0,
+    "sign": null
+   },
+   "binding32_after": [
+    6,
+    1,
+    9,
+    10,
+    0,
+    5,
+    8,
+    7,
+    22,
+    19,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    3,
+    4,
+    0,
+    0,
+    3,
+    4,
+    0,
+    0,
+    3,
+    4,
+    0,
+    0,
+    3,
+    4
+   ],
+   "axes_after": {
+    "steer_axis": 0,
+    "throttle_axis": 0,
+    "brake_axis": 0,
+    "combined_axis": 20,
+    "steer_dir": 1,
+    "throttle_dir": -1,
+    "brake_dir": -1,
+    "combined_dir": 1,
+    "assigned": [
+     1,
+     0,
+     0,
+     1
+    ],
+    "combined_mode": 1
+   },
+   "display_after": {
+    "1": [
+     [
+      "axis",
+      20
+     ],
+     [
+      "button",
+      1
+     ]
+    ],
+    "2": [
+     [
+      "axis",
+      20
+     ],
+     null
+    ],
+    "3": [
+     [
+      "axis",
+      0
+     ],
+     [
+      "pov",
+      0
+     ]
+    ],
+    "4": [
+     [
+      "axis",
+      0
+     ],
+     [
+      "pov",
+      0
+     ]
+    ],
+    "5": [
+     [
+      "button",
+      5
+     ],
+     null
+    ],
+    "6": [
+     [
+      "button",
+      0
+     ],
+     null
+    ],
+    "9": [
+     [
+      "button",
+      2
+     ],
+     null
+    ],
+    "10": [
+     [
+      "button",
+      3
+     ],
+     null
+    ]
+   }
+  },
+  {
+   "name": "Nitrous secondary := button 7 (primary button 4 kept)",
+   "capture": {
+    "action": 6,
+    "column": 1,
+    "input": "button",
+    "arg": 7,
+    "sign": null
+   },
+   "binding32_after": [
+    2,
+    1,
+    9,
+    10,
+    6,
+    5,
+    8,
+    6,
+    22,
+    19,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    3,
+    4,
+    0,
+    0,
+    3,
+    4,
+    0,
+    0,
+    3,
+    4,
+    0,
+    0,
+    3,
+    4
+   ],
+   "axes_after": {
+    "steer_axis": 0,
+    "throttle_axis": 0,
+    "brake_axis": 0,
+    "combined_axis": 20,
+    "steer_dir": 1,
+    "throttle_dir": -1,
+    "brake_dir": -1,
+    "combined_dir": 1,
+    "assigned": [
+     1,
+     0,
+     0,
+     1
+    ],
+    "combined_mode": 1
+   },
+   "display_after": {
+    "1": [
+     [
+      "axis",
+      20
+     ],
+     [
+      "button",
+      1
+     ]
+    ],
+    "2": [
+     [
+      "axis",
+      20
+     ],
+     [
+      "button",
+      0
+     ]
+    ],
+    "3": [
+     [
+      "axis",
+      0
+     ],
+     [
+      "pov",
+      0
+     ]
+    ],
+    "4": [
+     [
+      "axis",
+      0
+     ],
+     [
+      "pov",
+      0
+     ]
+    ],
+    "5": [
+     [
+      "button",
+      5
+     ],
+     null
+    ],
+    "6": [
+     [
+      "button",
+      4
+     ],
+     [
+      "button",
+      7
+     ]
+    ],
+    "9": [
+     [
+      "button",
+      2
+     ],
+     null
+    ],
+    "10": [
+     [
+      "button",
+      3
+     ],
+     null
+    ]
+   }
+  },
+  {
+   "name": "Throttle secondary := button 3 (actions 1..4 never keep an earlier button)",
+   "capture": {
+    "action": 1,
+    "column": 1,
+    "input": "button",
+    "arg": 3,
+    "sign": null
+   },
+   "binding32_after": [
+    2,
+    0,
+    9,
+    1,
+    6,
+    5,
+    8,
+    7,
+    22,
+    19,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    3,
+    4,
+    0,
+    0,
+    3,
+    4,
+    0,
+    0,
+    3,
+    4,
+    0,
+    0,
+    3,
+    4
+   ],
+   "axes_after": {
+    "steer_axis": 0,
+    "throttle_axis": 0,
+    "brake_axis": 0,
+    "combined_axis": 20,
+    "steer_dir": 1,
+    "throttle_dir": -1,
+    "brake_dir": -1,
+    "combined_dir": 1,
+    "assigned": [
+     1,
+     0,
+     0,
+     1
+    ],
+    "combined_mode": 1
+   },
+   "display_after": {
+    "1": [
+     [
+      "axis",
+      20
+     ],
+     [
+      "button",
+      3
+     ]
+    ],
+    "2": [
+     [
+      "axis",
+      20
+     ],
+     [
+      "button",
+      0
+     ]
+    ],
+    "3": [
+     [
+      "axis",
+      0
+     ],
+     [
+      "pov",
+      0
+     ]
+    ],
+    "4": [
+     [
+      "axis",
+      0
+     ],
+     [
+      "pov",
+      0
+     ]
+    ],
+    "5": [
+     [
+      "button",
+      5
+     ],
+     null
+    ],
+    "6": [
+     [
+      "button",
+      4
+     ],
+     null
+    ],
+    "9": [
+     [
+      "button",
+      2
+     ],
+     null
+    ],
+    "10": [
+     null,
+     null
+    ]
+   }
+  },
+  {
+   "name": "Camera primary := POV 0 at 9000 (right; steals Steer Right POV)",
+   "capture": {
+    "action": 10,
+    "column": 0,
+    "input": "pov",
+    "arg": [
+     0,
+     9000
+    ],
+    "sign": null
+   },
+   "binding32_after": [
+    2,
+    1,
+    9,
+    0,
+    6,
+    5,
+    8,
+    7,
+    22,
+    19,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    3,
+    10,
+    0,
+    0,
+    3,
+    4,
+    0,
+    0,
+    3,
+    4,
+    0,
+    0,
+    3,
+    4
+   ],
+   "axes_after": {
+    "steer_axis": 0,
+    "throttle_axis": 0,
+    "brake_axis": 0,
+    "combined_axis": 20,
+    "steer_dir": 1,
+    "throttle_dir": -1,
+    "brake_dir": -1,
+    "combined_dir": 1,
+    "assigned": [
+     1,
+     0,
+     0,
+     1
+    ],
+    "combined_mode": 1
+   },
+   "display_after": {
+    "1": [
+     [
+      "axis",
+      20
+     ],
+     [
+      "button",
+      1
+     ]
+    ],
+    "2": [
+     [
+      "axis",
+      20
+     ],
+     [
+      "button",
+      0
+     ]
+    ],
+    "3": [
+     [
+      "axis",
+      0
+     ],
+     [
+      "pov",
+      0
+     ]
+    ],
+    "4": [
+     [
+      "axis",
+      0
+     ],
+     [
+      "pov",
+      1
+     ]
+    ],
+    "5": [
+     [
+      "button",
+      5
+     ],
+     null
+    ],
+    "6": [
+     [
+      "button",
+      4
+     ],
+     null
+    ],
+    "9": [
+     [
+      "button",
+      2
+     ],
+     null
+    ],
+    "10": [
+     [
+      "pov",
+      0
+     ],
+     null
+    ]
+   }
+  },
+  {
+   "name": "Throttle axis := Ry moved negative (separate throttle, combined mode off)",
+   "capture": {
+    "action": 1,
+    "column": 0,
+    "input": "axis",
+    "arg": 16,
+    "sign": -1
+   },
+   "binding32_after": [
+    2,
+    1,
+    9,
+    10,
+    6,
+    5,
+    8,
+    7,
+    22,
+    19,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    3,
+    4,
+    0,
+    0,
+    3,
+    4,
+    0,
+    0,
+    3,
+    4,
+    0,
+    0,
+    3,
+    4
+   ],
+   "axes_after": {
+    "steer_axis": 0,
+    "throttle_axis": 16,
+    "brake_axis": 0,
+    "combined_axis": 20,
+    "steer_dir": 1,
+    "throttle_dir": -1,
+    "brake_dir": -1,
+    "combined_dir": 1,
+    "assigned": [
+     1,
+     1,
+     0,
+     1
+    ],
+    "combined_mode": 0
+   },
+   "display_after": {
+    "1": [
+     [
+      "axis",
+      16
+     ],
+     [
+      "button",
+      1
+     ]
+    ],
+    "2": [
+     [
+      "button",
+      0
+     ],
+     null
+    ],
+    "3": [
+     [
+      "axis",
+      0
+     ],
+     [
+      "pov",
+      0
+     ]
+    ],
+    "4": [
+     [
+      "axis",
+      0
+     ],
+     [
+      "pov",
+      0
+     ]
+    ],
+    "5": [
+     [
+      "button",
+      5
+     ],
+     null
+    ],
+    "6": [
+     [
+      "button",
+      4
+     ],
+     null
+    ],
+    "9": [
+     [
+      "button",
+      2
+     ],
+     null
+    ],
+    "10": [
+     [
+      "button",
+      3
+     ],
+     null
+    ]
+   }
+  },
+  {
+   "name": "Brake axis := Ry moved positive (opposite sign, same axis -> combined)",
+   "capture": {
+    "action": 2,
+    "column": 0,
+    "input": "axis",
+    "arg": 16,
+    "sign": 1
+   },
+   "binding32_after": [
+    2,
+    1,
+    9,
+    10,
+    6,
+    5,
+    8,
+    7,
+    22,
+    19,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    3,
+    4,
+    0,
+    0,
+    3,
+    4,
+    0,
+    0,
+    3,
+    4,
+    0,
+    0,
+    3,
+    4
+   ],
+   "axes_after": {
+    "steer_axis": 0,
+    "throttle_axis": 16,
+    "brake_axis": 16,
+    "combined_axis": 16,
+    "steer_dir": 1,
+    "throttle_dir": -1,
+    "brake_dir": 1,
+    "combined_dir": 1,
+    "assigned": [
+     1,
+     0,
+     0,
+     1
+    ],
+    "combined_mode": 1
+   },
+   "display_after": {
+    "1": [
+     [
+      "axis",
+      16
+     ],
+     [
+      "button",
+      1
+     ]
+    ],
+    "2": [
+     [
+      "axis",
+      16
+     ],
+     [
+      "button",
+      0
+     ]
+    ],
+    "3": [
+     [
+      "axis",
+      0
+     ],
+     [
+      "pov",
+      0
+     ]
+    ],
+    "4": [
+     [
+      "axis",
+      0
+     ],
+     [
+      "pov",
+      0
+     ]
+    ],
+    "5": [
+     [
+      "button",
+      5
+     ],
+     null
+    ],
+    "6": [
+     [
+      "button",
+      4
+     ],
+     null
+    ],
+    "9": [
+     [
+      "button",
+      2
+     ],
+     null
+    ],
+    "10": [
+     [
+      "button",
+      3
+     ],
+     null
+    ]
+   }
+  }
+ ]
+}

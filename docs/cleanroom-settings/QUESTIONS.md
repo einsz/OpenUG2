@@ -149,3 +149,20 @@ text above is kept as history. New points, each implemented as stated and each e
     dialog-opening request arrives during a running exit (a second request in the same fade).
 15. **AMEND1 A6, anchor sampling for a master inside a group.** No covered package nests a master. Implemented:
     top-level masters use their stored position; a nested one would use its composed centre at creation.
+
+## Controls screen — analyst open questions (2026-10-15, CONTROLS_SPEC.md)
+
+Static examination only; answers need a retail runtime session (CONTROLS_SPEC §12) or a
+coordinator decision (CONTROLS_SPEC §10, D1–D6).
+
+1. OS-provided names of keys, gamepad buttons, axes and POVs as shown on the retail screen
+   (English Windows); is "Esc"/"Enter" what appears for the defaults? (U1)
+2. Keyboard state at start-up before any reset: does the first Throttle entry (Up) show and work? (U2)
+3. Axis range set on joysticks, i.e. the meaning of the 1 000 / 500 axis-change threshold. (U3)
+4. Does a cell's activation message also start the screen's exit script (cell un-highlighted
+   during capture)? (U4)
+5. Keyboard key, if any, that triggers "Reset Keys To Default" besides the help-bar pill. (U5)
+6. Help-bar pill order on this screen (Quit Game / Back / Reset Keys To Default). (U6)
+7. Are retail keyboard bindings kept across restarts on a stock Windows install? (CONTROLS_SPEC §6.6)
+8. Coordinator: route (D1), key-name source (D2), gamepad index model (D3), keyboard persistence
+   (D4), which retail quirks to reproduce (D5), adopt retail default keys (D6).
