@@ -33,6 +33,8 @@ typedef struct {
     int tex_override;            /* application-supplied texture (library index + 1), or 0 */
     int app_hidden;              /* application decided this object (and its children) is not shown */
     float app_opacity;           /* application opacity multiplier on the evaluated alpha (1 = none; ug_scene_init sets 1) */
+    UgScript *own;               /* private copy of the scripts' track tables once the application wrote a property (ug_scene_app_write) */
+    int nown;
 } UgNode;
 
 struct UgScene {
@@ -81,6 +83,24 @@ void ug_scene_set_world_pos(UgScene *s, int node, float x, float y);
 /* Re-sends "focus gained" to the focused button, e.g. once the enter animation is over: the data's
  * focus response does not start its highlight while the fade-in script runs (SPEC 3.6.2). */
 void ug_scene_refocus(UgScene *s);
+
+/* ---- application property writes (SPEC_GUI_ART 1.2) ---------------------------------------------
+ * The value is written into the base value (time -1 key) of that property's track in every script
+ * of the node, and into the node's current properties; a script started later therefore animates
+ * relative to the application-set value instead of snapping the object back. The node's scripts
+ * are copied privately on the first write (the package itself is never modified). `prop` is a UG_P_*
+ * word offset, `ncomp` the number of consecutive words. Call ug_scene_relayout afterwards. */
+void ug_scene_app_write(UgScene *s, int node, int prop, int ncomp, const float *v);
+/* Position by world coordinates (the anchor of the node: the centre of an image, the text anchor, the
+ * origin of a group); uses the parent's current world matrix. */
+void ug_scene_app_set_world_pos(UgScene *s, int node, float x, float y);
+void ug_scene_app_set_size(UgScene *s, int node, float w, float h);
+void ug_scene_app_set_alpha(UgScene *s, int node, float a);
+/* Starts script `script_hash` on a node (0 when the node has no such script). */
+int  ug_scene_start_script(UgScene *s, int node, uint32_t script_hash);
+/* Node whose object name hashes to `name_hash`: the index, or -1 when there is none. When the name is
+ * ambiguous (several objects) returns -2. */
+int  ug_scene_find_name(const UgScene *s, uint32_t name_hash);
 int  ug_scene_find_guid(const UgScene *s, uint32_t guid);
 int  ug_scene_pick(const UgScene *s, float x, float y);   /* button node or -1 */
 void ug_scene_pointer(UgScene *s, const UgPtr *p);

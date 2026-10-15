@@ -1,0 +1,278 @@
+{
+ "description": "Authored enter/exit timing of the event-handler object (name hash 0x47FF4E7C) per package. SPEC_GUI_ART section 5. [data]. enter = script chained from Init; exit = script started by the application. \"app\" = posted to the application.",
+ "packages": [
+  {
+   "package": "UI_pause.fng",
+   "enter": {
+    "script": "call",
+    "length_ms": 320,
+    "events": [
+     [
+      "0xBDFD2DF9",
+      "targets",
+      0
+     ],
+     [
+      "0x37EDF39B",
+      "app",
+      320
+     ]
+    ]
+   },
+   "exit": {
+    "script": "Forward",
+    "length_ms": 320,
+    "events": [
+     [
+      "0xAADD0187",
+      "targets",
+      0
+     ],
+     [
+      "0xE1FDE1D1",
+      "app",
+      320
+     ]
+    ]
+   }
+  },
+  {
+   "package": "UI_PauseOptionsMain.fng",
+   "enter": {
+    "script": "CALL",
+    "length_ms": 320,
+    "events": [
+     [
+      "0xBDFD2DF9",
+      "targets",
+      0
+     ],
+     [
+      "0x37EDF39B",
+      "app",
+      320
+     ]
+    ]
+   },
+   "exit": {
+    "script": "Forward",
+    "length_ms": 320,
+    "events": [
+     [
+      "0xAADD0187",
+      "targets",
+      0
+     ],
+     [
+      "0xE1FDE1D1",
+      "app",
+      320
+     ]
+    ]
+   }
+  },
+  {
+   "package": "UI_PauseOptions.fng",
+   "enter": {
+    "script": "CALL",
+    "length_ms": 320,
+    "events": [
+     [
+      "0xBDFD2DF9",
+      "targets",
+      0
+     ],
+     [
+      "0x35F8620B",
+      "app",
+      320
+     ]
+    ]
+   },
+   "exit": {
+    "script": "FORWARD",
+    "length_ms": 320,
+    "events": [
+     [
+      "0xAADD0187",
+      "targets",
+      0
+     ],
+     [
+      "0x84378BEF",
+      "app",
+      0
+     ],
+     [
+      "0xE1FDE1D1",
+      "app",
+      320
+     ]
+    ]
+   }
+  },
+  {
+   "package": "UI_Options.fng",
+   "enter": {
+    "script": "call",
+    "length_ms": 500,
+    "events": [
+     [
+      "0xBDFD2DF9",
+      "targets",
+      0
+     ],
+     [
+      "0x35F8620B",
+      "app",
+      320
+     ]
+    ]
+   },
+   "exit": {
+    "script": "Forward",
+    "length_ms": 500,
+    "events": [
+     [
+      "0xAADD0187",
+      "targets",
+      0
+     ],
+     [
+      "0x84378BEF",
+      "app",
+      0
+     ],
+     [
+      "0xE1FDE1D1",
+      "app",
+      140
+     ]
+    ]
+   }
+  },
+  {
+   "package": "UI_PC_Customize_Options.fng",
+   "enter": {
+    "script": "call",
+    "length_ms": 500,
+    "events": [
+     [
+      "0xBDFD2DF9",
+      "targets",
+      0
+     ],
+     [
+      "0x35F8620B",
+      "app",
+      320
+     ]
+    ]
+   },
+   "exit": {
+    "script": "FORWARD",
+    "length_ms": 500,
+    "events": [
+     [
+      "0xAADD0187",
+      "targets",
+      0
+     ],
+     [
+      "0x84378BEF",
+      "app",
+      0
+     ],
+     [
+      "0xE1FDE1D1",
+      "app",
+      140
+     ]
+    ]
+   }
+  },
+  {
+   "package": "UI_InGameDialog.fng",
+   "enter": {
+    "script": "call",
+    "length_ms": 180,
+    "events": [
+     [
+      "0xBDFD2DF9",
+      "all",
+      0
+     ],
+     [
+      "0x35F8620B",
+      "app",
+      180
+     ]
+    ]
+   },
+   "exit": {
+    "script": "FORWARD",
+    "length_ms": 140,
+    "events": [
+     [
+      "0xAADD0187",
+      "all",
+      0
+     ],
+     [
+      "0xE1FDE1D1",
+      "app",
+      140
+     ]
+    ]
+   }
+  },
+  {
+   "package": "GenericDialog_SMALL.fng",
+   "enter": {
+    "script": "call",
+    "length_ms": 180,
+    "events": [
+     [
+      "0xBDFD2DF9",
+      "all",
+      0
+     ],
+     [
+      "0x35F8620B",
+      "app",
+      180
+     ]
+    ]
+   },
+   "exit": {
+    "script": "Forward",
+    "length_ms": 140,
+    "events": [
+     [
+      "0xAADD0187",
+      "all",
+      0
+     ],
+     [
+      "0xE1FDE1D1",
+      "app",
+      140
+     ]
+    ]
+   }
+  }
+ ],
+ "dim": {
+  "UI_pause.fng / UI_PauseOptionsMain.fng": "DIM (0 ms) posts 0xA301C015 to targets; UnDim (0 ms) posts 0x9F218E63; per-object DIM/UnDim scripts are 100 ms",
+  "UI_Options.fng / UI_PC_Customize_Options.fng": "DIM (100 ms) posts 0xA301C015 to all; UnDim (100 ms) posts 0x9F218E63 to all and 0x0153E234 to app at 100 ms"
+ },
+ "exit_complete_ms": {
+  "UI_pause.fng": 320,
+  "UI_PauseOptionsMain.fng": 320,
+  "UI_PauseOptions.fng": 320,
+  "UI_Options.fng": 140,
+  "UI_PC_Customize_Options.fng": 140,
+  "UI_InGameDialog.fng": 140,
+  "GenericDialog_SMALL.fng": 140
+ }
+}

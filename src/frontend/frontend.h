@@ -37,7 +37,11 @@ typedef enum {
     FE_ACTION_FREE_ROAM,
     FE_ACTION_RACE_SELECT,
     FE_ACTION_QUIT,
-    FE_ACTION_RESUME
+    FE_ACTION_RESUME,
+    FE_ACTION_REPLAY,    /* pause menu only: Replay entry (only reachable with replay data) */
+    FE_ACTION_RESTART,   /* pause menu only: confirmed Restart of the race in progress */
+    FE_ACTION_EXPLORE,   /* pause menu only: confirmed Return to Explore Mode from a race */
+    FE_ACTION_WORLD_MAP  /* pause menu only: confirmed return to the career world map (also Jump to Garage) */
 } FeAction;
 
 /* ---- main menu entries ---- */

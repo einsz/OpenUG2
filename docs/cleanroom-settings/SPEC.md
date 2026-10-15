@@ -331,20 +331,26 @@ The clamp also runs after a profile load (§5.10). [static]
 ### 4.4 Options screen and persistence [static]
 
 * Toggles flip 0↔1 on left/right/accept, but only if their cap is non-zero (Vsync has no cap
-  and always flips).
+  and always flips). In the Customize list the whole row of an option whose cap is zero is
+  omitted (SPEC_GUI §4.1), so this condition is not reachable through the menu. [static]
 * Sliders range from 0 to the cap (Level Of Detail: 1…5, step 1). Slider positions are
   converted to integers by truncation.
 * Resolution left/right moves to the previous/next *supported* index (not wrapping, 0…5); if
   no supported index exists in that direction, the value is unchanged.
 * Some changes (resolution, texture filtering, vsync, FSAA, road reflection, light trails,
   light glow, motion blur, depth of field, over bright, enhanced contrast, car reflection rate,
-  level of detail) mark the display as needing re-initialisation; it happens when leaving the
-  screen. [static; which items need a restart vs a reset is inferred]
+  level of detail) mark the display as needing re-initialisation. The request is raised at once
+  and serviced at the start of the next frame, while the options screen is still open; it is
+  not deferred to leaving the screen (SPEC_GUI §5.4). [static; which items need a restart vs a
+  reset is inferred]
 * All graphics values are written to the registry when leaving the display options screen
   (from the main menu or the pause menu), on safe-mode start, and on one window-message path
-  (inferred: application close). [static]
+  (inferred: application close). Leaving the in-game Display screen with Start resumes the game
+  without writing the registry (SPEC_GUI §5.2). [static]
 * Display re-initialisation failure: FSAA → 0, retry up to 3 times, then lower the resolution
-  index one step at a time until it succeeds or reaches 0; a failure message is shown. [static]
+  index one step at a time until it succeeds or reaches 0. No failure message is shown; when a lowered resolution
+  succeeds the frontend Display list is rebuilt so the Resolution row shows the new value
+  (SPEC_GUI §5.5). [static]
 
 ### 4.5 Performance-level auto-detection [static]
 
