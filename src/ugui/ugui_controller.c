@@ -82,7 +82,8 @@ int ug_ps2_icon_decode(const uint8_t *pixels,size_t plen,const uint8_t *pal,size
     for(unsigned y=0;y<32;y++)for(unsigned x=0;x<32;x++){
         unsigned a=ug_ps2_icon_address(x,y),k=(pixels[a/2]>>(4*(a&1)))&15;
         uint8_t *o=rgba+4*(y*32+x);memcpy(o,pal+4*k,3);o[3]=pal[4*k+3]>=128?255:2*pal[4*k+3];
-    }return 1;
+    }
+    return 1;
 }
 typedef struct {const uint8_t *info,*records,*keylist,*desc,*data;size_t nr,nk,nd,ds; int valid;} Pack;
 static int walk_pack(Pack *p,const uint8_t *base,const uint8_t *data,size_t len,int depth,unsigned desc_stride){
@@ -134,7 +135,8 @@ static int directory_find(FILE *f,uint64_t size,unsigned block,uint32_t sector,u
         char s[256];memcpy(s,r+33,nl);s[nl]=0;char *v=strchr(s,';');if(v)*v=0;
         if(!strcasecmp(s,name)&&!!(r[25]&2)==dir&&!r[1]&&!r[26]&&!r[27]&&!(r[25]&128)){*so=u32(r+2);*lo=u32(r+10);found=1;break;}
         i+=n;
-    }free(data);return found;
+    }
+    free(data);return found;
 }
 int ug_controller_load_ps2(UgController *p,UgTexLib *lib,const char *path){
     FILE *f=fopen(path,"rb");if(!f){snprintf(p->status,sizeof p->status,"PS2 ISO unavailable: cannot open supplied path");return 0;}
@@ -157,7 +159,9 @@ int ug_controller_load_ps2(UgController *p,UgTexLib *lib,const char *path){
             uint8_t *pk=malloc((size_t)clen);if(!pk)goto done;
             int got=read_at(f,start+pos+i,pk,(size_t)clen,size)&&ug_controller_load_pack(p,lib,pk,(size_t)clen);free(pk);
             if(got){ok=1;goto done;}
-        }if(n<=7)break;pos+=n-7;
+        }
+        if(n<=7)break;
+        pos+=n-7;
     }
 done:fclose(f);if(!ok)snprintf(p->status,sizeof p->status,"PS2 ISO unavailable: no validated original controller pack in NFSUNDER/ZZDATA1.BIN");return ok;
 }

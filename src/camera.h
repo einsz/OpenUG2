@@ -150,6 +150,10 @@ typedef struct {
 /* SPEC 6.14: final eye / look-at / up for a car pose (may be an interpolated
  * render pose, not the tick pose). Shake and collision come afterwards. */
 void cam_pose(const CamState *s, const CamCarFrame *car, CamPose *out);
+/* Display-only interpolation; snapshots bracket the same tick as the car pose.
+ * Cuts and exact current-tick captures bypass interpolation. */
+void cam_render_pose(const CamState *before, const CamState *after,
+                     const CamCarFrame *car, float alpha, CamPose *out);
 
 /* ---- projection (SPEC 7) -------------------------------------------------- */
 /* Policy (SPEC 7.1, OpenUG2 addition): ORIGINAL is SPEC 7 with the real viewport;

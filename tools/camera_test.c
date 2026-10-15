@@ -716,6 +716,74 @@ static void test_behaviour(void) {
     CHECK(cam_point_near_box(pt, bp, 0, 2.0f, 1.0f, 1.5f, 0.5f) && !cam_point_near_box(pt, bp, 0, 1.5f, 1.0f, 1.5f, 0.5f), "point/box margin");
 }
 
+static void test_render_pose(void) {
+    CamState before, after; cam_init(&before); cam_init(&after);
+    before.started=after.started=1; before.snap=after.snap=0;
+    before.head[0].p=1; after.head[1].p=1;
+    before.eye[0].p=-4; after.eye[0].p=-8;
+    before.eye[2].p=2; after.eye[2].p=4;
+    before.look[0].p=1; after.look[0].p=3;
+    before.look[2].p=1; after.look[2].p=3;
+    before.fov.p=12000; after.fov.p=16000;
+    CamState saved_before=before,saved_after=after;
+    const float up[3]={0,0,1}; CamCarFrame car;
+    cam_car_axes(.2f,up,&car); car.pos[0]=10;car.pos[1]=20;car.pos[2]=5;
+    CamPose actual,expected;
+    cam_render_pose(&before,&after,&car,.5f,&actual);
+    CHECK(near(actual.eye[0],5.7573593,1e-5) && near(actual.eye[1],15.7573593,1e-5) &&
+          near(actual.eye[2],8,1e-6),"camera eye uses the displayed heading and offset at the same fraction");
+    CHECK(near(actual.look[0],11.4142136,1e-5) && near(actual.look[1],21.4142136,1e-5) &&
+          near(actual.look[2],7,1e-6) && actual.fov_bau==14000,"look and FOV share the display fraction");
+    CHECK(!memcmp(&before,&saved_before,sizeof before) && !memcmp(&after,&saved_after,sizeof after),
+          "camera rendering never changes simulation snapshots");
+    cam_pose(&before,&car,&expected);cam_render_pose(&before,&after,&car,0,&actual);
+    CHECK(!memcmp(&actual,&expected,sizeof actual),"render alpha zero preserves the previous pose exactly");
+    cam_pose(&after,&car,&expected);cam_render_pose(&before,&after,&car,1,&actual);
+    CHECK(!memcmp(&actual,&expected,sizeof actual),"deterministic render alpha one preserves the current pose exactly");
+    for(int cut=0;cut<5;cut++) {
+        before=saved_before;after=saved_after;
+        if(cut==0)before.started=0;
+        if(cut==1)before.snap=1;
+        if(cut==2)after.effective=CAM_HOOD;
+        if(cut==3)after.snap=1;
+        if(cut==4)after.look_back=1;
+        cam_pose(&after,&car,&expected);cam_render_pose(&before,&after,&car,.25f,&actual);
+        CHECK(!memcmp(&actual,&expected,sizeof actual),"camera cut %d never blends incompatible history",cut);
+    }
+}
+
+static void test_render_cadence(void) {
+    const int rates[]={10,30,60,90,144,240,0};
+    const int mixed[]={144,30,240,20,60,120};
+    const double tick=1./60.;const float up[3]={0,0,1};
+    for(int direction=-1;direction<=1;direction+=2)for(unsigned r=0;r<sizeof rates/sizeof rates[0];r++) {
+        CamState before,after;cam_init(&after);after.started=1;after.snap=0;
+        after.eye[0].p=-6;after.eye[2].p=2;after.fov.p=14000;
+        after.head[0].p=cosf(3.1f);after.head[1].p=sinf(3.1f);before=after;
+        double remainder=0,time=0,previous_yaw=0,max_error=0;int ticks=0,repeated=0,samples=0;
+        for(int f=0;time<6;f++) {
+            double dt=1./(rates[r]?rates[r]:mixed[f%6]);time+=dt;remainder+=dt;
+            while(remainder>=tick-1e-12) {
+                before=after;ticks++;remainder-=tick;
+                double angle=3.1+direction*ticks*tick;
+                after.head[0].p=(float)cos(angle);after.head[1].p=(float)sin(angle);
+            }
+            float alpha=(float)fmax(0,remainder*60);
+            double angle=3.1+direction*fmax(0,(ticks-1+alpha)*tick);
+            CamCarFrame car;cam_car_axes((float)angle,up,&car);
+            car.pos[0]=(float)(30*sin(angle));car.pos[1]=(float)(30*cos(angle));
+            CamPose pose;cam_render_pose(&before,&after,&car,alpha,&pose);
+            double yaw=atan2(pose.look[1]-pose.eye[1],pose.look[0]-pose.eye[0]);
+            double error=fabs(atan2(sin(yaw-angle),cos(yaw-angle)));
+            if(error>max_error)max_error=error;
+            if(time>1){samples++;repeated+=fabs(atan2(sin(yaw-previous_yaw),cos(yaw-previous_yaw)))<1e-6;}
+            previous_yaw=yaw;
+        }
+        CHECK(max_error<1e-5,"camera follows displayed turn direction%d FPS%d max angle error %.9f",direction,rates[r],max_error);
+        CHECK(samples>0 && !repeated,"camera turns through every display frame direction%d FPS%d repeats%d",direction,rates[r],repeated);
+    }
+}
+
 int main(int argc, char **argv) {
     const char *dir = argc > 1 && *argv[1] ? argv[1] : "docs/cleanroom-camera/test-vectors";
     const char *data = argc > 2 && *argv[2] ? argv[2] : NULL;
@@ -744,6 +812,8 @@ int main(int argc, char **argv) {
     test_projection_policy(dir);
     test_cycle(dir);
     test_behaviour();
+    test_render_pose();
+    test_render_cadence();
     printf("camera_test: %d checks, %d failures\n", g_checks, g_fail);
     return g_fail ? 1 : 0;
 }
