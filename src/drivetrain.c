@@ -336,7 +336,7 @@ void drv_frame_begin(Drivetrain *d, const DrvInput *in, float frame_dt, double r
     brk_pedals(&pedals,d->brakes.enabled?d->brakes.exclusivity:1);
     t0=pedals.throttle;b0=pedals.service;hb0=pedals.handbrake;
     if(d->brakes.enabled)
-        brk_distribute(&d->brakes.car,&pedals,(double)d->env.body_speed*BRK_MPH,&d->brakes.frame);
+        brk_distribute(&d->brakes.car,&pedals,d->brakes.signed_distribution?(double)(float)((double)d->env.signed_forward*2.236999988555908f):(double)d->env.body_speed*BRK_MPH,&d->brakes.frame);
     /* S1-5.2 dead zone */
     double t = t0 <= 0.15 ? 0.0 : t0;
     /* S1-5.3 anti-stall floor */
@@ -509,6 +509,7 @@ double drv_lock_correction(const Drivetrain *d) {
 }
 
 static double grip_multiplier(const Drivetrain *d,int i) {
+    if(d->env.supplied_frame_grip)return d->env.frame_grip[i>1];
     double gamma=(double)d->tune.grip_q*(1-.025*(double)d->tune.grip_loc_x);
     return i>1?gamma*d->env.rear_grip_multiplier:gamma;
 }

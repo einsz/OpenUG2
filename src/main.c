@@ -2057,6 +2057,20 @@ static int select_car_vinyl(int choice) {
 
 static Stage1Drive g_stage1;
 static int g_stage1_requested;
+/* Independent host world selector. All reachable triangles use the explicit
+ * numeric road fixture 1 until material-to-ID mapping is reviewed (U5-2). */
+static CtGround stage5_world_query(void *user,const float q[3],int wheel) {
+    const N2Scene *scene=user;WGroundHit hit;
+    const CtCar *car=&g_stage1.contacts.car;
+    float down=fmaxf(-car->axle[wheel/2].lower,PHYS_RIDE_REACH_DOWN);
+    if(g_ride_ready)down=fmaxf(down,phys_ride_reach_down(&g_ride,1/PHYS_TICKRATE));
+    int found=world_wheel_support(scene,q[0],q[1],q[2]-car->radius[wheel],
+        PHYS_RIDE_REACH_UP,down,&hit,NULL,NULL)!=WSURF_NONE;
+    CtGround result={.found=found,.surface=1,.normal={0,0,1}};
+    if(found){result.height=hit.z;memcpy(result.normal,hit.normal,sizeof result.normal);}
+    return result;
+}
+
 static void stage1_presentation(const Stage1Drive *s,int *gear,int *changing) {
     const Drivetrain *d=&s->drivetrain;
     *gear=stage1_drive_gear(s);g_engine.target_rpm=stage1_drive_rpm(s);
@@ -2093,7 +2107,7 @@ int main(int argc, char **argv) {
     audio_selftest();
     /* Point at your own NFSU2 install/data directory (contains TRACKS/, CARS/).
        Usage: nfsu2 [DATA_DIR] [options]
-         --drivetrain     opt in to stock Stage-1/2/3/4 drivetrain (docs/DRIVETRAIN.md)
+         --drivetrain     opt in to stock Stage-1/2/3/4/5 drivetrain (docs/DRIVETRAIN.md)
          --car NAME       car folder under CARS/ (default HUMMER)
          --track NAME     STREAM .BUN under TRACKS/ (default STREAML4RA).
                           The bundles overlap as route/event supersets; ALL is
@@ -4619,19 +4633,21 @@ int main(int argc, char **argv) {
             N2PhysicsAttr pa;
             int physics_from_global=n2_global_physics_attr(globdata,globlen,carname,&pa);
             if(g_stage1_requested) {
-                DrvCar stock;ResCar resistance;BrkCar brakes;LatCar lateral;
+                DrvCar stock;ResCar resistance;BrkCar brakes;LatCar lateral;CtCar contacts;
                 if(!stage1_car_read(globdata,globlen,carname,&stock) ||
                    !stage2_car_read(globdata,globlen,carname,&resistance) ||
                    !stage3_car_read(globdata,globlen,carname,&brakes) ||
-                   !stage4_car_read(globdata,globlen,carname,&lateral) || stage1_drive_init(&g_stage1,&stock,&resistance,0) ||
+                   !stage4_car_read(globdata,globlen,carname,&lateral) ||
+                   !stage5_car_read(globdata,globlen,carname,&contacts) || stage1_drive_init(&g_stage1,&stock,&resistance,0) ||
                    stage3_drive_brakes(&g_stage1,&brakes,0,0) ||
-                   stage4_drive_lateral(&g_stage1,&lateral,1/lat_inertia(stock.mass,lateral.dimensions),0)) {
-                    fprintf(stderr,"--drivetrain: no valid stock Stage-1/2/3/4 tuning for %s\n",carname);
+                   stage4_drive_lateral(&g_stage1,&lateral,1/lat_inertia(stock.mass,lateral.dimensions),0) ||
+                   stage5_drive_contacts(&g_stage1,&contacts,stage5_world_query,&scene)) {
+                    fprintf(stderr,"--drivetrain: no valid stock Stage-1/2/3/4/5 tuning for %s\n",carname);
                     return 2;
                 }
-                printf("Stage-1/2/3/4 drivetrain enabled: stock tuning, automatic; W forward, S brake/reverse, Space hold.\n"
-                       "  Stage-4 steering/tyres and planar yaw; host suspension, load/contact/history and Space hold adapters; nitrous/upgrades disabled; drag/drift use legacy physics.\n"
-                       "  Supplied ordinary fixture: G=1 a=0, unit body/wheel surface factors, no bonus/damage/alternate aero; yaw inertia from stock dimensions, angular damping=0; level XY projection; initial locks=0, relief enabled.\n");
+                printf("Stage-1/2/3/4/5 drivetrain enabled: stock tuning; W forward, S brake/reverse, Space handbrake.\n"
+                       "  Geometric spring/aligned loads, distinct surface channels, frame handbrake/grip; full wheel force/moment, XY/yaw integration.\n"
+                       "  Prescribed independent ride heave/pitch/roll; no dynamic brake-pitch solver. Surface ID=1 fixture; q=1 X/event=0, G=1 reduction=0, damping=0, initial locks=0, bottom impulses suppressed; drag/drift use legacy.\n");
             }
             g_vehicle_source_valid=physics_from_global;
             if(physics_from_global)g_vehicle_source=pa;
@@ -6662,12 +6678,13 @@ int main(int argc, char **argv) {
                     printf("car switch deferred: stop the car before selecting %s\n", next_car);
                 } else {
                     CarSwitchCandidate candidate;
-                    DrvCar next_stage1;ResCar next_resistance;BrkCar next_brakes;LatCar next_lateral;
+                    DrvCar next_stage1;ResCar next_resistance;BrkCar next_brakes;LatCar next_lateral;CtCar next_contacts;
                     if (!prepare_car_switch(&candidate, dataroot, next_car) ||
                         (g_stage1_requested && (!stage1_car_read(candidate.globaldata,candidate.globallen,next_car,&next_stage1) ||
                          !stage2_car_read(candidate.globaldata,candidate.globallen,next_car,&next_resistance) ||
                          !stage3_car_read(candidate.globaldata,candidate.globallen,next_car,&next_brakes) ||
-                         !stage4_car_read(candidate.globaldata,candidate.globallen,next_car,&next_lateral)))) {
+                         !stage4_car_read(candidate.globaldata,candidate.globallen,next_car,&next_lateral) ||
+                         !stage5_car_read(candidate.globaldata,candidate.globallen,next_car,&next_contacts)))) {
                         car_switch_release(&candidate);
                         fprintf(stderr, "car switch failed for %s; keeping %s\n",
                                 next_car, carname);
@@ -6740,6 +6757,7 @@ int main(int argc, char **argv) {
                             stage1_drive_init(&g_stage1,&next_stage1,&next_resistance,0);
                             stage3_drive_brakes(&g_stage1,&next_brakes,0,0);
                             stage4_drive_lateral(&g_stage1,&next_lateral,1/lat_inertia(next_stage1.mass,next_lateral.dimensions),0);
+                            stage5_drive_contacts(&g_stage1,&next_contacts,stage5_world_query,&scene);
                         }
                         g_dbg.body_kit_current = 0; g_dbg.mod_current = carcfg;
                         g_ride_ready = 0;
@@ -7427,7 +7445,7 @@ int main(int argc, char **argv) {
         static int stage1_previous=-1;
         if(g_stage1_requested && stage1_active!=stage1_previous) {
             stage1_drive_reset(&g_stage1,vel,heading);
-            printf("drivetrain: %s\n",stage1_active?"Stage 1/2/3/4 (stock steering/tyres/brakes/resistance, planar host adapters)":"legacy race-mode physics (drag/drift outside Stage 1)");
+            printf("drivetrain: %s\n",stage1_active?"Stage 1/2/3/4/5 (geometric loads/handbrake, prescribed ride, XY/yaw host)":"legacy race-mode physics (drag/drift outside Stage 1)");
             stage1_previous=stage1_active;
         }
         int pf_spawns=0;
@@ -7515,7 +7533,8 @@ int main(int argc, char **argv) {
                                     steer = ((da_f - 720) / 120) % 2 ? -1.0f : 1.0f; }
             else if (da_f < 2070) { throttle = -1.0f; steer = 0.0f; }   /* brake */
             else                  { throttle =  0.0f; steer = 0.0f; }   /* coast */
-            handbrake = 0;
+            handbrake = stage1_active && da_f>=170 && da_f<185;
+            if(handbrake){throttle=0;steer=.2f;}
         }
         if (poseshot && race_state == 1) {   /* frozen: the start pose, untouched */
             throttle = 0.0f; steer = 0.0f; handbrake = 1;
@@ -8160,6 +8179,15 @@ int main(int argc, char **argv) {
                        drive->brakes.locked[2],drive->brakes.locked[3],
                        drive->brakes.frame.service[0],drive->brakes.frame.service[2],
                        drive->force_long[0],drive->force_long[2],drive->wheel[0].omega,drive->wheel[2].omega);
+            }
+            if(stage1_active && (da_f%15==0 || (da_f>=169 && da_f<=187))) {
+                const CtState *c=&g_stage1.contacts;const Drivetrain *d=&g_stage1.drivetrain;
+                printf("STAGE5 tick=%ld hb=%.3f H=(%.4f,%.4f) blend=%.6f grip=(%.6f,%.6f) mask=%x travel=(%.5f,%.5f,%.5f,%.5f) N=(%.5f,%.5f,%.5f,%.5f) pose=(%.5f,%.5f,%.5f) force=(%.5f,%.5f,%.5f) moment=(%.5f,%.5f,%.5f) speed=%.5f walls=%d rails=%d\n",
+                    da_f,d->handbrake,d->brakes.handbrake[0],d->brakes.handbrake[2],c->blend,c->grip_front,c->grip_rear,c->exported_mask,
+                    c->wheel[0].travel,c->wheel[1].travel,c->wheel[2].travel,c->wheel[3].travel,
+                    c->wheel[0].load,c->wheel[1].load,c->wheel[2].load,c->wheel[3].load,
+                    g_ride.z,g_ride.pitch,g_ride.roll,g_stage1.body.force[0],g_stage1.body.force[1],g_stage1.body.force[2],
+                    g_stage1.body.moment[0],g_stage1.body.moment[1],g_stage1.body.moment[2],c->exported_forward,da_walls,da_rails);
             }
             if (da_f == shotframes - 1) {
                 float sk2 = speed < 0 ? -speed : speed;

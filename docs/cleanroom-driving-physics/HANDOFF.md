@@ -142,3 +142,40 @@ producers, exact retail precision and runtime differential remain unverified.
 Current result covers standalone Stage4 and the documented opt-in planar host,
 not complete retail vehicle parity. Future producer resolution goes through
 fresh analyst/reviewer/fresh implementer; no original runtime without isolation.
+
+
+## Stage5 contacts/surfaces/handbrake verification — 2026-10-15
+
+Fresh implementer `stage5_contact_implementation` and verifier
+`stage5_contact_verification` complete the bounded round. Stage5 approved hash
+`131e2c9e26091c647fb96bdb9ac0891e43c309487abe1e984b4408b711eec16e` and
+all four companion hashes independently match. Independent project tests pass:
+77 Stage5 vectors/29 surfaces (503 checks), prior3606/348/479/208 components,
+Stage1/4/5 adapters, clock and district/track/ground/world/fence collision suites.
+Independent mathematical/property oracle passes240,008 checks; fresh final-source
+ASan/UBSan adapter passes with leaks disabled (LeakSanitizer ptrace limitation).
+
+Implementer self-audit corrected the upper-limit extra sweep to include all
+established body/drivetrain/contact post callbacks. Independent affected rerun
+and focused probe pass: force clear/gravity, selected clutch state, retained
+momentum/pose/spin (no Euler), and final once-only force accounting. No outstanding
+divergence or normative amendment/new review cycle required. Verification wrote
+no implementation/spec/vector changes.
+
+Final-source900-tick native telemetry and end PNG independently inspected:
+78 finite Stage5 rows, moving rear-only handbrake slowdown and recovery, moving
+service braking/lock, nonnegative loads, nan/bounds flags0; later wall responses106,
+rail0, travel80.43m. All sampled masks=f; air transitions/alternate IDs are
+synthetic-only evidence. Strict/GLES/debug builds and native exit0 are implementer
+reported, not repeated by verifier. See stage5/VERIFICATION.md,
+VERIFIER_AMENDMENTS.md and PROVENANCE.md; private checks/logs under ignored
+cleanroom/verification/stage5/.
+
+I5-1 remains OPEN: playable host supplies independent prescribed vertical/pitch/
+roll and integrates XY/yaw; numeric ID1 is an explicit world fixture, bottoming
+application is suppressed pending cap inputs. Full dynamic brake-pitch/roll/heave,
+body/angular producers and world-material mapping remain U5 boundaries. Current
+result is bounded conformance, not complete Stage5 gameplay or retail parity.
+Original-runtime differential remains unperformed without isolated no-network
+snapshot environment. Future producer contracts require analyst/reviewer/fresh
+implementer; legal sufficiency remains a question for counsel.

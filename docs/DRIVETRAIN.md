@@ -1,189 +1,109 @@
-# Driving with the Stage-1/2/3/4 drivetrain
+# Stock drivetrain opt-in
 
-Build the interactive debug application and opt in explicitly:
+Run the independent native OpenUG2 executable with `--drivetrain` to select the
+approved bounded Stage1–5 engine, clutch, automatic gearbox, tyre, service brake,
+steering, resistance, suspension-contact and handbrake composition. The default
+without that flag remains the legacy model. Drag/drift race families use legacy
+physics because their alternate producers are outside these specifications.
 
-```sh
-make debug
-./nfsu2 '/path/to/your/NFSU2 installation' --car 240SX --drivetrain --hud
-```
+W accelerates forward; S brakes forward motion and selects reverse near rest.
+W brakes reverse motion before returning to automatic forward gears. Space now
+requests the specified rear handbrake torque and frame grip blend. It does not
+hold body velocity, erase yaw or assign wheel spin. Initial locks are explicitly
+supplied as zero; release reevaluates them through the Stage3 motion predicate.
+Engine sound, HUD RPM/gear, wheel spin/steering, pause, reset, collision velocity
+and car switching continue to use the composed simulation state. Stock tuning
+is required at loading and switching; malformed fields reject the candidate.
+Upgrades, nitrous and alternate race handling are outside this opt-in.
 
-Omitting `--drivetrain` retains the existing arcade drivetrain. The selector
-applies to the player in free roam, circuit, sprint and Street X. Drag and drift
-use the existing race-mode physics; the console announces each change between
-Stage 1/2/3/4 and legacy race-mode physics. Opponent/traffic dynamics are unchanged.
-A car without valid stock Stage-1/2/3/4 parameters is rejected with a diagnostic;
-car switching preserves the current car when the replacement lacks those fields.
+## Contact and body boundary
 
-W accelerates forward with automatic shifts. S brakes forward motion, then
-selects reverse below 0.3 m/s; holding S accelerates backward. W brakes reverse
-motion and resumes forward automatic selection near rest. Space stops and holds
-the car. A/D steer normally. The pedal/direction policy is an OpenUG2 adapter;
-it does not resolve the original game's input/menu mapping. Existing reset,
-spawn, race restart and car-switch controls also reset the engine/clutch/wheels.
-Pausing freezes those states and discards paused wall time on resume.
+Stage5 computes frame preload from stock mass, centre, wheel mounts and the
+preceding aero-enable/signed-speed snapshot. Ordered wheel queries produce
+travel/rate, progressive spring/damping/paired loads, contact flags, alignment,
+contact points, and distinct tyre/spin/body surface channels. The aligned load
+feeds every tyre/brake-lock/cap calculation. Final world forces and all three
+moments are available in `Stage1Drive.contact_force/contact_moment` and the body
+accumulators. Gravity, actual aero and each wheel force enter those accumulators
+once. Preload's separate specified aero feed-forward is not the reported aero
+load added again.
 
-The console prints that Stage 1/2/3/4 is active. With `--hud`, gear, RPM, shift state,
-shift RPM and limiter RPM come from the same drivetrain that drives the car.
-Engine audio receives its actual RPM and shaped engine load. Wheel rotation and
-wheel RPM diagnostics use the simulated wheel states. Brake lights use the
-adapter's service-brake or handbrake state, including braking while reversing.
+The playable body is a prescribed-ride host. Existing independent ride heave,
+pitch, roll and rates supply the vertical/angular trajectory. It integrates XY
+momentum and yaw from the full transformed wheel forces/moments. Within a tick,
+ride height/pitch/roll are extrapolated from their supplied rates; cosmetic
+`body_roll` is never a contact input. World vertical force and pitch/roll moments
+are calculated but do not drive that ride trajectory. Its own heave/gravity
+remains the sole producer of playable vertical motion. Consequently **dynamic
+braking/throttle pitch and full 3D load-transfer feedback are not implemented**.
+Calculated loads change with actual road/ride/contact geometry. Prescribed
+nose-down/nose-up/roll tests demonstrate the consequences of those poses,
+not a claim that the pedals produce them dynamically.
 
-## What is implemented
+The host identifies XY as body-centre coordinates. Its vertical body centre is
+`carpos.z + stock centre.z - mean(stock mount.z - radius)`, aligning the mean
+uncompressed wheel bottom with the independent ride reference on a level plane.
+This is an explicit host coordinate bridge. Stock centre subtraction still sets
+all mount/coupling arms. The stock unscaled box yaw inertia is the supplied host
+mode; Stage5 exposes both specified inertia diagonals for other callers.
+Additional yaw damping is explicitly zero. Full angular mode/damping/momentum
+and impulse caps remain unknown. This host selects global bottoming-impulse
+suppression, reports requests, and still runs the required extra zero sweep.
+The component API supports separate supplied linear/angular impulse caps.
 
-The approved [Stage-1 specification](cleanroom-driving-physics/SPEC.md) supplies
-stock engine torque and braking curves, clutch, gearbox/automatic shifts, pedal
-shaping, axle torque distribution, wheel spin and longitudinal tyre coupling.
-The approved [Stage-2 specification](cleanroom-driving-physics/stage2/SPEC.md)
-adds quadratic world body drag, vertical aerodynamic force calculations, body
-stabilization, a per-car positive-forward-force threshold and the 200 m/s cap.
-The approved [Stage-3 specification](cleanroom-driving-physics/stage3/SPEC.md)
-adds stock service-brake strengths/share, linear pedal distribution, signed wheel
-torque, one-sided slip relief, lock decisions and direction-crossing correction.
-Service braking reaches body motion through the final tyre force exactly once.
-The adapter reads only the approved stock record fields from the application's
-already loaded per-car table. It requires no additional extracted assets.
-The persistent state and generated shift tables belong to the selected car.
+The external world adapter uses independent `world_wheel_support` selection,
+unit triangle normals, an upward 0.25 m window and a downward window at least
+stock droop/current host swept-fall reach. Missing queries return valid default
+normal and numeric surface as explicit host policy. Every selected triangle is
+assigned **numeric ID 1 as a fixture**; no ROAD/TERRAIN/name-to-retail-ID mapping
+is claimed. Injected queries can provide all 29 specified IDs. Peak, sliding,
+spin drag, body drag and bump channels remain separate even when fixture 1 makes
+them unit/zero. Immediate wheel preparation uses fresh IDs; frame body drag uses
+the previously exported contact/ID snapshot.
 
-Each existing 60 Hz gameplay tick supplies 1/60 s to Stage 1, subdivided into
-four 1/240 s Euler steps. Forces from the preceding coupling advance body
-XY momentum before the next coupling, matching the Stage-1 scheduling
-boundary. The host still gathers world contact and resolves suspension and
-collisions once per gameplay tick. The existing accumulator gives the same tick
-sequence at different render rates, with at most eight catch-up ticks per frame.
-This is OpenUG2 timing; the unresolved original residual clock is not emulated.
+## Scheduling and supplied choices
 
-## Present limits
+The application retains its independent fixed 60 Hz accumulator with fractional
+residual, bounded catch-up, and paused time discarded. Each tick follows the
+specified substeps. Its first derivative consumes the preceding prepared forces;
+new pedals, missing terrain or surfaces affect subsequent preparations. Frame
+preload precedes mode refresh; control exclusivity occurs once, then corrected
+signed brake distribution and handbrake/grip refresh once. No extra Euler step
+occurs for the bottoming zero sweep. Export happens after all substeps.
 
-This mode is a playable Stage-1/2/3/4 planar integration, not a complete recreation of
-original vehicle handling. The following inputs are explicit host adapters:
-
-- Normal loads use a static quarter of vehicle weight on each supported wheel,
-  gated by the existing suspension contact mask. Weight transfer and contact
-  refresh within drivetrain substeps await Stage 5. No contact means no tyre
-  thrust, steering or service-brake body force; wheel brake torque still affects
-  airborne spin, with zero load. Airborne body momentum follows Stage2 resistance.
-- Steering uses the approved Stage4 bounded keyboard filter, front geometry,
-  folded contact slip and lateral load curves. Final combined wheel forces
-  advance planar body and yaw momentum. The host yaw assignment and lateral
-  scrub are replaced. Wall response and suspension remain host approximations.
-  The complete rear multiplier is deliberately supplied as 1 for this gameplay
-  approximation; it is not asserted as an original general-driving value.
-- Existing surface grip is an adapter multiplier on stock tyre grip. Existing
-  body surface drag/coast retention and host forward/reverse speed caps are
-  replaced by Stage-2 body aerodynamics, stabilization and force/cap rules.
-  Engine braking remains Stage 1 and wheel rolling/damage torque is counted once.
-  Aerodynamics is prepared before wheel coupling and consumed by the following
-  body derivative without an extra resistance pass.
-- Service braking uses Stage3 wheel torque, relief and lock state. The old
-  nominal 10.5 m/s² host deceleration, direct stop clamp and forced rolling spin
-  are removed. Locked supported tyres contribute their final contact force.
-  Space retains the existing host 5.5 m/s² stop/hold and wheel-spin constraint;
-  while held, tyre forces are excluded from body motion to avoid double braking.
-  This is a documented OpenUG2 handbrake adapter. The full nonzero handbrake
-  coefficient, rear-grip blend and yaw behavior await Stage5; no retail handbrake
-  producer is inferred from Space. The standalone module accepts supplied H or
-  converts supplied eta using `H=10*Kh*eta`.
-- Stock tuning is used regardless of the performance shop's power/transmission
-  settings. Nitrous is disabled while Stage 1 is active. The acceleration slider
-  does not rescale shaft torque. The legacy braking slider and vehicle brake
-  multiplier do not scale stock Stage3 service torque. Steering controls remain
-  effective. The host top-kmh slider no longer limits this mode. Cosmetic wheel scaling does not change stock rolling radii.
-- Shift jitter is suppressed. Engine scale and grip factor are 1; bonus and
-  location effects are off; initial RPM is idle. The unresolved performance
-  class correction is disabled (class 0). Manual assist and its menu return
-  path are not selected. These choices do not resolve the spec's unknowns.
-
-All approved trajectory vectors are mathematically derived. Neither the vector
-suite nor gameplay captures establish original-game runtime fidelity.
+Other host inputs are ordinary state 0, response scale 1, supplied reduction 0,
+base grip 1, drafting/event/calibration inputs zero, no damage/bonus/launch,
+initial locks zero and relief enabled. The original timed steering-history
+producer remains unknown; the independent host retains 33-sample input and
+nine-sample rate box histories at 60 Hz. Reset preserves tuning/query/environment
+configuration and clears travel/rate, blend, histories, yaw, locks and preparation
+using their explicit creation/reset fixtures. Lower Stage1–4 standalone adapters
+remain available to preserve their approved supplied-input fixture boundaries;
+the application opt-in configures Stage5.
 
 ## Repeatable checks
 
 ```sh
-make lateral-test drive-stage4-test braking-test resistance-test drivetrain-test drive-stage1-test physics-clock-test district-collision-test
+make contact-test drive-stage5-test lateral-test drive-stage4-test braking-test \
+  resistance-test drivetrain-test drive-stage1-test physics-clock-test district-collision-test
 make debug
-SDL_AUDIODRIVER=dummy ./nfsu2 '/path/to/your/NFSU2 installation' \
+DISPLAY=:0 SDL_AUDIODRIVER=dummy ./nfsu2 '/path/to/your/NFSU2 installation' \
   --car 240SX --drivetrain --track STREAML4RA --resolution 640x360 \
-  --drive-audit /tmp/stage3 --frames 2100
+  --drive-audit /tmp/stage5 --frames 420
 ```
 
-The application command runs a native, scripted world drive and exits with captures
-under `/tmp`; no original executable is launched. Omit the dummy audio driver
-for normal interactive audio. `--drive-audit` now respects an explicit `--frames`
-bound (its default remains 2,220). It prints `STAGE1` rows with actual gear,
-target, RPM, clutch state, contact mask and signed body speed alongside the
-existing movement/contact trace. `STAGE2` rows expose prepared drag/force, z,
-vertical aero load, threshold parameter, scale and reduction. `STAGE3` rows expose pedal, strength, rear share, relief
-switch, persistent locks, requested brake torque, tyre force and spin. The scripted
-audit with `--drivetrain` also requests straight-line S during ticks 300–344,
-then resumes acceleration; `--frames 420` includes braking and its release.
-The later audit requests S at tick 1920; a 2100-tick bound reaches that section. If the
-car has stalled against an obstacle, S selects reverse instead of service braking.
-Road obstacles can stop this scripted path; the headless synthetic tests isolate launch/coast/brake/reverse behavior.
+The bounded native audit drives the normal controls and world queries. With
+`--drivetrain`, ticks 170–184 request moving handbrake and a small steer input,
+then release; steering pulses occur at 210–239 and 255–284; service braking at
+300–344 is followed by acceleration. No physical state is forced. `STAGE5` rows
+show handbrake torque, blend/grip, contact mask, travel, aligned loads, prescribed
+ride pose, body forces/moments, signed speed and wall/rail counts. Later scripted
+segments can meet obstacles; S near rest may select reverse. `--frames` controls
+the bound (default audit 2,220). The audit writes spawn/end captures under the
+selected prefix. Dummy audio may be omitted for normal interactive sound.
 
-The synthetic integration suite covers stock-field mapping and validation,
-FWD/AWD/RWD launch and automatic shifts, coast, braking, direction changes,
-handbrake hold, steering, airborne authority, velocity impulses, reset/car
-replacement, paused state and equal results at 30/60/90/144/240 render Hz.
-It also runs the existing chassis self-test. No game assets are used by that
-suite.
-
-
-Stage 2 uses an explicit host fixture: G=1, a=0, ordinary state 0, unit body
-and rolling surface factors as separate channels, no bonus/damage/alternate mode,
-and a supplied zero additional angular damping coefficient. Stage4 supplies actual
-yaw speed to the Stage2 stabilization curve. These choices do not establish the unknown original input
-producers or reduction initialization. Stock cD/cF/cR/L are decoded from the same
-validated car row; invalid fields reject loading/switching rather than substituting
-coefficients. Reset preserves supplied tuning/environment and resets z to zero.
-
-The playable adapter supplies a level body basis from heading and integrates XY
-momentum. Existing suspension still owns vertical motion, pitch and roll. Vertical
-aero load/moments are calculated for diagnostics but do not feed back into loads
-or suspension, and the planar constraint removes their direct vertical motion.
-The standalone module supports and tests full 3D/sloped aero, the slope-dependent
-threshold and full-vector cap; the playable adapter does not reproduce those
-vertical/slope effects. It makes no complete world-motion or runtime fidelity
-claim. See [Stage-2 design](cleanroom-driving-physics/stage2/IMPL_DESIGN.md) for
-precise scheduling, supplied-input choices and validation.
-
-
-Stage3 creation and reset explicitly supply initial lock mask 0 and
-`relief_disabled=false`; exclusivity is enabled. These are host fixture choices,
-not established original initialization or flag producers (U3-2/U3-3). The
-standalone configuration requires those inputs explicitly and retains lock state
-across pedal release until the specified motion predicate reevaluates it. Reset
-restores the configured initial mask and retains the strengths and relief switch.
-The once-per-frame speed snapshot uses the full planar magnitude, while wheel
-brake sign uses spin. Frame input changes leave the preceding coupling's torque
-and force prepared for the first derivative; the following coupling uses the new
-coefficients. Detailed architecture and validation are in
-[Stage3 design](cleanroom-driving-physics/stage3/IMPL_DESIGN.md).
-
-
-The approved [Stage4 specification](cleanroom-driving-physics/stage4/SPEC.md)
-adds ordinary keyboard/analog filter kernels, exact unsigned steering commands,
-front wheel geometry, wheel-frame velocities, folded slip, gripping lateral load
-curves, combined grip and planar yaw moments. The interactive host uses its raw
-keyboard-equivalent axis, with independent 60 Hz box histories (33 prior input
-samples and nine rate samples including current, initialized to zero/one).
-The original timed-history producer remains unknown. Command and wheel geometry
-update once per tick, without applying the old steering smoother a second time.
-Actual per-wheel front angles also drive the interpolated wheel/brake-hub meshes.
-
-The yaw adapter uses stock body dimensions for box inertia, unadjusted stock mounts
-as contact arms, zero centre offset, and supplied zero extra angular damping or
-yaw assistance. Loads remain static quarter weights, and complete rear grip and
-peak scales are explicitly 1 even while turning; these are documented independent
-host choices. Full angular damping, suspension/load/centre/contact producers and
-3D force bases await later specifications. Airborne tyre forces/moments are zero,
-while yaw momentum and body aero persist. Space additionally constrains yaw spin
-as part of the existing host hold. Reset/car switching clears command, histories,
-latch, yaw state and prepared forces while retaining selected stock tuning.
-
-`--drive-audit` adds moving steer pulses at ticks 210–239 (+.35) and 255–284
-(-.35), before the service-brake pulse at 300–344. `STAGE4` rows report command,
-front angles, contact speed, folded slip, lateral forces, yaw rate/moment, heading,
-world velocity and wall/rail response counts. A 300-frame run reaches both steer
-pulses; 420 frames also covers service braking. See
-[Stage4 design](cleanroom-driving-physics/stage4/IMPL_DESIGN.md) for composition,
-exact validation commands, results, unknowns and adapter limitations.
+All vectors are synthetic calculations from static-inferred approved contracts.
+Component agreement, host tests and native captures do not establish original
+runtime/differential, full world/material or full 3D handling parity. Detailed
+architecture and validation are in
+[Stage5 implementation design](cleanroom-driving-physics/stage5/IMPL_DESIGN.md).

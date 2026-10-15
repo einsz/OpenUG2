@@ -133,6 +133,10 @@ void stage1_drive_reset(Stage1Drive *s,const float velocity[2],float heading) {
     if(previous.drivetrain.brakes.enabled)
         stage3_drive_brakes(s,&previous.drivetrain.brakes.car,previous.initial_lock_mask,previous.drivetrain.brakes.relief_disabled);
     if(previous.lateral_ready)stage4_drive_lateral(s,&previous.lateral_car,previous.inverse_yaw_inertia,previous.yaw_damping);
+    if(previous.contact_ready) {
+        stage5_drive_contacts(s,&previous.contacts.car,previous.contact_query,previous.contact_user);
+        s->contact_event=previous.contact_event;s->contact_v0=previous.contact_v0;s->contact_s0=previous.contact_s0;
+    }
     s->resistance_input=previous.resistance_input;
     memcpy(s->body_surface,previous.body_surface,sizeof s->body_surface);
     memcpy(s->rolling_surface,previous.rolling_surface,sizeof s->rolling_surface);
@@ -147,6 +151,7 @@ void stage1_drive_reset(Stage1Drive *s,const float velocity[2],float heading) {
     for(int k=0;k<2;k++)s->body.momentum[k]=s->body.mass*velocity[k]*PHYS_TICKRATE;
     res_post(&s->body,0);
     s->exported_forward=v;
+    if(s->contact_ready){s->contacts.exported_forward=v;s->contacts.exported_speed=fabsf(v);}
 }
 float stage1_drive_rpm(const Stage1Drive *s){return s->drivetrain.omega_e*DRV_KR;}
 int stage1_drive_gear(const Stage1Drive *s){return s->drivetrain.gear-1;}
@@ -201,7 +206,7 @@ static void sample_contacts(Stage1Drive *s,DrvEnv *env,const ResBasis *basis) {
         }else env->wheel[i].vx=forward;
     }
 }
-static void steering_frame(Stage1Drive *s,float raw,const ResBasis *basis) {
+void stage1_steering_frame(Stage1Drive *s,float raw,const ResBasis *basis) {
     /* Host U4-1/2 choice: fixed 60 Hz box averages, zero input/one rate seeds.
      * These are explicit producers, not asserted original timed histories. */
     float history=0,rate=0,mapped=lat_curve("I",raw);
@@ -211,9 +216,9 @@ static void steering_frame(Stage1Drive *s,float raw,const ResBasis *basis) {
     for(int i=0;i<9;i++)rate+=s->rate_history[i]/9;
     LatFilter in={.raw=raw,.vctl=s->exported_forward,.history=history,.rate_history=rate,
         .old_degrees=lat_decode(s->steering.command),.previous_limit=s->steering.previous_limit,
-        .sigma=lat_body_slip((float)res_dot(s->body.velocity,basis->forward),basis->forward,s->body.velocity),
+        .sigma=s->contact_ready?lat_body_slip(s->contacts.exported_forward,s->contacts.exported_heading,s->contacts.exported_velocity):lat_body_slip((float)res_dot(s->body.velocity,basis->forward),basis->forward,s->body.velocity),
         .latch=s->steering.latch,.speed=hypotf(s->body.velocity[0],s->body.velocity[1]),
-        .throttle=s->drivetrain.throttle,.brake=s->drivetrain.brake,.handbrake=0,
+        .throttle=s->drivetrain.throttle,.brake=s->drivetrain.brake,.handbrake=s->contact_ready?s->drivetrain.handbrake:0,
         .gain=s->lateral_car.gain,.dt=1/PHYS_TICKRATE};
     s->steering=lat_filter(&in);s->previous_mapped=mapped;
     s->input_history[s->input_cursor]=mapped;s->input_cursor=(s->input_cursor+1)%33;
@@ -224,6 +229,7 @@ float stage1_drive_step(Stage1Drive *s,float pos[3],float vel[2],float *heading,
     float *speed,float pedal,float steer,int handbrake,const PhysSurface *sf,
     const PhysVehicle *vh,const PhysRideState *ride) {
     if(!s || !s->ready)return 0;
+    if(s->contact_ready)return stage5_drive_step(s,pos,vel,heading,speed,pedal,steer,handbrake,ride);
     if(!sf)sf=&PHYS_SURF_ROAD;
     Drivetrain *d=&s->drivetrain;ResBody *b=&s->body;
     s->wheel_travel=0;
@@ -259,7 +265,7 @@ float stage1_drive_step(Stage1Drive *s,float pos[3],float vel[2],float *heading,
     d->env=env;
     if(d->brakes.enabled)for(int i=0;i<4;i++)d->env.wheel[i].locked=d->brakes.locked[i];
     drv_frame_begin(d,&input,1/PHYS_TICKRATE,-1);r->throttle=d->throttle;
-    if(s->lateral_ready)steering_frame(s,steer,&basis);
+    if(s->lateral_ready)stage1_steering_frame(s,steer,&basis);
     float h;int n=drv_substep_count(1/PHYS_TICKRATE,&h);
     for(int k=0;k<n;k++){
         /* Remove previous tyre force when support is lost or Space hold engages.

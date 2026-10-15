@@ -1,13 +1,17 @@
-/* Gameplay adapter for approved Stages 1/2/3. Chassis/contact/handbrake remain
- * OpenUG2 approximations; see docs/DRIVETRAIN.md. No SDL, GL or file IO. */
+/* Gameplay adapters for approved Stages 1–5. Stage5 keeps world selection and
+ * the prescribed ride trajectory explicit. See docs/DRIVETRAIN.md. No IO. */
 #ifndef OPENUG2_DRIVE_STAGE1_H
 #define OPENUG2_DRIVE_STAGE1_H
 #include "drivetrain.h"
 #include "resistance.h"
 #include "lateral.h"
+#include "contact.h"
 #include "physics.h"
 typedef struct {
     Drivetrain drivetrain;
+    int contact_ready;CtState contacts;CtQuery contact_query;void *contact_user;
+    CtPose contact_pose;float contact_force[4][3],contact_moment[4][3];
+    float contact_event,contact_v0,contact_s0; /* explicit U5-3 supplied host channels */
     int ready,reverse,prepared;
     ResCar resistance_car;
     ResInput resistance_input;
@@ -34,6 +38,10 @@ int stage1_car_read(const unsigned char *data,long length,const char *name,DrvCa
 int stage2_car_read(const unsigned char *data,long length,const char *name,ResCar *out);
 /* Read only approved S3-1 stock fields via the same framing. */
 int stage3_car_read(const unsigned char *data,long length,const char *name,BrkCar *out);
+int stage5_car_read(const unsigned char *data,long length,const char *name,CtCar *out);
+int stage5_drive_contacts(Stage1Drive *state,const CtCar *car,CtQuery query,void *user);
+void stage1_steering_frame(Stage1Drive *state,float raw,const ResBasis *basis);
+float stage5_drive_step(Stage1Drive *state,float position[3],float velocity[2],float *heading,float *speed,float pedal,float steer,int handbrake,const PhysRideState *ride);
 int stage4_car_read(const unsigned char *data,long length,const char *name,LatCar *out);
 /* Configure stock geometry. Host supplies inertia inverse/damping explicitly.
  * Mounts are also contact arms in this level, zero-centre host approximation. */
@@ -49,8 +57,8 @@ int stage1_drive_init(Stage1Drive *state,const DrvCar *car,const ResCar *resista
 void stage1_drive_reset(Stage1Drive *state,const float velocity[2],float heading);
 /* One host 60 Hz tick, subdivided per S1-2.2. Pedal: W=+1, S=-1.
  * S brakes forward then selects reverse at rest; W brakes reverse then auto.
- * Service braking uses Stage3; handbrake, loads and steering are host adapters.
- * Stage 2 uses an explicit level-body XY slice; suspension owns vertical motion. */
+ * Stage5 configuration selects geometric loads and handbrake/grip; the original
+ * lower-stage supplied-load adapter remains for its independent fixtures. */
 float stage1_drive_step(Stage1Drive *state,float position[3],float velocity[2],
     float *heading,float *speed,float pedal,float steer,int handbrake,
     const PhysSurface *surface,const PhysVehicle *vehicle,const PhysRideState *ride);

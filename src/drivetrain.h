@@ -132,6 +132,8 @@ typedef struct DrvEnv {
     DrvWheelEnv wheel[4];
     float body_speed;           /* magnitude, m/s */
     float signed_forward;      /* S4-5 low-speed normalization snapshot */
+    float frame_grip[2];        /* S5 supplied complete front/rear frame grip */
+    int supplied_frame_grip;
     int planar_tyres;          /* enables supplied Stage4 signed speed/peak_scale */
     float rear_grip_multiplier; /* Full rear multiplier supplied by Stage 4/5 (S1-11/Q-11); no retail default. */
 } DrvEnv;
@@ -201,6 +203,7 @@ typedef struct Drivetrain {
      * must be supplied; disabled preserves the Stage1 brake-free boundary. */
     struct {
         int enabled,exclusivity,relief_disabled,locked[4];
+        int signed_distribution; /* S5 composition only; direct S3 fixtures unchanged */
         BrkCar car;
         BrkFrame frame;
         float handbrake[4]; /* injected H, not an inferred eta producer (S3-8) */
