@@ -46,8 +46,8 @@ int main(void) {
     unsigned char pixels[]={255,0,0,0, 255,0,0,127, 255,0,0,128, 255,0,0,255};
     RhiTexture wtex=rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D,RHI_FORMAT_RGBA8,4,1, RHI_TEXTURE_SAMPLED});
     rhi_texture_upload(wtex,0,0,pixels,0);GLuint tex=rhi_gl_texture_name(wtex);
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+    assert(rhi_texture_set_sampler(wtex,rhi_sampler_create(&(RhiSamplerDesc){RHI_FILTER_NEAREST,
+        RHI_FILTER_NEAREST,RHI_MIP_NONE,RHI_WRAP_REPEAT,RHI_WRAP_REPEAT,1.0f}))==RHI_OK);
     glViewport(0,0,32,32);glDepthFunc(GL_LESS);
     for(int test=0;test<5;test++) {
         int blocked=test==4;

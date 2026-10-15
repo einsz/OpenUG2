@@ -107,8 +107,22 @@ void ps_input(PauseScreen *p, PsInput in) {
     }
 }
 
+static int dialog_button_at(const GuiDialog *d, float x, float y) {
+    for (int b = 0; b < 2; b++) {
+        float e[4];
+        gd_button_extent(d->spec.kind, b, e);
+        if (x >= e[0] && x <= e[2] && y >= e[1] && y <= e[3]) return b + 1;
+    }
+    return 0;
+}
+
 void ps_pointer_press(PauseScreen *p, float x, float y) {
-    if (p->exiting || p->dialog.open) return;
+    p->ptr.armed = 0;
+    if (p->exiting) return;
+    if (p->dialog.open) {
+        if (!p->fresh && !p->dialog.closing) p->ptr.armed = dialog_button_at(&p->dialog, x, y);
+        return;
+    }
     GcPtAction a = gc_pointer_press(&p->car, &p->ptr, x, y);
     if (a == GC_PT_LEFT) step(p, -1);
     else if (a == GC_PT_RIGHT) step(p, 1);
@@ -116,7 +130,10 @@ void ps_pointer_press(PauseScreen *p, float x, float y) {
 void ps_pointer_release(PauseScreen *p, float x, float y) {
     if (p->exiting) return;
     if (p->dialog.open) {
-        if (!p->fresh) gd_pointer_click(&p->dialog, x, y);
+        int pressed = p->ptr.armed;
+        p->ptr.armed = 0;
+        if (!p->fresh && pressed && pressed == dialog_button_at(&p->dialog, x, y))
+            gd_pointer_click(&p->dialog, x, y);
         return;
     }
     if (gc_pointer_release(&p->car, &p->ptr, x, y) == GC_PT_ACTIVATE && !p->fresh) activate(p);
@@ -133,6 +150,7 @@ void ps_update(PauseScreen *p, float seconds) {
         gd_update(&p->dialog, seconds);
         GdResult r = gd_poll(&p->dialog);
         if (r != GD_RES_NONE) {
+            p->ptr.armed = 0;
             PeAction a = p->entries[p->dialog_entry].action;
             memset(&p->dialog, 0, sizeof p->dialog);
             p->dialog_serial++;                              /* UNDIM */

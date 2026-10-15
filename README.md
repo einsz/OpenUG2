@@ -317,6 +317,11 @@ the nearest safe authored road; no internal world-mode or spawn flag is needed.
   is not a supported gameplay composition.
 - `--circuit PATH` — a closed-loop `Paths*.bin` under `TRACKS/`.
 - `--event ID` — start a shipped race event such as L4RB drag `4201`.
+- Static walls come from the original BUN collision data by default. Numeric
+  race barriers follow the selected event; free roam excludes inactive races.
+  `--collision-source legacy` selects the previous facade/correction walls for
+  comparison and `--track ALL` diagnostics. Ground and breakable objects keep
+  their existing handling; original career-stage activation remains incomplete.
 - `--hud` — enable the prototype player HUD, including live speed/RPM readouts.
 - `--hud-mph` — enable the same HUD with MPH speed presentation; physics remains
   in its existing units.

@@ -109,6 +109,60 @@ static const float city_collision_points_12[][3] = {
     {-305.107178f, 376.360474f, 1.69932902f},
 };
 
+/* Small STREAML4RA pilot: shared building/flower frontage and median rails.
+   shortcut: reviewed 12 m walls cover this district; check layers before extending. */
+static const float pilot_building[][3] = {
+    {-148.527f, 92.897f, 1.935f},
+    {-136.988f, 94.414f, 1.935f},
+    {-134.790f, 94.766f, 1.966f},
+    {-123.328f, 96.787f, 1.966f},
+    {-120.765f, 97.190f, 2.017f},
+    {-109.523f, 100.203f, 2.017f},
+    {-107.133f, 101.011f, 2.017f},
+    {-96.586f, 105.930f, 2.017f},
+    {-94.457f, 115.534f, 2.024f},
+    {-94.248f, 119.429f, 2.024f},
+    {-94.976f, 121.801f, 2.024f},
+    {-97.747f, 125.180f, 2.024f},
+    {-105.439f, 133.322f, 2.024f},
+    {-119.823f, 148.626f, 2.024f},
+    {-130.766f, 141.632f, 1.966f},
+    {-136.585f, 131.555f, 1.966f},
+    {-137.906f, 129.092f, 2.017f},
+    {-142.359f, 118.339f, 2.017f},
+    {-143.162f, 115.814f, 2.017f},
+    {-146.660f, 104.715f, 2.017f},
+    {-148.527f, 92.897f, 1.935f},
+};
+static const float pilot_median_left[][3] = {
+    {-184.687f, 96.703f, 23.620f}, {-184.065f, 106.687f, 23.376f},
+};
+static const float pilot_median_right[][3] = {
+    {-183.417f, 96.645f, 23.617f}, {-182.813f, 106.628f, 23.372f},
+};
+/* One sloped roadside trace replaces the fence slices and linked guard posts. */
+static const float pilot_roadside[][3] = {
+    {-193.143f, 74.233f, 5.057f},
+    {-186.096f, 74.382f, 4.501f},
+    {-178.920f, 74.573f, 3.876f},
+    {-171.777f, 74.929f, 3.216f},
+    {-164.619f, 75.313f, 2.533f},
+    {-157.433f, 75.985f, 2.005f},
+    {-150.252f, 76.562f, 1.447f},
+    {-143.127f, 77.433f, 1.065f},
+    {-136.039f, 78.402f, 0.728f},
+    {-128.927f, 79.458f, 0.579f},
+    {-121.793f, 80.766f, 0.626f},
+    {-114.620f, 82.124f, 0.817f},
+    {-107.569f, 83.897f, 1.040f},
+    {-100.854f, 86.166f, 1.252f},
+    {-98.750f, 86.957f, 1.359f},
+    {-96.052f, 88.036f, 1.447f},
+    {-93.620f, 89.244f, 1.535f},
+    {-91.188f, 90.487f, 1.672f},
+    {-88.660f, 91.728f, 1.801f},
+};
+
 static const WCollisionRule city_collision_rules[] = {
     {0, UINT64_C(0x38dba), 0.0f, 0, NULL},
     {0, UINT64_C(0xc12b68b), 0.0f, 0, NULL},
@@ -162,6 +216,30 @@ static const WCollisionRule city_collision_rules[] = {
     {1, UINT64_C(0x4152344c071100d8), 8.0f, 5, city_collision_points_10},
     {1, UINT64_C(0x4152344c071100be), 8.0f, 5, city_collision_points_11},
     {1, UINT64_C(0x4152344c071100ba), 8.0f, 5, city_collision_points_12},
+    {1, UINT64_C(0x4152344c0712004e), 12.0f, 21, pilot_building},
+    {1, UINT64_C(0x4152344c02c500d9), 12.0f, 2, pilot_median_left},
+    {1, UINT64_C(0x4152344c02c500da), 12.0f, 2, pilot_median_right},
+    {1, UINT64_C(0x4152344c02c50053), 12.0f, 19, pilot_roadside},
+    {1, UINT64_C(0x4152344c02c50051), 0.0f, 0, NULL},
+    {1, UINT64_C(0x4152344c02c50052), 0.0f, 0, NULL},
+    {1, UINT64_C(0x4152344c02c50055), 0.0f, 0, NULL},
+    {1, UINT64_C(0x4152344c02c50056), 0.0f, 0, NULL},
+    {1, UINT64_C(0x4152344c02c50057), 0.0f, 0, NULL},
+    {1, UINT64_C(0x4152344c02c50058), 0.0f, 0, NULL},
+    {1, UINT64_C(0x4152344c02c50059), 0.0f, 0, NULL},
+    {1, UINT64_C(0x4152344c02c5005a), 0.0f, 0, NULL},
+    {1, UINT64_C(0x4152344c02c60038), 0.0f, 0, NULL},
+    {1, UINT64_C(0x4152344c02c60039), 0.0f, 0, NULL},
+    {1, UINT64_C(0x4152344c02c6004f), 0.0f, 0, NULL},
+    {1, UINT64_C(0x4152344c02c60050), 0.0f, 0, NULL},
+    {1, UINT64_C(0x4152344c02c6002b), 0.0f, 0, NULL},
+    {1, UINT64_C(0x4152344c02c6002d), 0.0f, 0, NULL},
+    {1, UINT64_C(0x4152344c02c6002f), 0.0f, 0, NULL},
+    {1, UINT64_C(0x4152344c02c60031), 0.0f, 0, NULL},
+    {1, UINT64_C(0x4152344c02c60033), 0.0f, 0, NULL},
+    /* Remove the rear park walls without removing their supporting terrain. */
+    {1, UINT64_C(0x1f2dfe7f7045e19f), 0.0f, 0, NULL},
+    {1, UINT64_C(0x33668dcc71aa1b84), 0.0f, 0, NULL},
 };
 static const WCollisionEdits city_collision_edits = {
     "STREAML4RA", (int)(sizeof city_collision_rules / sizeof *city_collision_rules), city_collision_rules

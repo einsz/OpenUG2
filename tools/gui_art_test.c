@@ -597,10 +597,26 @@ static void test_pause_screen(void) {
     CHECK(ps_dialog_open(&ps), "clicking the Quit slot opens the dialog");
     ps_pointer_click(&ps, GC_ARROW_R_X, GC_ARROW_Y);
     CHECK(ps_dialog_open(&ps) && !ps.dialog.closing && ps_selected(&ps) == 3, "arrows are inert behind the dialog");
+    ps_pointer_release(&ps, -151, 74);
+    CHECK(!ps.dialog.closing, "release without a press cannot confirm Quit");
+    ps_pointer_press(&ps, 0, 0); ps_pointer_release(&ps, -151, 74);
+    CHECK(!ps.dialog.closing, "press outside then release on OK cannot confirm Quit");
+    ps_pointer_press(&ps, -151, 74); ps_pointer_release(&ps, 151, 74);
+    CHECK(!ps.dialog.closing, "press OK then release Cancel cannot choose either button");
+    ps_pointer_press(&ps, -151, 74); ps_pointer_release(&ps, 0, 0);
+    CHECK(!ps.dialog.closing, "release outside the pressed button is inert");
     ps_pointer_click(&ps, -151, 74);
     CHECK(ps.dialog.closing, "a click on OK chooses it");
     ps_update(&ps, 0.2f);
     CHECK(drain(&ps) == PS_EV_QUIT, "pointer OK quits");
+    ps_ready(&ps, &c);
+    ps_input(&ps, PS_IN_RIGHT); ps_input(&ps, PS_IN_RIGHT);
+    ps_input(&ps, PS_IN_ACCEPT);
+    ps_pointer_press(&ps, -151, 74);
+    ps_input(&ps, PS_IN_BACK);
+    ps_update(&ps, 0.2f);
+    ps_pointer_release(&ps, 0.388f, -14.296f);
+    CHECK(!ps_dialog_open(&ps) && !ps_busy(&ps), "a dialog press cannot activate the carousel after keyboard cancellation");
     g_ps = NULL;
 }
 
