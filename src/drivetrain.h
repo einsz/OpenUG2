@@ -173,6 +173,7 @@ typedef struct DrvWheel {
     float w_long, w_lat;        /* wL, wT multipliers (1.0) */
     int   gripping;             /* result of S1-7.4 branch */
     int   dir;                  /* DRV_DIR_* */
+    float utilisation;          /* tire-marks TM-3 u at the S1-7.6 cap (0..1); output only */
 } DrvWheel;
 
 typedef struct Drivetrain {
@@ -215,6 +216,7 @@ typedef struct Drivetrain {
     /* last coupling results (outputs for the body integrator) */
     DrvEnv env;
     float  force_long[4], force_lat[4], load[4];
+    float  utilisation_mean;    /* four-wheel mean of DrvWheel.utilisation (TM-12) */
     int    contact_count;       /* nc */
     float  engine_torque;       /* Te used by the last derivative */
 } Drivetrain;

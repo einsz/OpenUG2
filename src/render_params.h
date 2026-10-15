@@ -19,7 +19,8 @@
  *   uLight       sun direction in world space
  *   uVColor      0..1 strength of per-vertex prelight (world geometry only)
  *   uDecal       1 = texture is an alpha-masked decal over uColor paint
- *   uVista       >0.5: alpha-blended backdrop pass
+ *   uVista       >0.5: alpha-blended backdrop pass; >1.5: tire-mark pass
+ *                (rgb = clamp(2*texel*vertex), a = texel*vertex alpha, TM-15)
  *   uAlphaTest   >0.5: discard texels below 0.5 alpha (N2_DRAW_CUTOUT world
  *                batches, M135)
  *   uTextureAlpha >0.5: output alpha = texture alpha * uAlpha (N2_DRAW_BLEND/ADD

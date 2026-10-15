@@ -34,6 +34,8 @@
 #include "drive_stage1.h"
 #include "drive_trace.h"
 #include "drive_presentation.h"
+#include "tire_marks.h"
+#include "tire_marks_drive.h"
 #include "ai.h"
 #include "audio.h"
 #include "resource.h"
@@ -2073,6 +2075,54 @@ static CtGround stage5_world_query(void *user,const float q[3],int wheel) {
     CtGround result={.found=found,.surface=1,.normal={0,0,1}};
     if(found){result.height=hit.z;memcpy(result.normal,hit.normal,sizeof result.normal);}
     return result;
+}
+
+/* Tire marks (docs/cleanroom-driving-physics/tire-marks/, src/tire_marks.*).
+ * The store is fixed-capacity and lives for the whole session (TM-10.1). */
+static TmStore g_tm;
+static TmVehicle g_tm_player;
+static float g_tm_width[4]={.22f,.22f,.22f,.22f};   /* tyre widths; replaced from the car record */
+static long g_tm_frame;
+static RhiTexture g_tm_tex[TM_TEX_COUNT];
+static GpuMesh g_tm_mesh;
+/* TM-4: ground height under a probe at wheel-centre height (same query family as contact). */
+static int tm_world_ground(void *user,int wheel,float x,float y,float z,float *height) {
+    const N2Scene *scene=user;WGroundHit hit;
+    const CtCar *car=&g_stage1.contacts.car;
+    float down=fmaxf(-car->axle[wheel/2].lower,PHYS_RIDE_REACH_DOWN);
+    if(world_wheel_support(scene,x,y,z-car->radius[wheel],PHYS_RIDE_REACH_UP,down,&hit,NULL,NULL)==WSURF_NONE)return 0;
+    *height=hit.z;return 1;
+}
+/* Sphere against the six clip planes of a column-major MVP (TM-11.4 box tests, TM-U12). */
+static int tm_mvp_frustum(void *user,const float c[3],float r) {
+    const float *m=user;
+    for(int plane=0;plane<6;plane++) {
+        float sign=plane&1?1.0f:-1.0f;int row=plane>>1;
+        float a=m[3]+sign*m[row],b=m[7]+sign*m[4+row],cc=m[11]+sign*m[8+row],d=m[15]+sign*m[12+row];
+        float n=sqrtf(a*a+b*b+cc*cc);if(n<1e-9f)continue;
+        if((a*c[0]+b*c[1]+cc*c[2]+d)/n<-r)return 0;
+    }
+    return 1;
+}
+/* Load the three mark textures (TM-1.3) from GLOBAL/InGameCommon.bun. A texture
+ * that cannot be found leaves its strips stored but never drawn (TM-1.2). */
+static void tm_load_textures(const char *dataroot) {
+    char path[1024];snprintf(path,sizeof path,"%s/GLOBAL/InGameCommon.bun",dataroot);
+    long length=0;unsigned char *data=n2_read_file(path,&length);
+    for(int t=TM_TEX_ROAD;t<TM_TEX_COUNT;t++) {
+        if(g_tm_tex[t].id){rhi_texture_destroy(g_tm_tex[t]);g_tm_tex[t]=(RhiTexture){0};}
+        if(!data)continue;
+        N2Tpk tpk=n2_tpk_open(data,length);N2Tex tex={0};
+        /* TM-15.5: the shared pack reader's greedy 0x11 skip eats the first palette entry of these
+           textures (0x11,0x11,0x11,0x7f); restore the 0x80-aligned payload start. */
+        for(int b=0;b<tpk.nblk;b++)tpk.blk[b].dbase=tm_payload_base(data,tpk.blk[b].dbase);
+        if(n2_tpk_decode(data,length,tpk,tm_texture_hash(t),&tex)) {
+            g_tm_tex[t]=upload_tex_keyed(tm_texture_hash(t),NULL,&tex);
+            /* TM-15.3: wrap addressing in U and V = the default sampler of upload_tex (no clamp). */
+        }
+        free(tex.rgb);free(tex.alpha);free(tex.dxt);free(tpk.blk);
+    }
+    free(data);
 }
 
 /* Dynamic pose exports for existing camera/HUD presentation only. No value
@@ -4667,6 +4717,7 @@ int main(int argc, char **argv) {
                     fprintf(stderr,"--drivetrain: no valid stock Stage-1/2/3/4/5 tuning for %s\n",carname);
                     return 2;
                 }
+                tm_car_read(globdata,globlen,carname,g_tm_width);   /* TM-1.1; keeps defaults if absent */
                 printf("Stage-1/2/3/4/5 drivetrain enabled; W forward, S brake/reverse, Space handbrake.\n"
                        "  Geometric spring/aligned loads, frame handbrake/grip; full dynamic body momentum and orientation.\n"
                        "  Independent host policy: c=1 p=1, session status from ordinary host lifecycle, surface ID=1, q=1 X/event=0, G=1 reduction=0, initial locks=0; bottom impulses enabled. Drag/drift use legacy.\n");
@@ -6197,6 +6248,23 @@ int main(int argc, char **argv) {
     #define MAXSKID 700
     static float skid[MAXSKID][7]; int skidn = 0, skidhead = 0;
     float prevL[3] = {0,0,0}, prevR[3] = {0,0,0}; int skidpen = 0;  /* pen-down state */
+    /* Clean-room drivetrain mode lays spec'd tire marks instead (src/tire_marks.*);
+       the arcade ribbons above remain only for the legacy physics path. */
+    tm_init(&g_tm,128);memset(&g_tm_player,0,sizeof g_tm_player);g_tm_frame=0;
+    tm_load_textures(dataroot);
+    {   /* streamed vertex/colour buffers; static up-normals and quad indices */
+        static float normals[TM_MAX_VERTICES*3];static uint16_t indices[TM_MAX_VERTICES/4*6];
+        for(int i=0;i<TM_MAX_VERTICES;i++)normals[i*3+2]=1.0f;
+        for(int q=0;q<TM_MAX_VERTICES/4;q++) {
+            static const int pattern[6]={0,1,2,0,2,3};
+            for(int k=0;k<6;k++)indices[q*6+k]=(uint16_t)(q*4+pattern[k]);
+        }
+        g_tm_mesh=(GpuMesh){0};
+        g_tm_mesh.vbo=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX,RHI_UPDATE_STREAM,0,NULL});
+        g_tm_mesh.cbo=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX,RHI_UPDATE_STREAM,0,NULL});
+        g_tm_mesh.nbo=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX,RHI_UPDATE_STATIC,sizeof normals,normals});
+        g_tm_mesh.ibo=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_INDEX,RHI_UPDATE_STATIC,sizeof indices,indices});
+    }
     #define MAXSMOKE 512
     static struct { float p[3], v[3], life, size; } smoke[MAXSMOKE]; int smoken = 0;
     /* Contact-forensics accumulators. Audit-only reads; no production state is
@@ -6795,6 +6863,7 @@ int main(int argc, char **argv) {
                             stage4_drive_lateral(&g_stage1,&next_lateral,1/lat_inertia(next_stage1.mass,next_lateral.dimensions),0);
                             stage5_drive_contacts(&g_stage1,&next_contacts,stage5_world_query,&scene);
                             stage5_drive_body(&g_stage1,&next_body,1,0,0);
+                            tm_car_read(candidate.globaldata,candidate.globallen,next_car,g_tm_width);
                             vel[0]=vel[1]=0;speed=0;sim_reset=1;
                         }
                         g_dbg.body_kit_current = 0; g_dbg.mod_current = carcfg;
@@ -8327,11 +8396,22 @@ int main(int argc, char **argv) {
         g_skid = (race_state==1 && drifting)
                ? (0.12f + 0.45f*(dmag - PHYS_MAXSPD*0.2f)/PHYS_MAXSPD) : 0.0f;
         if (g_skid > 0.35f) g_skid = 0.35f;
+        /* Tire marks (TM-2): once per vehicle update, after the frame's final
+           integration, for wheels 0..3, only while gate G holds. */
+        g_tm_frame++;tm_set_frame(&g_tm,g_tm_frame);
+        if(stage1_active && g_stage1.contact_ready) {
+            if(tm_drive_gate(&g_stage1) && !sstatic && !capture_policy.freeze_motion) {
+                TmWheelIn tm_in[4];float tm_origin[3];
+                tm_drive_inputs(&g_stage1,g_tm_width,0,tm_in,tm_origin);
+                TmGround tm_ground={tm_world_ground,&scene,0};
+                tm_vehicle_update(&g_tm,&g_tm_player,tm_in,tm_origin,0,&tm_ground);
+            }
+        } else tm_vehicle_destroy(&g_tm_player);
         if (drifting) {
             float rx = carpos[0]-nf[0]*1.6f, ry = carpos[1]-nf[1]*1.6f;
             float rz = carpos[2]+0.05f;
             float curL[3]={rx+nr[0], ry+nr[1], rz}, curR[3]={rx-nr[0], ry-nr[1], rz};
-            if (skidpen) {   /* connect last frame's wheel points into ribbon segments */
+            if (!stage1_active && skidpen) {   /* connect last frame's wheel points into ribbon segments */
                 float *seg;
                 seg=skid[skidhead]; seg[0]=prevL[0];seg[1]=prevL[1];seg[2]=prevL[2];
                 seg[3]=curL[0];seg[4]=curL[1];seg[5]=curL[2];seg[6]=1.0f;
@@ -8340,7 +8420,7 @@ int main(int argc, char **argv) {
                 seg[3]=curR[0];seg[4]=curR[1];seg[5]=curR[2];seg[6]=1.0f;
                 skidhead=(skidhead+1)%MAXSKID; if(skidn<MAXSKID)skidn++;
             }
-            memcpy(prevL,curL,sizeof curL); memcpy(prevR,curR,sizeof curR); skidpen=1;
+            memcpy(prevL,curL,sizeof curL); memcpy(prevR,curR,sizeof curR); skidpen=!stage1_active;
             /* dense puffs at both wheels every frame; soft = many low-alpha billboards */
             float wheels[2][2] = {{curL[0],curL[1]},{curR[0],curR[1]}};
             for (int wi = 0; wi < 2; wi++)
@@ -9376,7 +9456,45 @@ int main(int argc, char **argv) {
         }
 
         pf_mark(PF_CAR_SHADOW);
-        /* tyre skid marks: flat dark quads on the ground, alpha-blended */
+        /* Tire marks (TM-11): textured strip quads on the ground. Textureless or
+           unloaded surfaces store strips but draw nothing. */
+        {
+            static TmVertex tm_vertices[TM_MAX_VERTICES];
+            static float tm_pos[TM_MAX_VERTICES*5];static unsigned char tm_col[TM_MAX_VERTICES*4];
+            TmView tv;memset(&tv,0,sizeof tv);
+            memcpy(tv.cam,view_cam,sizeof tv.cam);
+            float tl=sqrtf(look[0]*look[0]+look[1]*look[1]+look[2]*look[2]);
+            for(int k=0;k<3;k++)tv.fwd[k]=tl>1e-6f?look[k]/tl:0;
+            /* K = 256/tan(phi/2); the projection's [1][1] term is 1/tan(phi/2) (TM-U6). */
+            tv.K=P[5]>1e-6f?256.0*P[5]:10.0;
+            tv.frustum=tm_mvp_frustum;tv.user=MVP;
+            for(int t=TM_TEX_ROAD;t<TM_TEX_COUNT;t++)if(g_tm_tex[t].id)tv.texture_mask|=1u<<t;
+            int first[TM_TEX_COUNT],count[TM_TEX_COUNT];
+            int nv=tm_view_build(&g_tm,&tv,tm_vertices,first,count);
+            if(nv>0) {
+                for(int i=0;i<nv;i++) {
+                    float *p5=tm_pos+i*5;
+                    p5[0]=tm_vertices[i].x;p5[1]=tm_vertices[i].y;p5[2]=tm_vertices[i].z;
+                    p5[3]=tm_vertices[i].u;p5[4]=tm_vertices[i].v;
+                    memcpy(tm_col+i*4,tm_vertices[i].rgba,4);
+                }
+                rhi_buffer_replace(g_tm_mesh.vbo,(size_t)nv*5*sizeof(float),tm_pos);
+                rhi_buffer_replace(g_tm_mesh.cbo,(size_t)nv*4,tm_col);
+                RMarkSaved tm_saved;
+                render_mark_begin(&rp,&tm_saved);   /* TM-15 mark pass state */
+                ug2_copy(rp.p->uMVP,MVP,16);
+                rhi_cmd_bind_vertex_buffer(0,g_tm_mesh.vbo,0);rhi_cmd_bind_vertex_buffer(1,g_tm_mesh.nbo,0);
+                rhi_cmd_bind_vertex_buffer(2,g_tm_mesh.cbo,0);rhi_cmd_bind_index_buffer(g_tm_mesh.ibo);
+                for(int t=TM_TEX_ROAD;t<TM_TEX_COUNT;t++) {
+                    if(!count[t])continue;
+                    rhi_cmd_bind_texture(0,g_tm_tex[t]);
+                    rhi_cmd_draw_indexed((uint32_t)(count[t]/4*6),(uint32_t)(first[t]/4*6));
+                    g_dbg.drawn++;
+                }
+                render_mark_end(&rp,&tm_saved);
+            }
+        }
+        /* legacy path only: arcade skid ribbons, flat dark quads on the ground, alpha-blended */
         if (skidn > 0) {
             rhi_cmd_bind_pipeline(cpipe.glass);   /* alpha blend, depth tested, no write */
             rp.p->uUnlit = 1.0f; rp.p->uUseTex = 0.0f;
@@ -11620,6 +11738,9 @@ int main(int argc, char **argv) {
 #endif
     hud_free(&hud);        /* releases its textures; safe when never created */
     free_scene_gpu(wheelgm, nwheelgm);
+    rhi_buffer_destroy(g_tm_mesh.vbo);rhi_buffer_destroy(g_tm_mesh.nbo);
+    rhi_buffer_destroy(g_tm_mesh.cbo);rhi_buffer_destroy(g_tm_mesh.ibo);
+    for(int t=TM_TEX_ROAD;t<TM_TEX_COUNT;t++)if(g_tm_tex[t].id)rhi_texture_destroy(g_tm_tex[t]);
     if(opponent_wheelmesh.vbo.id) {
         rhi_buffer_destroy(opponent_wheelmesh.vbo);
         rhi_buffer_destroy(opponent_wheelmesh.nbo);

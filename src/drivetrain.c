@@ -3,6 +3,7 @@
  * and docs/cleanroom-driving-physics/IMPL_DESIGN.md. Section tags "S1-x.y"
  * refer to that spec. Persistent state is binary32, intermediates are double. */
 #include "drivetrain.h"
+#include "tire_marks.h"
 
 #include <math.h>
 #include <string.h>
@@ -614,7 +615,12 @@ void drv_couple(Drivetrain *d, const DrvEnv *env, DrvBodyAccelFn body, void *bod
         if (fabs((double)e->vx) > 1.0) F -= (double).15f * sin((double)e->slip_angle) * Fy;
         w->force = (float)F; w->force_lat = (float)Fy;
         d->force_long[i] = w->force; d->force_lat[i] = w->force_lat; d->load[i] = e->load;
+        /* Tire-marks TM-3 utilisation: M (as tested, incl. the 1.5 factor, before
+         * scaling) against Fmax; sliding branch or locked = 1; no contact = 0. */
+        w->utilisation = tm_utilisation(mag, Fmax, !w->gripping || e->locked, e->contact);
     }
+    d->utilisation_mean = .25f * (d->wheel[0].utilisation + d->wheel[1].utilisation
+                                  + d->wheel[2].utilisation + d->wheel[3].utilisation);
 
     /* S1-7.7 finishing */
     if (d->gear != DRV_GEAR_N && d->mode == DRV_CLUTCH_LOCKED && d->contact_count > 0) {

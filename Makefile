@@ -36,7 +36,7 @@ UGUI_IMAGE_LIBS := $(shell pkg-config --libs libpng libcrypto)
 override CFLAGS += $(shell pkg-config --cflags libpng libcrypto)
 # engine modules: orchestrator + Renderer/Physics/AI/Audio/Resources/World
 GAME_UI_SRC := $(wildcard src/ugui/*.c) src/pause_menu.c src/pause_screen.c src/pause_entries.c src/gui_view.c src/gui_carousel.c src/gui_dialog.c src/gui_layout.c src/gui_timing.c src/options_menu.c src/settings.c src/frontend/frontend.c src/frontend/frontend_draw.c
-SRC  := src/main.c src/render.c src/render_params.c src/physics.c src/drivetrain.c src/braking.c src/resistance.c src/lateral.c src/drive_stage1.c src/contact.c src/body_response.c src/drive_contact.c src/ai.c src/audio.c src/resource.c src/world.c src/world_instance.c src/world_resident.c src/world_mesh.c src/hud.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/rhi_gl_state.c src/rhi_gl.c src/camera.c src/tex_override.c $(GAME_UI_SRC)
+SRC  := src/main.c src/render.c src/render_params.c src/physics.c src/drivetrain.c src/braking.c src/resistance.c src/lateral.c src/drive_stage1.c src/contact.c src/body_response.c src/drive_contact.c src/tire_marks.c src/ai.c src/audio.c src/resource.c src/world.c src/world_instance.c src/world_resident.c src/world_mesh.c src/hud.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/rhi_gl_state.c src/rhi_gl.c src/camera.c src/tex_override.c $(GAME_UI_SRC)
 HDRS := src/world_collision_rules.h src/world_collision.h src/race_log.h src/race.h src/traffic_heatmap.h src/asset_chunks.h src/car_config.h src/car_mod.h src/nfsu2.h src/render.h src/physics.h src/ai.h src/audio.h src/resource.h src/debug.h src/world.h src/world_instance.h src/world_resident.h src/world_mesh.h src/world_capture_policy.h src/world_group_reader.h src/world_scenery.h src/ground_motion.h src/hud.h src/hud_asset.h src/hud_texture.h src/hud_baseline.h src/hud_host.h src/rhi_gl_state.h src/rhi.h src/rhi_gl.h src/render_params.h src/camera.h src/tex_override.h
 HDRS += src/options_menu.h src/settings.h src/pause_menu_binding.h src/pause_menu.h src/pause_menu_layout.h src/pause_screen.h src/pause_entries.h src/gui_view.h src/gui_carousel.h src/gui_dialog.h src/gui_layout.h src/gui_timing.h src/frontend/frontend.h src/frontend/frontend_draw.h $(wildcard src/ugui/*.h)
 
@@ -44,7 +44,7 @@ HDRS += src/options_menu.h src/settings.h src/pause_menu_binding.h src/pause_men
 GUI_ART_SRC := src/gui_timing.c src/pause_entries.c src/gui_carousel.c src/gui_dialog.c src/gui_layout.c src/pause_screen.c
 GUI_ART_HDR := $(wildcard src/gui_*.h) src/pause_entries.h src/pause_screen.h
 
-HDRS += src/ug2_track_collision.h src/drivetrain.h src/braking.h src/resistance.h src/lateral.h src/drive_stage1.h src/contact.h src/body_response.h
+HDRS += src/ug2_track_collision.h src/drivetrain.h src/braking.h src/resistance.h src/lateral.h src/drive_stage1.h src/contact.h src/body_response.h src/tire_marks.h src/tire_marks_drive.h
 HDRS += src/drive_trace.h src/drive_presentation.h src/drive_session.h
 SRC += src/hud_race.c
 HDRS += src/hud_race.h
@@ -130,6 +130,24 @@ drivetrain-test: tools/drivetrain_test.c src/drivetrain.c src/braking.c src/driv
 	./build/drivetrain_test "$(VECTORS)"
 
 .PHONY: drivetrain-test
+
+# Tire marks vs docs/cleanroom-driving-physics/tire-marks/test-vectors
+# (docs/cleanroom-driving-physics/tire-marks/IMPL_DESIGN.md). Pure maths: no SDL/GL.
+TIRE_MARKS_VECTORS ?= docs/cleanroom-driving-physics/tire-marks/test-vectors
+tire-marks-test: tools/tire_marks_test.c tools/test_json.h src/tire_marks.c src/tire_marks.h src/nfsu2.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Isrc -Itools tools/tire_marks_test.c src/tire_marks.c -o build/tire_marks_test -lm
+	./build/tire_marks_test "$(TIRE_MARKS_VECTORS)"
+
+.PHONY: tire-marks-test
+
+# GL regression of the mark pass (SPEC TM-15): hidden SDL/GL window, no game data.
+tire-marks-render-test: tools/tire_marks_render_test.c tools/test_json.h src/tire_marks.c src/tire_marks.h src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c src/render.h src/nfsu2.h src/generated_shaders.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc -Itools tools/tire_marks_render_test.c src/tire_marks.c src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c -o build/tire_marks_render_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
+	./build/tire_marks_render_test "$(TIRE_MARKS_VECTORS)"
+
+.PHONY: tire-marks-render-test
 
 world-instance-test: tools/world_instance_test.c src/world_instance.c src/physics.c src/physics.h src/world_instance.h src/world_capture_policy.h src/nfsu2.h src/world_group_reader.h src/world_scenery.h
 	@mkdir -p build
@@ -672,6 +690,12 @@ drive-presentation-test: tools/drive_presentation_test.c src/drive_presentation.
 .PHONY: drive-presentation-test
 
 DRIVE_TEST_SRC := src/drive_stage1.c src/drive_contact.c src/body_response.c src/contact.c src/drivetrain.c src/braking.c src/resistance.c src/lateral.c src/physics.c
+tire-marks-drive-test: tools/tire_marks_drive_test.c tools/drive_stage5_test.c src/tire_marks.c src/tire_marks_drive.h $(DRIVE_TEST_SRC) $(HDRS)
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Isrc tools/tire_marks_drive_test.c src/tire_marks.c $(DRIVE_TEST_SRC) -o build/tire_marks_drive_test -lm
+	./build/tire_marks_drive_test
+.PHONY: tire-marks-drive-test
+
 render-sampling-test: tools/render_sampling_test.c tools/test_json.h tools/drive_stage5_test.c src/drive_presentation.h $(DRIVE_TEST_SRC) $(HDRS)
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Isrc tools/render_sampling_test.c $(DRIVE_TEST_SRC) -o build/render_sampling_test -lm
