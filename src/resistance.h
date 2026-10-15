@@ -29,6 +29,8 @@ double res_dot(const float a[3],const float b[3]);
 void res_frame_inputs(ResInput *in,int state_code,int alternate_movement,
     int disable_stabilize,unsigned contact_mask,const float body_surface[4]);
 void res_drag(const ResCar *car,const ResInput *in,const float velocity[3],float force[3]);
+/* BR-6 per-application caps; moment uses requested force before linear cap. */
+void res_point_force(ResBody *body,const float force[3],const float arm[3],float applied[3]);
 /* Add the three aerodynamic point forces once, before wheel coupling. */
 void res_prepare_aero(ResBody *body,const ResCar *car,const ResInput *in,
     const ResBasis *basis,ResAero *out);

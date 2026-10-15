@@ -135,4 +135,7 @@ static void direction_handoff5(void){
  assert(direction_samples>10000);
  printf("Stage5 direction handoff: %d substep observations passed\n",direction_samples);
 }
+#ifndef STAGE5_TEST_NO_MAIN
 int main(void){direction_handoff5();components_extra();parser5();integration5();clock5();puts("Stage5 adapter: contact lifecycle, force accounting, handbrake/recovery, host pose, surfaces, reset/collision/clock passed");return 0;}
+
+#endif

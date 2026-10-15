@@ -142,22 +142,25 @@ typedef struct DrvEnv {
  * full rear multiplier before use outside that explicitly restricted case. */
 void drv_env_default(DrvEnv *e);
 
-/* Planar acceleration of the body at each wheel's contact point projected on
- * the wheel heading (S1-8.2): A[i]. F/Fy are the current per-wheel forces. */
+/* Provisional acceleration input A[i] (BC-2). F/Fy are the current per-wheel
+ * forces at a shared pass-start boundary. */
 typedef void (*DrvBodyAccelFn)(void *ud, const float F[4], const float Fy[4], float A[4]);
 
 /* Straight-line symmetric body (S1-8.2): A_i = (Ex + sum F_i) / m. */
 typedef struct DrvBodyStraight { float mass; float ex; } DrvBodyStraight;
 void drv_body_accel_straight(void *ud, const float F[4], const float Fy[4], float A[4]);
 
-/* Planar body (S1-8.2), body frame. pos = contact arm (x,y), head/lat = wheel
- * heading / lateral unit vectors, E = other forces. inv_iz = 1/Iz (Iz is not in
- * the Stage 1 spec; caller supplies). */
+/* Reduced local planar body (BC-1/2). pos = frame-held local mount arm x/y;
+ * head/lat = local steered directions. ex/ey snapshot transpose(B)*Fprepared
+ * before all five passes. Composed BR callers supply the selected inverse local
+ * yaw inertia; isolated fixtures may explicitly supply their scalar. */
 typedef struct DrvBodyPlanar {
     float mass, inv_iz;
     float pos[4][2], head[4][2], lat[4][2];
-    float ex, ey, external_moment;
+    float ex, ey, external_moment; /* legacy fixture input, excluded by BC-2 */
 } DrvBodyPlanar;
+/* Diagnostic pass-start (ax,ay,alpha); no accumulation or duration factor. */
+void drv_body_planar_acceleration(const DrvBodyPlanar *body,const float F[4],const float Fy[4],float out[3]);
 void drv_body_accel_planar(void *ud, const float F[4], const float Fy[4], float A[4]);
 
 /* ---- state ---------------------------------------------------------------- */

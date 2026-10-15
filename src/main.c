@@ -33,6 +33,7 @@
 #include "physics.h"
 #include "drive_stage1.h"
 #include "drive_trace.h"
+#include "drive_presentation.h"
 #include "ai.h"
 #include "audio.h"
 #include "resource.h"
@@ -2071,6 +2072,14 @@ static CtGround stage5_world_query(void *user,const float q[3],int wheel) {
     if(found){result.height=hit.z;memcpy(result.normal,hit.normal,sizeof result.normal);}
     return result;
 }
+
+/* Dynamic pose exports for existing camera/HUD presentation only. No value
+ * here is fed back into suspension or body integration. */
+static void stage5_export_ride(const Stage1Drive*s,const float origin[3],PhysRideState*r){
+ const ResBasis*b=&s->motion.axes;r->z=origin[2];r->vz=s->body.velocity[2];r->pitch=atan2f(b->forward[2],hypotf(b->forward[0],b->forward[1]));r->roll=atan2f(b->lateral[2],b->up[2]);r->pitch_rate=-(float)res_dot(s->motion.omega,b->lateral);r->roll_rate=(float)res_dot(s->motion.omega,b->forward);r->body_roll=0;r->contact_mask=s->contacts.exported_mask;
+ for(int i=0;i<4;i++)r->compression[i]=s->contacts.wheel[i].travel;
+}
+
 
 static void stage1_presentation(const Stage1Drive *s,int *gear,int *changing) {
     const Drivetrain *d=&s->drivetrain;
@@ -4642,21 +4651,23 @@ int main(int argc, char **argv) {
             N2PhysicsAttr pa;
             int physics_from_global=n2_global_physics_attr(globdata,globlen,carname,&pa);
             if(g_stage1_requested) {
-                DrvCar stock;ResCar resistance;BrkCar brakes;LatCar lateral;CtCar contacts;
+                DrvCar stock;ResCar resistance;BrkCar brakes;LatCar lateral;CtCar contacts;BodyCar body;
                 if(!stage1_car_read(globdata,globlen,carname,&stock) ||
                    !stage2_car_read(globdata,globlen,carname,&resistance) ||
                    !stage3_car_read(globdata,globlen,carname,&brakes) ||
                    !stage4_car_read(globdata,globlen,carname,&lateral) ||
-                   !stage5_car_read(globdata,globlen,carname,&contacts) || stage1_drive_init(&g_stage1,&stock,&resistance,0) ||
+                   !stage5_car_read(globdata,globlen,carname,&contacts) ||
+                   !stage5_body_car_read(globdata,globlen,carname,&body) || stage1_drive_init(&g_stage1,&stock,&resistance,0) ||
                    stage3_drive_brakes(&g_stage1,&brakes,0,0) ||
                    stage4_drive_lateral(&g_stage1,&lateral,1/lat_inertia(stock.mass,lateral.dimensions),0) ||
-                   stage5_drive_contacts(&g_stage1,&contacts,stage5_world_query,&scene)) {
+                   stage5_drive_contacts(&g_stage1,&contacts,stage5_world_query,&scene) ||
+                   stage5_drive_body(&g_stage1,&body,1,0,0)) {
                     fprintf(stderr,"--drivetrain: no valid stock Stage-1/2/3/4/5 tuning for %s\n",carname);
                     return 2;
                 }
-                printf("Stage-1/2/3/4/5 drivetrain enabled: stock tuning; W forward, S brake/reverse, Space handbrake.\n"
-                       "  Geometric spring/aligned loads, distinct surface channels, frame handbrake/grip; full wheel force/moment, XY/yaw integration.\n"
-                       "  Prescribed independent ride heave/pitch/roll; no dynamic brake-pitch solver. Surface ID=1 fixture; q=1 X/event=0, G=1 reduction=0, damping=0, initial locks=0, bottom impulses suppressed; drag/drift use legacy.\n");
+                printf("Stage-1/2/3/4/5 drivetrain enabled; W forward, S brake/reverse, Space handbrake.\n"
+                       "  Geometric spring/aligned loads, frame handbrake/grip; full dynamic body momentum and orientation.\n"
+                       "  Independent host policy: c=1 p=1 race=0, surface ID=1, q=1 X/event=0, G=1 reduction=0, initial locks=0; bottom impulses enabled. Drag/drift use legacy.\n");
             }
             g_vehicle_source_valid=physics_from_global;
             if(physics_from_global)g_vehicle_source=pa;
@@ -6284,6 +6295,7 @@ int main(int argc, char **argv) {
     float throttle=0,player_wheel_angle=0;int handbrake=0,nitro_active=0;
     /* One-tick display delay: interpolate only copies, never gameplay state. */
     AiCar pose_before={0},pose_now={0};
+    DrivePresentation dynamic_before={0},dynamic_now={0};
     AiCar ai_pose_before[N_WORLD_AI]={0},ai_pose_now[N_WORLD_AI]={0};
     int pose_ready=0,ai_pose_present[N_WORLD_AI]={0};
     unsigned ai_pose_generation[N_WORLD_AI]={0};
@@ -6308,7 +6320,7 @@ int main(int argc, char **argv) {
         double frame_seconds=(resident_frame_counter-sim_counter)/sim_frequency;
         sim_counter=resident_frame_counter;
         float frame_scale=deterministic_sim?1:(float)fmin(frame_seconds*PHYS_TICKRATE,8);
-        int sim_reset=0;
+        int sim_reset=0,presentation_snap=0;
         int pause_frame = pause_menu_is_open(pause_menu);
         if (retired_resident) {
             uint32_t begin = SDL_GetTicks();
@@ -6512,7 +6524,7 @@ int main(int argc, char **argv) {
                         if (!load_rim_style(wldata, wllen, wkeys, nwkeys, requested,
                                        &wheellib, &wheelgm, &nwheelgm,
                                        wtdata, wtlen, &rimtex, &rimmode, carWheelR)) continue;
-                        wheel_style = requested;
+                        wheel_style = requested;presentation_snap=1;
                         g_dbg.wheel_style = wheel_style;
                         g_dbg.wheel_load_failed = 0;
                         printf("rims -> %s style %d (%d mesh(es))\n",
@@ -6698,13 +6710,14 @@ int main(int argc, char **argv) {
                     printf("car switch deferred: stop the car before selecting %s\n", next_car);
                 } else {
                     CarSwitchCandidate candidate;
-                    DrvCar next_stage1;ResCar next_resistance;BrkCar next_brakes;LatCar next_lateral;CtCar next_contacts;
+                    DrvCar next_stage1;ResCar next_resistance;BrkCar next_brakes;LatCar next_lateral;CtCar next_contacts;BodyCar next_body;
                     if (!prepare_car_switch(&candidate, dataroot, next_car) ||
                         (g_stage1_requested && (!stage1_car_read(candidate.globaldata,candidate.globallen,next_car,&next_stage1) ||
                          !stage2_car_read(candidate.globaldata,candidate.globallen,next_car,&next_resistance) ||
                          !stage3_car_read(candidate.globaldata,candidate.globallen,next_car,&next_brakes) ||
                          !stage4_car_read(candidate.globaldata,candidate.globallen,next_car,&next_lateral) ||
-                         !stage5_car_read(candidate.globaldata,candidate.globallen,next_car,&next_contacts)))) {
+                         !stage5_car_read(candidate.globaldata,candidate.globallen,next_car,&next_contacts) ||
+                         !stage5_body_car_read(candidate.globaldata,candidate.globallen,next_car,&next_body)))) {
                         car_switch_release(&candidate);
                         fprintf(stderr, "car switch failed for %s; keeping %s\n",
                                 next_car, carname);
@@ -6778,6 +6791,8 @@ int main(int argc, char **argv) {
                             stage3_drive_brakes(&g_stage1,&next_brakes,0,0);
                             stage4_drive_lateral(&g_stage1,&next_lateral,1/lat_inertia(next_stage1.mass,next_lateral.dimensions),0);
                             stage5_drive_contacts(&g_stage1,&next_contacts,stage5_world_query,&scene);
+                            stage5_drive_body(&g_stage1,&next_body,1,0,0);
+                            vel[0]=vel[1]=0;speed=0;sim_reset=1;
                         }
                         g_dbg.body_kit_current = 0; g_dbg.mod_current = carcfg;
                         g_ride_ready = 0;
@@ -6955,7 +6970,7 @@ int main(int argc, char **argv) {
                 }
                 if(!error) {
                     if(cgm!=opponent_cgm){free_scene_gpu(cgm,ncar);n2_free_scene(&car);}
-                    car=kit.scene;cgm=kit.gpu;ncar=car.count;stock_wheel=kit.stock_wheel;
+                    car=kit.scene;cgm=kit.gpu;ncar=car.count;stock_wheel=kit.stock_wheel;presentation_snap=1;
                     memcpy(carbb,kit.bb,sizeof carbb);memcpy(bloomc,kit.bloom,sizeof bloomc);
                     car_floor=car_body_floor(&car,carbb[2]);
                     for(int a=0;a<3;a++){carprof.body[a*2]=carbb[a];carprof.body[a*2+1]=carbb[a+3];}
@@ -7465,8 +7480,8 @@ int main(int argc, char **argv) {
         static int stage1_previous=-1;
         if(g_stage1_requested && stage1_active!=stage1_previous) {
             stage1_drive_reset(&g_stage1,vel,heading);
-            printf("drivetrain: %s\n",stage1_active?"Stage 1/2/3/4/5 (geometric loads/handbrake, prescribed ride, XY/yaw host)":"legacy race-mode physics (drag/drift outside Stage 1)");
-            stage1_previous=stage1_active;
+            printf("drivetrain: %s\n",stage1_active?"Stage 1/2/3/4/5 + dynamic body (supplied c=1, p=1, race=0)":"legacy race-mode physics (drag/drift outside Stage 1)");
+            stage1_previous=stage1_active;presentation_snap=1;
         }
         int pf_spawns=0;
         float sim_wheel_scale=g_dbg.wheel_scale>0.05f?g_dbg.wheel_scale:1.0f;
@@ -7493,12 +7508,13 @@ int main(int argc, char **argv) {
             .wheel_angle=player_wheel_angle,.steer=steer_filtered,.ride=g_ride,.ride_ready=g_ride_ready};
         if(stage1_active)memcpy(live_pose.wheel_steer,g_stage1.wheel_angle,sizeof live_pose.wheel_steer);
         /* Loads, grid placement and debug moves can happen outside ticks. */
-        int pose_snap=!pose_ready || sim_reset || memcmp(live_pose.pos,pose_now.pos,sizeof live_pose.pos) ||
+        int pose_snap=!pose_ready || sim_reset || presentation_snap || memcmp(live_pose.pos,pose_now.pos,sizeof live_pose.pos) ||
            live_pose.head!=pose_now.head || live_pose.ride_ready!=pose_now.ride_ready;
         if(pose_snap) {
             pose_before=live_pose;shake_before=shake_now=landing_offset;
         }
         pose_now=live_pose;
+        if(pose_snap){dynamic_now=drive_presentation_capture(&g_stage1);dynamic_before=dynamic_now;}
         for(int k=0;k<draw_nai;k++) {
             if(!pose_ready || sim_reset || memcmp(ais[k].pos,ai_pose_now[k].pos,sizeof ais[k].pos) ||
                ais[k].head!=ai_pose_now[k].head || ais[k].half_length!=ai_pose_now[k].half_length ||
@@ -7508,7 +7524,7 @@ int main(int argc, char **argv) {
         pose_ready=1;
         for(int sim_tick=0;sim_tick<sim_steps;sim_tick++) {
         int pose_nai=draw_nai;
-        pose_before=pose_now;shake_before=landing_offset;
+        pose_before=pose_now;dynamic_before=dynamic_now;shake_before=landing_offset;
         for(int k=0;k<draw_nai;k++) {
             ai_pose_before[k]=ai_pose_now[k];
             ai_pose_present[k]=ai_actor_present(k,ai_race,nai,traffic_routes);
@@ -7779,7 +7795,7 @@ int main(int argc, char **argv) {
             float ch=cosf(heading), sh=sinf(heading);
             load_lat=-dvx*sh+dvy*ch;
         }
-        if (g_ride_ready && race_state==1 && !sstatic && !capture_policy.freeze_motion) {
+        if (!stage1_active && g_ride_ready && race_state==1 && !sstatic && !capture_policy.freeze_motion) {
             WGroundHit h;
             float fraction=ground_motion_limit(&scene,&g_ride,&g_sup,ground_old,ground_oldh,
                                                carpos,&heading,vel,&h);
@@ -7900,7 +7916,9 @@ int main(int argc, char **argv) {
            climb toward it at 0.5 m per frame. */
         static WGroundHit ride_hit[4], ride_cand[4]; static int ride_reason[4];
         int ride_nsup = 0;
-        if (!sstatic && !capture_policy.freeze_motion) {
+        if (stage1_active && g_stage1.dynamic_initialized) {
+            stage5_export_ride(&g_stage1,carpos,&g_ride);g_ride_ready=1;
+        } else if (!sstatic && !capture_policy.freeze_motion) {
             ride_nsup = ride_gather(&scene, carpos, heading, vel, ground_oldh, &g_dbg.wheel,
                                     &g_sup, ride_hit, ride_cand, ride_reason);
             if (!g_ride_ready) { phys_ride_init(&g_ride, &g_sup); g_ride_ready = 1; }
@@ -8240,7 +8258,8 @@ int main(int argc, char **argv) {
         if (!sstatic && !capture_policy.freeze_motion && g_ride_ready) {
             /* Body tilt IS the ride pitch/roll -- no second smoothing filter.
                up = world Z tilted back by pitch and toward the low side by roll. */
-            phys_ride_up(&g_ride,heading,car_up);
+            if(stage1_active&&g_stage1.dynamic_initialized)memcpy(car_up,g_stage1.motion.axes.up,sizeof car_up);
+            else phys_ride_up(&g_ride,heading,car_up);
             chassis_patch_ok = g_ride.contact_mask == 0xF;
         } else
         { float gn[3] = {car_up[0],car_up[1],car_up[2]};
@@ -8425,6 +8444,8 @@ int main(int argc, char **argv) {
                 fclose(drive_trace_file);drive_trace_file=NULL;
             }
         }
+        if(stage1_active && g_stage1.dynamic_initialized && (nwc || rpushed || race_contact>0))
+            stage5_body_host_correction(&g_stage1,carpos,vel);
         /* Score and gates see the final pose, including vehicle contacts. */
         if(race_state==1 && !sstatic && !capture_policy.freeze_motion) {
             if(world.city.race.active && world.city.race.kind==N2_RACE_DRIFT)
@@ -8597,6 +8618,9 @@ int main(int argc, char **argv) {
         pose_now=(AiCar){.pos={carpos[0],carpos[1],carpos[2]},.vel={vel[0],vel[1]},.head=heading,.spd=speed,
             .wheel_angle=player_wheel_angle,.steer=steer_filtered,.ride=g_ride,.ride_ready=g_ride_ready};
         if(stage1_active)memcpy(pose_now.wheel_steer,g_stage1.wheel_angle,sizeof pose_now.wheel_steer);
+        dynamic_now=drive_presentation_capture(&g_stage1);
+        if(!dynamic_before.valid)dynamic_before=dynamic_now;
+        else for(int k=0;k<4;k++)dynamic_now.phase[k]=dynamic_before.phase[k]+g_stage1.wheel_angular_travel[k];
         /* Use the actual angular travel, even when a fast wheel turns > pi
            or its bounded phase wraps through zero during this tick. */
         pose_before.wheel_angle=player_wheel_angle-(stage1_active?g_stage1.wheel_travel:
@@ -8622,14 +8646,23 @@ int main(int argc, char **argv) {
         }
         /* A reset/car swap may render before another simulation tick. */
         if(stage1_active)stage1_presentation(&g_stage1,&gear,&gear_changing);
-        float render_alpha=pause_frame || deterministic_sim || sstatic || capture_policy.freeze_motion
+        float render_alpha=pause_frame || pose_snap || deterministic_sim || sstatic || capture_policy.freeze_motion
             ?1:(float)(sim_clock.remainder*PHYS_TICKRATE);
         AiCar render_player,render_ais[N_WORLD_AI];
         ai_render_pose(&render_player,&pose_before,&pose_now,render_alpha);
         for(int k=0;k<draw_nai;k++)ai_render_pose(&render_ais[k],&ai_pose_before[k],&ai_pose_now[k],render_alpha);
+        if(follow_roam_ai && !ai_race && nai>0 && traffic_routes[0].present)render_player=render_ais[0];
+        int render_dynamic_body=stage1_active && g_stage1.dynamic_initialized && !follow_roam_ai;
+        DrivePresentation dynamic_render=drive_presentation_mix(&dynamic_before,&dynamic_now,render_alpha);
         float render_up[3]={car_up[0],car_up[1],car_up[2]};
         if(!deterministic_sim && render_player.ride_ready && !sstatic && !capture_policy.freeze_motion)
             phys_ride_up(&render_player.ride,render_player.head,render_up);
+        if(render_dynamic_body){
+            memcpy(render_up,dynamic_render.axes.up,sizeof render_up);
+            float bottom=0;for(int k=0;k<4;k++)bottom+=(g_stage1.contacts.car.mount[k][2]-g_stage1.contacts.car.radius[k])*.25f;
+            for(int k=0;k<3;k++)render_player.pos[k]=dynamic_render.origin[k]+dynamic_render.axes.up[k]*bottom;
+            render_player.head=atan2f(dynamic_render.axes.forward[1],dynamic_render.axes.forward[0]);
+        }
         float render_landing=shake_before+render_alpha*(shake_now-shake_before);
 
         /* camera: menu = slow orbit around the parked car; else chase cam */
@@ -8712,6 +8745,7 @@ int main(int argc, char **argv) {
             if(render_player.ride_ready && !sstatic && !capture_policy.freeze_motion)
                 phys_ride_body_up(&render_player.ride,render_player.head,gup);
             CamCarFrame gframe; cam_car_axes(render_player.head,gup,&gframe);
+            if(render_dynamic_body){memcpy(gframe.fwd,dynamic_render.axes.forward,sizeof gframe.fwd);memcpy(gframe.left,dynamic_render.axes.lateral,sizeof gframe.left);memcpy(gframe.up,dynamic_render.axes.up,sizeof gframe.up);}
             for(int c=0;c<3;c++)gframe.pos[c]=render_player.pos[c]+gframe.up[c]*car_body_ride;
             cam_pose(&gc.cam,&gframe,&gcam_pose);
             for(int c=0;c<3;c++) {
@@ -8877,6 +8911,7 @@ int main(int argc, char **argv) {
         if(render_player.ride_ready && (follow_roam_ai || (!sstatic && !capture_policy.freeze_motion)))
             phys_ride_body_up(&render_player.ride,render_player.head,body_up);
         mat_car(render_player.pos,render_player.head,body_up,car_body_ride,lamp_model);
+        if(render_dynamic_body){memcpy(body_up,dynamic_render.axes.up,sizeof body_up);drive_presentation_model(&dynamic_render,car_body_ride-car_ride,lamp_model);}
         int long_beam=beam_high || beam_flash;
         render_headlights(&rp,lamp_model,bloomc,long_beam,
                           long_beam?g_dbg.high_beam_pitch:g_dbg.low_beam_pitch,
@@ -9358,10 +9393,12 @@ int main(int argc, char **argv) {
             float ride = car_body_ride;   /* body collision envelope uses this ride */
             float bodypos[3] = { render_player.pos[0], render_player.pos[1], render_player.pos[2] };
             mat_car(bodypos, render_player.head, body_up, ride, Model);
+            if(render_dynamic_body)drive_presentation_model(&dynamic_render,car_body_ride-car_ride,Model);
             mat_mul(MVP, Model, MVPc);
             /* Wheels never inherit the body spring/drop: their hub stays one
                scaled tyre radius above the displayed contact plane. */
             mat_car(render_player.pos, render_player.head, render_up, car_ride, WheelModel);
+            if(render_dynamic_body)drive_presentation_model(&dynamic_render,0,WheelModel);
             mat_mul(MVP, WheelModel, MVPwheel);
             ug2_copy(rp.p->uMVP, MVPc, 16);
             render_model(&rp,Model);
@@ -9391,7 +9428,6 @@ int main(int argc, char **argv) {
                   vsteer = stage1_active?.5f*(render_player.wheel_steer[0]+render_player.wheel_steer[1]):render_player.steer*0.50f;
               }
               wang = fmodf(wang, 6.2831853f);
-              float c = cosf(wang), sn = sinf(wang);
 
               /* telemetry: wheel RPM from w=v/r (rad/s -> RPM) and steer angle */
               g_dbg.wheel_rpm = fabsf(speed / wR) * 60.0f * 9.5493f;
@@ -9408,14 +9444,17 @@ int main(int argc, char **argv) {
                     s=g_dbg.wheel_scale, wz=g_dbg.wheel.ride_y;
               float wp[4][2]={{g_dbg.wheel.front_axle, fht},{g_dbg.wheel.front_axle,-fht},
                               {g_dbg.wheel.rear_axle,  rht},{g_dbg.wheel.rear_axle, -rht}};
-              for(int k=0;k<4;k++){ float sy=(k&1)?-s:s;
-                  float angle=stage1_active&&!g_dbg.wheel_demo?(k<2?render_player.wheel_steer[k]:0):vsteer;
+              for(int k=0;k<4;k++){ float sy=render_dynamic_body?s*drive_presentation_side(&dynamic_render,k):((k&1)?-s:s);
+                  float angle=render_dynamic_body&&!g_dbg.wheel_demo?dynamic_render.steer[k]:(stage1_active&&!g_dbg.wheel_demo?(k<2?render_player.wheel_steer[k]:0):vsteer);
                   float sc=cosf(angle),ss=sinf(angle);
                   /* M130: each wheel carries its OWN suspension travel, so a
                      grounded wheel stays on its contact while the sprung body
                      heaves, pitches and rolls above it. A single shared height
                      would float or sink tyres on every bump. */
                   float wzk = wz + (render_player.ride_ready && !sstatic && !capture_policy.freeze_motion ? render_player.ride.compression[k] : 0.0f);
+                  if(render_dynamic_body){wp[k][0]=dynamic_render.hub[k][0];wp[k][1]=dynamic_render.hub[k][1];wzk=dynamic_render.hub[k][2];}
+                  float c=cosf(wang),sn=sinf(wang);
+                  if(render_dynamic_body&&!g_dbg.wheel_demo){c=(float)cos(dynamic_render.phase[k]);sn=(float)sin(dynamic_render.phase[k]);}
                   /* Disc + caliper are one authored part. Keep the assembly at
                      its axle, steering with the front hub without spinning the
                      caliper. Independent disc rotation needs a material/part split. */

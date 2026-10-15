@@ -1,0 +1,434 @@
+{
+  "provenance": "All cases are invented new-host mathematical tests; no original assets or runtime captures.",
+  "rejection_assertion": "For each rejected case, separately start from a valid stock and valid provisional state: failure, no success/ready indication, previous identity/configuration/caches/fixed-input outputs unchanged.",
+  "cases": [
+    {
+      "id": "interior",
+      "provenance": "Reviewer-authored synthetic mathematical derivation from V1 and approved Stage5 S5-2; no original runtime observation.",
+      "boundary": "final semantic coordinates in metres",
+      "input": {
+        "front_mount_x": 1.5,
+        "rear_mount_x": -1.5,
+        "centre_x": 0
+      },
+      "expected": {
+        "eligible": true,
+        "front_rear_per_wheel_shares": [
+          0.25,
+          0.25
+        ]
+      }
+    },
+    {
+      "id": "negative-interior",
+      "provenance": "Reviewer-authored synthetic mathematical derivation from V1 and approved Stage5 S5-2; no original runtime observation.",
+      "boundary": "final semantic coordinates in metres",
+      "input": {
+        "front_mount_x": 1.5,
+        "rear_mount_x": -1.5,
+        "centre_x": -0.75
+      },
+      "expected": {
+        "eligible": true,
+        "front_rear_per_wheel_shares": [
+          0.125,
+          0.375
+        ]
+      }
+    },
+    {
+      "id": "rear-equality",
+      "provenance": "Reviewer-authored synthetic mathematical derivation from V1 and approved Stage5 S5-2; no original runtime observation.",
+      "boundary": "final semantic coordinates in metres",
+      "input": {
+        "front_mount_x": 1.5,
+        "rear_mount_x": -1.5,
+        "centre_x": -1.5
+      },
+      "expected": {
+        "eligible": true,
+        "front_rear_per_wheel_shares": [
+          0,
+          0.5
+        ]
+      }
+    },
+    {
+      "id": "front-equality",
+      "provenance": "Reviewer-authored synthetic mathematical derivation from V1 and approved Stage5 S5-2; no original runtime observation.",
+      "boundary": "final semantic coordinates in metres",
+      "input": {
+        "front_mount_x": 1.5,
+        "rear_mount_x": -1.5,
+        "centre_x": 1.5
+      },
+      "expected": {
+        "eligible": true,
+        "front_rear_per_wheel_shares": [
+          0.5,
+          0
+        ]
+      }
+    },
+    {
+      "id": "negative-zero-centre",
+      "provenance": "Reviewer-authored synthetic mathematical derivation from V1 and approved Stage5 S5-2; no original runtime observation.",
+      "boundary": "final semantic coordinates in metres",
+      "input": {
+        "front_mount_x": 1.5,
+        "rear_mount_x": -1.5,
+        "centre_x": -0.0
+      },
+      "expected": {
+        "eligible": true,
+        "front_rear_per_wheel_shares": [
+          0.25,
+          0.25
+        ]
+      }
+    },
+    {
+      "id": "negative-coordinate-translation",
+      "provenance": "Reviewer-authored synthetic mathematical derivation from V1 and approved Stage5 S5-2; no original runtime observation.",
+      "boundary": "final semantic coordinates in metres",
+      "input": {
+        "front_mount_x": -1,
+        "rear_mount_x": -4,
+        "centre_x": -2.5
+      },
+      "expected": {
+        "eligible": true,
+        "front_rear_per_wheel_shares": [
+          0.25,
+          0.25
+        ]
+      }
+    },
+    {
+      "id": "large-coordinate-translation",
+      "provenance": "Reviewer-authored synthetic mathematical derivation from V1 and approved Stage5 S5-2; no original runtime observation.",
+      "boundary": "final semantic coordinates in metres",
+      "input": {
+        "front_mount_x": 101.5,
+        "rear_mount_x": 98.5,
+        "centre_x": 100
+      },
+      "expected": {
+        "eligible": true,
+        "front_rear_per_wheel_shares": [
+          0.25,
+          0.25
+        ]
+      }
+    },
+    {
+      "id": "past-front",
+      "provenance": "Reviewer-authored synthetic mathematical derivation from V1 and approved Stage5 S5-2; no original runtime observation.",
+      "boundary": "final semantic coordinates in metres",
+      "input": {
+        "front_mount_x": 1.5,
+        "rear_mount_x": -1.5,
+        "centre_x": 10.05
+      },
+      "expected": {
+        "eligible": false
+      }
+    },
+    {
+      "id": "past-rear",
+      "provenance": "Reviewer-authored synthetic mathematical derivation from V1 and approved Stage5 S5-2; no original runtime observation.",
+      "boundary": "final semantic coordinates in metres",
+      "input": {
+        "front_mount_x": 1.5,
+        "rear_mount_x": -1.5,
+        "centre_x": -9.95
+      },
+      "expected": {
+        "eligible": false
+      }
+    },
+    {
+      "id": "front-nearest-outside",
+      "provenance": "Reviewer-authored synthetic mathematical derivation from V1 and approved Stage5 S5-2; no original runtime observation.",
+      "boundary": "final semantic coordinates in metres",
+      "input": {
+        "front_mount_x": 1.5,
+        "rear_mount_x": -1.5,
+        "centre_x": 1.5000001192092896
+      },
+      "expected": {
+        "eligible": false
+      }
+    },
+    {
+      "id": "rear-nearest-outside",
+      "provenance": "Reviewer-authored synthetic mathematical derivation from V1 and approved Stage5 S5-2; no original runtime observation.",
+      "boundary": "final semantic coordinates in metres",
+      "input": {
+        "front_mount_x": 1.5,
+        "rear_mount_x": -1.5,
+        "centre_x": -1.5000001192092896
+      },
+      "expected": {
+        "eligible": false
+      }
+    },
+    {
+      "id": "front-nearest-inside",
+      "provenance": "Reviewer-authored synthetic mathematical derivation from V1 and approved Stage5 S5-2; no original runtime observation.",
+      "boundary": "final semantic coordinates in metres",
+      "input": {
+        "front_mount_x": 1.5,
+        "rear_mount_x": -1.5,
+        "centre_x": 1.4999998807907104
+      },
+      "expected": {
+        "eligible": true
+      }
+    },
+    {
+      "id": "rear-nearest-inside",
+      "provenance": "Reviewer-authored synthetic mathematical derivation from V1 and approved Stage5 S5-2; no original runtime observation.",
+      "boundary": "final semantic coordinates in metres",
+      "input": {
+        "front_mount_x": 1.5,
+        "rear_mount_x": -1.5,
+        "centre_x": -1.4999998807907104
+      },
+      "expected": {
+        "eligible": true
+      }
+    },
+    {
+      "id": "zero-wheelbase",
+      "provenance": "Reviewer-authored synthetic mathematical derivation from V1 and approved Stage5 S5-2; no original runtime observation.",
+      "boundary": "final semantic coordinates in metres",
+      "input": {
+        "front_mount_x": 1.5,
+        "rear_mount_x": 1.5,
+        "centre_x": 1.5
+      },
+      "expected": {
+        "eligible": false
+      }
+    },
+    {
+      "id": "reversed-wheelbase",
+      "provenance": "Reviewer-authored synthetic mathematical derivation from V1 and approved Stage5 S5-2; no original runtime observation.",
+      "boundary": "final semantic coordinates in metres",
+      "input": {
+        "front_mount_x": -1.5,
+        "rear_mount_x": 1.5,
+        "centre_x": 0
+      },
+      "expected": {
+        "eligible": false
+      }
+    },
+    {
+      "id": "nonfinite-front_mount_x-NaN",
+      "provenance": "Reviewer-authored synthetic mathematical derivation from V1 and approved Stage5 S5-2; no original runtime observation.",
+      "boundary": "final semantic coordinates in metres",
+      "input": {
+        "front_mount_x": "NaN",
+        "rear_mount_x": -1.5,
+        "centre_x": 0
+      },
+      "expected": {
+        "eligible": false
+      }
+    },
+    {
+      "id": "nonfinite-front_mount_x-+Infinity",
+      "provenance": "Reviewer-authored synthetic mathematical derivation from V1 and approved Stage5 S5-2; no original runtime observation.",
+      "boundary": "final semantic coordinates in metres",
+      "input": {
+        "front_mount_x": "+Infinity",
+        "rear_mount_x": -1.5,
+        "centre_x": 0
+      },
+      "expected": {
+        "eligible": false
+      }
+    },
+    {
+      "id": "nonfinite-front_mount_x--Infinity",
+      "provenance": "Reviewer-authored synthetic mathematical derivation from V1 and approved Stage5 S5-2; no original runtime observation.",
+      "boundary": "final semantic coordinates in metres",
+      "input": {
+        "front_mount_x": "-Infinity",
+        "rear_mount_x": -1.5,
+        "centre_x": 0
+      },
+      "expected": {
+        "eligible": false
+      }
+    },
+    {
+      "id": "nonfinite-rear_mount_x-NaN",
+      "provenance": "Reviewer-authored synthetic mathematical derivation from V1 and approved Stage5 S5-2; no original runtime observation.",
+      "boundary": "final semantic coordinates in metres",
+      "input": {
+        "front_mount_x": 1.5,
+        "rear_mount_x": "NaN",
+        "centre_x": 0
+      },
+      "expected": {
+        "eligible": false
+      }
+    },
+    {
+      "id": "nonfinite-rear_mount_x-+Infinity",
+      "provenance": "Reviewer-authored synthetic mathematical derivation from V1 and approved Stage5 S5-2; no original runtime observation.",
+      "boundary": "final semantic coordinates in metres",
+      "input": {
+        "front_mount_x": 1.5,
+        "rear_mount_x": "+Infinity",
+        "centre_x": 0
+      },
+      "expected": {
+        "eligible": false
+      }
+    },
+    {
+      "id": "nonfinite-rear_mount_x--Infinity",
+      "provenance": "Reviewer-authored synthetic mathematical derivation from V1 and approved Stage5 S5-2; no original runtime observation.",
+      "boundary": "final semantic coordinates in metres",
+      "input": {
+        "front_mount_x": 1.5,
+        "rear_mount_x": "-Infinity",
+        "centre_x": 0
+      },
+      "expected": {
+        "eligible": false
+      }
+    },
+    {
+      "id": "nonfinite-centre_x-NaN",
+      "provenance": "Reviewer-authored synthetic mathematical derivation from V1 and approved Stage5 S5-2; no original runtime observation.",
+      "boundary": "final semantic coordinates in metres",
+      "input": {
+        "front_mount_x": 1.5,
+        "rear_mount_x": -1.5,
+        "centre_x": "NaN"
+      },
+      "expected": {
+        "eligible": false
+      }
+    },
+    {
+      "id": "nonfinite-centre_x-+Infinity",
+      "provenance": "Reviewer-authored synthetic mathematical derivation from V1 and approved Stage5 S5-2; no original runtime observation.",
+      "boundary": "final semantic coordinates in metres",
+      "input": {
+        "front_mount_x": 1.5,
+        "rear_mount_x": -1.5,
+        "centre_x": "+Infinity"
+      },
+      "expected": {
+        "eligible": false
+      }
+    },
+    {
+      "id": "nonfinite-centre_x--Infinity",
+      "provenance": "Reviewer-authored synthetic mathematical derivation from V1 and approved Stage5 S5-2; no original runtime observation.",
+      "boundary": "final semantic coordinates in metres",
+      "input": {
+        "front_mount_x": 1.5,
+        "rear_mount_x": -1.5,
+        "centre_x": "-Infinity"
+      },
+      "expected": {
+        "eligible": false
+      }
+    },
+    {
+      "id": "composed-crossing-1",
+      "provenance": "Reviewer-authored synthetic mathematical derivation from effective E2 category 0 and V1; no original runtime observation.",
+      "boundary": "category-0 centre addition with every other consumer valid",
+      "input": {
+        "front_mount_x": 1.5,
+        "rear_mount_x": -1.5,
+        "base_centre_x": 1.4900000095367432,
+        "centre_delta": 0.10000000149011612,
+        "mean": 0.5
+      },
+      "expected": {
+        "effective_centre_x": 1.5399999618530273,
+        "eligible": false
+      }
+    },
+    {
+      "id": "composed-crossing--1",
+      "provenance": "Reviewer-authored synthetic mathematical derivation from effective E2 category 0 and V1; no original runtime observation.",
+      "boundary": "category-0 centre addition with every other consumer valid",
+      "input": {
+        "front_mount_x": 1.5,
+        "rear_mount_x": -1.5,
+        "base_centre_x": -1.4900000095367432,
+        "centre_delta": -0.10000000149011612,
+        "mean": 0.5
+      },
+      "expected": {
+        "effective_centre_x": -1.5399999618530273,
+        "eligible": false
+      }
+    },
+    {
+      "id": "final-mass-zero",
+      "provenance": "Reviewer-authored synthetic derivation from effective E1 positive finite mass and V2; no original runtime observation.",
+      "boundary": "final consumed parameters, otherwise valid",
+      "input": {
+        "mass_tonnes": 0
+      },
+      "expected": {
+        "eligible": false
+      }
+    },
+    {
+      "id": "final-mass-negative",
+      "provenance": "Reviewer-authored synthetic derivation from effective E1 positive finite mass and V2; no original runtime observation.",
+      "boundary": "final consumed parameters, otherwise valid",
+      "input": {
+        "mass_tonnes": -1
+      },
+      "expected": {
+        "eligible": false
+      }
+    },
+    {
+      "id": "final-mass-nan",
+      "provenance": "Reviewer-authored synthetic derivation from effective E1 positive finite mass and V2; no original runtime observation.",
+      "boundary": "final consumed parameters, otherwise valid",
+      "input": {
+        "mass_tonnes": "NaN"
+      },
+      "expected": {
+        "eligible": false
+      }
+    },
+    {
+      "id": "final-mass-infinite",
+      "provenance": "Reviewer-authored synthetic derivation from effective E1 positive finite mass and V2; no original runtime observation.",
+      "boundary": "final consumed parameters, otherwise valid",
+      "input": {
+        "mass_tonnes": "+Infinity"
+      },
+      "expected": {
+        "eligible": false
+      }
+    },
+    {
+      "id": "derived-overflow",
+      "provenance": "Reviewer-authored synthetic host boundary case from effective E1/E5 and V2; no original runtime observation.",
+      "boundary": "after cache derivation",
+      "input": {
+        "required_derived_inertia": "Infinity",
+        "other_consumer_domains": "valid"
+      },
+      "expected": {
+        "eligible": false
+      }
+    }
+  ]
+}

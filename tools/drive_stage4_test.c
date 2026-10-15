@@ -46,9 +46,9 @@ static void coupling_boundaries(void){
  drv_prepare_tyre(&d,0);float reverse_force=d.wheel[0].force_lat;
  d.env.signed_forward=10;drv_prepare_tyre(&d,0);
  assert(fabsf(reverse_force)>fabsf(d.wheel[0].force_lat));
- /* Provisional acceleration is pure and includes supplied external moment. */
+ /* BC-2 supersedes the external-moment provisional acceleration fixture. */
  DrvBodyPlanar body={.mass=2,.inv_iz=.5f,.external_moment=4};body.pos[0][0]=1;body.head[0][1]=1;
- float f[4]={0},fy[4]={0},accel[4];drv_body_accel_planar(&body,f,fy,accel);assert(accel[0]==2);
+ float f[4]={0},fy[4]={0},accel[4];drv_body_accel_planar(&body,f,fy,accel);assert(accel[0]==0);
 }
 static void integration(void){
  Trace a,b,zero;lateral_init(&a,10);b=a;zero=a;

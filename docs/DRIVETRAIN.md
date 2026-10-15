@@ -2,7 +2,7 @@
 
 Run the independent native OpenUG2 executable with `--drivetrain` to select the
 approved bounded Stage1–5 engine, clutch, automatic gearbox, tyre, service brake,
-steering, resistance, suspension-contact and handbrake composition. The default
+steering, resistance, suspension-contact, handbrake and dynamic body composition. The default
 without that flag remains the legacy model. Drag/drift race families use legacy
 physics because their alternate producers are outside these specifications.
 
@@ -36,28 +36,42 @@ accumulators. Gravity, actual aero and each wheel force enter those accumulators
 once. Preload's separate specified aero feed-forward is not the reported aero
 load added again.
 
-The playable body is a prescribed-ride host. Existing independent ride heave,
-pitch, roll and rates supply the vertical/angular trajectory. It integrates XY
-momentum and yaw from the full transformed wheel forces/moments. Within a tick,
-ride height/pitch/roll are extrapolated from their supplied rates; cosmetic
-`body_roll` is never a contact input. World vertical force and pitch/roll moments
-are calculated but do not drive that ride trajectory. Its own heave/gravity
-remains the sole producer of playable vertical motion. Consequently **dynamic
-braking/throttle pitch and full 3D load-transfer feedback are not implemented**.
-Calculated loads change with actual road/ride/contact geometry. Prescribed
-nose-down/nose-up/roll tests demonstrate the consequences of those poses,
-not a claim that the pedals produce them dynamically.
+The playable body now integrates centre position, all linear/angular momentum
+components and a full body rotation basis from the approved body-response
+amendment. Braking and lateral wheel forces act below the centre and create
+pitch and roll. Vertical force imbalance creates heave. The resulting pose and
+held velocities determine subsequent wheel query points, contact arms, travel,
+travel rate and loads. No road-following pose, visual lean or algebraic axle
+transfer overwrites ordinary dynamic state. A separate prescribed-pose adapter
+remains for the earlier component fixtures.
 
-The host identifies XY as body-centre coordinates. Its vertical body centre is
-`carpos.z + stock centre.z - mean(stock mount.z - radius)`, aligning the mean
-uncompressed wheel bottom with the independent ride reference on a level plane.
-This is an explicit host coordinate bridge. Stock centre subtraction still sets
-all mount/coupling arms. The stock unscaled box yaw inertia is the supplied host
-mode; Stage5 exposes both specified inertia diagonals for other callers.
-Additional yaw damping is explicitly zero. Full angular mode/damping/momentum
-and impulse caps remain unknown. This host selects global bottoming-impulse
-suppression, reports requests, and still runs the required extra zero sweep.
-The component API supports separate supplied linear/angular impulse caps.
+Physics/world vectors, angular pseudovectors, application arms and orientation
+use the same fixed right-handed x-forward/y-left/z-up coordinates (identity
+conversion). The physical geometric origin is `X-B*centre`. Existing host
+`carpos` is a ground-reference proxy: geometric origin plus body up times
+`mean(mount.z-radius)`. This keeps the independent zero-travel start on its
+supplied ground reference. The renderer consumes the full repaired B and
+geometric origin directly; its body drop is cosmetic only. Wheel transforms use
+effective mounts and computed travel. Camera/HUD ride fields are output views.
+
+The explicitly chosen independent host inputs are inertia selector **c=1**,
+driver role **p=1**, exceptional race selector **race=0**, initial adjusted
+inertia, level heading and zero vertical/angular velocity at spawn. These are
+host policies, not recovered selector producers. The selected inertia,
+asymmetric world-z transition, angular damping curves, stabilization gates,
+world-z torque restriction and late opposing torque follow BR-1..5. The numeric
+limits come from the effective BodyCar, loaded from the approved stock offsets
++0x398/+0x39c by default. Bottoming impulses are enabled with per-application
+1000 linear / 10 angular caps; the suppression input remains explicit. Force
+caps are 1200 linear / 100 moment, and point-force moments use requested force.
+The required upper-limit zero-duration post sweep remains ordered.
+
+Existing wall/rail/vehicle services remain independent collision policy. Their
+explicit position and horizontal velocity corrections enter through
+`stage5_body_host_correction`, without resetting wheels or angular state. The
+ordinary ground-motion/ride solver does not overwrite dynamic pose. Reset is an
+independent initialization policy; complete retail reset/rest/collision and
+special-state behaviour remains outside the contract.
 
 The external world adapter uses independent `world_wheel_support` selection,
 unit triangle normals, an upward 0.25 m window and a downward window at least
@@ -105,7 +119,7 @@ The bounded native audit drives the normal controls and world queries. With
 then release; steering pulses occur at 210–239 and 255–284; service braking at
 300–344 is followed by acceleration. No physical state is forced. `STAGE5` rows
 show handbrake torque, blend/grip, contact mask, travel, aligned loads, prescribed
-ride pose, body forces/moments, signed speed and wall/rail counts. Later scripted
+dynamic pose, body forces/moments, signed speed and wall/rail counts. Later scripted
 segments can meet obstacles; S near rest may select reverse. `--frames` controls
 the bound (default audit 2,220). The audit writes spawn/end captures under the
 selected prefix. Dummy audio may be omitted for normal interactive sound.
@@ -133,6 +147,29 @@ The capture reads only independent simulation state; it does not dump car assets
 
 All vectors are synthetic calculations from static-inferred approved contracts.
 Component agreement, host tests and native captures do not establish original
-runtime/differential, full world/material or full 3D handling parity. Detailed
+runtime/differential, full world/material or numerical retail handling parity. Detailed
 architecture and validation are in
 [Stage5 implementation design](cleanroom-driving-physics/stage5/IMPL_DESIGN.md).
+
+
+## Body-response checks
+
+`make body-response-test body-feedback-test` runs all 63 approved synthetic
+body vectors and independent BR-7 wheel-to-body-to-suspension acceptance.
+`build/body_feedback.csv` records every derivative/preparation boundary with h,
+X, B, P, L, held V/Omega, z, selected inertia, F/T, previous/current contacts,
+wheel travel/rate and aligned load. Tests expose force-to-momentum and
+momentum-to-pose latency, braking pitch, lateral roll, vertical imbalance,
+changed subsequent loads/forces, continued evolution after release, explicit
+collision correction and bottoming's zero sweep. Inputs and expected signs are
+synthetic and make no retail trajectory or angle claim. Design:
+[body implementation decisions](../src/DESIGN.md).
+
+Run the ordinary stock 350Z through the same loader as other cars:
+
+```sh
+./nfsu2 /path/to/installation --car 350Z --drivetrain
+```
+
+The removed temporary 350Z configuration experiment is preserved only as
+[archived research](cleanroom-driving-physics/test350z/README.md).

@@ -1,0 +1,1903 @@
+{
+  "provenance": "Synthetic mathematical fixtures; no original runtime execution",
+  "matrix_encoding": "B_columns lists forward, lateral, up in world coordinates",
+  "vectors": [
+    {
+      "id": "world-axis-transition",
+      "operation": "inertia transition",
+      "inputs": {
+        "s": 1,
+        "desired_s": 0,
+        "kI": 2,
+        "L": [
+          1,
+          2,
+          8
+        ],
+        "B_columns": [
+          [
+            0,
+            0,
+            1
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            -1,
+            0,
+            0
+          ]
+        ]
+      },
+      "expected": {
+        "s": 0,
+        "L": [
+          1,
+          2,
+          4
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "transition-to-adjusted",
+      "operation": "inertia transition",
+      "inputs": {
+        "s": 0,
+        "desired_s": 1,
+        "kI": 2,
+        "L": [
+          1,
+          2,
+          4
+        ]
+      },
+      "expected": {
+        "s": 1,
+        "L": [
+          1,
+          2,
+          4
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "transition-no-repeat",
+      "operation": "inertia transition",
+      "inputs": {
+        "s": 0,
+        "desired_s": 0,
+        "kI": 2,
+        "L": [
+          1,
+          2,
+          4
+        ]
+      },
+      "expected": {
+        "s": 0,
+        "L": [
+          1,
+          2,
+          4
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "selection-0-0",
+      "operation": "frame selection",
+      "inputs": {
+        "state": 0,
+        "c": 0
+      },
+      "expected": {
+        "desired_s": 0
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "selection-0-1",
+      "operation": "frame selection",
+      "inputs": {
+        "state": 0,
+        "c": 1
+      },
+      "expected": {
+        "desired_s": 1
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "selection-2-4",
+      "operation": "frame selection",
+      "inputs": {
+        "state": 2,
+        "c": 4
+      },
+      "expected": {
+        "desired_s": 1
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "selection-1-4",
+      "operation": "frame selection",
+      "inputs": {
+        "state": 1,
+        "c": 4
+      },
+      "expected": {
+        "desired_s": 0
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "gates-normal",
+      "operation": "frame damping gates",
+      "inputs": {
+        "state": 0,
+        "race": 0,
+        "throttle": 1,
+        "contact_count": 4,
+        "fz": 1
+      },
+      "expected": {
+        "curve": true,
+        "stabilize": true
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "gates-state1",
+      "operation": "frame damping gates",
+      "inputs": {
+        "state": 1,
+        "race": 0,
+        "throttle": 0,
+        "contact_count": 4,
+        "fz": 0
+      },
+      "expected": {
+        "curve": false,
+        "stabilize": false
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "gates-throttle-equal",
+      "operation": "frame damping gates",
+      "inputs": {
+        "state": 2,
+        "race": 4,
+        "throttle": 0.30000001192092896,
+        "contact_count": 4,
+        "fz": 0.15000000596046448
+      },
+      "expected": {
+        "curve": true,
+        "stabilize": true
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "gates-throttle-over",
+      "operation": "frame damping gates",
+      "inputs": {
+        "state": 0,
+        "race": 4,
+        "throttle": 0.30000004172325134,
+        "contact_count": 0,
+        "fz": 0
+      },
+      "expected": {
+        "curve": true,
+        "stabilize": false
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "gates-tilt-over",
+      "operation": "frame damping gates",
+      "inputs": {
+        "state": 0,
+        "race": 4,
+        "throttle": 0,
+        "contact_count": 4,
+        "fz": -0.15000002086162567
+      },
+      "expected": {
+        "curve": true,
+        "stabilize": false
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "gates-tilt-three-contacts",
+      "operation": "frame damping gates",
+      "inputs": {
+        "state": 0,
+        "race": 4,
+        "throttle": 0,
+        "contact_count": 3,
+        "fz": 1
+      },
+      "expected": {
+        "curve": true,
+        "stabilize": true
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "damping-0",
+      "operation": "angular derivative before restriction",
+      "inputs": {
+        "L": [
+          0,
+          0,
+          2
+        ],
+        "w": 0,
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "z": 0,
+        "curve": true,
+        "stabilize": false
+      },
+      "expected": {
+        "D": 0.05000000074505806,
+        "Ldot": [
+          0,
+          0,
+          -0.10000000149011612
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "damping-2",
+      "operation": "angular derivative before restriction",
+      "inputs": {
+        "L": [
+          0,
+          0,
+          2
+        ],
+        "w": 2,
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "z": 0,
+        "curve": true,
+        "stabilize": false
+      },
+      "expected": {
+        "D": 0.05000000074505806,
+        "Ldot": [
+          0,
+          0,
+          -0.10000000149011612
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "damping-3",
+      "operation": "angular derivative before restriction",
+      "inputs": {
+        "L": [
+          0,
+          0,
+          2
+        ],
+        "w": 3,
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "z": 0,
+        "curve": true,
+        "stabilize": false
+      },
+      "expected": {
+        "D": 0.15000000037252903,
+        "Ldot": [
+          0,
+          0,
+          -0.30000000074505806
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "damping-6",
+      "operation": "angular derivative before restriction",
+      "inputs": {
+        "L": [
+          0,
+          0,
+          2
+        ],
+        "w": 6,
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "z": 0,
+        "curve": true,
+        "stabilize": false
+      },
+      "expected": {
+        "D": 0.699999988079071,
+        "Ldot": [
+          0,
+          0,
+          -1.399999976158142
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "damping-8",
+      "operation": "angular derivative before restriction",
+      "inputs": {
+        "L": [
+          0,
+          0,
+          2
+        ],
+        "w": 8,
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "z": 0,
+        "curve": true,
+        "stabilize": false
+      },
+      "expected": {
+        "D": 2,
+        "Ldot": [
+          0,
+          0,
+          -4
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "damping-12",
+      "operation": "angular derivative before restriction",
+      "inputs": {
+        "L": [
+          0,
+          0,
+          2
+        ],
+        "w": 12,
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "z": 0,
+        "curve": true,
+        "stabilize": false
+      },
+      "expected": {
+        "D": 5,
+        "Ldot": [
+          0,
+          0,
+          -10
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "damping-both",
+      "operation": "angular derivative before restriction",
+      "inputs": {
+        "L": [
+          1,
+          -2,
+          3
+        ],
+        "w": 8,
+        "T": [
+          4,
+          4,
+          4
+        ],
+        "z": 0.25,
+        "curve": true,
+        "stabilize": true
+      },
+      "expected": {
+        "Ldot": [
+          1.5,
+          9,
+          -3.5
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "damping-independent",
+      "operation": "angular derivative before restriction",
+      "inputs": {
+        "L": [
+          1,
+          -2,
+          3
+        ],
+        "w": 8,
+        "T": [
+          4,
+          4,
+          4
+        ],
+        "z": 0.25,
+        "curve": false,
+        "stabilize": true
+      },
+      "expected": {
+        "Ldot": [
+          3.5,
+          5,
+          2.5
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "limit-select-zero-role",
+      "operation": "frame torque-limit selection",
+      "inputs": {
+        "p": 0,
+        "K0": 7,
+        "K1": 0,
+        "sigma": -1,
+        "Lz": 4,
+        "v": 10
+      },
+      "expected": {
+        "K": 7
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "limit-select-opposed",
+      "operation": "frame torque-limit selection",
+      "inputs": {
+        "p": 1,
+        "K0": 7,
+        "K1": 0,
+        "sigma": -0.2,
+        "Lz": 4,
+        "v": 10
+      },
+      "expected": {
+        "K": 20
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "limit-select-same-sign",
+      "operation": "frame torque-limit selection",
+      "inputs": {
+        "p": 1,
+        "K0": 7,
+        "K1": 0,
+        "sigma": 0.2,
+        "Lz": 4,
+        "v": 10
+      },
+      "expected": {
+        "K": 0
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "limit-select-equal-slip",
+      "operation": "frame torque-limit selection",
+      "inputs": {
+        "p": 1,
+        "K0": 7,
+        "K1": 0,
+        "sigma": -0.10000000149011612,
+        "Lz": 4,
+        "v": 10
+      },
+      "expected": {
+        "K": 0
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "limit-select-zero-L",
+      "operation": "frame torque-limit selection",
+      "inputs": {
+        "p": 1,
+        "K0": 7,
+        "K1": 0,
+        "sigma": -0.2,
+        "Lz": 0,
+        "v": 10
+      },
+      "expected": {
+        "K": 0
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "limit-select-reverse",
+      "operation": "frame torque-limit selection",
+      "inputs": {
+        "p": 1,
+        "K0": 7,
+        "K1": 0,
+        "sigma": -1,
+        "Lz": 4,
+        "v": -10
+      },
+      "expected": {
+        "K": 0
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "limit-select-speed-equal",
+      "operation": "frame torque-limit selection",
+      "inputs": {
+        "p": 1,
+        "K0": 7,
+        "K1": 0,
+        "sigma": -0.2,
+        "Lz": 4,
+        "v": 1
+      },
+      "expected": {
+        "K": 20
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "limit-select-nonzero-data",
+      "operation": "frame torque-limit selection",
+      "inputs": {
+        "p": 1,
+        "K0": 7,
+        "K1": 6,
+        "sigma": -1,
+        "Lz": 4,
+        "v": 10
+      },
+      "expected": {
+        "K": 6
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "restriction-above",
+      "operation": "world-vertical derivative replacement",
+      "inputs": {
+        "raw_Tz": 25,
+        "damping_z": -3,
+        "K": 20
+      },
+      "expected": {
+        "Ldot_z": 20
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "restriction-below",
+      "operation": "world-vertical derivative replacement",
+      "inputs": {
+        "raw_Tz": -25,
+        "damping_z": 3,
+        "K": 20
+      },
+      "expected": {
+        "Ldot_z": -20
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "restriction-inside",
+      "operation": "world-vertical derivative replacement",
+      "inputs": {
+        "raw_Tz": 19,
+        "damping_z": -50,
+        "K": 20
+      },
+      "expected": {
+        "Ldot_z": -31
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "restriction-equal",
+      "operation": "world-vertical derivative replacement",
+      "inputs": {
+        "raw_Tz": 20,
+        "damping_z": -3,
+        "K": 20
+      },
+      "expected": {
+        "Ldot_z": 17
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "restriction-disabled",
+      "operation": "world-vertical derivative replacement",
+      "inputs": {
+        "raw_Tz": 25,
+        "damping_z": -3,
+        "K": 0
+      },
+      "expected": {
+        "Ldot_z": 22
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "publication-before-repair",
+      "operation": "one Euler substep then body publication then final repair",
+      "inputs": {
+        "h": 0.1,
+        "M": 2,
+        "X": [
+          0,
+          0,
+          0
+        ],
+        "B_columns": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ],
+        "P": [
+          2,
+          4,
+          6
+        ],
+        "V": [
+          1,
+          2,
+          3
+        ],
+        "L": [
+          1,
+          2,
+          4
+        ],
+        "Omega": [
+          1,
+          1,
+          1
+        ],
+        "I_selected": [
+          1,
+          2,
+          4
+        ],
+        "z": 0,
+        "F": [
+          0,
+          0,
+          0
+        ],
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "curve": false,
+        "stabilize": false,
+        "gravity": 0,
+        "K": 0
+      },
+      "expected": {
+        "X": [
+          0.1,
+          0.2,
+          0.3
+        ],
+        "P": [
+          2,
+          4,
+          6
+        ],
+        "L": [
+          1,
+          2,
+          4
+        ],
+        "V": [
+          1,
+          2,
+          3
+        ],
+        "B_before_repair_columns": [
+          [
+            1,
+            0.1,
+            -0.1
+          ],
+          [
+            -0.1,
+            1,
+            0.1
+          ],
+          [
+            0.1,
+            -0.1,
+            1
+          ]
+        ],
+        "Omega": [
+          0.7825,
+          1.1324999999999998,
+          1.01
+        ],
+        "B_columns": [
+          [
+            0.9901475429766743,
+            0.09901475429766743,
+            -0.09901475429766743
+          ],
+          [
+            -0.08931171772984171,
+            0.9911659108931347,
+            0.09804873359471752
+          ],
+          [
+            0.10784832040138587,
+            -0.08823953487386116,
+            0.9902436691399975
+          ]
+        ],
+        "F": [
+          0,
+          0,
+          0
+        ],
+        "T": [
+          0,
+          0,
+          0
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "published-angular-cap",
+      "operation": "body angular publication",
+      "inputs": {
+        "B_columns": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ],
+        "I_selected": [
+          1,
+          1,
+          1
+        ],
+        "L": [
+          300,
+          400,
+          0
+        ]
+      },
+      "expected": {
+        "Omega": [
+          150,
+          200,
+          0
+        ],
+        "L": [
+          300,
+          400,
+          0
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "repair-forward-priority",
+      "operation": "orientation repair",
+      "inputs": {
+        "candidate_columns": [
+          [
+            2,
+            0,
+            0
+          ],
+          [
+            1,
+            3,
+            0
+          ],
+          [
+            9,
+            9,
+            -9
+          ]
+        ]
+      },
+      "expected": {
+        "B_columns": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "point-force-requested-moment",
+      "operation": "point-force addition",
+      "inputs": {
+        "F": [
+          0,
+          0,
+          0
+        ],
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "Q": [
+          0,
+          2400,
+          0
+        ],
+        "r": [
+          0.02,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "F": [
+          0,
+          1200,
+          0
+        ],
+        "T": [
+          0,
+          0,
+          48
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "point-force-moment-cap",
+      "operation": "point-force addition",
+      "inputs": {
+        "F": [
+          0,
+          0,
+          0
+        ],
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "Q": [
+          0,
+          2400,
+          0
+        ],
+        "r": [
+          2,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "F": [
+          0,
+          1200,
+          0
+        ],
+        "T": [
+          0,
+          0,
+          100
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "impulse-capped-moment",
+      "operation": "impulse addition",
+      "inputs": {
+        "P": [
+          0,
+          0,
+          0
+        ],
+        "L": [
+          0,
+          0,
+          0
+        ],
+        "J": [
+          0,
+          2000,
+          0
+        ],
+        "r": [
+          0.005,
+          0,
+          0
+        ],
+        "angular_scale": 1
+      },
+      "expected": {
+        "P": [
+          0,
+          1000,
+          0
+        ],
+        "L": [
+          0,
+          0,
+          5
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "scaled-after-cap",
+      "operation": "impulse addition",
+      "inputs": {
+        "P": [
+          0,
+          0,
+          0
+        ],
+        "L": [
+          0,
+          0,
+          0
+        ],
+        "J": [
+          0,
+          2000,
+          0
+        ],
+        "r": [
+          1,
+          0,
+          0
+        ],
+        "angular_scale": 2
+      },
+      "expected": {
+        "P": [
+          0,
+          1000,
+          0
+        ],
+        "L": [
+          0,
+          0,
+          20
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "cap-per-application",
+      "operation": "two identical point-force additions",
+      "inputs": {
+        "F": [
+          0,
+          0,
+          0
+        ],
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "Q": [
+          0,
+          2400,
+          0
+        ],
+        "r": [
+          2,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "F": [
+          0,
+          2400,
+          0
+        ],
+        "T": [
+          0,
+          0,
+          200
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "opposing-0-1-0.45",
+      "operation": "late prepared angular torque",
+      "inputs": {
+        "state": 0,
+        "c": 1,
+        "M": 2,
+        "Omega": [
+          0,
+          0,
+          0.45
+        ],
+        "T": [
+          1,
+          2,
+          3
+        ]
+      },
+      "expected": {
+        "T": [
+          1,
+          2,
+          2.43750005364418
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "opposing-0-2-0.45",
+      "operation": "late prepared angular torque",
+      "inputs": {
+        "state": 0,
+        "c": 2,
+        "M": 2,
+        "Omega": [
+          0,
+          0,
+          0.45
+        ],
+        "T": [
+          1,
+          2,
+          3
+        ]
+      },
+      "expected": {
+        "T": [
+          1,
+          2,
+          3.0
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "opposing-2-1-0.45",
+      "operation": "late prepared angular torque",
+      "inputs": {
+        "state": 2,
+        "c": 1,
+        "M": 2,
+        "Omega": [
+          0,
+          0,
+          0.45
+        ],
+        "T": [
+          1,
+          2,
+          3
+        ]
+      },
+      "expected": {
+        "T": [
+          1,
+          2,
+          3.0
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "opposing-0-0-0.5",
+      "operation": "late prepared angular torque",
+      "inputs": {
+        "state": 0,
+        "c": 0,
+        "M": 2,
+        "Omega": [
+          0,
+          0,
+          0.5
+        ],
+        "T": [
+          1,
+          2,
+          3
+        ]
+      },
+      "expected": {
+        "T": [
+          1,
+          2,
+          3.0
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "opposing-0-0-0.4",
+      "operation": "late prepared angular torque",
+      "inputs": {
+        "state": 0,
+        "c": 0,
+        "M": 2,
+        "Omega": [
+          0,
+          0,
+          0.4
+        ],
+        "T": [
+          1,
+          2,
+          3
+        ]
+      },
+      "expected": {
+        "T": [
+          1,
+          2,
+          3.0
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "force-to-pose-latency",
+      "operation": "two substeps with supplied constant force/moment; all unspecified contributions zero",
+      "inputs": {
+        "M": 1,
+        "I_selected": [
+          1,
+          1,
+          1
+        ],
+        "h": 0.1,
+        "X": [
+          0,
+          0,
+          0
+        ],
+        "B_columns": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ],
+        "V": [
+          10,
+          0,
+          0
+        ],
+        "P": [
+          10,
+          0,
+          0
+        ],
+        "L": [
+          0,
+          0,
+          0
+        ],
+        "Omega": [
+          0,
+          0,
+          0
+        ],
+        "F": [
+          -4,
+          0,
+          2
+        ],
+        "T": [
+          0,
+          2,
+          0
+        ],
+        "curve": false,
+        "stabilize": false,
+        "z": 0,
+        "K": 0,
+        "gravity": 0
+      },
+      "expected": {
+        "after_first": {
+          "X": [
+            1,
+            0,
+            0
+          ],
+          "P": [
+            9.6,
+            0,
+            0.2
+          ],
+          "V": [
+            9.6,
+            0,
+            0.2
+          ],
+          "L": [
+            0,
+            0.2,
+            0
+          ],
+          "Omega": [
+            0,
+            0.2,
+            0
+          ],
+          "B_columns": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ]
+        },
+        "after_second": {
+          "X": [
+            1.96,
+            0,
+            0.02
+          ],
+          "P": [
+            9.2,
+            0,
+            0.4
+          ],
+          "V": [
+            9.2,
+            0,
+            0.4
+          ],
+          "L": [
+            0,
+            0.4,
+            0
+          ],
+          "Omega": [
+            0,
+            0.4,
+            0
+          ],
+          "B_columns": [
+            [
+              0.9998000599800071,
+              0.0,
+              -0.01999600119960014
+            ],
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0.01999600119960014,
+              0.0,
+              0.9998000599800071
+            ]
+          ]
+        }
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "selection-2-0",
+      "operation": "frame selection",
+      "inputs": {
+        "state": 2,
+        "c": 0
+      },
+      "expected": {
+        "desired_s": 0
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "gates-state1-exception",
+      "operation": "frame damping gates",
+      "inputs": {
+        "state": 1,
+        "race": 4,
+        "throttle": 1,
+        "contact_count": 4,
+        "fz": 1
+      },
+      "expected": {
+        "curve": false,
+        "stabilize": false
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "damping-4",
+      "operation": "angular derivative before restriction",
+      "inputs": {
+        "L": [
+          0,
+          0,
+          2
+        ],
+        "w": 4,
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "z": 0,
+        "curve": true,
+        "stabilize": false
+      },
+      "expected": {
+        "D": 0.25,
+        "Ldot": [
+          0,
+          0,
+          -0.5
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "damping-10",
+      "operation": "angular derivative before restriction",
+      "inputs": {
+        "L": [
+          0,
+          0,
+          2
+        ],
+        "w": 10,
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "z": 0,
+        "curve": true,
+        "stabilize": false
+      },
+      "expected": {
+        "D": 5,
+        "Ldot": [
+          0,
+          0,
+          -10
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "restriction-negative-equal",
+      "operation": "world-vertical derivative replacement",
+      "inputs": {
+        "raw_Tz": -20,
+        "damping_z": 3,
+        "K": 20
+      },
+      "expected": {
+        "Ldot_z": -17
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "tilted-angular-publication",
+      "operation": "body angular publication",
+      "inputs": {
+        "B_columns": [
+          [
+            0,
+            0,
+            1
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            -1,
+            0,
+            0
+          ]
+        ],
+        "I_selected": [
+          1,
+          2,
+          8
+        ],
+        "L": [
+          8,
+          6,
+          5
+        ]
+      },
+      "expected": {
+        "Omega": [
+          1,
+          3,
+          5
+        ],
+        "L": [
+          8,
+          6,
+          5
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "basic-inertia-seed-while-adjusted",
+      "operation": "pose/velocity initialization",
+      "inputs": {
+        "M": 2,
+        "V": [
+          1,
+          2,
+          3
+        ],
+        "B_columns": [
+          [
+            0,
+            0,
+            1
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            -1,
+            0,
+            0
+          ]
+        ],
+        "I_basic": [
+          1,
+          2,
+          4
+        ],
+        "kI": 2,
+        "s": 1,
+        "Omega_input": [
+          2,
+          3,
+          5
+        ]
+      },
+      "expected": {
+        "P": [
+          2,
+          4,
+          6
+        ],
+        "L": [
+          8,
+          6,
+          5
+        ],
+        "V": [
+          1,
+          2,
+          3
+        ],
+        "Omega": [
+          2,
+          3,
+          5
+        ],
+        "s": 1
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "braking-below-centre-pitch-sign",
+      "operation": "point-force addition",
+      "inputs": {
+        "F": [
+          0,
+          0,
+          0
+        ],
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "Q": [
+          -4,
+          0,
+          0
+        ],
+        "r": [
+          0,
+          0,
+          -0.5
+        ]
+      },
+      "expected": {
+        "F": [
+          -4,
+          0,
+          0
+        ],
+        "T": [
+          0,
+          2,
+          0
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "lateral-below-centre-roll-sign",
+      "operation": "point-force addition",
+      "inputs": {
+        "F": [
+          0,
+          0,
+          0
+        ],
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "Q": [
+          0,
+          4,
+          0
+        ],
+        "r": [
+          0,
+          0,
+          -0.5
+        ]
+      },
+      "expected": {
+        "F": [
+          0,
+          4,
+          0
+        ],
+        "T": [
+          2,
+          0,
+          0
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "impulse-zero-angular-scale",
+      "operation": "impulse addition",
+      "inputs": {
+        "P": [
+          1,
+          2,
+          3
+        ],
+        "L": [
+          4,
+          5,
+          6
+        ],
+        "J": [
+          0,
+          2000,
+          0
+        ],
+        "r": [
+          1,
+          0,
+          0
+        ],
+        "angular_scale": 0
+      },
+      "expected": {
+        "P": [
+          1,
+          1002,
+          3
+        ],
+        "L": [
+          4,
+          5,
+          6
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "point-force-exact-linear-cap",
+      "operation": "point-force addition",
+      "inputs": {
+        "F": [
+          1,
+          2,
+          3
+        ],
+        "T": [
+          4,
+          5,
+          6
+        ],
+        "Q": [
+          0,
+          1200,
+          0
+        ],
+        "r": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "F": [
+          1,
+          1202,
+          3
+        ],
+        "T": [
+          4,
+          5,
+          6
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "published-angular-equal-cap",
+      "operation": "body angular publication",
+      "inputs": {
+        "B_columns": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ],
+        "I_selected": [
+          1,
+          1,
+          1
+        ],
+        "L": [
+          150,
+          200,
+          0
+        ]
+      },
+      "expected": {
+        "Omega": [
+          150,
+          200,
+          0
+        ],
+        "L": [
+          150,
+          200,
+          0
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "force-response-clear-gravity",
+      "operation": "body force publication and reseed",
+      "inputs": {
+        "M": 2,
+        "F": [
+          2,
+          4,
+          -6
+        ],
+        "T": [
+          1,
+          2,
+          3
+        ],
+        "gravity": 9.800000190734863
+      },
+      "expected": {
+        "Aforce": [
+          0.10204081237316132,
+          0.20408162474632263,
+          -0.30612243711948395
+        ],
+        "consumed_F": [
+          2,
+          4,
+          -6
+        ],
+        "consumed_T": [
+          1,
+          2,
+          3
+        ],
+        "F": [
+          0,
+          0,
+          -19.600000381469727
+        ],
+        "T": [
+          0,
+          0,
+          0
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "point-force-exact-moment-cap",
+      "operation": "point-force addition",
+      "inputs": {
+        "F": [
+          0,
+          0,
+          0
+        ],
+        "T": [
+          0,
+          0,
+          0
+        ],
+        "Q": [
+          0,
+          800,
+          0
+        ],
+        "r": [
+          0.125,
+          0,
+          0
+        ]
+      },
+      "expected": {
+        "F": [
+          0,
+          800,
+          0
+        ],
+        "T": [
+          0,
+          0,
+          100
+        ]
+      },
+      "provenance": "Invented inputs; independently evaluated specification arithmetic from static-inferred functional rules; no original runtime or original assets."
+    },
+    {
+      "id": "pre-repair-alignment-uses-cross-products",
+      "operation": "candidate-basis contact alignment",
+      "inputs": {
+        "wheel_lateral": [
+          -0.1,
+          1,
+          0.1
+        ],
+        "normal": [
+          0,
+          0,
+          1
+        ],
+        "S": 10
+      },
+      "expected": {
+        "alignment": 1.04,
+        "N": 10.4
+      },
+      "provenance": "Invented pre-repair Euler basis input; independent mathematical evaluation of the Stage5 cross-product formula at the BR-4 interior boundary; no original runtime or original assets."
+    }
+  ]
+}

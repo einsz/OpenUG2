@@ -25,11 +25,11 @@ void res_drag(const ResCar *car,const ResInput *in,const float v[3],float f[3]) 
         *(2-(double)in->throttle)*length(v)/in->scale;
     for(int k=0;k<3;k++)f[k]=(float)(factor*v[k]);
 }
-static void point_force(ResBody *b,const float raw[3],const float arm[3],float applied[3]) {
+void res_point_force(ResBody *b,const float raw[3],const float arm[3],float applied[3]) {
     double mag=length(raw),scale=mag>1200?1200/mag:1;
     double f[3],moment[3];
-    for(int k=0;k<3;k++) { f[k]=raw[k]*scale;applied[k]=(float)f[k];b->force[k]=(float)(b->force[k]+f[k]); }
-    moment[0]=arm[1]*f[2]-arm[2]*f[1];moment[1]=arm[2]*f[0]-arm[0]*f[2];moment[2]=arm[0]*f[1]-arm[1]*f[0];
+    for(int k=0;k<3;k++) { f[k]=raw[k]*scale;if(applied)applied[k]=(float)f[k];b->force[k]=(float)(b->force[k]+f[k]); }
+    moment[0]=(double)arm[1]*raw[2]-(double)arm[2]*raw[1];moment[1]=(double)arm[2]*raw[0]-(double)arm[0]*raw[2];moment[2]=(double)arm[0]*raw[1]-(double)arm[1]*raw[0];
     mag=sqrt(moment[0]*moment[0]+moment[1]*moment[1]+moment[2]*moment[2]);scale=mag>100?100/mag:1;
     for(int k=0;k<3;k++)b->moment[k]=(float)(b->moment[k]+moment[k]*scale);
 }
@@ -37,7 +37,7 @@ void res_prepare_aero(ResBody *b,const ResCar *car,const ResInput *in,const ResB
     ResAero result={0};float arm[3]={0,0,0},applied[3];
     res_drag(car,in,b->velocity,result.drag);
     if(in->contacts>=2)arm[2]=-.1f*(1-in->throttle);
-    point_force(b,result.drag,arm,applied);
+    res_point_force(b,result.drag,arm,applied);
     double speed=length(b->velocity)/in->scale;
     double c=speed>(double).0001f?fmax(res_dot(basis->forward,b->velocity)/speed,0):fmax(basis->forward[0],0);
     double orientation=in->alternate?c*c*c*c:fmax(c*c,(double).4f);
@@ -50,9 +50,9 @@ void res_prepare_aero(ResBody *b,const ResCar *car,const ResInput *in,const ResB
     result.front_load=(float)wf;result.rear_load=(float)wr;result.load=(float)(wf+wr);
     float force[3];
     for(int k=0;k<3;k++){force[k]=(float)(-in->enable*wf*basis->up[k]);arm[k]=basis->forward[k];}
-    point_force(b,force,arm,result.front);
+    res_point_force(b,force,arm,result.front);
     for(int k=0;k<3;k++){force[k]=(float)(-in->enable*wr*basis->up[k]);arm[k]=-basis->forward[k];}
-    point_force(b,force,arm,result.rear);
+    res_point_force(b,force,arm,result.rear);
     if(out)*out=result;
 }
 static double threshold(const ResCar *car,const ResInput *in,double b,double *slope) {

@@ -420,11 +420,13 @@ static void test_question_cases(void) {
             bp.mass = (float)json_num(in, "mass"); bp.inv_iz = (float)json_num(in, "inverse_yaw_inertia");
             double f[2], arm[2]; json_nums(in, "force", f, 2); json_nums(in, "arm", arm, 2);
             bp.pos[0][0] = (float)arm[0]; bp.pos[0][1] = (float)arm[1];
-            bp.head[0][1] = bp.head[2][1] = 1; bp.lat[0][0] = 1; bp.head[1][0] = 1;
-            float F[4] = { (float)f[1], 0, 0, 0 }, Fy[4] = { (float)f[0], 0, 0, 0 }, A[4];
-            drv_body_accel_planar(&bp, F, Fy, A);
-            CHECK(near_(A[1], json_num(out, "ax"), tol) && near_(A[2], json_num(out, "ay"), tol), "Q15 body translation");
-            CHECK(near_((A[0] - A[2]) / arm[0], json_num(out, "yaw_acceleration"), tol), "Q15 positive yaw moment");
+            bp.head[0][0] = bp.lat[0][1] = 1;
+            float F[4] = { (float)f[0], 0, 0, 0 }, Fy[4] = { (float)f[1], 0, 0, 0 }, acceleration[3];
+            /* BC-2 replaces the old heading-based projection probes. The
+             * component vector still supplies the same force sums/moment. */
+            drv_body_planar_acceleration(&bp, F, Fy, acceleration);
+            CHECK(near_(acceleration[0], json_num(out, "ax"), tol) && near_(acceleration[1], json_num(out, "ay"), tol), "Q15 body translation");
+            CHECK(near_(acceleration[2], json_num(out, "yaw_acceleration"), tol), "Q15 positive yaw moment");
         } else if (strstr(item, "\"lock_correction\"")) {
             d.gear = d.target_gear = 2; d.car.rear_share = (float)json_num(in, "rear_share");
             d.car.ratio[2] = (float)json_num(in, "ratio"); d.car.final_front = (float)json_num(in, "front_final");

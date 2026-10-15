@@ -146,19 +146,27 @@ void drv_body_accel_straight(void *ud, const float F[4], const float Fy[4], floa
     for (int i = 0; i < 4; i++) A[i] = a;
 }
 
-void drv_body_accel_planar(void *ud, const float F[4], const float Fy[4], float A[4]) {
-    const DrvBodyPlanar *b = (const DrvBodyPlanar *)ud;
-    double fx = b->ex, fy = b->ey, mom = b->external_moment;
+static void planar_acceleration(const DrvBodyPlanar *b,const float F[4],const float Fy[4],double out[3]) {
+    double fx = b->ex, fy = b->ey, mom = 0;
     for (int i = 0; i < 4; i++) {
         double cx = (double)F[i] * b->head[i][0] + (double)Fy[i] * b->lat[i][0];
         double cy = (double)F[i] * b->head[i][1] + (double)Fy[i] * b->lat[i][1];
         fx += cx; fy += cy;
         mom += (double)b->pos[i][0] * cy - (double)b->pos[i][1] * cx;
     }
-    double ax = fx / (double)b->mass, ay = fy / (double)b->mass, al = mom * (double)b->inv_iz;
+    out[0]=fx/(double)b->mass;out[1]=fy/(double)b->mass;out[2]=mom*(double)b->inv_iz;
+}
+void drv_body_planar_acceleration(const DrvBodyPlanar *b,const float F[4],const float Fy[4],float out[3]) {
+    double values[3];planar_acceleration(b,F,Fy,values);
+    for(int k=0;k<3;k++)out[k]=(float)values[k];
+}
+void drv_body_accel_planar(void *ud, const float F[4], const float Fy[4], float A[4]) {
+    const DrvBodyPlanar *b = (const DrvBodyPlanar *)ud;
+    double values[3];planar_acceleration(b,F,Fy,values);
+    double ax=values[0],ay=values[1],al=values[2];
     for (int i = 0; i < 4; i++)
         A[i] = (float)((ax - al * (double)b->pos[i][1]) * (double)b->head[i][0]
-                     + (al * (double)b->pos[i][0] + ay) * (double)b->head[i][1]);
+                     + (al * (double)b->pos[i][0] + ay) * (double)b->lat[i][0]);
 }
 
 /* ===================================================================== */

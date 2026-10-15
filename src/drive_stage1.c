@@ -137,6 +137,10 @@ void stage1_drive_reset(Stage1Drive *s,const float velocity[2],float heading) {
         stage5_drive_contacts(s,&previous.contacts.car,previous.contact_query,previous.contact_user);
         s->contact_event=previous.contact_event;s->contact_v0=previous.contact_v0;s->contact_s0=previous.contact_s0;
     }
+    if(previous.dynamic_body) {
+        stage5_drive_body(s,&previous.body_car,previous.inertia_selector,previous.body_race,previous.impulses_suppressed);
+        s->body_gravity=previous.body_gravity;s->body_observe=previous.body_observe;s->body_observe_user=previous.body_observe_user;
+    }
     s->resistance_input=previous.resistance_input;
     memcpy(s->body_surface,previous.body_surface,sizeof s->body_surface);
     memcpy(s->rolling_surface,previous.rolling_surface,sizeof s->rolling_surface);
@@ -165,7 +169,7 @@ static void prepare(Stage1Drive *s,DrvEnv *env,const ResBasis *basis,int host_ho
     if(s->lateral_ready) {
         DrvBodyPlanar coupling={.mass=d->car.mass,.inv_iz=s->inverse_yaw_inertia,
             .ex=(float)res_dot(s->body.force,basis->forward),
-            .ey=(float)res_dot(s->body.force,basis->lateral),.external_moment=s->body.moment[2]};
+            .ey=(float)res_dot(s->body.force,basis->lateral)};
         for(int i=0;i<4;i++) {
             memcpy(coupling.pos[i],s->lateral_car.mount[i],sizeof coupling.pos[i]);
             float a=s->wheel_angle[i];coupling.head[i][0]=cosf(a);coupling.head[i][1]=sinf(a);
@@ -232,7 +236,7 @@ float stage1_drive_step(Stage1Drive *s,float pos[3],float vel[2],float *heading,
     if(s->contact_ready)return stage5_drive_step(s,pos,vel,heading,speed,pedal,steer,handbrake,ride);
     if(!sf)sf=&PHYS_SURF_ROAD;
     Drivetrain *d=&s->drivetrain;ResBody *b=&s->body;
-    s->wheel_travel=0;
+    s->wheel_travel=0;memset(s->wheel_angular_travel,0,sizeof s->wheel_angular_travel);
     ResBasis basis=res_basis_level(*heading);
     for(int k=0;k<2;k++) { b->velocity[k]=vel[k]*PHYS_TICKRATE;b->momentum[k]=b->mass*b->velocity[k]; }
     float forward=(float)res_dot(b->velocity,basis.forward);
@@ -280,7 +284,7 @@ float stage1_drive_step(Stage1Drive *s,float pos[3],float vel[2],float *heading,
         ResDerivative derivative;res_derivative(b,&s->resistance_car,r,&basis,fabsf(s->yaw_rate),&derivative);
         /* Body derivative is collected before wheel/shaft integration. The
          * independent blocks share no state mutated by either Euler update. */
-        for(int i=0;i<4;i++)s->wheel_travel+=h*d->wheel[i].omega*.25f;
+        for(int i=0;i<4;i++){float angle=h*d->wheel[i].omega;s->wheel_angular_travel[i]+=angle;s->wheel_travel+=angle*.25f;}
         if(s->lateral_ready) {
             float rate=s->yaw_rate;
             s->yaw_momentum=(float)(s->yaw_momentum+(double)h*(b->moment[2]-s->yaw_damping*s->yaw_momentum));
