@@ -1,0 +1,418 @@
+{
+ "description": "Pause-menu confirmation dialogs and the Default Settings dialog. SPEC_GUI_ART sections 2.4 and 6. Static facts; \"context\" values are synthetic selectors.",
+ "cases": [
+  {
+   "package": "UI_InGameDialog.fng",
+   "package_key": "0xAA469286",
+   "button1": {
+    "object": "button1",
+    "label_key": "0x00000639",
+    "english": "OK",
+    "message": "0x30ED2368"
+   },
+   "button2": {
+    "object": "Button2",
+    "label_key": "0x541389E5",
+    "english": "Cancel",
+    "message": "0xB4623F67"
+   },
+   "back_message": "0xB4623F67",
+   "initial_focus": "Button2",
+   "name": "quit_career",
+   "context": "mode 1, not (racing and sub-state 4)",
+   "message_key": "0x6F4796A6",
+   "message_english": "Quit to Main Menu?",
+   "on_ok": "quit to the front end",
+   "on_cancel": "dialog closes; pause menu un-dims (UNDIM) and accepts input again; no state change"
+  },
+  {
+   "package": "UI_InGameDialog.fng",
+   "package_key": "0xAA469286",
+   "button1": {
+    "object": "button1",
+    "label_key": "0x00000639",
+    "english": "OK",
+    "message": "0x30ED2368"
+   },
+   "button2": {
+    "object": "Button2",
+    "label_key": "0x541389E5",
+    "english": "Cancel",
+    "message": "0xB4623F67"
+   },
+   "back_message": "0xB4623F67",
+   "initial_focus": "Button2",
+   "name": "quit_other_single",
+   "context": "mode not 1/8/0x200, not (racing and sub-state 4)",
+   "message_key": "0x30ED2368",
+   "message_english": "Quit to Main Menu?",
+   "on_ok": "quit to the front end",
+   "on_cancel": "dialog closes; pause menu un-dims (UNDIM) and accepts input again; no state change"
+  },
+  {
+   "package": "UI_InGameDialog.fng",
+   "package_key": "0xAA469286",
+   "button1": {
+    "object": "button1",
+    "label_key": "0x00000639",
+    "english": "OK",
+    "message": "0x30ED2368"
+   },
+   "button2": {
+    "object": "Button2",
+    "label_key": "0x541389E5",
+    "english": "Cancel",
+    "message": "0xB4623F67"
+   },
+   "back_message": "0xB4623F67",
+   "initial_focus": "Button2",
+   "name": "quit_racing_substate4",
+   "context": "game state RACING and sub-state 4 (meaning unknown), mode not 8/0x200",
+   "message_key": "0xE15B558A",
+   "message_english": "Quit to Main Menu?^All unsaved race progress will be lost.",
+   "on_ok": "quit to the front end",
+   "on_cancel": "dialog closes; pause menu un-dims (UNDIM) and accepts input again; no state change"
+  },
+  {
+   "package": "UI_InGameDialog.fng",
+   "package_key": "0xAA469286",
+   "button1": {
+    "object": "button1",
+    "label_key": "0x00000639",
+    "english": "OK",
+    "message": "0x30ED2368"
+   },
+   "button2": {
+    "object": "Button2",
+    "label_key": "0x541389E5",
+    "english": "Cancel",
+    "message": "0xB4623F67"
+   },
+   "back_message": "0xB4623F67",
+   "initial_focus": "Button2",
+   "name": "quit_online_a",
+   "context": "mode 8, online-session test false, flag false",
+   "message_key": "0xCE50DA14",
+   "message_english": "Are you sure you want to quit to the Online Main Menu?",
+   "on_ok": "quit to the front end",
+   "on_cancel": "dialog closes; pause menu un-dims (UNDIM) and accepts input again; no state change"
+  },
+  {
+   "package": "UI_InGameDialog.fng",
+   "package_key": "0xAA469286",
+   "button1": {
+    "object": "button1",
+    "label_key": "0x00000639",
+    "english": "OK",
+    "message": "0x30ED2368"
+   },
+   "button2": {
+    "object": "Button2",
+    "label_key": "0x541389E5",
+    "english": "Cancel",
+    "message": "0xB4623F67"
+   },
+   "back_message": "0xB4623F67",
+   "initial_focus": "Button2",
+   "name": "quit_online_a_flag",
+   "context": "mode 8, online-session test false, flag true",
+   "message_key": "0xBC25C6B1",
+   "message_english": "Are you sure you want to quit to the Online Main Menu?  You will receive a loss and a disconnect for this game.",
+   "on_ok": "quit to the front end",
+   "on_cancel": "dialog closes; pause menu un-dims (UNDIM) and accepts input again; no state change"
+  },
+  {
+   "package": "UI_InGameDialog.fng",
+   "package_key": "0xAA469286",
+   "button1": {
+    "object": "button1",
+    "label_key": "0x00000639",
+    "english": "OK",
+    "message": "0x30ED2368"
+   },
+   "button2": {
+    "object": "Button2",
+    "label_key": "0x541389E5",
+    "english": "Cancel",
+    "message": "0xB4623F67"
+   },
+   "back_message": "0xB4623F67",
+   "initial_focus": "Button2",
+   "name": "quit_online_b",
+   "context": "mode 8, online-session test true, flag false",
+   "message_key": "0x555BD5B6",
+   "message_english": "Leaving the race now will end this session.  Are you sure you want to leave?",
+   "on_ok": "quit to the front end",
+   "on_cancel": "dialog closes; pause menu un-dims (UNDIM) and accepts input again; no state change"
+  },
+  {
+   "package": "UI_InGameDialog.fng",
+   "package_key": "0xAA469286",
+   "button1": {
+    "object": "button1",
+    "label_key": "0x00000639",
+    "english": "OK",
+    "message": "0x30ED2368"
+   },
+   "button2": {
+    "object": "Button2",
+    "label_key": "0x541389E5",
+    "english": "Cancel",
+    "message": "0xB4623F67"
+   },
+   "back_message": "0xB4623F67",
+   "initial_focus": "Button2",
+   "name": "quit_online_b_flag",
+   "context": "mode 8, online-session test true, flag true",
+   "message_key": "0x79A85513",
+   "message_english": "Leaving the race now will end this session and you will be given a loss and a disconnect.  Are you sure you want to leave?",
+   "on_ok": "quit to the front end",
+   "on_cancel": "dialog closes; pause menu un-dims (UNDIM) and accepts input again; no state change"
+  },
+  {
+   "package": "UI_InGameDialog.fng",
+   "package_key": "0xAA469286",
+   "button1": {
+    "object": "button1",
+    "label_key": "0x00000639",
+    "english": "OK",
+    "message": "0x30ED2368"
+   },
+   "button2": {
+    "object": "Button2",
+    "label_key": "0x541389E5",
+    "english": "Cancel",
+    "message": "0xB4623F67"
+   },
+   "back_message": "0xB4623F67",
+   "initial_focus": "Button2",
+   "name": "quit_lan",
+   "context": "mode 0x200, session test false",
+   "message_key": "0xD63B6982",
+   "message_english": "Are you sure you want to quit to the LAN main menu?",
+   "on_ok": "quit to the front end",
+   "on_cancel": "dialog closes; pause menu un-dims (UNDIM) and accepts input again; no state change"
+  },
+  {
+   "package": "UI_InGameDialog.fng",
+   "package_key": "0xAA469286",
+   "button1": {
+    "object": "button1",
+    "label_key": "0x00000639",
+    "english": "OK",
+    "message": "0x30ED2368"
+   },
+   "button2": {
+    "object": "Button2",
+    "label_key": "0x541389E5",
+    "english": "Cancel",
+    "message": "0xB4623F67"
+   },
+   "back_message": "0xB4623F67",
+   "initial_focus": "Button2",
+   "name": "quit_lan_session",
+   "context": "mode 0x200, session test true",
+   "message_key": "0x555BD5B6",
+   "message_english": "Leaving the race now will end this session.  Are you sure you want to leave?",
+   "on_ok": "quit to the front end",
+   "on_cancel": "dialog closes; pause menu un-dims (UNDIM) and accepts input again; no state change"
+  },
+  {
+   "package": "UI_InGameDialog.fng",
+   "package_key": "0xAA469286",
+   "button1": {
+    "object": "button1",
+    "label_key": "0x00000639",
+    "english": "OK",
+    "message": "0xE1A57D51"
+   },
+   "button2": {
+    "object": "Button2",
+    "label_key": "0x541389E5",
+    "english": "Cancel",
+    "message": "0xB4623F67"
+   },
+   "back_message": "0xB4623F67",
+   "initial_focus": "Button2",
+   "name": "restart",
+   "context": "not (racing and sub-state 4)",
+   "message_key": "0x0972A44B",
+   "message_english": "Restart Race?",
+   "on_ok": "restart the race",
+   "on_cancel": "dialog closes; pause menu un-dims (UNDIM) and accepts input again; no state change"
+  },
+  {
+   "package": "UI_InGameDialog.fng",
+   "package_key": "0xAA469286",
+   "button1": {
+    "object": "button1",
+    "label_key": "0x00000639",
+    "english": "OK",
+    "message": "0xE1A57D51"
+   },
+   "button2": {
+    "object": "Button2",
+    "label_key": "0x541389E5",
+    "english": "Cancel",
+    "message": "0xB4623F67"
+   },
+   "back_message": "0xB4623F67",
+   "initial_focus": "Button2",
+   "name": "restart_substate4",
+   "context": "racing and sub-state 4",
+   "message_key": "0xAA50AA02",
+   "message_english": "Restart race?^All unsaved race progress will be lost.",
+   "on_ok": "restart the race",
+   "on_cancel": "dialog closes; pause menu un-dims (UNDIM) and accepts input again; no state change"
+  },
+  {
+   "package": "UI_InGameDialog.fng",
+   "package_key": "0xAA469286",
+   "button1": {
+    "object": "button1",
+    "label_key": "0x00000639",
+    "english": "OK",
+    "message": "0x451E768E"
+   },
+   "button2": {
+    "object": "Button2",
+    "label_key": "0x541389E5",
+    "english": "Cancel",
+    "message": "0xB4623F67"
+   },
+   "back_message": "0xB4623F67",
+   "initial_focus": "Button2",
+   "name": "explore",
+   "context": "not (racing and sub-state 4)",
+   "message_key": "0x60B42AFB",
+   "message_english": "Return to Explore Mode?",
+   "on_ok": "leave the race, return to explore mode",
+   "on_cancel": "dialog closes; pause menu un-dims (UNDIM) and accepts input again; no state change"
+  },
+  {
+   "package": "UI_InGameDialog.fng",
+   "package_key": "0xAA469286",
+   "button1": {
+    "object": "button1",
+    "label_key": "0x00000639",
+    "english": "OK",
+    "message": "0x451E768E"
+   },
+   "button2": {
+    "object": "Button2",
+    "label_key": "0x541389E5",
+    "english": "Cancel",
+    "message": "0xB4623F67"
+   },
+   "back_message": "0xB4623F67",
+   "initial_focus": "Button2",
+   "name": "explore_substate4",
+   "context": "racing and sub-state 4",
+   "message_key": "0x07CD17B0",
+   "message_english": "Return to Explore Mode?^All unsaved race progress will be lost.",
+   "on_ok": "leave the race, return to explore mode",
+   "on_cancel": "dialog closes; pause menu un-dims (UNDIM) and accepts input again; no state change"
+  },
+  {
+   "package": "UI_InGameDialog.fng",
+   "package_key": "0xAA469286",
+   "button1": {
+    "object": "button1",
+    "label_key": "0x00000639",
+    "english": "OK",
+    "message": "0x33C42E03"
+   },
+   "button2": {
+    "object": "Button2",
+    "label_key": "0x541389E5",
+    "english": "Cancel",
+    "message": "0xB4623F67"
+   },
+   "back_message": "0xB4623F67",
+   "initial_focus": "Button2",
+   "name": "world_map",
+   "context": "not (racing and sub-state 4)",
+   "message_key": "0x33C42E03",
+   "message_english": "Back to the World Map?",
+   "on_ok": "leave the race to the career front end (UI_CareerCrib.fng)",
+   "on_cancel": "dialog closes; pause menu un-dims (UNDIM) and accepts input again; no state change"
+  },
+  {
+   "package": "UI_InGameDialog.fng",
+   "package_key": "0xAA469286",
+   "button1": {
+    "object": "button1",
+    "label_key": "0x00000639",
+    "english": "OK",
+    "message": "0x33C42E03"
+   },
+   "button2": {
+    "object": "Button2",
+    "label_key": "0x541389E5",
+    "english": "Cancel",
+    "message": "0xB4623F67"
+   },
+   "back_message": "0xB4623F67",
+   "initial_focus": "Button2",
+   "name": "world_map_substate4",
+   "context": "racing and sub-state 4",
+   "message_key": "0xE761C8B8",
+   "message_english": "Back to the World Map?^All unsaved race progress will be lost.",
+   "on_ok": "leave the race to the career front end (UI_CareerCrib.fng)",
+   "on_cancel": "dialog closes; pause menu un-dims (UNDIM) and accepts input again; no state change"
+  },
+  {
+   "package": "UI_InGameDialog.fng",
+   "package_key": "0xAA469286",
+   "button1": {
+    "object": "button1",
+    "label_key": "0x00000639",
+    "english": "OK",
+    "message": "0x43DA9FD0"
+   },
+   "button2": {
+    "object": "Button2",
+    "label_key": "0x541389E5",
+    "english": "Cancel",
+    "message": "0xB4623F67"
+   },
+   "back_message": "0xB4623F67",
+   "initial_focus": "Button2",
+   "name": "garage",
+   "context": "only if the (never-set) garage entry exists",
+   "message_key": "0xC9BA9E3E",
+   "message_english": "Jump to Garage?",
+   "on_ok": "leave to the career front end (UI_CareerCrib.fng)",
+   "on_cancel": "dialog closes; pause menu un-dims (UNDIM) and accepts input again; no state change"
+  },
+  {
+   "name": "default_settings",
+   "context": "Display row 4 (both contexts)",
+   "package": "GenericDialog_SMALL.fng",
+   "package_key": "0x6962C0CD",
+   "message_key": "0x2BBCCA6B",
+   "message_english": "Reset to default settings?",
+   "button1": {
+    "object": "Button1",
+    "label_key": "0x0000F770",
+    "english": "Yes",
+    "message": "0xD05FC3A3"
+   },
+   "button2": {
+    "object": "Button2",
+    "label_key": "0x0000061C",
+    "english": "No",
+    "message": "0x34DC1BCF"
+   },
+   "initial_focus": "Button2",
+   "note": "corrects SPEC_GUI 6 (initial focus is the second button, \"No\")"
+  }
+ ],
+ "navigation": {
+  "Right on button1": "focus Button2",
+  "Left on Button2": "focus button1",
+  "Left on button1": "nothing",
+  "Right on Button2": "nothing",
+  "source": "authored SetActiveButton responses [data]"
+ }
+}

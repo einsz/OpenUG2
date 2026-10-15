@@ -1,0 +1,742 @@
+{
+ "description": "Option-row placement and slider drawing. SPEC_GUI_ART section 4.3-4.4. Synthetic; formulas [static]. Cross-check against the retail Audio screenshot (same package as frontend Display): arrows +6.0/+246.0 vs observed +6.2/+246.2; fill start 54.54 vs observed 54.6; knob at f=0.703 155.0 vs observed 154.5; knob at f=1 197.5 vs observed 196.6.",
+ "cases": [
+  {
+   "package": "UI_Options.fng",
+   "visible_row": 0,
+   "kind": "choice",
+   "label_topleft": [
+    -271.0,
+    -138.0
+   ],
+   "backing_group_position": [
+    5.0,
+    -128.0
+   ],
+   "left_arrow_centre": [
+    6.0,
+    -126.0
+   ],
+   "right_arrow_centre": [
+    246.0,
+    -126.0
+   ],
+   "value_text_centre_x": 126.0,
+   "value_text_top": -138.0
+  },
+  {
+   "package": "UI_Options.fng",
+   "visible_row": 1,
+   "kind": "slider",
+   "label_topleft": [
+    -271.0,
+    -102.0
+   ],
+   "backing_group_position": [
+    5.0,
+    -92.0
+   ],
+   "left_arrow_centre": [
+    6.0,
+    -90.0
+   ],
+   "right_arrow_centre": [
+    246.0,
+    -90.0
+   ],
+   "slider_base_centre": [
+    126.0,
+    -86.0
+   ],
+   "usable_width": 142.92,
+   "fraction": 0.0,
+   "knob_centre": [
+    54.54,
+    -87.0
+   ],
+   "fill_topleft": [
+    54.54,
+    -93.0
+   ],
+   "fill_width": 0.0,
+   "fill_height": 5.75,
+   "value": 1,
+   "range": [
+    1,
+    5
+   ]
+  },
+  {
+   "package": "UI_Options.fng",
+   "visible_row": 1,
+   "kind": "slider",
+   "label_topleft": [
+    -271.0,
+    -102.0
+   ],
+   "backing_group_position": [
+    5.0,
+    -92.0
+   ],
+   "left_arrow_centre": [
+    6.0,
+    -90.0
+   ],
+   "right_arrow_centre": [
+    246.0,
+    -90.0
+   ],
+   "slider_base_centre": [
+    126.0,
+    -86.0
+   ],
+   "usable_width": 142.92,
+   "fraction": 0.25,
+   "knob_centre": [
+    90.27,
+    -87.0
+   ],
+   "fill_topleft": [
+    54.54,
+    -93.0
+   ],
+   "fill_width": 35.73,
+   "fill_height": 5.75,
+   "value": 2,
+   "range": [
+    1,
+    5
+   ]
+  },
+  {
+   "package": "UI_Options.fng",
+   "visible_row": 1,
+   "kind": "slider",
+   "label_topleft": [
+    -271.0,
+    -102.0
+   ],
+   "backing_group_position": [
+    5.0,
+    -92.0
+   ],
+   "left_arrow_centre": [
+    6.0,
+    -90.0
+   ],
+   "right_arrow_centre": [
+    246.0,
+    -90.0
+   ],
+   "slider_base_centre": [
+    126.0,
+    -86.0
+   ],
+   "usable_width": 142.92,
+   "fraction": 0.5,
+   "knob_centre": [
+    126.0,
+    -87.0
+   ],
+   "fill_topleft": [
+    54.54,
+    -93.0
+   ],
+   "fill_width": 71.46,
+   "fill_height": 5.75,
+   "value": 3,
+   "range": [
+    1,
+    5
+   ]
+  },
+  {
+   "package": "UI_Options.fng",
+   "visible_row": 1,
+   "kind": "slider",
+   "label_topleft": [
+    -271.0,
+    -102.0
+   ],
+   "backing_group_position": [
+    5.0,
+    -92.0
+   ],
+   "left_arrow_centre": [
+    6.0,
+    -90.0
+   ],
+   "right_arrow_centre": [
+    246.0,
+    -90.0
+   ],
+   "slider_base_centre": [
+    126.0,
+    -86.0
+   ],
+   "usable_width": 142.92,
+   "fraction": 0.75,
+   "knob_centre": [
+    161.73,
+    -87.0
+   ],
+   "fill_topleft": [
+    54.54,
+    -93.0
+   ],
+   "fill_width": 107.19,
+   "fill_height": 5.75,
+   "value": 4,
+   "range": [
+    1,
+    5
+   ]
+  },
+  {
+   "package": "UI_Options.fng",
+   "visible_row": 1,
+   "kind": "slider",
+   "label_topleft": [
+    -271.0,
+    -102.0
+   ],
+   "backing_group_position": [
+    5.0,
+    -92.0
+   ],
+   "left_arrow_centre": [
+    6.0,
+    -90.0
+   ],
+   "right_arrow_centre": [
+    246.0,
+    -90.0
+   ],
+   "slider_base_centre": [
+    126.0,
+    -86.0
+   ],
+   "usable_width": 142.92,
+   "fraction": 1.0,
+   "knob_centre": [
+    197.46,
+    -87.0
+   ],
+   "fill_topleft": [
+    54.54,
+    -93.0
+   ],
+   "fill_width": 142.92,
+   "fill_height": 5.75,
+   "value": 5,
+   "range": [
+    1,
+    5
+   ]
+  },
+  {
+   "package": "UI_PauseOptions.fng",
+   "visible_row": 0,
+   "kind": "choice",
+   "label_topleft": [
+    -270.22,
+    -138.94
+   ],
+   "backing_group_position": [
+    5.78,
+    -128.94
+   ],
+   "left_arrow_centre": [
+    -2.93,
+    -126.94
+   ],
+   "right_arrow_centre": [
+    252.25,
+    -126.94
+   ],
+   "value_text_centre_x": 124.66,
+   "value_text_top": -138.94
+  },
+  {
+   "package": "UI_PauseOptions.fng",
+   "visible_row": 1,
+   "kind": "slider",
+   "label_topleft": [
+    -270.22,
+    -102.94
+   ],
+   "backing_group_position": [
+    5.78,
+    -92.94
+   ],
+   "left_arrow_centre": [
+    -2.93,
+    -90.94
+   ],
+   "right_arrow_centre": [
+    252.25,
+    -90.94
+   ],
+   "slider_base_centre": [
+    124.66,
+    -86.94
+   ],
+   "usable_width": 142.92,
+   "fraction": 0.0,
+   "knob_centre": [
+    53.2,
+    -87.94
+   ],
+   "fill_topleft": [
+    53.2,
+    -93.94
+   ],
+   "fill_width": 0.0,
+   "fill_height": 5.75,
+   "value": 1,
+   "range": [
+    1,
+    5
+   ]
+  },
+  {
+   "package": "UI_PauseOptions.fng",
+   "visible_row": 1,
+   "kind": "slider",
+   "label_topleft": [
+    -270.22,
+    -102.94
+   ],
+   "backing_group_position": [
+    5.78,
+    -92.94
+   ],
+   "left_arrow_centre": [
+    -2.93,
+    -90.94
+   ],
+   "right_arrow_centre": [
+    252.25,
+    -90.94
+   ],
+   "slider_base_centre": [
+    124.66,
+    -86.94
+   ],
+   "usable_width": 142.92,
+   "fraction": 0.25,
+   "knob_centre": [
+    88.93,
+    -87.94
+   ],
+   "fill_topleft": [
+    53.2,
+    -93.94
+   ],
+   "fill_width": 35.73,
+   "fill_height": 5.75,
+   "value": 2,
+   "range": [
+    1,
+    5
+   ]
+  },
+  {
+   "package": "UI_PauseOptions.fng",
+   "visible_row": 1,
+   "kind": "slider",
+   "label_topleft": [
+    -270.22,
+    -102.94
+   ],
+   "backing_group_position": [
+    5.78,
+    -92.94
+   ],
+   "left_arrow_centre": [
+    -2.93,
+    -90.94
+   ],
+   "right_arrow_centre": [
+    252.25,
+    -90.94
+   ],
+   "slider_base_centre": [
+    124.66,
+    -86.94
+   ],
+   "usable_width": 142.92,
+   "fraction": 0.5,
+   "knob_centre": [
+    124.66,
+    -87.94
+   ],
+   "fill_topleft": [
+    53.2,
+    -93.94
+   ],
+   "fill_width": 71.46,
+   "fill_height": 5.75,
+   "value": 3,
+   "range": [
+    1,
+    5
+   ]
+  },
+  {
+   "package": "UI_PauseOptions.fng",
+   "visible_row": 1,
+   "kind": "slider",
+   "label_topleft": [
+    -270.22,
+    -102.94
+   ],
+   "backing_group_position": [
+    5.78,
+    -92.94
+   ],
+   "left_arrow_centre": [
+    -2.93,
+    -90.94
+   ],
+   "right_arrow_centre": [
+    252.25,
+    -90.94
+   ],
+   "slider_base_centre": [
+    124.66,
+    -86.94
+   ],
+   "usable_width": 142.92,
+   "fraction": 0.75,
+   "knob_centre": [
+    160.39,
+    -87.94
+   ],
+   "fill_topleft": [
+    53.2,
+    -93.94
+   ],
+   "fill_width": 107.19,
+   "fill_height": 5.75,
+   "value": 4,
+   "range": [
+    1,
+    5
+   ]
+  },
+  {
+   "package": "UI_PauseOptions.fng",
+   "visible_row": 1,
+   "kind": "slider",
+   "label_topleft": [
+    -270.22,
+    -102.94
+   ],
+   "backing_group_position": [
+    5.78,
+    -92.94
+   ],
+   "left_arrow_centre": [
+    -2.93,
+    -90.94
+   ],
+   "right_arrow_centre": [
+    252.25,
+    -90.94
+   ],
+   "slider_base_centre": [
+    124.66,
+    -86.94
+   ],
+   "usable_width": 142.92,
+   "fraction": 1.0,
+   "knob_centre": [
+    196.12,
+    -87.94
+   ],
+   "fill_topleft": [
+    53.2,
+    -93.94
+   ],
+   "fill_width": 142.92,
+   "fill_height": 5.75,
+   "value": 5,
+   "range": [
+    1,
+    5
+   ]
+  },
+  {
+   "package": "UI_PC_Customize_Options.fng",
+   "visible_row": 0,
+   "kind": "choice",
+   "label_topleft": [
+    -272.0,
+    -138.0
+   ],
+   "backing_group_position": [
+    4.0,
+    -128.0
+   ],
+   "left_arrow_centre": [
+    14.0,
+    -126.0
+   ],
+   "right_arrow_centre": [
+    238.0,
+    -126.0
+   ],
+   "value_text_centre_x": 126.0,
+   "value_text_top": -138.0
+  },
+  {
+   "package": "UI_PC_Customize_Options.fng",
+   "visible_row": 1,
+   "kind": "slider",
+   "label_topleft": [
+    -272.0,
+    -102.0
+   ],
+   "backing_group_position": [
+    4.0,
+    -92.0
+   ],
+   "left_arrow_centre": [
+    14.0,
+    -90.0
+   ],
+   "right_arrow_centre": [
+    238.0,
+    -90.0
+   ],
+   "slider_base_centre": [
+    126.0,
+    -86.0
+   ],
+   "usable_width": 142.92,
+   "fraction": 0.0,
+   "knob_centre": [
+    54.54,
+    -87.0
+   ],
+   "fill_topleft": [
+    54.54,
+    -93.0
+   ],
+   "fill_width": 0.0,
+   "fill_height": 5.75,
+   "value": 1,
+   "range": [
+    1,
+    5
+   ]
+  },
+  {
+   "package": "UI_PC_Customize_Options.fng",
+   "visible_row": 1,
+   "kind": "slider",
+   "label_topleft": [
+    -272.0,
+    -102.0
+   ],
+   "backing_group_position": [
+    4.0,
+    -92.0
+   ],
+   "left_arrow_centre": [
+    14.0,
+    -90.0
+   ],
+   "right_arrow_centre": [
+    238.0,
+    -90.0
+   ],
+   "slider_base_centre": [
+    126.0,
+    -86.0
+   ],
+   "usable_width": 142.92,
+   "fraction": 0.25,
+   "knob_centre": [
+    90.27,
+    -87.0
+   ],
+   "fill_topleft": [
+    54.54,
+    -93.0
+   ],
+   "fill_width": 35.73,
+   "fill_height": 5.75,
+   "value": 2,
+   "range": [
+    1,
+    5
+   ]
+  },
+  {
+   "package": "UI_PC_Customize_Options.fng",
+   "visible_row": 1,
+   "kind": "slider",
+   "label_topleft": [
+    -272.0,
+    -102.0
+   ],
+   "backing_group_position": [
+    4.0,
+    -92.0
+   ],
+   "left_arrow_centre": [
+    14.0,
+    -90.0
+   ],
+   "right_arrow_centre": [
+    238.0,
+    -90.0
+   ],
+   "slider_base_centre": [
+    126.0,
+    -86.0
+   ],
+   "usable_width": 142.92,
+   "fraction": 0.5,
+   "knob_centre": [
+    126.0,
+    -87.0
+   ],
+   "fill_topleft": [
+    54.54,
+    -93.0
+   ],
+   "fill_width": 71.46,
+   "fill_height": 5.75,
+   "value": 3,
+   "range": [
+    1,
+    5
+   ]
+  },
+  {
+   "package": "UI_PC_Customize_Options.fng",
+   "visible_row": 1,
+   "kind": "slider",
+   "label_topleft": [
+    -272.0,
+    -102.0
+   ],
+   "backing_group_position": [
+    4.0,
+    -92.0
+   ],
+   "left_arrow_centre": [
+    14.0,
+    -90.0
+   ],
+   "right_arrow_centre": [
+    238.0,
+    -90.0
+   ],
+   "slider_base_centre": [
+    126.0,
+    -86.0
+   ],
+   "usable_width": 142.92,
+   "fraction": 0.75,
+   "knob_centre": [
+    161.73,
+    -87.0
+   ],
+   "fill_topleft": [
+    54.54,
+    -93.0
+   ],
+   "fill_width": 107.19,
+   "fill_height": 5.75,
+   "value": 4,
+   "range": [
+    1,
+    5
+   ]
+  },
+  {
+   "package": "UI_PC_Customize_Options.fng",
+   "visible_row": 1,
+   "kind": "slider",
+   "label_topleft": [
+    -272.0,
+    -102.0
+   ],
+   "backing_group_position": [
+    4.0,
+    -92.0
+   ],
+   "left_arrow_centre": [
+    14.0,
+    -90.0
+   ],
+   "right_arrow_centre": [
+    238.0,
+    -90.0
+   ],
+   "slider_base_centre": [
+    126.0,
+    -86.0
+   ],
+   "usable_width": 142.92,
+   "fraction": 1.0,
+   "knob_centre": [
+    197.46,
+    -87.0
+   ],
+   "fill_topleft": [
+    54.54,
+    -93.0
+   ],
+   "fill_width": 142.92,
+   "fill_height": 5.75,
+   "value": 5,
+   "range": [
+    1,
+    5
+   ]
+  },
+  {
+   "package": "UI_Options.fng",
+   "visible_row": 3,
+   "kind": "slider",
+   "label_topleft": [
+    -271.0,
+    -30.0
+   ],
+   "backing_group_position": [
+    5.0,
+    -20.0
+   ],
+   "left_arrow_centre": [
+    6.0,
+    -18.0
+   ],
+   "right_arrow_centre": [
+    246.0,
+    -18.0
+   ],
+   "slider_base_centre": [
+    126.0,
+    -14.0
+   ],
+   "usable_width": 142.92,
+   "fraction": 0.703,
+   "knob_centre": [
+    155.013,
+    -15.0
+   ],
+   "fill_topleft": [
+    54.54,
+    -21.0
+   ],
+   "fill_width": 100.473,
+   "fill_height": 5.75,
+   "note": "Audio page measurement analogue (row 4 not used by Display)"
+  }
+ ]
+}

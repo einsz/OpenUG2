@@ -1,0 +1,974 @@
+{
+ "provenance": "Synthetic. Non-wrapping list navigation, skipping and window rule are [static]. Rows are 1-based. top = first visible row; visible rows are top..top+V-1.",
+ "cases": [
+  {
+   "id": "display_down_to_end_no_wrap",
+   "note": "4-row Display list never scrolls; Down on the last row does nothing.",
+   "input": {
+    "rows": 4,
+    "selectable": [
+     true,
+     true,
+     true,
+     true
+    ],
+    "visible_rows": 8,
+    "initial_focus": 1,
+    "events": [
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Up"
+    ]
+   },
+   "expected": {
+    "initial_top": 1,
+    "trace": [
+     {
+      "event": "Down",
+      "focus": 2,
+      "top": 1,
+      "visible": [
+       1,
+       2,
+       3,
+       4
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 3,
+      "top": 1,
+      "visible": [
+       1,
+       2,
+       3,
+       4
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 4,
+      "top": 1,
+      "visible": [
+       1,
+       2,
+       3,
+       4
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 4,
+      "top": 1,
+      "visible": [
+       1,
+       2,
+       3,
+       4
+      ]
+     },
+     {
+      "event": "Up",
+      "focus": 3,
+      "top": 1,
+      "visible": [
+       1,
+       2,
+       3,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "display_up_at_top_no_wrap",
+   "note": "",
+   "input": {
+    "rows": 4,
+    "selectable": [
+     true,
+     true,
+     true,
+     true
+    ],
+    "visible_rows": 8,
+    "initial_focus": 1,
+    "events": [
+     "Up",
+     "Down",
+     "Up",
+     "Up"
+    ]
+   },
+   "expected": {
+    "initial_top": 1,
+    "trace": [
+     {
+      "event": "Up",
+      "focus": 1,
+      "top": 1,
+      "visible": [
+       1,
+       2,
+       3,
+       4
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 2,
+      "top": 1,
+      "visible": [
+       1,
+       2,
+       3,
+       4
+      ]
+     },
+     {
+      "event": "Up",
+      "focus": 1,
+      "top": 1,
+      "visible": [
+       1,
+       2,
+       3,
+       4
+      ]
+     },
+     {
+      "event": "Up",
+      "focus": 1,
+      "top": 1,
+      "visible": [
+       1,
+       2,
+       3,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "customize_22_scroll_down",
+   "note": "Window starts scrolling when focus passes visible row 8.",
+   "input": {
+    "rows": 22,
+    "selectable": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ],
+    "visible_rows": 8,
+    "initial_focus": 1,
+    "events": [
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Up",
+     "Up",
+     "Up"
+    ]
+   },
+   "expected": {
+    "initial_top": 1,
+    "trace": [
+     {
+      "event": "Down",
+      "focus": 2,
+      "top": 1,
+      "visible": [
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 3,
+      "top": 1,
+      "visible": [
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 4,
+      "top": 1,
+      "visible": [
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 5,
+      "top": 1,
+      "visible": [
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 6,
+      "top": 1,
+      "visible": [
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 7,
+      "top": 1,
+      "visible": [
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 8,
+      "top": 1,
+      "visible": [
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 9,
+      "top": 2,
+      "visible": [
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 10,
+      "top": 3,
+      "visible": [
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10
+      ]
+     },
+     {
+      "event": "Up",
+      "focus": 9,
+      "top": 3,
+      "visible": [
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10
+      ]
+     },
+     {
+      "event": "Up",
+      "focus": 8,
+      "top": 3,
+      "visible": [
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10
+      ]
+     },
+     {
+      "event": "Up",
+      "focus": 7,
+      "top": 3,
+      "visible": [
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "customize_22_bottom",
+   "note": "",
+   "input": {
+    "rows": 22,
+    "selectable": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ],
+    "visible_rows": 8,
+    "initial_focus": 1,
+    "events": [
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Down",
+     "Down"
+    ]
+   },
+   "expected": {
+    "initial_top": 1,
+    "trace": [
+     {
+      "event": "Down",
+      "focus": 2,
+      "top": 1,
+      "visible": [
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 3,
+      "top": 1,
+      "visible": [
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 4,
+      "top": 1,
+      "visible": [
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 5,
+      "top": 1,
+      "visible": [
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 6,
+      "top": 1,
+      "visible": [
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 7,
+      "top": 1,
+      "visible": [
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 8,
+      "top": 1,
+      "visible": [
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 9,
+      "top": 2,
+      "visible": [
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 10,
+      "top": 3,
+      "visible": [
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 11,
+      "top": 4,
+      "visible": [
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 12,
+      "top": 5,
+      "visible": [
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 13,
+      "top": 6,
+      "visible": [
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 14,
+      "top": 7,
+      "visible": [
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 15,
+      "top": 8,
+      "visible": [
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 16,
+      "top": 9,
+      "visible": [
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15,
+       16
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 17,
+      "top": 10,
+      "visible": [
+       10,
+       11,
+       12,
+       13,
+       14,
+       15,
+       16,
+       17
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 18,
+      "top": 11,
+      "visible": [
+       11,
+       12,
+       13,
+       14,
+       15,
+       16,
+       17,
+       18
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 19,
+      "top": 12,
+      "visible": [
+       12,
+       13,
+       14,
+       15,
+       16,
+       17,
+       18,
+       19
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 20,
+      "top": 13,
+      "visible": [
+       13,
+       14,
+       15,
+       16,
+       17,
+       18,
+       19,
+       20
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 21,
+      "top": 14,
+      "visible": [
+       14,
+       15,
+       16,
+       17,
+       18,
+       19,
+       20,
+       21
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 22,
+      "top": 15,
+      "visible": [
+       15,
+       16,
+       17,
+       18,
+       19,
+       20,
+       21,
+       22
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 22,
+      "top": 15,
+      "visible": [
+       15,
+       16,
+       17,
+       18,
+       19,
+       20,
+       21,
+       22
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 22,
+      "top": 15,
+      "visible": [
+       15,
+       16,
+       17,
+       18,
+       19,
+       20,
+       21,
+       22
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 22,
+      "top": 15,
+      "visible": [
+       15,
+       16,
+       17,
+       18,
+       19,
+       20,
+       21,
+       22
+      ]
+     },
+     {
+      "event": "Down",
+      "focus": 22,
+      "top": 15,
+      "visible": [
+       15,
+       16,
+       17,
+       18,
+       19,
+       20,
+       21,
+       22
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "customize_spacer_skip",
+   "note": "Non-selectable spacer (row 2) is skipped in both directions.",
+   "input": {
+    "rows": 23,
+    "selectable": [
+     true,
+     false,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ],
+    "visible_rows": 8,
+    "initial_focus": 1,
+    "events": [
+     "Down",
+     "Up",
+     "Up"
+    ]
+   },
+   "expected": {
+    "initial_top": 1,
+    "trace": [
+     {
+      "event": "Down",
+      "focus": 3,
+      "top": 1,
+      "visible": [
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8
+      ]
+     },
+     {
+      "event": "Up",
+      "focus": 1,
+      "top": 1,
+      "visible": [
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8
+      ]
+     },
+     {
+      "event": "Up",
+      "focus": 1,
+      "top": 1,
+      "visible": [
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "reopen_focus_beyond_last_page",
+   "note": "Initial window when the initial focus lies in the last page: top = rows - V + 1.",
+   "input": {
+    "rows": 22,
+    "selectable": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ],
+    "visible_rows": 8,
+    "initial_focus": 20,
+    "events": [
+     "Up"
+    ]
+   },
+   "expected": {
+    "initial_top": 15,
+    "trace": [
+     {
+      "event": "Up",
+      "focus": 19,
+      "top": 15,
+      "visible": [
+       15,
+       16,
+       17,
+       18,
+       19,
+       20,
+       21,
+       22
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

@@ -1,0 +1,785 @@
+{
+ "description": "Pause menu (UI_pause.fng) entry list per context. SPEC_GUI_ART section 2. Inputs are synthetic context values; mode = game-mode value (1 career, 4 two-player, 8 online, 0x200 LAN, other values e.g. 2 = other single-player modes); race_state = race-activity value (0 none; 7 special state, meaning unknown; other non-zero = race in progress); from_map = race launched from the career world map; session = online session state (>2 = connected session); options_ok = the Options availability condition of section 2.3; garage_flag defaults false (never set in retail, section 2.3).",
+ "slot_rule": "entry k (1-based, in list order) is bound to package object option_k",
+ "cases": [
+  {
+   "name": "career_free_roam",
+   "input": {
+    "from_map": false,
+    "session": 0,
+    "options_ok": true,
+    "garage_flag": false,
+    "mode": "0x00000001",
+    "race_state": 0
+   },
+   "initial_focus_slot": 1,
+   "entries": [
+    {
+     "slot": "option_1",
+     "id": "explore_free",
+     "icon_key": "0x62AA0DF6",
+     "icon_name": "INGAME_ICON_EXPLORE",
+     "label_key": "0xC3E5BCDC",
+     "english": "Return to Explore Mode",
+     "action": "resume_explore",
+     "timing": "after_exit",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_2",
+     "id": "options",
+     "icon_key": "0x520DE4E3",
+     "icon_name": "INGAME_ICON_OPTIONS",
+     "label_key": "0xB34993C9",
+     "english": "Options",
+     "action": "open:UI_PauseOptionsMain.fng",
+     "timing": "after_exit",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_3",
+     "id": "replay",
+     "icon_key": "0x84D1D864",
+     "icon_name": "INGAME_ICON_REPLAY",
+     "label_key": "0x7840428A",
+     "english": "Replay",
+     "action": "open:ui_ReplayControl.fng",
+     "timing": "after_exit",
+     "disabled_unless_replay_available": true
+    },
+    {
+     "slot": "option_4",
+     "id": "quit_main",
+     "icon_key": "0x4C9E34E6",
+     "icon_name": "INGAME_ICON_QUIT_TO_FE",
+     "label_key": "0xC7E1420C",
+     "english": "Quit to Main Menu",
+     "action": "confirm:quit",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    }
+   ]
+  },
+  {
+   "name": "career_free_roam_options_unavailable",
+   "input": {
+    "from_map": false,
+    "session": 0,
+    "options_ok": false,
+    "garage_flag": false,
+    "mode": "0x00000001",
+    "race_state": 0
+   },
+   "initial_focus_slot": 1,
+   "entries": [
+    {
+     "slot": "option_1",
+     "id": "explore_free",
+     "icon_key": "0x62AA0DF6",
+     "icon_name": "INGAME_ICON_EXPLORE",
+     "label_key": "0xC3E5BCDC",
+     "english": "Return to Explore Mode",
+     "action": "resume_explore",
+     "timing": "after_exit",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_2",
+     "id": "replay",
+     "icon_key": "0x84D1D864",
+     "icon_name": "INGAME_ICON_REPLAY",
+     "label_key": "0x7840428A",
+     "english": "Replay",
+     "action": "open:ui_ReplayControl.fng",
+     "timing": "after_exit",
+     "disabled_unless_replay_available": true
+    },
+    {
+     "slot": "option_3",
+     "id": "quit_main",
+     "icon_key": "0x4C9E34E6",
+     "icon_name": "INGAME_ICON_QUIT_TO_FE",
+     "label_key": "0xC7E1420C",
+     "english": "Quit to Main Menu",
+     "action": "confirm:quit",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    }
+   ]
+  },
+  {
+   "name": "non_career_free_run",
+   "input": {
+    "from_map": false,
+    "session": 0,
+    "options_ok": true,
+    "garage_flag": false,
+    "mode": "0x00000002",
+    "race_state": 0
+   },
+   "initial_focus_slot": 1,
+   "entries": [
+    {
+     "slot": "option_1",
+     "id": "free_run",
+     "icon_key": "0x62AA0DF6",
+     "icon_name": "INGAME_ICON_EXPLORE",
+     "label_key": "0xC44A6515",
+     "english": "Return to Free Run",
+     "action": "resume_explore",
+     "timing": "after_exit",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_2",
+     "id": "options",
+     "icon_key": "0x520DE4E3",
+     "icon_name": "INGAME_ICON_OPTIONS",
+     "label_key": "0xB34993C9",
+     "english": "Options",
+     "action": "open:UI_PauseOptionsMain.fng",
+     "timing": "after_exit",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_3",
+     "id": "replay",
+     "icon_key": "0x84D1D864",
+     "icon_name": "INGAME_ICON_REPLAY",
+     "label_key": "0x7840428A",
+     "english": "Replay",
+     "action": "open:ui_ReplayControl.fng",
+     "timing": "after_exit",
+     "disabled_unless_replay_available": true
+    },
+    {
+     "slot": "option_4",
+     "id": "quit_main",
+     "icon_key": "0x4C9E34E6",
+     "icon_name": "INGAME_ICON_QUIT_TO_FE",
+     "label_key": "0xC7E1420C",
+     "english": "Quit to Main Menu",
+     "action": "confirm:quit",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    }
+   ]
+  },
+  {
+   "name": "two_player_free",
+   "input": {
+    "from_map": false,
+    "session": 0,
+    "options_ok": true,
+    "garage_flag": false,
+    "mode": "0x00000004",
+    "race_state": 0
+   },
+   "initial_focus_slot": 1,
+   "entries": [
+    {
+     "slot": "option_1",
+     "id": "free_run",
+     "icon_key": "0x62AA0DF6",
+     "icon_name": "INGAME_ICON_EXPLORE",
+     "label_key": "0xC44A6515",
+     "english": "Return to Free Run",
+     "action": "resume_explore",
+     "timing": "after_exit",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_2",
+     "id": "options",
+     "icon_key": "0x520DE4E3",
+     "icon_name": "INGAME_ICON_OPTIONS",
+     "label_key": "0xB34993C9",
+     "english": "Options",
+     "action": "open:UI_PauseOptionsMain.fng",
+     "timing": "after_exit",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_3",
+     "id": "quit_main",
+     "icon_key": "0x4C9E34E6",
+     "icon_name": "INGAME_ICON_QUIT_TO_FE",
+     "label_key": "0xC7E1420C",
+     "english": "Quit to Main Menu",
+     "action": "confirm:quit",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    }
+   ]
+  },
+  {
+   "name": "online_free",
+   "input": {
+    "from_map": false,
+    "session": 0,
+    "options_ok": true,
+    "garage_flag": false,
+    "mode": "0x00000008",
+    "race_state": 0
+   },
+   "initial_focus_slot": 1,
+   "entries": [
+    {
+     "slot": "option_1",
+     "id": "free_run",
+     "icon_key": "0x62AA0DF6",
+     "icon_name": "INGAME_ICON_EXPLORE",
+     "label_key": "0xC44A6515",
+     "english": "Return to Free Run",
+     "action": "resume_explore",
+     "timing": "after_exit",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_2",
+     "id": "options",
+     "icon_key": "0x520DE4E3",
+     "icon_name": "INGAME_ICON_OPTIONS",
+     "label_key": "0xB34993C9",
+     "english": "Options",
+     "action": "open:UI_PauseOptionsMain.fng",
+     "timing": "after_exit",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_3",
+     "id": "quit_online",
+     "icon_key": "0x4C9E34E6",
+     "icon_name": "INGAME_ICON_QUIT_TO_FE",
+     "label_key": "0xFF956AF2",
+     "english": "Quit to Online Main Menu",
+     "action": "confirm:quit",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    }
+   ]
+  },
+  {
+   "name": "lan_free",
+   "input": {
+    "from_map": false,
+    "session": 0,
+    "options_ok": true,
+    "garage_flag": false,
+    "mode": "0x00000200",
+    "race_state": 0
+   },
+   "initial_focus_slot": 1,
+   "entries": [
+    {
+     "slot": "option_1",
+     "id": "free_run",
+     "icon_key": "0x62AA0DF6",
+     "icon_name": "INGAME_ICON_EXPLORE",
+     "label_key": "0xC44A6515",
+     "english": "Return to Free Run",
+     "action": "resume_explore",
+     "timing": "after_exit",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_2",
+     "id": "options",
+     "icon_key": "0x520DE4E3",
+     "icon_name": "INGAME_ICON_OPTIONS",
+     "label_key": "0xB34993C9",
+     "english": "Options",
+     "action": "open:UI_PauseOptionsMain.fng",
+     "timing": "after_exit",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_3",
+     "id": "quit_lan",
+     "icon_key": "0x4C9E34E6",
+     "icon_name": "INGAME_ICON_QUIT_TO_FE",
+     "label_key": "0xF39723A1",
+     "english": "Quit to LAN Main Menu",
+     "action": "confirm:quit",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    }
+   ]
+  },
+  {
+   "name": "career_race",
+   "input": {
+    "from_map": false,
+    "session": 0,
+    "options_ok": true,
+    "garage_flag": false,
+    "mode": "0x00000001",
+    "race_state": 1
+   },
+   "initial_focus_slot": 1,
+   "entries": [
+    {
+     "slot": "option_1",
+     "id": "resume_race",
+     "icon_key": "0x12BB5EA2",
+     "icon_name": "INGAME_ICON_RESUME_RACE",
+     "label_key": "0xF6601088",
+     "english": "Resume Race",
+     "action": "resume_race",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_2",
+     "id": "restart",
+     "icon_key": "0xB295A6B6",
+     "icon_name": "INGAME_ICON_RESTART_RACE",
+     "label_key": "0x80833FC2",
+     "english": "Restart",
+     "action": "confirm:restart",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_3",
+     "id": "explore_race",
+     "icon_key": "0x62AA0DF6",
+     "icon_name": "INGAME_ICON_EXPLORE",
+     "label_key": "0xDB4E3C0D",
+     "english": "Return to Explore Mode",
+     "action": "confirm:explore",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_4",
+     "id": "options",
+     "icon_key": "0x520DE4E3",
+     "icon_name": "INGAME_ICON_OPTIONS",
+     "label_key": "0xB34993C9",
+     "english": "Options",
+     "action": "open:UI_PauseOptionsMain.fng",
+     "timing": "after_exit",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_5",
+     "id": "replay",
+     "icon_key": "0x84D1D864",
+     "icon_name": "INGAME_ICON_REPLAY",
+     "label_key": "0x7840428A",
+     "english": "Replay",
+     "action": "open:ui_ReplayControl.fng",
+     "timing": "after_exit",
+     "disabled_unless_replay_available": true
+    },
+    {
+     "slot": "option_6",
+     "id": "quit_main",
+     "icon_key": "0x4C9E34E6",
+     "icon_name": "INGAME_ICON_QUIT_TO_FE",
+     "label_key": "0xC7E1420C",
+     "english": "Quit to Main Menu",
+     "action": "confirm:quit",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    }
+   ]
+  },
+  {
+   "name": "career_race_started_from_world_map",
+   "input": {
+    "from_map": true,
+    "session": 0,
+    "options_ok": true,
+    "garage_flag": false,
+    "mode": "0x00000001",
+    "race_state": 1
+   },
+   "initial_focus_slot": 1,
+   "entries": [
+    {
+     "slot": "option_1",
+     "id": "world_map",
+     "icon_key": "0x3109913C",
+     "icon_name": "INGAME_ICON_WORLD_MAP",
+     "label_key": "0x5E670A9E",
+     "english": "Return to World Map",
+     "action": "confirm:world_map",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_2",
+     "id": "resume_race",
+     "icon_key": "0x12BB5EA2",
+     "icon_name": "INGAME_ICON_RESUME_RACE",
+     "label_key": "0xF6601088",
+     "english": "Resume Race",
+     "action": "resume_race",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_3",
+     "id": "restart",
+     "icon_key": "0xB295A6B6",
+     "icon_name": "INGAME_ICON_RESTART_RACE",
+     "label_key": "0x80833FC2",
+     "english": "Restart",
+     "action": "confirm:restart",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_4",
+     "id": "explore_race",
+     "icon_key": "0x62AA0DF6",
+     "icon_name": "INGAME_ICON_EXPLORE",
+     "label_key": "0xDB4E3C0D",
+     "english": "Return to Explore Mode",
+     "action": "confirm:explore",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_5",
+     "id": "options",
+     "icon_key": "0x520DE4E3",
+     "icon_name": "INGAME_ICON_OPTIONS",
+     "label_key": "0xB34993C9",
+     "english": "Options",
+     "action": "open:UI_PauseOptionsMain.fng",
+     "timing": "after_exit",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_6",
+     "id": "replay",
+     "icon_key": "0x84D1D864",
+     "icon_name": "INGAME_ICON_REPLAY",
+     "label_key": "0x7840428A",
+     "english": "Replay",
+     "action": "open:ui_ReplayControl.fng",
+     "timing": "after_exit",
+     "disabled_unless_replay_available": true
+    },
+    {
+     "slot": "option_7",
+     "id": "quit_main",
+     "icon_key": "0x4C9E34E6",
+     "icon_name": "INGAME_ICON_QUIT_TO_FE",
+     "label_key": "0xC7E1420C",
+     "english": "Quit to Main Menu",
+     "action": "confirm:quit",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    }
+   ]
+  },
+  {
+   "name": "career_race_state7",
+   "input": {
+    "from_map": false,
+    "session": 0,
+    "options_ok": true,
+    "garage_flag": false,
+    "mode": "0x00000001",
+    "race_state": 7
+   },
+   "initial_focus_slot": 1,
+   "entries": [
+    {
+     "slot": "option_1",
+     "id": "resume_race",
+     "icon_key": "0x12BB5EA2",
+     "icon_name": "INGAME_ICON_RESUME_RACE",
+     "label_key": "0xF6601088",
+     "english": "Resume Race",
+     "action": "resume_race",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_2",
+     "id": "options",
+     "icon_key": "0x520DE4E3",
+     "icon_name": "INGAME_ICON_OPTIONS",
+     "label_key": "0xB34993C9",
+     "english": "Options",
+     "action": "open:UI_PauseOptionsMain.fng",
+     "timing": "after_exit",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_3",
+     "id": "replay",
+     "icon_key": "0x84D1D864",
+     "icon_name": "INGAME_ICON_REPLAY",
+     "label_key": "0x7840428A",
+     "english": "Replay",
+     "action": "open:ui_ReplayControl.fng",
+     "timing": "after_exit",
+     "disabled_unless_replay_available": true
+    },
+    {
+     "slot": "option_4",
+     "id": "quit_main",
+     "icon_key": "0x4C9E34E6",
+     "icon_name": "INGAME_ICON_QUIT_TO_FE",
+     "label_key": "0xC7E1420C",
+     "english": "Quit to Main Menu",
+     "action": "confirm:quit",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    }
+   ]
+  },
+  {
+   "name": "quick_race",
+   "input": {
+    "from_map": false,
+    "session": 0,
+    "options_ok": true,
+    "garage_flag": false,
+    "mode": "0x00000002",
+    "race_state": 1
+   },
+   "initial_focus_slot": 1,
+   "entries": [
+    {
+     "slot": "option_1",
+     "id": "resume_race",
+     "icon_key": "0x12BB5EA2",
+     "icon_name": "INGAME_ICON_RESUME_RACE",
+     "label_key": "0xF6601088",
+     "english": "Resume Race",
+     "action": "resume_race",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_2",
+     "id": "restart",
+     "icon_key": "0xB295A6B6",
+     "icon_name": "INGAME_ICON_RESTART_RACE",
+     "label_key": "0x80833FC2",
+     "english": "Restart",
+     "action": "confirm:restart",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_3",
+     "id": "options",
+     "icon_key": "0x520DE4E3",
+     "icon_name": "INGAME_ICON_OPTIONS",
+     "label_key": "0xB34993C9",
+     "english": "Options",
+     "action": "open:UI_PauseOptionsMain.fng",
+     "timing": "after_exit",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_4",
+     "id": "replay",
+     "icon_key": "0x84D1D864",
+     "icon_name": "INGAME_ICON_REPLAY",
+     "label_key": "0x7840428A",
+     "english": "Replay",
+     "action": "open:ui_ReplayControl.fng",
+     "timing": "after_exit",
+     "disabled_unless_replay_available": true
+    },
+    {
+     "slot": "option_5",
+     "id": "quit_main",
+     "icon_key": "0x4C9E34E6",
+     "icon_name": "INGAME_ICON_QUIT_TO_FE",
+     "label_key": "0xC7E1420C",
+     "english": "Quit to Main Menu",
+     "action": "confirm:quit",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    }
+   ]
+  },
+  {
+   "name": "two_player_race",
+   "input": {
+    "from_map": false,
+    "session": 0,
+    "options_ok": true,
+    "garage_flag": false,
+    "mode": "0x00000004",
+    "race_state": 1
+   },
+   "initial_focus_slot": 1,
+   "entries": [
+    {
+     "slot": "option_1",
+     "id": "resume_race",
+     "icon_key": "0x12BB5EA2",
+     "icon_name": "INGAME_ICON_RESUME_RACE",
+     "label_key": "0xF6601088",
+     "english": "Resume Race",
+     "action": "resume_race",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_2",
+     "id": "restart",
+     "icon_key": "0xB295A6B6",
+     "icon_name": "INGAME_ICON_RESTART_RACE",
+     "label_key": "0x80833FC2",
+     "english": "Restart",
+     "action": "confirm:restart",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_3",
+     "id": "options",
+     "icon_key": "0x520DE4E3",
+     "icon_name": "INGAME_ICON_OPTIONS",
+     "label_key": "0xB34993C9",
+     "english": "Options",
+     "action": "open:UI_PauseOptionsMain.fng",
+     "timing": "after_exit",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_4",
+     "id": "quit_main",
+     "icon_key": "0x4C9E34E6",
+     "icon_name": "INGAME_ICON_QUIT_TO_FE",
+     "label_key": "0xC7E1420C",
+     "english": "Quit to Main Menu",
+     "action": "confirm:quit",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    }
+   ]
+  },
+  {
+   "name": "online_race_no_session",
+   "input": {
+    "from_map": false,
+    "session": 0,
+    "options_ok": true,
+    "garage_flag": false,
+    "mode": "0x00000008",
+    "race_state": 1
+   },
+   "initial_focus_slot": 1,
+   "entries": [
+    {
+     "slot": "option_1",
+     "id": "resume_race",
+     "icon_key": "0x12BB5EA2",
+     "icon_name": "INGAME_ICON_RESUME_RACE",
+     "label_key": "0xF6601088",
+     "english": "Resume Race",
+     "action": "resume_race",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_2",
+     "id": "options",
+     "icon_key": "0x520DE4E3",
+     "icon_name": "INGAME_ICON_OPTIONS",
+     "label_key": "0xB34993C9",
+     "english": "Options",
+     "action": "open:UI_PauseOptionsMain.fng",
+     "timing": "after_exit",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_3",
+     "id": "quit_online",
+     "icon_key": "0x4C9E34E6",
+     "icon_name": "INGAME_ICON_QUIT_TO_FE",
+     "label_key": "0xFF956AF2",
+     "english": "Quit to Online Main Menu",
+     "action": "confirm:quit",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    }
+   ]
+  },
+  {
+   "name": "online_race_session",
+   "input": {
+    "from_map": false,
+    "session": 3,
+    "options_ok": true,
+    "garage_flag": false,
+    "mode": "0x00000008",
+    "race_state": 1
+   },
+   "initial_focus_slot": 1,
+   "entries": [
+    {
+     "slot": "option_1",
+     "id": "quit_online",
+     "icon_key": "0x4C9E34E6",
+     "icon_name": "INGAME_ICON_QUIT_TO_FE",
+     "label_key": "0xFF956AF2",
+     "english": "Quit to Online Main Menu",
+     "action": "confirm:quit",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    }
+   ]
+  },
+  {
+   "name": "lan_race",
+   "input": {
+    "from_map": false,
+    "session": 0,
+    "options_ok": true,
+    "garage_flag": false,
+    "mode": "0x00000200",
+    "race_state": 1
+   },
+   "initial_focus_slot": 1,
+   "entries": [
+    {
+     "slot": "option_1",
+     "id": "resume_race",
+     "icon_key": "0x12BB5EA2",
+     "icon_name": "INGAME_ICON_RESUME_RACE",
+     "label_key": "0xF6601088",
+     "english": "Resume Race",
+     "action": "resume_race",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_2",
+     "id": "options",
+     "icon_key": "0x520DE4E3",
+     "icon_name": "INGAME_ICON_OPTIONS",
+     "label_key": "0xB34993C9",
+     "english": "Options",
+     "action": "open:UI_PauseOptionsMain.fng",
+     "timing": "after_exit",
+     "disabled_unless_replay_available": false
+    },
+    {
+     "slot": "option_3",
+     "id": "quit_lan",
+     "icon_key": "0x4C9E34E6",
+     "icon_name": "INGAME_ICON_QUIT_TO_FE",
+     "label_key": "0xF39723A1",
+     "english": "Quit to LAN Main Menu",
+     "action": "confirm:quit",
+     "timing": "immediate",
+     "disabled_unless_replay_available": false
+    }
+   ]
+  }
+ ]
+}

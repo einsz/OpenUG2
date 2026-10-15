@@ -1,0 +1,219 @@
+{
+ "provenance": "Synthetic. Step/clamp/changed rule and fill fraction are [static]; Accept does not move a slider [static]. \"changed\" false means the setting is not re-applied and no display re-init is requested.",
+ "cases": [
+  {
+   "id": "lod_right_to_max",
+   "input": {
+    "min": 1,
+    "max": 5,
+    "step": 1,
+    "initial": 3,
+    "events": [
+     "Right",
+     "Right",
+     "Right"
+    ]
+   },
+   "expected": {
+    "initial_fill_fraction": 0.5,
+    "trace": [
+     {
+      "event": "Right",
+      "value": 4,
+      "changed": true,
+      "fill_fraction": 0.75
+     },
+     {
+      "event": "Right",
+      "value": 5,
+      "changed": true,
+      "fill_fraction": 1.0
+     },
+     {
+      "event": "Right",
+      "value": 5,
+      "changed": false,
+      "fill_fraction": 1.0
+     }
+    ]
+   }
+  },
+  {
+   "id": "lod_left_to_min",
+   "input": {
+    "min": 1,
+    "max": 5,
+    "step": 1,
+    "initial": 2,
+    "events": [
+     "Left",
+     "Left",
+     "Accept"
+    ]
+   },
+   "expected": {
+    "initial_fill_fraction": 0.25,
+    "trace": [
+     {
+      "event": "Left",
+      "value": 1,
+      "changed": true,
+      "fill_fraction": 0.0
+     },
+     {
+      "event": "Left",
+      "value": 1,
+      "changed": false,
+      "fill_fraction": 0.0
+     },
+     {
+      "event": "Accept",
+      "value": 1,
+      "changed": false,
+      "fill_fraction": 0.0
+     }
+    ]
+   }
+  },
+  {
+   "id": "road_reflection_cap3",
+   "input": {
+    "min": 0,
+    "max": 3,
+    "step": 1,
+    "initial": 0,
+    "events": [
+     "Right",
+     "Right",
+     "Right",
+     "Right",
+     "Left"
+    ]
+   },
+   "expected": {
+    "initial_fill_fraction": 0.0,
+    "trace": [
+     {
+      "event": "Right",
+      "value": 1,
+      "changed": true,
+      "fill_fraction": 0.333333
+     },
+     {
+      "event": "Right",
+      "value": 2,
+      "changed": true,
+      "fill_fraction": 0.666667
+     },
+     {
+      "event": "Right",
+      "value": 3,
+      "changed": true,
+      "fill_fraction": 1.0
+     },
+     {
+      "event": "Right",
+      "value": 3,
+      "changed": false,
+      "fill_fraction": 1.0
+     },
+     {
+      "event": "Left",
+      "value": 2,
+      "changed": true,
+      "fill_fraction": 0.666667
+     }
+    ]
+   }
+  },
+  {
+   "id": "fsaa_cap1",
+   "input": {
+    "min": 0,
+    "max": 1,
+    "step": 1,
+    "initial": 0,
+    "events": [
+     "Left",
+     "Right",
+     "Right"
+    ]
+   },
+   "expected": {
+    "initial_fill_fraction": 0.0,
+    "trace": [
+     {
+      "event": "Left",
+      "value": 0,
+      "changed": false,
+      "fill_fraction": 0.0
+     },
+     {
+      "event": "Right",
+      "value": 1,
+      "changed": true,
+      "fill_fraction": 1.0
+     },
+     {
+      "event": "Right",
+      "value": 1,
+      "changed": false,
+      "fill_fraction": 1.0
+     }
+    ]
+   }
+  },
+  {
+   "id": "texture_filtering_cap2",
+   "input": {
+    "min": 0,
+    "max": 2,
+    "step": 1,
+    "initial": 1,
+    "events": [
+     "Right",
+     "Right",
+     "Left"
+    ]
+   },
+   "expected": {
+    "initial_fill_fraction": 0.5,
+    "trace": [
+     {
+      "event": "Right",
+      "value": 2,
+      "changed": true,
+      "fill_fraction": 1.0
+     },
+     {
+      "event": "Right",
+      "value": 2,
+      "changed": false,
+      "fill_fraction": 1.0
+     },
+     {
+      "event": "Left",
+      "value": 1,
+      "changed": true,
+      "fill_fraction": 0.5
+     }
+    ]
+   }
+  },
+  {
+   "id": "lod_stored_zero_displays_as_one",
+   "input": {
+    "min": 1,
+    "max": 5,
+    "step": 1,
+    "initial_stored": 0,
+    "events": []
+   },
+   "expected": {
+    "displayed_value": 1,
+    "initial_fill_fraction": 0.0,
+    "note": "Slider value is clamped to [min,max] when the row is built; the stored setting itself is not rewritten until the slider changes."
+   }
+  }
+ ]
+}
