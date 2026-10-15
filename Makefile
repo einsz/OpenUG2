@@ -41,7 +41,7 @@ GUI_ART_SRC := src/gui_timing.c src/pause_entries.c src/gui_carousel.c src/gui_d
 GUI_ART_HDR := $(wildcard src/gui_*.h) src/pause_entries.h src/pause_screen.h
 
 HDRS += src/ug2_track_collision.h src/drivetrain.h src/braking.h src/resistance.h src/lateral.h src/drive_stage1.h src/contact.h src/body_response.h
-HDRS += src/drive_trace.h src/drive_presentation.h
+HDRS += src/drive_trace.h src/drive_presentation.h src/drive_session.h
 
 .DEFAULT_GOAL := nfsu2   # keep `make` building the binary, not the generated header
 
@@ -665,3 +665,9 @@ render-sampling-test: tools/render_sampling_test.c tools/test_json.h tools/drive
 	$(CC) $(CFLAGS) -Isrc tools/render_sampling_test.c $(DRIVE_TEST_SRC) -o build/render_sampling_test -lm
 	./build/render_sampling_test
 .PHONY: render-sampling-test
+
+ordinary-mode-test: tools/ordinary_mode_test.c tools/test_json.h tools/drive_stage5_test.c $(DRIVE_TEST_SRC) $(HDRS)
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Isrc tools/ordinary_mode_test.c $(DRIVE_TEST_SRC) -o build/ordinary_mode_test -lm
+	./build/ordinary_mode_test
+.PHONY: ordinary-mode-test

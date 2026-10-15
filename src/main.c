@@ -4667,7 +4667,7 @@ int main(int argc, char **argv) {
                 }
                 printf("Stage-1/2/3/4/5 drivetrain enabled; W forward, S brake/reverse, Space handbrake.\n"
                        "  Geometric spring/aligned loads, frame handbrake/grip; full dynamic body momentum and orientation.\n"
-                       "  Independent host policy: c=1 p=1 race=0, surface ID=1, q=1 X/event=0, G=1 reduction=0, initial locks=0; bottom impulses enabled. Drag/drift use legacy.\n");
+                       "  Independent host policy: c=1 p=1, session status from ordinary host lifecycle, surface ID=1, q=1 X/event=0, G=1 reduction=0, initial locks=0; bottom impulses enabled. Drag/drift use legacy.\n");
             }
             g_vehicle_source_valid=physics_from_global;
             if(physics_from_global)g_vehicle_source=pa;
@@ -7480,7 +7480,7 @@ int main(int argc, char **argv) {
         static int stage1_previous=-1;
         if(g_stage1_requested && stage1_active!=stage1_previous) {
             stage1_drive_reset(&g_stage1,vel,heading);
-            printf("drivetrain: %s\n",stage1_active?"Stage 1/2/3/4/5 + dynamic body (supplied c=1, p=1, race=0)":"legacy race-mode physics (drag/drift outside Stage 1)");
+            printf("drivetrain: %s\n",stage1_active?"Stage 1/2/3/4/5 + dynamic body (supplied c=1, p=1; ordinary session lifecycle)":"legacy race-mode physics (drag/drift outside Stage 1)");
             stage1_previous=stage1_active;presentation_snap=1;
         }
         int pf_spawns=0;
@@ -7781,10 +7781,17 @@ int main(int argc, char **argv) {
                response while preserving the existing tune after the step. */
             float saved_top = g_phys_tune.top_kmh;
             if (nitro_active) g_phys_tune.top_kmh = saved_top * 1.18f;
-            if(stage1_active)
+            if(stage1_active) {
+                /* OM-2a independent host policy, refreshed on every advancing
+                 * tick. Reset/car changes initialize before the adapter resolves
+                 * active status; excluded routes retain established scheduling. */
+                int ordinary_session=!world.city.race.active ||
+                    world.city.race.kind==N2_RACE_CIRCUIT || world.city.race.kind==N2_RACE_SPRINT;
+                g_stage1.session=drive_session_local(ordinary_session&&race_state==1,
+                    ordinary_session&&race_state==0&&!race_prepare_pending);
                 dmag=stage1_drive_step(&g_stage1,carpos,vel,&heading,&speed,
                     throttle,steer_filtered,handbrake,&surf_now,&g_vehicle,g_ride_ready?&g_ride:NULL);
-            else dmag = phys_drive_step(carpos, vel, &heading, &speed,
+            } else dmag = phys_drive_step(carpos, vel, &heading, &speed,
                                  throttle, steer_filtered, handbrake,
                                  &surf_now, &driven,g_ride_ready?&g_ride:NULL);
             g_phys_tune.top_kmh = saved_top;

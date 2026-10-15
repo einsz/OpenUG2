@@ -55,9 +55,15 @@ geometric origin directly; its body drop is cosmetic only. Wheel transforms use
 effective mounts and computed travel. Camera/HUD ride fields are output views.
 
 The explicitly chosen independent host inputs are inertia selector **c=1**,
-driver role **p=1**, exceptional race selector **race=0**, initial adjusted
-inertia, level heading and zero vertical/angular velocity at spawn. These are
-host policies, not recovered selector producers. The selected inertia,
+driver role **p=1**, initial adjusted inertia, level heading and zero
+vertical/angular velocity at spawn. Session lifecycle is a separate explicit
+input: supplied snapshots pass unchanged; the ordinary host independently uses
+**4** during active advancing play and **3** during its explicit start countdown.
+The mode refresh follows valid body initialization and preceding force/torque
+preparation. Pause advances no dynamics; resumption refreshes the active status.
+Other routes keep established scheduling without a new numeric mapping. These
+are host policies within approved OM-1..4, not a recovered frontend state machine.
+A status change does not reset stabilization history or prepared accumulators. The selected inertia,
 asymmetric world-z transition, angular damping curves, stabilization gates,
 world-z torque restriction and late opposing torque follow BR-1..5. The numeric
 limits come from the effective BodyCar, loaded from the approved stock offsets

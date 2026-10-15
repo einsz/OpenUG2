@@ -11,7 +11,7 @@ static void inertia_map(const ResBasis*b,const float diagonal[3],const float wor
 int body_selection(int state,unsigned selector){return (state==0||state==2)&&selector!=0;}
 void body_select(BodyMotion*m,const BodyCar*c,int selected){if(m->adjusted&&!selected)m->angular_momentum[2]/=c->yaw_scale;m->adjusted=selected;}
 float body_inverse_yaw(const BodyMotion*m,const BodyCar*c){float yaw=m->adjusted?(float)((double)c->inertia[2]*c->yaw_scale):c->inertia[2];return (float)(1/(double)yaw);}
-BodyMode body_mode(int state,int race,float throttle,int contacts,float fz){int enabled=state==0||state==2;return (BodyMode){.curve=enabled,.stabilize=enabled&&!(race==4&&(throttle>.3f||(contacts==4&&fabsf(fz)>.15f)))};}
+BodyMode body_mode(int state,int session_status,float throttle,int contacts,float fz){int enabled=state==0||state==2;return (BodyMode){.curve=enabled,.stabilize=enabled&&!(session_status==4&&(throttle>.3f||(contacts==4&&fabsf(fz)>.15f)))};}
 float body_torque_limit(int role,const float limits[2],float speed,float sigma,float Lz){float limit=limits[role!=0];if(role&&limit==0){if(speed<1)sigma=0;if((double)sigma*Lz<0&&fabsf(sigma)>.1f)limit=20;}return limit;}
 float body_damping(float w){static const float y[6]={.05f,.05f,.25f,.7f,2,5};if(w<=0)return y[0];if(w>=10)return y[5];int k=(int)(w/2);double t=((double)w-2*k)/2;return (float)(y[k]+t*((double)y[k+1]-y[k]));}
 void body_angular_derivative(const float L[3],const float T[3],float w,float z,const BodyMode*mode,float out[3]){

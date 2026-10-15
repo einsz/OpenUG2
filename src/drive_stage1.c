@@ -139,7 +139,7 @@ void stage1_drive_reset(Stage1Drive *s,const float velocity[2],float heading) {
     }
     if(previous.dynamic_body) {
         stage5_drive_body(s,&previous.body_car,previous.inertia_selector,previous.body_race,previous.impulses_suppressed);
-        s->body_gravity=previous.body_gravity;s->body_observe=previous.body_observe;s->body_observe_user=previous.body_observe_user;
+        s->session=previous.session;s->body_gravity=previous.body_gravity;s->body_observe=previous.body_observe;s->body_observe_user=previous.body_observe_user;
     }
     s->resistance_input=previous.resistance_input;
     memcpy(s->body_surface,previous.body_surface,sizeof s->body_surface);

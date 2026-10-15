@@ -26,11 +26,11 @@ int stage5_body_car_read(const unsigned char *data,long length,const char *name,
  long row=n2_global_car_record(data,length,name);ct_inertia(&car,c.inertia,adjusted);c.yaw_scale=car.yaw_scale;
  memcpy(c.limit,data+row+0x398,sizeof c.limit);for(int k=0;k<2;k++)if(!isfinite(c.limit[k])||c.limit[k]<0)return 0;*out=c;return 1;
 }
-int stage5_drive_body(Stage1Drive*s,const BodyCar*c,unsigned selector,int race,int suppress){
+int stage5_drive_body(Stage1Drive*s,const BodyCar*c,unsigned selector,int session_status,int suppress){
  if(!s||!s->contact_ready||!c||!isfinite(c->yaw_scale)||c->yaw_scale<=0)return -1;
  for(int k=0;k<3;k++)if(!isfinite(c->inertia[k])||c->inertia[k]<=0)return -1;
  for(int k=0;k<2;k++)if(!isfinite(c->limit[k])||c->limit[k]<0)return -1;
- s->body_car=*c;s->dynamic_body=1;s->dynamic_initialized=0;s->prepared=0;s->inertia_selector=selector;s->body_race=race;s->impulses_suppressed=suppress;s->body_gravity=9.8f;
+ s->body_car=*c;s->dynamic_body=1;s->dynamic_initialized=0;s->prepared=0;s->inertia_selector=selector;s->body_race=session_status;s->session=(DriveSession){DRIVE_SESSION_SUPPLIED,session_status};s->impulses_suppressed=suppress;s->body_gravity=9.8f;
  s->motion=(BodyMotion){.axes={{1,0,0},{0,1,0},{0,0,1}},.adjusted=1};return 0;
 }
 static void dynamic_pose(Stage1Drive*s){CtPose*p=&s->contact_pose;p->axes=s->motion.axes;memcpy(p->position,s->motion.position,sizeof p->position);memcpy(p->velocity,s->body.velocity,sizeof p->velocity);memcpy(p->omega,s->motion.omega,sizeof p->omega);s->yaw_rate=s->motion.omega[2];s->yaw_momentum=s->motion.angular_momentum[2];}
@@ -87,6 +87,8 @@ static void prepare(Stage1Drive*s,DrvEnv*env){
  s->prepared=1;
 }
 float stage5_drive_step(Stage1Drive*s,float pos[3],float vel[2],float*heading,float*speed,float pedal,float steer,int hb,const PhysRideState*ride){
+ /* OM-2a: no preparation, derivative, publication or integration while suspended. */
+ if(s->session.phase==DRIVE_SESSION_SUSPENDED)return 0;
  const float dt=1/PHYS_TICKRATE;Drivetrain*d=&s->drivetrain;CtState*c=&s->contacts;ResBody*b=&s->body;ResInput*r=&s->resistance_input;DrvEnv env;drv_env_default(&env);s->wheel_travel=0;memset(s->wheel_angular_travel,0,sizeof s->wheel_angular_travel);
  if(s->dynamic_body){
   if(!s->dynamic_initialized){
@@ -120,6 +122,8 @@ float stage5_drive_step(Stage1Drive*s,float pos[3],float vel[2],float*heading,fl
  if(s->dynamic_body){
   float throttle=input.throttle<=.15f?0:input.throttle;if(throttle>0&&throttle<.5f&&d->gear>DRV_GEAR_N&&d->omega_e*DRV_KR<3000)throttle=.5f;
   body_select(&s->motion,&s->body_car,body_selection(s->state_code,s->inertia_selector));
+  /* Resolve only after creation/restoration and preceding preparation. */
+  drive_session_status(s->session,s->dynamic_initialized&&s->prepared,&s->body_race);
   s->body_mode=body_mode(s->state_code,s->body_race,throttle,r->contacts,c->exported_heading[2]);r->stabilize=s->body_mode.stabilize;
   float slip=lat_body_slip(c->exported_forward,c->exported_heading,c->exported_velocity)*.01745329238474369f;
   s->body_mode.torque_limit=body_torque_limit(d->tune.is_player,s->body_car.limit,c->exported_forward,slip,s->motion.angular_momentum[2]);

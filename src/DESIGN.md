@@ -191,3 +191,65 @@ builds passed; the desktop debug executable was restored after the GLES check. A
 completed 230 ticks with finite diagnostic values and no profile metadata
 sidecar; its capture window stayed hidden. This is a loader/regression smoke
 check, with no claim of original handling parity.
+
+## Ordinary session producer (OM-1..4)
+
+Approved input: ordinary-mode/SPEC.md SHA-256
+`596c690aa0916cbdc3ce23f585e31000c96f39040a7a7d26857278c0f77dc1be`.
+SPEC and each permitted auxiliary hash matched REVIEW before use; the approved
+body-response, body-coupling and render-sampling dependency hashes matched too.
+Only approved contracts and the permitted independent baseline were accessed.
+The earlier `race=0` host assumption above is superseded within this scope.
+
+- OM-1/2a: `DriveSession` separates a caller-supplied lifecycle snapshot from
+  independent active/countdown policy. The resolver accepts no event-family,
+  contact, vehicle-state, role or pedal argument. A supplied status passes
+  unchanged; an unready policy produces no status. `body_race` is retained as
+  the existing public field name but means resolved lifecycle status exclusively.
+- OM-2a: the application refreshes policy immediately before every advancing
+  Stage5 call, including after car changes, reset and event transitions. The
+  existing ordinary active host phase requests 4; its explicit timed countdown
+  requests 3. Existing loading/grid-preparation, completed-event and special-route
+  scheduling retain the preceding selector without assigning a new numeric
+  lifecycle mapping. Drag/drift keep the existing excluded adapter. Main's pause
+  scheduler still discards paused wall time; explicit suspended component calls
+  return before any initialization, preparation, derivative or Euler work.
+- OM-2a: Stage5 initializes the body and performs its existing creation-time
+  preparation before resolving the policy at mode refresh. Readiness requires
+  both initialization and prepared accumulators, within the companion finite,
+  valid-state domain. Restored snapshots retain their existing prepared state.
+  A status refresh only selects the gate; it cannot clear z,F,T or wheel state.
+  Explicit host reset still uses its established initialization and carries the
+  selected session policy into the next refresh.
+- OM-3: the existing BR gate and all physical arithmetic remain unchanged.
+  Active shaped throttle above b32(.3) suppresses stabilization for that frame;
+  curve damping persists, and pedal release re-enables stabilization. Elapsed
+  coasting still integrates the existing z derivative and negative clamp.
+  No launch assistance, rest/handbrake-release law, clock or coefficients were
+  introduced. Supplied fixtures retain their explicit status-0 controls.
+
+`tools/ordinary_mode_test.c` encoded all 13 approved derivative vectors before
+implementation; the first run failed to compile on missing `drive_session.h`.
+The completed test checks absolute 1e-6 arithmetic, exact predicates and
+refresh-only history retention, plus ready ordinary three-family sessions,
+countdown completion, supplied status passthrough in the integrated adapter,
+paused bitwise state retention, resumption, first-derivative prepared F/T/z
+retention, real coasting z evolution and the established reset/creation path.
+No spec or approved auxiliary files were edited; no questions were added.
+
+Implementation validation: all 18 targeted ordinary-mode, Stage1/4/5, BR/BC,
+drivetrain, braking, resistance, lateral, contact, trace, presentation,
+render-sampling, physics-clock and district-collision suites passed. Strict
+compilation used `-Werror` with the baseline unused-function and
+misleading-indentation classes suppressed; the existing presentation fixture
+also needs `-Wno-absolute-value` for its pre-existing double-phase/fabsf warning.
+The initial broader strict command stopped at that warning; no physical code
+was changed to accommodate it. The new ordinary-mode suite also passed
+AddressSanitizer+UndefinedBehaviorSanitizer with `ASAN_OPTIONS=detect_leaks=0`.
+LeakSanitizer itself cannot execute under this environment's tracing setup, so
+this does not claim leak checking. Independent native launch verification is
+separate from these synthetic implementation checks.
+Desktop debug and GLES builds passed in sequence, then `make debug` restored
+the desktop executable (linked against libGL). Source/build/native ownership
+was released to the independent verifier after that checkpoint. No native run
+or handling-parity result is claimed by this implementer.

@@ -8,12 +8,14 @@
 #include "contact.h"
 #include "physics.h"
 #include "body_response.h"
+#include "drive_session.h"
 struct Stage1Drive;
 typedef void (*StageBodyObserve)(void *user,const struct Stage1Drive *state,float h,int preparation);
 typedef struct Stage1Drive {
     Drivetrain drivetrain;
     int dynamic_body,dynamic_initialized;BodyCar body_car;BodyMotion motion;BodyMode body_mode;
     unsigned inertia_selector;int body_race,impulses_suppressed;float body_gravity;
+    DriveSession session; /* body_race retains the resolved lifecycle status, not event family. */
     StageBodyObserve body_observe;void *body_observe_user;
     int contact_ready;CtState contacts;CtQuery contact_query;void *contact_user;
     CtPose contact_pose;float contact_force[4][3],contact_moment[4][3];
@@ -49,7 +51,7 @@ int stage5_car_read(const unsigned char *data,long length,const char *name,CtCar
 int stage5_body_car_read(const unsigned char *data,long length,const char *name,BodyCar *out);
 /* Explicit selectors/suppression. Stock inertia and limits may be replaced by
  * a supplied effective BodyCar; configuration composition is external. */
-int stage5_drive_body(Stage1Drive *state,const BodyCar *car,unsigned selector,int race,int suppress_impulses);
+int stage5_drive_body(Stage1Drive *state,const BodyCar *car,unsigned selector,int session_status,int suppress_impulses);
 /* External host collision boundary: translate X with host origin correction
  * and seed only horizontal P/V; no wheel or angular reset. */
 void stage5_body_host_correction(Stage1Drive *state,const float origin[3],const float velocity[2]);
