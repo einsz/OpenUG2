@@ -166,3 +166,45 @@ coordinator decision (CONTROLS_SPEC §10, D1–D6).
 7. Are retail keyboard bindings kept across restarts on a stock Windows install? (CONTROLS_SPEC §6.6)
 8. Coordinator: route (D1), key-name source (D2), gamepad index model (D3), keyboard persistence
    (D4), which retail quirks to reproduce (D5), adopt retail default keys (D6).
+
+## Implementer questions (2026-10-15, Controls screen, CONTROLS_SPEC.md)
+
+Spec hash checked against CONTROLS_REVIEW.md before starting
+(`3295a4d436958c6c784ec752db9c2e64cb976a9802eb17a91f2147a035639c18`). Items marked **needs ruling** changed
+nothing silently: the behaviour described under "Implemented" is what the code does until answered.
+
+1. **Axis and POV names (6.2, R2, D2) -- needs ruling.** The spec says axis/POV cell texts are OS object
+   names ("X Axis", the POV's name). SDL has no names for raw joystick axes and hats, and R2 allows only
+   `---`, `Left Shift/Alt/Ctrl`, `Button n` and platform-provided names. Implemented: a raw axis shows the
+   game-controller axis name SDL reports for it (`SDL_GameControllerGetStringForAxis`, e.g. `leftx`) when the
+   device has a game-controller mapping, otherwise `---`; a POV always shows `---`. So the default D-pad and
+   stick bindings of a pad appear as `---` in the Secondary / Primary cells although they work. Proposal:
+   allow the literals `Axis n` and `POV n` (n = SDL index + 1), the direct analogue of the allowed
+   `Button n`; the change is one function (`ctl_name` in `src/controls_sdl.c`).
+2. **Help-bar pills (3.7) -- needs ruling.** Object names inside `UI_PC_Help_Bar.fng` (pills, labels, the
+   `PAUSE_OPTIONS` layout trigger, how labels are set) are not in the spec, so the help bar is not drawn and
+   the "Reset Keys To Default" pill does not exist. Implemented: the same request (`PAD_BUTTON0` equivalent)
+   is raised by the Delete key and by controller button Y on the Controls screen (U5 is open); it opens the
+   authored reset dialog. Please supply the help-bar object/label/layout facts, or confirm the key.
+3. **Axis range and the analog mapping (6.5, U3).** The thresholds 1 000 / 500 are applied to raw SDL axis
+   values (-32768..32767). How a captured axis direction turns into a driving value is not specified; the game
+   side implemented: steering = axis x direction (positive = right, 0.15 dead zone); combined pedals: output x
+   direction negative = throttle, positive = brake; a separate pedal axis counts only on its pressed side
+   (`max(0, v x dir)`), so a trigger that rests at -1 has a dead first half of travel.
+4. **Title row hover extent (4.4).** "Hover over the title focuses the selector" gives no rectangle. Implemented:
+   x -250..250, y -182..-146 (between the selector arrows). [inferred]
+5. **Vertical anchor of centre-justified cells (3.8).** "Top y_k" is ambiguous for a vertically centred text:
+   implemented as top = y_k, i.e. the anchor y is y_k plus half the line height (line pitch x text scale), which
+   renders the cell text on the same line as its row label in the genuine package.
+6. **Wheel rows with SDL (4.2, D3).** `SDL_JOYSTICK_TYPE_WHEEL` selects the wheel list/defaults; many wheels
+   report as plain joysticks and get the pad list. No other detection was specified.
+7. **Hot-plug (4.2).** The device list is built when the game starts (joysticks opened once); plugging a device
+   later needs a restart. The spec describes retail's "devices the game has opened" only.
+8. **Developer hot keys vs bindings.** OpenUG2's developer keys (G, F, K, `.`, L/J beams, free-camera WASD/Q/E)
+   overlap the retail default bindings (K = Look Back secondary, `.` = Shift Down secondary, J = Hydraulics
+   Bounce). Implemented: those developer keys stand back for any key bound to an on-screen action (L/J/K/`.`
+   only act while unbound); free-camera movement keys are unchanged. Not specified either way.
+9. **Actions without a game feature.** Reset Car, Enter Race/Shop, World Map, Read SMS, Career Statistics,
+   Hydraulics, and the hidden HUD/25/49-62 entries are bindable and persisted but nothing in OpenUG2 consumes
+   them yet (only Throttle, Back/Reverse, Steering, Handbrake, Nitrous, Shift Up/Down (drag races), Look Back,
+   Camera and Pause are wired).

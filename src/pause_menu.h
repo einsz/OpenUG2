@@ -27,6 +27,10 @@ void pause_menu_set_context(PauseMenu *p, const PauseContext *ctx);
  * (UI_PauseOptionsMain.fng) -> Display (page 1) -> Customize. The lent objects must outlive the menu;
  * the store may be NULL. */
 void pause_menu_set_options(PauseMenu *p, StGraphics *gfx, const StGfxCaps *caps, StRegStore *store);
+/* Controls screen (CONTROLS_SPEC): lends the bindings and joysticks and verifies the original resources the
+ * screen needs; the hub gets its fifth entry only when they are all present. Call after pause_menu_set_options. */
+struct CxInput;
+void pause_menu_set_controls(PauseMenu *p, struct CxInput *cx);
 int pause_menu_options_open(const PauseMenu *p);
 /* The options state machine, for the apply/re-init hook (om_take_reinit_request ...). NULL if p is NULL. */
 OptionsMenu *pause_menu_options(PauseMenu *p);

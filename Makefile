@@ -31,14 +31,14 @@ endif
 UGUI_IMAGE_LIBS := $(shell pkg-config --libs libpng libcrypto)
 override CFLAGS += $(shell pkg-config --cflags libpng libcrypto)
 # engine modules: orchestrator + Renderer/Physics/AI/Audio/Resources/World
-GAME_UI_SRC := $(wildcard src/ugui/*.c) src/pause_menu.c src/pause_screen.c src/pause_entries.c src/gui_view.c src/gui_carousel.c src/gui_dialog.c src/gui_layout.c src/gui_timing.c src/options_menu.c src/settings.c src/frontend/frontend.c src/frontend/frontend_draw.c
+GAME_UI_SRC := $(wildcard src/ugui/*.c) src/pause_menu.c src/pause_screen.c src/pause_entries.c src/gui_view.c src/gui_carousel.c src/gui_dialog.c src/gui_layout.c src/gui_timing.c src/options_menu.c src/settings.c src/controls_bind.c src/controls_menu.c src/controls_store.c src/controls_sdl.c src/frontend/frontend.c src/frontend/frontend_draw.c
 SRC  := src/main.c src/render.c src/render_params.c src/physics.c src/ai.c src/audio.c src/resource.c src/world.c src/world_instance.c src/world_resident.c src/world_mesh.c src/hud.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/rhi_gl_state.c src/rhi_gl.c src/camera.c src/tex_override.c $(GAME_UI_SRC)
 HDRS := src/world_collision_rules.h src/world_collision.h src/race_log.h src/race.h src/traffic_heatmap.h src/asset_chunks.h src/car_config.h src/car_mod.h src/nfsu2.h src/render.h src/physics.h src/ai.h src/audio.h src/resource.h src/debug.h src/world.h src/world_instance.h src/world_resident.h src/world_mesh.h src/world_capture_policy.h src/world_group_reader.h src/world_scenery.h src/ground_motion.h src/hud.h src/hud_asset.h src/hud_texture.h src/hud_baseline.h src/hud_host.h src/rhi_gl_state.h src/rhi.h src/rhi_gl.h src/render_params.h src/camera.h src/tex_override.h
-HDRS += src/options_menu.h src/settings.h src/pause_menu_binding.h src/pause_menu.h src/pause_menu_layout.h src/pause_screen.h src/pause_entries.h src/gui_view.h src/gui_carousel.h src/gui_dialog.h src/gui_layout.h src/gui_timing.h src/frontend/frontend.h src/frontend/frontend_draw.h $(wildcard src/ugui/*.h)
+HDRS += src/options_menu.h src/settings.h src/controls_bind.h src/controls_menu.h src/controls_store.h src/controls_sdl.h src/pause_menu_binding.h src/pause_menu.h src/pause_menu_layout.h src/pause_screen.h src/pause_entries.h src/gui_view.h src/gui_carousel.h src/gui_dialog.h src/gui_layout.h src/gui_timing.h src/frontend/frontend.h src/frontend/frontend_draw.h $(wildcard src/ugui/*.h)
 
 # Pure (GL-free, SDL-free) building blocks of the authored-art screens, shared by the game and the tests.
-GUI_ART_SRC := src/gui_timing.c src/pause_entries.c src/gui_carousel.c src/gui_dialog.c src/gui_layout.c src/pause_screen.c
-GUI_ART_HDR := $(wildcard src/gui_*.h) src/pause_entries.h src/pause_screen.h
+GUI_ART_SRC := src/gui_timing.c src/pause_entries.c src/gui_carousel.c src/gui_dialog.c src/gui_layout.c src/pause_screen.c src/controls_bind.c src/controls_menu.c
+GUI_ART_HDR := $(wildcard src/gui_*.h) src/pause_entries.h src/pause_screen.h src/controls_bind.h src/controls_menu.h
 
 .DEFAULT_GOAL := nfsu2   # keep `make` building the binary, not the generated header
 
@@ -444,6 +444,23 @@ settings-boundary-test: tools/settings_boundary_test.c src/settings.c src/settin
 	./build/settings_boundary_test
 .PHONY: settings-boundary-test
 
+# Controls screen logic (bindings, capture/steal rules, defaults, state machine, persistence) vs
+# docs/cleanroom-settings/test-vectors/controls (synthetic vectors, no retail data, no window).
+CONTROLS_SPEC ?= docs/cleanroom-settings
+CONTROLS_SRC := src/controls_store.c src/options_menu.c $(GUI_ART_SRC)
+CONTROLS_HDR := src/controls_bind.h src/controls_menu.h src/controls_store.h src/controls_sdl.h src/options_menu.h $(GUI_ART_HDR)
+build/controls_test: tools/controls_test.c tools/test_json.h $(CONTROLS_SRC) $(CONTROLS_HDR) src/settings.c src/settings.h src/ugui/ugui_util.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc -Isrc/ugui tools/controls_test.c $(CONTROLS_SRC) src/settings.c src/ugui/ugui_util.c -o $@ $(SETTINGS_LIBS) $(SDL_LIBS) -lm
+# SDL side (devices, samples, driving lookups, persistence) against an SDL virtual joystick; headless.
+build/controls_sdl_test: tools/controls_sdl_test.c $(CONTROLS_SRC) $(CONTROLS_HDR) src/controls_sdl.c src/settings.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/controls_sdl_test.c src/controls_sdl.c $(CONTROLS_SRC) src/settings.c -o $@ $(SETTINGS_LIBS) $(SDL_LIBS) -lm
+controls-test: build/controls_test build/controls_sdl_test
+	./build/controls_test "$(CONTROLS_SPEC)/test-vectors/controls"
+	SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=1 ./build/controls_sdl_test
+.PHONY: controls-test
+
 # RHI main-target clear, upload results, texture limit, state snapshots and GPU timers.
 rhi-frame-test: tools/rhi_frame_test.c src/rhi_gl.c src/rhi_gl_state.c src/rhi.h src/rhi_gl.h src/rhi_gl_state.h
 	@mkdir -p build
@@ -496,7 +513,7 @@ ugui-gl-state-test: tools/ugui_gl_state_test.c $(UGUI_SRC) src/ugui/ugui_gl.c sr
 PAUSE_TEST_INC := $(wildcard tools/pause_menu_*_test.inc)
 build/pause_menu_test: tools/pause_menu_test.c $(PAUSE_TEST_INC) tools/synth_pkgs.h tools/synth_fng.h src/pause_menu.c src/gui_view.c $(GUI_ART_SRC) $(HDRS) $(UGUI_SRC)
 	@mkdir -p build
-	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/pause_menu_test.c src/gui_view.c $(GUI_ART_SRC) src/options_menu.c src/settings.c $(UGUI_SRC) src/ugui/ugui_gl.c src/rhi_gl_state.c -o $@ $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) $(SETTINGS_LIBS) -lm
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/pause_menu_test.c src/gui_view.c $(GUI_ART_SRC) src/options_menu.c src/settings.c src/controls_store.c src/controls_sdl.c $(UGUI_SRC) src/ugui/ugui_gl.c src/rhi_gl_state.c -o $@ $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) $(SETTINGS_LIBS) -lm
 pause-menu-test: build/pause_menu_test
 	env -u UGUI_DATA -u NFSU2_DATA python3 tools/pause_menu_vector_check.py build/pause_menu_test tools/pause_menu_vectors
 	env -u UGUI_DATA -u NFSU2_DATA python3 tools/pause_menu_supplement_check.py build/pause_menu_test tools/pause_menu_vectors
@@ -515,7 +532,7 @@ pause-menu-gl-test: build/pause_menu_gl_test
 OPTIONS_SPEC ?= docs/cleanroom-settings
 build/gui_art_test: tools/gui_art_test.c tools/test_json.h $(GUI_ART_SRC) $(GUI_ART_HDR)
 	@mkdir -p build
-	$(CC) $(CFLAGS) -Isrc tools/gui_art_test.c $(GUI_ART_SRC) -o $@ -lm
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/gui_art_test.c $(GUI_ART_SRC) -o $@ -lm
 gui-art-test: build/gui_art_test
 	./build/gui_art_test "$(OPTIONS_SPEC)/test-vectors-gui"
 .PHONY: gui-art-test
@@ -524,7 +541,7 @@ gui-art-test: build/gui_art_test
 # data). GL-free and SDL-free.
 build/options_menu_test: tools/options_menu_test.c tools/test_json.h src/options_menu.c src/options_menu.h src/settings.c src/settings.h $(GUI_ART_SRC) $(GUI_ART_HDR)
 	@mkdir -p build
-	$(CC) $(CFLAGS) -Isrc tools/options_menu_test.c src/options_menu.c src/settings.c $(GUI_ART_SRC) -o $@ $(SETTINGS_LIBS) -lm
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/options_menu_test.c src/options_menu.c src/settings.c $(GUI_ART_SRC) -o $@ $(SETTINGS_LIBS) -lm
 options-menu-test: build/options_menu_test build/pause_menu_test gui-art-test
 	env -u UGUI_DATA -u NFSU2_DATA ./build/options_menu_test "$(OPTIONS_SPEC)/test-vectors-gui"
 	env -u UGUI_DATA -u NFSU2_DATA ./build/pause_menu_test options
@@ -533,7 +550,7 @@ options-menu-test: build/options_menu_test build/pause_menu_test gui-art-test
 # Authored presentation (gui_view.c, ug_scene_app_write) against synthetic in-memory packages. GL-free.
 build/gui_view_test: tools/gui_view_test.c tools/synth_pkgs.h tools/synth_fng.h src/gui_view.c src/options_menu.c src/settings.c $(GUI_ART_SRC) $(GUI_ART_HDR) $(UGUI_SRC) $(UGUI_HDR)
 	@mkdir -p build
-	$(CC) $(CFLAGS) $(UGUI_FLAGS) -Isrc tools/gui_view_test.c src/gui_view.c src/options_menu.c src/settings.c $(GUI_ART_SRC) $(UGUI_SRC) -o $@ $(UGUI_IMAGE_LIBS) $(SETTINGS_LIBS) -lm
+	$(CC) $(CFLAGS) $(UGUI_FLAGS) $(SDL_CFLAGS) -Isrc tools/gui_view_test.c src/gui_view.c src/options_menu.c src/settings.c $(GUI_ART_SRC) $(UGUI_SRC) -o $@ $(UGUI_IMAGE_LIBS) $(SETTINGS_LIBS) -lm
 gui-view-test: build/gui_view_test
 	env -u UGUI_DATA -u NFSU2_DATA ./build/gui_view_test
 .PHONY: gui-view-test
@@ -541,7 +558,7 @@ gui-view-test: build/gui_view_test
 # Coordinate frames, group composition and the anchor read rule vs tvg12 (SPEC_GUI_ART_AMEND1). GL-free.
 build/gui_frames_test: tools/gui_frames_test.c tools/synth_pkgs.h tools/synth_fng.h tools/test_json.h src/gui_view.c src/options_menu.c src/settings.c $(GUI_ART_SRC) $(GUI_ART_HDR) $(UGUI_SRC) $(UGUI_HDR)
 	@mkdir -p build
-	$(CC) $(CFLAGS) $(UGUI_FLAGS) -Isrc tools/gui_frames_test.c src/gui_view.c src/options_menu.c src/settings.c $(GUI_ART_SRC) $(UGUI_SRC) -o $@ $(UGUI_IMAGE_LIBS) $(SETTINGS_LIBS) -lm
+	$(CC) $(CFLAGS) $(UGUI_FLAGS) $(SDL_CFLAGS) -Isrc tools/gui_frames_test.c src/gui_view.c src/options_menu.c src/settings.c $(GUI_ART_SRC) $(UGUI_SRC) -o $@ $(UGUI_IMAGE_LIBS) $(SETTINGS_LIBS) -lm
 gui-frames-test: build/gui_frames_test
 	env -u UGUI_DATA -u NFSU2_DATA ./build/gui_frames_test "$(OPTIONS_SPEC)/test-vectors-gui"
 .PHONY: gui-frames-test

@@ -4,12 +4,16 @@
  *
  *   gui_view_test
  *
+ * Also the Controls binder (CONTROLS_SPEC 3) over a synthetic package that copies only the published object
+ * names, hashes and numbers.
  * Covers: base-key property writes (SPEC_GUI_ART 1.2), carousel binding and placement (3), list row
  * binding, slider parts, scrollbar, focus scripts, blink, dim, exit (4, 5), dialog binding (6). */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include <SDL_scancode.h>
 
 #include "../src/gui_timing.h"
 #include "../src/gui_view.h"
@@ -485,8 +489,161 @@ static void test_synth_roundtrip(void) {
     free(p);
 }
 
+/* ---- Controls (CONTROLS_SPEC 3) ---------------------------------------------------------------------- */
+static void build_controls_pkg(Pkg *p, int nslots, int with_tab) {
+    UgFngObject *tm = add(p, UG_OBJ_IMAGE, "TITLE_MASTER", -187, -88, 180, 36);
+    UgFngObject *dm = add(p, UG_OBJ_IMAGE, "DATA_MASTER", 11, -90, 150, 24);
+    UgFngObject *dm2 = add(p, UG_OBJ_IMAGE, "DATA_MASTER2", 173, -90, 150, 24);
+    anchor_chain(p, tm, -190, -87, -132, -120, 0);                /* A6: the chained position must never be used */
+    anchor_chain(p, dm, 8, -91, 109, -122, 0);
+    anchor_chain(p, dm2, 170, -91, 209, -122, 0);
+    add(p, UG_OBJ_TEXT, "Header_text", -289.7f, -220, 0.8f, 0.8f);
+    add(p, UG_OBJ_TEXT, NULL, -5, -169, 0.7f, 0.7f)->name_hash = 0x4E11CF90u;
+    UgFngObject *sl = add(p, UG_OBJ_IMAGE, NULL, -266, -158, 24, 24), *sr = add(p, UG_OBJ_IMAGE, NULL, 265, -158, 24, 24);
+    sl->name_hash = 0xD1CDA594u;
+    sr->name_hash = 0x9345E4A7u;
+    script(p, sl, hn("Blink"), 400); script(p, sl, hn("Static"), 0);
+    script(p, sr, hn("Blink"), 400); script(p, sr, hn("Static"), 0);
+    add(p, UG_OBJ_TEXT, NULL, 9, -138, 0.7f, 0.7f)->name_hash = 0x666593C4u;
+    add(p, UG_OBJ_TEXT, NULL, 172, -138, 0.7f, 0.7f)->name_hash = 0x59ABA1E8u;
+    add(p, UG_OBJ_TEXT, "Instructions_Label", -5, 153, 0.7f, 0.7f);
+    add(p, UG_OBJ_IMAGE, "ScrollBar_Backing", 273, 20, 8, 242);
+    if (with_tab) add(p, UG_OBJ_IMAGE, NULL, 273, -50, 16, 16)->name_hash = 0x3FBB7A4Eu;
+    UgFngObject *a1 = add(p, UG_OBJ_IMAGE, "ScrollBar_Arrow_1", 273, -126, 24, 24);
+    UgFngObject *a2 = add(p, UG_OBJ_IMAGE, "ScrollBar_Arrow_2", 273, 166, 24, 24);
+    script(p, a1, hn("Blink"), 400); script(p, a2, hn("Blink"), 400);
+    for (int n = 1; n <= nslots; n++) {
+        UgFngObject *nm = add(p, UG_OBJ_TEXT, NULL, 0, 6969, 0.7f, 0.7f);
+        nm->name_hash = hnf("option_name_%d", n);
+        script(p, nm, hn("Highlight"), 1200);
+        script(p, nm, hn("UnHighlight"), 0);
+        for (int side = 0; side < 2; side++) {
+            UgFngObject *d = add(p, UG_OBJ_TEXT, NULL, 0, 6969, 0.7f, 0.7f);
+            d->name_hash = hnf(side ? "OPTION_DATA_2_%d" : "option_data_%d", n);   /* the package mixes the cases */
+            d->justify = UG_J_CENTER;
+            script(p, d, hn("Highlight"), 1200);
+            script(p, d, hn("UnHighlight"), 0);
+            script(p, d, hn("Pulse"), 1200);
+        }
+        UgFngObject *b = add(p, UG_OBJ_GROUP, NULL, 0, 6969, 1, 1);
+        b->name_hash = hnf("Options_Backing_%d", n);
+        script(p, b, hn("Highlight"), 100);
+        script(p, b, hn("UnHighlight"), 100);
+    }
+    handler(p, "FORWARD", 500, 0);
+    finish(p);
+}
+
+static const char *fake_key(void *u, int sc) { static char buf[16]; (void)u; snprintf(buf, sizeof buf, "K%d", sc); return buf; }
+static void test_controls_view(void) {
+    CmPlatform plat = { NULL, fake_key, NULL };
+    Fake f;
+    fake_init(&f, NULL, 0);
+    strtab_put(&f.a.strings, 0x04DC6DB5u, "Controls!");
+    strtab_put(&f.a.strings, 0x5CF08EB7u, "Keyboard Configuration!");
+    strtab_put(&f.a.strings, 0x1B15F53Cu, "Primary!");
+    strtab_put(&f.a.strings, 0x37E740E0u, "Secondary!");
+    strtab_put(&f.a.strings, 0x8BAB66EFu, "Configure!");
+    strtab_put(&f.a.strings, 0x23CF49AAu, "Press!");
+    strtab_put(&f.a.strings, 0xFED0D3DFu, "Assign!");
+    strtab_put(&f.a.strings, 0x153E7337u, "Steering (Left)!");
+    strtab_put(&f.a.strings, 0x6F99F62Au, "Pause!");
+    Pkg *p = (Pkg *)calloc(1, sizeof *p);
+    build_controls_pkg(p, 20, 1);
+    GvScreen s;
+    CHECK(gv_screen_attach(&s, &p->pk, &f.a, "UI_Options_PC_Controller.fng"), "attach");
+    CbBindings *b = (CbBindings *)calloc(1, sizeof *b);
+    cb_bindings_defaults(b);
+    ControlsMenu m;
+    memset(&m, 0, sizeof m);
+    cm_open(&m, b, &plat);
+    GvControls v;
+    CHECK(gv_controls_bind(&v, &s, &m), "bind: %s", s.status);
+    CHECK(v.nslots == 20 && NEAR(v.tx, -277, 0.001) && NEAR(v.ty, -106, 0.001) && NEAR(v.th, 36, 0.001) &&
+          NEAR(v.dx[0], -64, 0.001) && NEAR(v.dx[1], 98, 0.001) && NEAR(v.dw, 150, 0.001),
+          "anchors are the authored centres (not the chained positions): tx %.1f ty %.1f dx %.1f/%.1f", v.tx, v.ty, v.dx[0], v.dx[1]);
+    gv_screen_update(&s, 0);
+    gv_controls_sync(&v, &m, 0);
+    const UgScene *sc = &s.scene;
+    CHECK(!strcmp(sc->nodes[v.header].text_override, "Controls!") && !strcmp(sc->nodes[v.title].text_override, "Keyboard Configuration!") &&
+          !strcmp(sc->nodes[v.col1].text_override, "Primary!") && !strcmp(sc->nodes[v.col2].text_override, "Secondary!") &&
+          !strcmp(sc->nodes[v.instr].text_override, "Configure!"), "fixed texts come from the language table");
+    /* a key without a language text leaves the object without an override: no substitute text exists */
+    CHECK(sc->nodes[v.row[2].name].text_override == NULL, "row label without a language text: no override");
+    CHECK(!strcmp(sc->nodes[v.row[1].name].text_override, "Steering (Left)!") && v.row[18].parked, "row 18 is outside the window");
+    /* placement (3.8): label (tx, y_k), cells centre 11 / 173, backing (-1, y_k + 8) */
+    for (int k = 0; k < 7; k++) {
+        const GvCtlRow *r = &v.row[k + 1];
+        float y = -106 + 36.0f * k;
+        const UgNode *nn = &sc->nodes[r->name], *d1 = &sc->nodes[r->data], *d2 = &sc->nodes[r->data2], *bg = &sc->nodes[r->backing];
+        CHECK(!nn->app_hidden && NEAR(nn->we, -277, 0.01) && NEAR(nn->wf, y, 0.01), "line %d label (%.2f,%.2f)", k, nn->we, nn->wf);
+        CHECK(NEAR(d1->we, 11, 0.01) && NEAR(d1->wf, y, 0.01) && NEAR(d2->we, 173, 0.01) && NEAR(d2->wf, y, 0.01), "line %d cells", k);
+        CHECK(NEAR(bg->we, -1, 0.01) && NEAR(bg->wf, y + 8, 0.01), "line %d backing (%.2f,%.2f)", k, bg->we, bg->wf);
+        CHECK(!strcmp(d1->text_override, k == 0 ? "K80" : d1->text_override), "line %d primary text \"%s\"", k, d1->text_override);
+        CHECK(k != 0 || !strcmp(d2->text_override, "K4"), "line 0 secondary text");
+    }
+    CHECK(sc->nodes[v.row[8].name].app_hidden && sc->nodes[v.row[8].name].wf >= GL_ROW_OFFSCREEN_Y - 0.01f &&
+          sc->nodes[v.row[18].data2].app_hidden, "rows outside the window are hidden and parked");
+    CHECK(sc->nodes[v.row[19].name].app_hidden && sc->nodes[v.row[20].data].app_hidden, "slots 19 and 20 are parked");
+    CHECK(!sc->nodes[v.row[1].backing].app_hidden && sc->nodes[v.row[2].backing].app_hidden, "only the focused row's backing shows");
+    CHECK(sc->nodes[v.arrow_l].app_hidden && sc->nodes[v.arrow_r].app_hidden, "selector arrows hidden with one device");
+    CHECK(!sc->nodes[v.rail].app_hidden && NEAR(sc->nodes[v.tab].wf, -101 + 8, 0.01), "scrollbar visible, tab on the first row");
+    /* focus, scroll window and tab */
+    for (int i = 0; i < 8; i++) cm_input(&m, CM_IN_DOWN);
+    gv_controls_sync(&v, &m, 16);
+    CHECK(m.focus_row == 8 && m.top == 2 && !sc->nodes[v.row[9].name].app_hidden && NEAR(sc->nodes[v.row[9].name].wf, -106 + 36.0f * 6, 0.01) &&
+          sc->nodes[v.row[2].name].app_hidden, "window scrolls by one line per move past the end");
+    CHECK(NEAR(sc->nodes[v.tab].wf, -101 + 8 + 226.0 * 8 / 17, 0.01), "tab follows the focused row: %.3f", sc->nodes[v.tab].wf);
+    cm_input(&m, CM_IN_UP);
+    for (int i = 0; i < 20; i++) cm_input(&m, CM_IN_UP);
+    float tab_before = sc->nodes[v.tab].wf;
+    gv_controls_sync(&v, &m, 16);
+    CHECK(m.focus_row == -1 && NEAR(sc->nodes[v.tab].wf, -101 + 8, 0.01) == (tab_before <= -92.99f), "tab is held while the selector is focused");
+    /* capture: Pulse on the cell for the keyboard path only, Highlight again afterwards, instruction texts */
+    cm_input(&m, CM_IN_DOWN);
+    gv_controls_sync(&v, &m, 16);
+    cm_input(&m, CM_IN_ACCEPT);
+    gv_controls_sync(&v, &m, 16);
+    CHECK(!strcmp(sc->nodes[v.instr].text_override, "Press!") && ug_scene_script_id(sc, v.row[1].data) == hn("Pulse"), "capture: instruction and Pulse");
+    cm_key_down(&m, SDL_SCANCODE_ESCAPE);
+    cm_tick(&m); cm_tick(&m);
+    gv_controls_sync(&v, &m, 16);
+    CHECK(!strcmp(sc->nodes[v.instr].text_override, "Assign!") && ug_scene_script_id(sc, v.row[1].data) == hn("Highlight"), "after the capture: third instruction, Highlight");
+    /* several devices: arrows shown, a change blinks the arrow of its direction */
+    cb_pad_defaults(&b->pad[0].dev, &(CbPadInfo){ 0, 0, 10, 0x3, 0 });
+    b->pad[0].present = 1;
+    cm_open(&m, b, &plat);
+    gv_controls_bind(&v, &s, &m);
+    cm_input(&m, CM_IN_UP);
+    cm_input(&m, CM_IN_RIGHT);
+    gv_controls_sync(&v, &m, 16);
+    CHECK(!sc->nodes[v.arrow_l].app_hidden && !sc->nodes[v.arrow_r].app_hidden && ug_scene_script_id(sc, v.arrow_r) == hn("Blink"), "arrows shown, right one blinks");
+    CHECK(!strcmp(sc->nodes[v.col1].text_override, "Primary!"), "texts again");
+    gv_screen_free(&s);
+    free(p);
+    /* a package without its tab object cannot be bound: the screen is unavailable, never substituted (R3) */
+    Pkg *q = (Pkg *)calloc(1, sizeof *q);
+    build_controls_pkg(q, 20, 0);
+    GvScreen s2;
+    CHECK(gv_screen_attach(&s2, &q->pk, &f.a, "UI_Options_PC_Controller.fng"), "attach 2");
+    cm_open(&m, b, &plat);
+    CHECK(!gv_controls_bind(&v, &s2, &m) && strstr(s2.status, "scrollbar"), "missing tab: %s", s2.status);
+    gv_screen_free(&s2);
+    free(q);
+    Pkg *r = (Pkg *)calloc(1, sizeof *r);
+    build_controls_pkg(r, 12, 1);
+    GvScreen s3;
+    CHECK(gv_screen_attach(&s3, &r->pk, &f.a, "UI_Options_PC_Controller.fng"), "attach 3");
+    CHECK(!gv_controls_bind(&v, &s3, &m) && strstr(s3.status, "row slots"), "too few row slots: %s", s3.status);
+    gv_screen_free(&s3);
+    free(r);
+    free(b);
+    fake_free(&f);
+}
+
 int main(void) {
     test_synth_roundtrip();
+    test_controls_view();
     test_app_write();
     test_carousel_view();
     test_list_view();

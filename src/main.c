@@ -48,6 +48,7 @@
 #include "pause_menu.h"
 #include "options_menu.h"
 #include "settings.h"
+#include "controls_sdl.h"
 #include "ugui/ugui_gl.h"
 #ifdef OPENUG2_MENU
 #include "frontend/frontend.h"
@@ -2060,6 +2061,7 @@ static int select_car_vinyl(int choice) {
  * The situation is the career free-roam pause (Return to Explore Mode, Options, Replay, Quit to Main
  * Menu): this host exposes no race lifecycle (restart / leave race) and no replay data, so the race
  * entries and an enabled Replay are not offered; the catalogue itself covers every context. */
+static CxInput g_cx;                                     /* key/button bindings (Controls screen) and joysticks */
 static PauseMenu *pause_menu_build(const char *dataroot, StGraphics *gfx, StGfxCaps *caps, StRegStore *store, int *store_open) {
     PauseMenu *pm = pause_menu_create(dataroot);
     if (!pm) return NULL;
@@ -2069,6 +2071,7 @@ static PauseMenu *pause_menu_build(const char *dataroot, StGraphics *gfx, StGfxC
     if (*store_open) st_gfx_load(store, gfx);
     st_gfx_clamp(gfx, caps);
     pause_menu_set_options(pm, gfx, caps, *store_open ? store : NULL);
+    pause_menu_set_controls(pm, &g_cx);                  /* fifth hub entry, if every original resource is present */
     PauseContext pc;
     pe_context_default(&pc);
     pause_menu_set_context(pm, &pc);
@@ -3737,6 +3740,7 @@ int main(int argc, char **argv) {
     SDL_GameController *controller = NULL;
     for (int i = 0; i < SDL_NumJoysticks() && !controller; i++)
         if (SDL_IsGameController(i)) controller = SDL_GameControllerOpen(i);
+    cx_init(&g_cx);                                      /* bindings: retail defaults, then the persisted ones */
     if (perf_csv) pf_open(perf_csv);
     /* S3TC lets car/rim TPK textures upload their DXT blocks directly
        (glCompressedTexImage2D) instead of the CPU-decoded RGBA. */
@@ -6279,9 +6283,11 @@ int main(int argc, char **argv) {
 #ifdef OPENUG2_MENU
             pause_allowed = !frontend_open;
 #endif
-            int pause_key = e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE;
-            int pause_start = e.type == SDL_CONTROLLERBUTTONDOWN &&
-                              e.cbutton.button == SDL_CONTROLLER_BUTTON_START;
+            int pause_key = e.type == SDL_KEYDOWN && cx_key_is(&g_cx, (int)e.key.keysym.scancode, CB_ACT_PAUSE);
+            int pause_start = (e.type == SDL_CONTROLLERBUTTONDOWN &&
+                               e.cbutton.button == SDL_CONTROLLER_BUTTON_START) ||
+                              (e.type == SDL_JOYBUTTONDOWN &&
+                               cx_joy_button_is(&g_cx, e.jbutton.which, e.jbutton.button, CB_ACT_PAUSE));
             if (pause_allowed && (pause_key || pause_start) && !pause_menu_is_open(pause_menu)) {
                 if (pause_key && e.key.repeat) continue;
                 /* Consume the whole opening frame so no queued input reaches driving. */
@@ -6319,13 +6325,15 @@ int main(int argc, char **argv) {
 #endif
             if(e.type==SDL_KEYDOWN && !e.key.repeat && !text_input) {
                 SDL_Keycode key=e.key.keysym.sym;
-                if(key==SDLK_PERIOD || key==SDLK_KP_PERIOD){g_dbg.race_log_mark=1;continue;}
+                int evsc=(int)e.key.keysym.scancode;
+                if((key==SDLK_PERIOD || key==SDLK_KP_PERIOD) && !cx_key_bound(&g_cx,evsc)){g_dbg.race_log_mark=1;continue;}
                 if(race_state==1 && !g_dbg.freecam && world.city.race.active &&
-                   world.city.race.kind==N2_RACE_DRAG &&
-                   (key==SDLK_q || key==SDLK_e || key==SDLK_a || key==SDLK_d || key==SDLK_LEFT || key==SDLK_RIGHT)) {
-                    if(key==SDLK_q || key==SDLK_e)drag_shift=key==SDLK_e?1:-1;
-                    else drag_change=(key==SDLK_a || key==SDLK_LEFT)?1:-1;
-                    continue;
+                   world.city.race.kind==N2_RACE_DRAG) {
+                    /* Shift Up/Down change gear, the steering actions change lane (Controls bindings) */
+                    int sup=cx_key_is(&g_cx,evsc,CB_ACT_SHIFT_UP), sdn=cx_key_is(&g_cx,evsc,CB_ACT_SHIFT_DOWN);
+                    int chl=cx_key_is(&g_cx,evsc,CB_ACT_STEER_LEFT), chr=cx_key_is(&g_cx,evsc,CB_ACT_STEER_RIGHT);
+                    if(sup || sdn){drag_shift=sup?1:-1;continue;}
+                    if(chl || chr){drag_change=chl?1:-1;continue;}
                 }
             }
 #ifdef DEBUG_UI
@@ -6395,6 +6403,7 @@ int main(int argc, char **argv) {
             }
             else if (e.type == SDL_KEYDOWN) {
                 SDL_Keycode k = e.key.keysym.sym;
+                int kbound = cx_key_bound(&g_cx, (int)e.key.keysym.scancode);   /* developer keys stand back for bindings */
 #ifdef OPENUG2_MENU
                 if (frontend_open && !e.key.repeat &&
                     (k == SDLK_UP || k == SDLK_DOWN || k == SDLK_RETURN ||
@@ -6405,18 +6414,18 @@ int main(int argc, char **argv) {
                 }
                 else
 #endif
-                if (k == SDLK_g && hud && !e.key.repeat) {
+                if (k == SDLK_g && hud && !e.key.repeat && !kbound) {
                     g_dbg.gps_n = 0; g_dbg.gps_request = 0;   /* cancel guidance */
                     printf("HUD: destination cleared\n");
                 }
-                else if (k == SDLK_c && !e.key.repeat && race_state != 3) {
-                    /* Change Camera: C next view, Shift+C previous (SPEC 2.3). */
+                else if (cx_key_is(&g_cx, (int)e.key.keysym.scancode, CB_ACT_CAMERA) && !e.key.repeat && race_state != 3) {
+                    /* Change Camera (binding): next view, with Shift previous (SPEC 2.3). */
                     int drift_ev=world.city.race.active && world.city.race.kind==N2_RACE_DRIFT;
                     int ev_id=world.city.race.active && world.city.race.ev>=0
                         ? world.city.ev[world.city.race.ev].id : 0;
                     gamecam_cycle(&gc,(e.key.keysym.mod & KMOD_SHIFT)?-1:1,cam_drift_allowed(drift_ev,ev_id));
                 }
-                else if (k == SDLK_f && race_state != 3) {
+                else if (k == SDLK_f && race_state != 3 && !kbound) {
                     if(!e.key.repeat){g_dbg.freecam ^= 1;mlook=0;}
                 }
                 else if (k == SDLK_F3) {   /* cycle world render debug view */
@@ -6447,7 +6456,7 @@ int main(int argc, char **argv) {
                         break;
                     }
                 }
-                else if (k == SDLK_k && !e.key.repeat && nkit_ids>0) {
+                else if (k == SDLK_k && !e.key.repeat && nkit_ids>0 && !kbound) {
                     g_dbg.body_kit_request=kit_ids[(kit_cursor+1)%nkit_ids];
                 }
                 else if (race_state == 3) {   /* pre-race menu navigation */
@@ -7375,8 +7384,8 @@ int main(int argc, char **argv) {
         beam_keys=beam_keys && !dbgui_want_keyboard();
         driving_keys=driving_keys && !(g_devui && dbgui_want_text());
 #endif
-        int beam_high=g_dbg.headlight_mode==1 || (beam_keys && ks[SDL_SCANCODE_L]);
-        int beam_flash=beam_keys && ks[SDL_SCANCODE_J];
+        int beam_high=g_dbg.headlight_mode==1 || (beam_keys && ks[SDL_SCANCODE_L] && !cx_key_bound(&g_cx,SDL_SCANCODE_L));
+        int beam_flash=beam_keys && ks[SDL_SCANCODE_J] && !cx_key_bound(&g_cx,SDL_SCANCODE_J);
         int headlights_on=(g_dbg.night_mode && (g_dbg.headlight_mode!=2 || beam_high)) || beam_flash;
         int race_nos_allowed = !world.city.race.active || world.city.race.ev<0 ||
             (world.city.ev[world.city.race.ev].info.kind!=N2_RACE_STREETX &&
@@ -7385,7 +7394,7 @@ int main(int argc, char **argv) {
         gamecam_load_car(&gc,dataroot,carname);
         int gc_drift=world.city.race.active && world.city.race.kind==N2_RACE_DRIFT;
         gamecam_event(&gc,world.city.race.active,world.city.race.ev,gc_drift);
-        gc.look_back=race_state!=3 && (arg_look_back || (beam_keys && driving_keys && ks[SDL_SCANCODE_B]));
+        gc.look_back=race_state!=3 && (arg_look_back || (beam_keys && driving_keys && cx_action_down(&g_cx,ks,CB_ACT_LOOK_BACK)));
         cam_set_look_back(&gc.cam,gc.look_back);
         AiCar live_pose={.pos={carpos[0],carpos[1],carpos[2]},.vel={vel[0],vel[1]},.head=heading,.spd=speed,
             .wheel_angle=player_wheel_angle,.steer=steer_filtered,.ride=g_ride,.ride_ready=g_ride_ready};
@@ -7414,11 +7423,13 @@ int main(int argc, char **argv) {
         }
         throttle=0.0f;
         if (race_state == 1 && driving_keys) {
-            if      (ks[SDL_SCANCODE_W] || (shot && !sstatic && !capture_policy.freeze_motion && !perf_still)) throttle =  1.0f;
-            else if (ks[SDL_SCANCODE_S])         throttle = -1.0f;
+            float bound_throttle = cx_throttle(&g_cx, ks);      /* Throttle / Back-Reverse bindings, pad axes */
+            if      (bound_throttle > 0.0f) throttle = bound_throttle;
+            else if (shot && !sstatic && !capture_policy.freeze_motion && !perf_still) throttle = 1.0f;
+            else if (bound_throttle < 0.0f)      throttle = bound_throttle;
         }
-        float steer = !driving_keys?0:(ks[SDL_SCANCODE_A]?1.f:0.f) - (ks[SDL_SCANCODE_D]?1.f:0.f);
-        handbrake = (race_state==1 && driving_keys && ks[SDL_SCANCODE_SPACE]);
+        float steer = !driving_keys?0:cx_steer(&g_cx, ks);   /* Steering bindings, +1 left */
+        handbrake = (race_state==1 && driving_keys && cx_action_down(&g_cx, ks, CB_ACT_HANDBRAKE));
         /* Auto-drive (camera-spring test): steady throttle + smooth sine steer fed
            straight into the physics, so the car throws itself through an S-curve
            hands-free. Interactive only -- gated on !shot so it never fights the
@@ -7569,7 +7580,7 @@ int main(int argc, char **argv) {
            for the open-world racer invitation signal. N is the compact nitro
            trigger used by the visual pass below. */
         nitro_active = race_nos_allowed && race_state == 1 &&
-                           ks[SDL_SCANCODE_N] && throttle > 0.1f && speed > 0.02f;
+                           cx_action_down(&g_cx, ks, CB_ACT_NITROUS) && throttle > 0.1f && speed > 0.02f;
         float nitro_target = nitro_active ? 1.0f : 0.0f;
         nitro_fx += (nitro_target - nitro_fx) * 0.18f;
         /* Surface-aware handling (M114): query the selected centre contact layer,
@@ -10493,7 +10504,7 @@ int main(int argc, char **argv) {
                 float dt = hud_preview_clock_ms > 0.0 ? (float)((now - hud_preview_clock_ms) * 0.001) : 0.0f;
                 hud_preview_clock_ms = now;
                 hud_preview_tank = hud_host_preview_tank_step(hud_preview_tank,
-                    race_nos_allowed && ks[SDL_SCANCODE_N], dt);
+                    race_nos_allowed && cx_action_down(&g_cx, ks, CB_ACT_NITROUS), dt);
                 hud_host_preview_apply(&hs, hud_preview_tank);
             }
             hud_last_state = hs;
@@ -11453,6 +11464,7 @@ int main(int argc, char **argv) {
 #ifdef OPENUG2_MENU
     fed_free(frontend_draw);
 #endif
+    cx_shutdown(&g_cx);
     if (controller) SDL_GameControllerClose(controller);
     world_texture_cache_clear();
     free_road_reflections(&road_reflections);
