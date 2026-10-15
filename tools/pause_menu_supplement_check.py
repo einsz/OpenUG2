@@ -61,8 +61,9 @@ for case in json.loads((root/'binding.json').read_text())['cases']:
         expected=case['expected']
         assert got['selected_texture']==expected['selected_texture']
         assert got['neighbor_texture']==expected.get('right_neighbor_texture',expected.get('left_neighbor_texture'))
-        assert got['caption']==('Return to Explore Mode' if case['input']['selected']==0 else 'Quit Game')
+        assert got['caption']==('Return to Explore Mode' if case['input']['selected']==0 else 'Quit to Main Menu')   # SPEC_GUI_ART 2.2 captions
     elif case['case']=='unpopulated':assert got['caption']=='' and got['selected_texture']=='0x00000000'
     else:assert got['caption']=='Return to Explore Mode'
-    assert got['pool_alpha']==119
-print('pause binding: 14 role identities + 10 pool identities + all 4 integration cases PASS (synthetic fixtures; retail facts unverified)')
+    # SPEC_GUI_ART 3.3: written slot colours are white/255 (the authored 119 stays only where nothing is shown)
+    assert got['pool_alpha']==(119 if case['case']=='unpopulated' else 255)
+print('pause binding: 14 role identities + 10 pool identities + all 4 integration cases PASS through the adapter (synthetic fixtures; retail facts unverified)')

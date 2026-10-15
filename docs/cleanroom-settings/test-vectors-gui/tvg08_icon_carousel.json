@@ -1,0 +1,1883 @@
+{
+ "description": "Icon carousel layout (UI_pause.fng and UI_PauseOptionsMain.fng). SPEC_GUI_ART section 3. Centred 640x480 units. Rest states (scroll animation finished) unless \"tween\" is given. Synthetic; formulas [static], end-to-end check against the retail pause screenshot: rest state N=4,c=1 tab x -270 matches the observed marker at centred (-270,-51.6).",
+ "constants": {
+  "UI_pause.fng": {
+   "OPTION_MASTER_centre": [
+    0.388,
+    -14.296
+   ],
+   "item_size": [
+    118,
+    59
+   ],
+   "pitch": 158,
+   "window_half_width": 240,
+   "ScrollBar_Backing_centre": [
+    3,
+    -52
+   ],
+   "ScrollBar_Backing_size": [
+    562,
+    8
+   ],
+   "ScrollBar_Handle_size": [
+    16,
+    16
+   ]
+  },
+  "UI_PauseOptionsMain.fng": {
+   "OPTION_MASTER_centre": [
+    0.388,
+    -14.296
+   ],
+   "item_size": [
+    118,
+    59
+   ],
+   "pitch": 158,
+   "window_half_width": 240,
+   "ScrollBar_Backing_centre": [
+    3,
+    -52
+   ],
+   "ScrollBar_Backing_size": [
+    564,
+    8
+   ],
+   "ScrollBar_Handle_size": [
+    16,
+    16
+   ]
+  }
+ },
+ "rest": [
+  {
+   "package": "UI_pause.fng",
+   "N": 1,
+   "current": 1,
+   "scroll_offset": 0.0,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      0.388,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true
+    }
+   ],
+   "tab_centre_x": null,
+   "tab_visible": false,
+   "left_arrow_visible": false,
+   "right_arrow_visible": false
+  },
+  {
+   "package": "UI_pause.fng",
+   "N": 2,
+   "current": 1,
+   "scroll_offset": 0.0,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      0.388,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_2",
+     "centre": [
+      158.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    }
+   ],
+   "tab_centre_x": -270.0,
+   "tab_visible": true,
+   "left_arrow_visible": false,
+   "right_arrow_visible": true
+  },
+  {
+   "package": "UI_pause.fng",
+   "N": 2,
+   "current": 2,
+   "scroll_offset": -158.0,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      -157.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_2",
+     "centre": [
+      0.388,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true
+    }
+   ],
+   "tab_centre_x": 276.0,
+   "tab_visible": true,
+   "left_arrow_visible": true,
+   "right_arrow_visible": false
+  },
+  {
+   "package": "UI_pause.fng",
+   "N": 4,
+   "current": 1,
+   "scroll_offset": 0.0,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      0.388,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_2",
+     "centre": [
+      158.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_3",
+     "centre": [
+      316.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    },
+    {
+     "slot": "option_4",
+     "centre": [
+      474.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    }
+   ],
+   "tab_centre_x": -270.0,
+   "tab_visible": true,
+   "left_arrow_visible": false,
+   "right_arrow_visible": true
+  },
+  {
+   "package": "UI_pause.fng",
+   "N": 4,
+   "current": 2,
+   "scroll_offset": -158.0,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      -157.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_2",
+     "centre": [
+      0.388,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_3",
+     "centre": [
+      158.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_4",
+     "centre": [
+      316.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    }
+   ],
+   "tab_centre_x": -88.0,
+   "tab_visible": true,
+   "left_arrow_visible": true,
+   "right_arrow_visible": true
+  },
+  {
+   "package": "UI_pause.fng",
+   "N": 4,
+   "current": 3,
+   "scroll_offset": -316.0,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      -315.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    },
+    {
+     "slot": "option_2",
+     "centre": [
+      -157.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_3",
+     "centre": [
+      0.388,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_4",
+     "centre": [
+      158.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    }
+   ],
+   "tab_centre_x": 94.0,
+   "tab_visible": true,
+   "left_arrow_visible": true,
+   "right_arrow_visible": true
+  },
+  {
+   "package": "UI_pause.fng",
+   "N": 4,
+   "current": 4,
+   "scroll_offset": -474.0,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      -473.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    },
+    {
+     "slot": "option_2",
+     "centre": [
+      -315.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    },
+    {
+     "slot": "option_3",
+     "centre": [
+      -157.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_4",
+     "centre": [
+      0.388,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true
+    }
+   ],
+   "tab_centre_x": 276.0,
+   "tab_visible": true,
+   "left_arrow_visible": true,
+   "right_arrow_visible": false
+  },
+  {
+   "package": "UI_pause.fng",
+   "N": 6,
+   "current": 1,
+   "scroll_offset": 0.0,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      0.388,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_2",
+     "centre": [
+      158.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_3",
+     "centre": [
+      316.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    },
+    {
+     "slot": "option_4",
+     "centre": [
+      474.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    },
+    {
+     "slot": "option_5",
+     "centre": [
+      632.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    },
+    {
+     "slot": "option_6",
+     "centre": [
+      790.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    }
+   ],
+   "tab_centre_x": -270.0,
+   "tab_visible": true,
+   "left_arrow_visible": false,
+   "right_arrow_visible": true
+  },
+  {
+   "package": "UI_pause.fng",
+   "N": 6,
+   "current": 2,
+   "scroll_offset": -158.0,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      -157.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_2",
+     "centre": [
+      0.388,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_3",
+     "centre": [
+      158.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_4",
+     "centre": [
+      316.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    },
+    {
+     "slot": "option_5",
+     "centre": [
+      474.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    },
+    {
+     "slot": "option_6",
+     "centre": [
+      632.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    }
+   ],
+   "tab_centre_x": -160.8,
+   "tab_visible": true,
+   "left_arrow_visible": true,
+   "right_arrow_visible": true
+  },
+  {
+   "package": "UI_pause.fng",
+   "N": 6,
+   "current": 3,
+   "scroll_offset": -316.0,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      -315.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    },
+    {
+     "slot": "option_2",
+     "centre": [
+      -157.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_3",
+     "centre": [
+      0.388,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_4",
+     "centre": [
+      158.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_5",
+     "centre": [
+      316.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    },
+    {
+     "slot": "option_6",
+     "centre": [
+      474.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    }
+   ],
+   "tab_centre_x": -51.6,
+   "tab_visible": true,
+   "left_arrow_visible": true,
+   "right_arrow_visible": true
+  },
+  {
+   "package": "UI_pause.fng",
+   "N": 6,
+   "current": 4,
+   "scroll_offset": -474.0,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      -473.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    },
+    {
+     "slot": "option_2",
+     "centre": [
+      -315.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    },
+    {
+     "slot": "option_3",
+     "centre": [
+      -157.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_4",
+     "centre": [
+      0.388,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_5",
+     "centre": [
+      158.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_6",
+     "centre": [
+      316.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    }
+   ],
+   "tab_centre_x": 57.6,
+   "tab_visible": true,
+   "left_arrow_visible": true,
+   "right_arrow_visible": true
+  },
+  {
+   "package": "UI_pause.fng",
+   "N": 6,
+   "current": 5,
+   "scroll_offset": -632.0,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      -631.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    },
+    {
+     "slot": "option_2",
+     "centre": [
+      -473.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    },
+    {
+     "slot": "option_3",
+     "centre": [
+      -315.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    },
+    {
+     "slot": "option_4",
+     "centre": [
+      -157.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_5",
+     "centre": [
+      0.388,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_6",
+     "centre": [
+      158.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    }
+   ],
+   "tab_centre_x": 166.8,
+   "tab_visible": true,
+   "left_arrow_visible": true,
+   "right_arrow_visible": true
+  },
+  {
+   "package": "UI_pause.fng",
+   "N": 6,
+   "current": 6,
+   "scroll_offset": -790.0,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      -789.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    },
+    {
+     "slot": "option_2",
+     "centre": [
+      -631.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    },
+    {
+     "slot": "option_3",
+     "centre": [
+      -473.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    },
+    {
+     "slot": "option_4",
+     "centre": [
+      -315.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    },
+    {
+     "slot": "option_5",
+     "centre": [
+      -157.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_6",
+     "centre": [
+      0.388,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true
+    }
+   ],
+   "tab_centre_x": 276.0,
+   "tab_visible": true,
+   "left_arrow_visible": true,
+   "right_arrow_visible": false
+  },
+  {
+   "package": "UI_PauseOptionsMain.fng",
+   "N": 4,
+   "current": 1,
+   "scroll_offset": 0.0,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      0.388,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_2",
+     "centre": [
+      158.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_3",
+     "centre": [
+      316.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    },
+    {
+     "slot": "option_4",
+     "centre": [
+      474.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    }
+   ],
+   "tab_centre_x": -271.0,
+   "tab_visible": true,
+   "left_arrow_visible": false,
+   "right_arrow_visible": true
+  },
+  {
+   "package": "UI_PauseOptionsMain.fng",
+   "N": 4,
+   "current": 2,
+   "scroll_offset": -158.0,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      -157.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_2",
+     "centre": [
+      0.388,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_3",
+     "centre": [
+      158.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_4",
+     "centre": [
+      316.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    }
+   ],
+   "tab_centre_x": -88.333,
+   "tab_visible": true,
+   "left_arrow_visible": true,
+   "right_arrow_visible": true
+  },
+  {
+   "package": "UI_PauseOptionsMain.fng",
+   "N": 4,
+   "current": 3,
+   "scroll_offset": -316.0,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      -315.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    },
+    {
+     "slot": "option_2",
+     "centre": [
+      -157.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_3",
+     "centre": [
+      0.388,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_4",
+     "centre": [
+      158.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    }
+   ],
+   "tab_centre_x": 94.333,
+   "tab_visible": true,
+   "left_arrow_visible": true,
+   "right_arrow_visible": true
+  },
+  {
+   "package": "UI_PauseOptionsMain.fng",
+   "N": 4,
+   "current": 4,
+   "scroll_offset": -474.0,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      -473.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    },
+    {
+     "slot": "option_2",
+     "centre": [
+      -315.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    },
+    {
+     "slot": "option_3",
+     "centre": [
+      -157.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_4",
+     "centre": [
+      0.388,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true
+    }
+   ],
+   "tab_centre_x": 277.0,
+   "tab_visible": true,
+   "left_arrow_visible": true,
+   "right_arrow_visible": false
+  }
+ ],
+ "tween": [
+  {
+   "package": "UI_pause.fng",
+   "N": 4,
+   "current": 2,
+   "scroll_offset": 0.0,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      0.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_2",
+     "centre": [
+      158.388,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_3",
+     "centre": [
+      316.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    },
+    {
+     "slot": "option_4",
+     "centre": [
+      474.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    }
+   ],
+   "tab_centre_x": -88.0,
+   "tab_visible": true,
+   "left_arrow_visible": true,
+   "right_arrow_visible": true,
+   "tween": {
+    "from_current": 1,
+    "to_current": 2,
+    "elapsed_s": 0.0,
+    "note": "current (full-size item, tab, arrows) switch immediately; only the scroll offset is animated"
+   }
+  },
+  {
+   "package": "UI_pause.fng",
+   "N": 4,
+   "current": 2,
+   "scroll_offset": -11.704,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      -11.316,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_2",
+     "centre": [
+      146.684,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_3",
+     "centre": [
+      304.684,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    },
+    {
+     "slot": "option_4",
+     "centre": [
+      462.684,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    }
+   ],
+   "tab_centre_x": -88.0,
+   "tab_visible": true,
+   "left_arrow_visible": true,
+   "right_arrow_visible": true,
+   "tween": {
+    "from_current": 1,
+    "to_current": 2,
+    "elapsed_s": 0.05,
+    "note": "current (full-size item, tab, arrows) switch immediately; only the scroll offset is animated"
+   }
+  },
+  {
+   "package": "UI_pause.fng",
+   "N": 4,
+   "current": 2,
+   "scroll_offset": -40.963,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      -40.575,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_2",
+     "centre": [
+      117.425,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_3",
+     "centre": [
+      275.425,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    },
+    {
+     "slot": "option_4",
+     "centre": [
+      433.425,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    }
+   ],
+   "tab_centre_x": -88.0,
+   "tab_visible": true,
+   "left_arrow_visible": true,
+   "right_arrow_visible": true,
+   "tween": {
+    "from_current": 1,
+    "to_current": 2,
+    "elapsed_s": 0.1,
+    "note": "current (full-size item, tab, arrows) switch immediately; only the scroll offset is animated"
+   }
+  },
+  {
+   "package": "UI_pause.fng",
+   "N": 4,
+   "current": 2,
+   "scroll_offset": -79.0,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      -78.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_2",
+     "centre": [
+      79.388,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_3",
+     "centre": [
+      237.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_4",
+     "centre": [
+      395.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    }
+   ],
+   "tab_centre_x": -88.0,
+   "tab_visible": true,
+   "left_arrow_visible": true,
+   "right_arrow_visible": true,
+   "tween": {
+    "from_current": 1,
+    "to_current": 2,
+    "elapsed_s": 0.15,
+    "note": "current (full-size item, tab, arrows) switch immediately; only the scroll offset is animated"
+   }
+  },
+  {
+   "package": "UI_pause.fng",
+   "N": 4,
+   "current": 2,
+   "scroll_offset": -117.037,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      -116.649,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_2",
+     "centre": [
+      41.351,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_3",
+     "centre": [
+      199.351,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_4",
+     "centre": [
+      357.351,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    }
+   ],
+   "tab_centre_x": -88.0,
+   "tab_visible": true,
+   "left_arrow_visible": true,
+   "right_arrow_visible": true,
+   "tween": {
+    "from_current": 1,
+    "to_current": 2,
+    "elapsed_s": 0.2,
+    "note": "current (full-size item, tab, arrows) switch immediately; only the scroll offset is animated"
+   }
+  },
+  {
+   "package": "UI_pause.fng",
+   "N": 4,
+   "current": 2,
+   "scroll_offset": -146.296,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      -145.908,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_2",
+     "centre": [
+      12.092,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_3",
+     "centre": [
+      170.092,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_4",
+     "centre": [
+      328.092,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    }
+   ],
+   "tab_centre_x": -88.0,
+   "tab_visible": true,
+   "left_arrow_visible": true,
+   "right_arrow_visible": true,
+   "tween": {
+    "from_current": 1,
+    "to_current": 2,
+    "elapsed_s": 0.25,
+    "note": "current (full-size item, tab, arrows) switch immediately; only the scroll offset is animated"
+   }
+  },
+  {
+   "package": "UI_pause.fng",
+   "N": 4,
+   "current": 2,
+   "scroll_offset": -158.0,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      -157.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_2",
+     "centre": [
+      0.388,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_3",
+     "centre": [
+      158.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_4",
+     "centre": [
+      316.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    }
+   ],
+   "tab_centre_x": -88.0,
+   "tab_visible": true,
+   "left_arrow_visible": true,
+   "right_arrow_visible": true,
+   "tween": {
+    "from_current": 1,
+    "to_current": 2,
+    "elapsed_s": 0.3,
+    "note": "current (full-size item, tab, arrows) switch immediately; only the scroll offset is animated"
+   }
+  },
+  {
+   "package": "UI_pause.fng",
+   "N": 4,
+   "current": 2,
+   "scroll_offset": -158.0,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      -157.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_2",
+     "centre": [
+      0.388,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_3",
+     "centre": [
+      158.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true
+    },
+    {
+     "slot": "option_4",
+     "centre": [
+      316.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false
+    }
+   ],
+   "tab_centre_x": -88.0,
+   "tab_visible": true,
+   "left_arrow_visible": true,
+   "right_arrow_visible": true,
+   "tween": {
+    "from_current": 1,
+    "to_current": 2,
+    "elapsed_s": 0.35,
+    "note": "current (full-size item, tab, arrows) switch immediately; only the scroll offset is animated"
+   }
+  }
+ ],
+ "edge_fade": [
+  {
+   "package": "UI_pause.fng",
+   "N": 4,
+   "current": 1,
+   "scroll_offset": 0.0,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      0.388,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true,
+     "edge_fade_factor": 1.0,
+     "alpha_enabled_item": 255,
+     "alpha_disabled_item": 150
+    },
+    {
+     "slot": "option_2",
+     "centre": [
+      158.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true,
+     "edge_fade_factor": 0.869,
+     "alpha_enabled_item": 221,
+     "alpha_disabled_item": 130
+    },
+    {
+     "slot": "option_3",
+     "centre": [
+      316.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false,
+     "edge_fade_factor": 0.0,
+     "alpha_enabled_item": 0,
+     "alpha_disabled_item": 0
+    },
+    {
+     "slot": "option_4",
+     "centre": [
+      474.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false,
+     "edge_fade_factor": 0.0,
+     "alpha_enabled_item": 0,
+     "alpha_disabled_item": 0
+    }
+   ],
+   "tab_centre_x": -270.0,
+   "tab_visible": true,
+   "left_arrow_visible": false,
+   "right_arrow_visible": true
+  },
+  {
+   "package": "UI_pause.fng",
+   "N": 4,
+   "current": 2,
+   "scroll_offset": -158.0,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      -157.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true,
+     "edge_fade_factor": 0.869,
+     "alpha_enabled_item": 221,
+     "alpha_disabled_item": 130
+    },
+    {
+     "slot": "option_2",
+     "centre": [
+      0.388,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true,
+     "edge_fade_factor": 1.0,
+     "alpha_enabled_item": 255,
+     "alpha_disabled_item": 150
+    },
+    {
+     "slot": "option_3",
+     "centre": [
+      158.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true,
+     "edge_fade_factor": 0.869,
+     "alpha_enabled_item": 221,
+     "alpha_disabled_item": 130
+    },
+    {
+     "slot": "option_4",
+     "centre": [
+      316.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false,
+     "edge_fade_factor": 0.0,
+     "alpha_enabled_item": 0,
+     "alpha_disabled_item": 0
+    }
+   ],
+   "tab_centre_x": -88.0,
+   "tab_visible": true,
+   "left_arrow_visible": true,
+   "right_arrow_visible": true
+  },
+  {
+   "package": "UI_pause.fng",
+   "N": 4,
+   "current": 3,
+   "scroll_offset": -316.0,
+   "items": [
+    {
+     "slot": "option_1",
+     "centre": [
+      -315.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": false,
+     "edge_fade_factor": 0.0,
+     "alpha_enabled_item": 0,
+     "alpha_disabled_item": 0
+    },
+    {
+     "slot": "option_2",
+     "centre": [
+      -157.612,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true,
+     "edge_fade_factor": 0.869,
+     "alpha_enabled_item": 221,
+     "alpha_disabled_item": 130
+    },
+    {
+     "slot": "option_3",
+     "centre": [
+      0.388,
+      -14.296
+     ],
+     "size": [
+      118.0,
+      59.0
+     ],
+     "visible": true,
+     "edge_fade_factor": 1.0,
+     "alpha_enabled_item": 255,
+     "alpha_disabled_item": 150
+    },
+    {
+     "slot": "option_4",
+     "centre": [
+      158.388,
+      -14.296
+     ],
+     "size": [
+      94.4,
+      47.2
+     ],
+     "visible": true,
+     "edge_fade_factor": 0.869,
+     "alpha_enabled_item": 221,
+     "alpha_disabled_item": 130
+    }
+   ],
+   "tab_centre_x": 94.0,
+   "tab_visible": true,
+   "left_arrow_visible": true,
+   "right_arrow_visible": true
+  }
+ ]
+}

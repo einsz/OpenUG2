@@ -47,6 +47,8 @@
 #include "debug.h"
 #include "camera.h"      /* gameplay camera (docs/CAMERA.md) */
 #include "pause_menu.h"
+#include "options_menu.h"
+#include "settings.h"
 #include "ugui/ugui_gl.h"
 #ifdef OPENUG2_MENU
 #include "frontend/frontend.h"
@@ -2062,6 +2064,27 @@ static void stage1_presentation(const Stage1Drive *s,int *gear,int *changing) {
     *changing=d->gear!=d->target_gear || d->mode==DRV_CLUTCH_DISENGAGING || d->mode==DRV_CLUTCH_OPEN;
 }
 
+
+/* Creates the pause menu with everything it needs: the genuine pause resources and the graphics
+ * settings the Options entry edits (SPEC_GUI). Every place that creates the menu goes through here, so
+ * the normal game path and the --pause-shot capture show the same entries (SPEC_GUI_ART 2.2).
+ * The situation is the career free-roam pause (Return to Explore Mode, Options, Replay, Quit to Main
+ * Menu): this host exposes no race lifecycle (restart / leave race) and no replay data, so the race
+ * entries and an enabled Replay are not offered; the catalogue itself covers every context. */
+static PauseMenu *pause_menu_build(const char *dataroot, StGraphics *gfx, StGfxCaps *caps, StRegStore *store, int *store_open) {
+    PauseMenu *pm = pause_menu_create(dataroot);
+    if (!pm) return NULL;
+    st_gfx_defaults(gfx);
+    st_gfx_caps_full(caps, 1);                           /* FSAA levels unknown until the renderer reports them */
+    *store_open = st_reg_open_default(store) == ST_OK;
+    if (*store_open) st_gfx_load(store, gfx);
+    st_gfx_clamp(gfx, caps);
+    pause_menu_set_options(pm, gfx, caps, *store_open ? store : NULL);
+    PauseContext pc;
+    pe_context_default(&pc);
+    pause_menu_set_context(pm, &pc);
+    return pm;
+}
 
 int main(int argc, char **argv) {
     collide_walls_selftest();
@@ -6233,6 +6256,9 @@ int main(int argc, char **argv) {
     unsigned log_serial=0;int log_event=-1;
     PauseMenu *pause_menu = NULL;
     int pause_cursor = SDL_ENABLE;
+    /* Graphics options (SPEC_GUI): the pause menu edits these in place and writes them on Back from
+     * Display. The renderer does not read them yet: see the re-init hook after pause_menu_update. */
+    StGraphics opt_gfx;StGfxCaps opt_caps;StRegStore opt_store;int opt_store_open=0;
     while (running) {
         pf_mark(PF_FRAME_TOP);
         uint32_t resident_frame_begin = SDL_GetTicks();
@@ -6291,7 +6317,7 @@ int main(int argc, char **argv) {
                 if (pause_key && e.key.repeat) continue;
                 /* Consume the whole opening frame so no queued input reaches driving. */
                 pause_frame = 1;
-                if (!pause_menu) pause_menu = pause_menu_create(dataroot);
+                if (!pause_menu) pause_menu = pause_menu_build(dataroot, &opt_gfx, &opt_caps, &opt_store, &opt_store_open);
                 if (pause_menu) {
                     pause_menu_open(pause_menu);
                     pause_cursor = SDL_ShowCursor(SDL_QUERY);
@@ -6562,11 +6588,27 @@ int main(int argc, char **argv) {
         }
 
         FeAction pause_action = pause_menu_update(pause_menu, (float)fmin(frame_seconds, .1));
+        if (pause_menu) {
+            /* Apply / re-init hook (SPEC_GUI 5.4). Changes in opt_gfx are requested immediately; the renderer
+             * is meant to service them here, at the start of the frame after the change. Not wired yet. */
+            OptionsMenu *om = pause_menu_options(pause_menu);
+            if (om_take_reinit_request(om)) {
+                om_take_apply_request(om);
+                fprintf(stderr, "options: display re-init requested (resolution %d, vsync %d, filtering %d); renderer hook not wired\n",
+                        opt_gfx.v[ST_GFX_RESOLUTION], opt_gfx.v[ST_GFX_VSYNC], opt_gfx.v[ST_GFX_TEXTURE_FILTERING]);
+            } else if (om_take_apply_request(om)) {
+                fprintf(stderr, "options: graphics values changed; renderer hook not wired\n");
+            }
+        }
         if (pause_action == FE_ACTION_QUIT) running = 0;
-        else if (pause_action == FE_ACTION_RESUME) {
-            /* Immediate (BEHAVIOR 5): the adapter returns RESUME on the input frame; no fade,
-             * exit event or timer gates it. The paused frame above never simulated, and the
-             * next frame simulates and accepts driving input again. */
+        else if (pause_action != FE_ACTION_NONE) {
+            /* The adapter returns RESUME when the screen's exit script has finished (SPEC_GUI_ART 2.4:
+             * 320 ms after Return to Explore Mode / Back / Start). The paused frames never simulated, and
+             * the next frame simulates and accepts driving input again. Race actions (restart, leave the
+             * race, world map) and Replay are not offered by this host's pause context; if one arrives
+             * anyway the game resumes. */
+            if (pause_action != FE_ACTION_RESUME)
+                fprintf(stderr, "pause: action %d is not supported by this host; resuming\n", (int)pause_action);
             SDL_ShowCursor(pause_cursor);
             SDL_SetRelativeMouseMode(g_dbg.freecam && race_state != 3 ? SDL_TRUE : SDL_FALSE);
             if (adev) SDL_PauseAudioDevice(adev, 0);
@@ -11175,7 +11217,7 @@ int main(int argc, char **argv) {
             /* Verification-only capture: the same production pause compositor
              * over the final engine scene, before framebuffer readback. */
             if (pause_shot) {
-                if (!pause_menu) pause_menu = pause_menu_create(dataroot);
+                if (!pause_menu) pause_menu = pause_menu_build(dataroot, &opt_gfx, &opt_caps, &opt_store, &opt_store_open);
                 pause_menu_open(pause_menu);
                 if (!pause_reference && !pause_menu_visual_available(pause_menu)) {
                     fprintf(stderr, "pause-shot: genuine UI resources unavailable\n");
@@ -11196,8 +11238,8 @@ int main(int argc, char **argv) {
                     pause_menu_draw(pause_menu, W, H);
                     if(!pause_menu_visual_available(pause_menu)) {final_status=1;running=0;continue;}
                     /* A replay that ends in the quit dialog must show it; never save a capture without it. */
-                    if(pause_menu_quit_dialog_open(pause_menu) && !pause_menu_quit_dialog_visual_available(pause_menu)) {
-                        fprintf(stderr,"pause-shot: %s\n",pause_menu_quit_dialog_status(pause_menu));
+                    if(pause_menu_dialog_open(pause_menu) && !pause_menu_dialog_visual_available(pause_menu)) {
+                        fprintf(stderr,"pause-shot: %s\n",pause_menu_dialog_status(pause_menu));
                         final_status=1;running=0;continue;
                     }
                 }
@@ -11401,6 +11443,7 @@ int main(int argc, char **argv) {
 
     race_log_stop(&race_log);g_dbg.race_log=NULL;
     pause_menu_destroy(pause_menu);
+    if (opt_store_open) st_reg_close(&opt_store);
 #ifdef DEBUG_UI
     dbgui_shutdown();
 #endif

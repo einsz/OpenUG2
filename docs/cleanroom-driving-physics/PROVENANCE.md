@@ -69,3 +69,9 @@
   evidence accessed. Retail differential unperformed; no behavioral divergence or
   spec amendment proposed. See INTEGRATION_VERIFICATION.md and ignored
   cleanroom/verification/integration/ for reproduction. No new contamination observed.
+
+- 2026-10-15 COORDINATOR: prepared Stage-1 publication commit f9cc1ce. Normalized
+  CSV fixture line endings to LF without changing values; all 3,606 drivetrain checks passed.
+  Analyst scratch remains ignored. A fresh cleanroom-implementer, stage1_upstream_merge,
+  resolved independent project integration conflicts with upstream development 961f783
+  in Makefile and src/main.c only; approved Stage-1 specification remains unchanged.

@@ -1,6 +1,7 @@
 /* ugui_scene.c -- see ugui_scene.h. */
 #include "ugui_scene.h"
 #include <math.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 #include "ugui_tuning.h"
@@ -276,6 +277,12 @@ int ug_scene_init(UgScene *s, const UgFngPackage *pk, const UgStrTab *strings) {
 }
 
 void ug_scene_free(UgScene *s) {
+    if (s->nodes)
+        for (int i = 0; i < s->n; i++) {
+            UgNode *n = &s->nodes[i];
+            for (int k = 0; k < n->nown; k++) free(n->own[k].tracks);   /* keys and events stay the package's */
+            free(n->own);
+        }
     free(s->nodes);
     free(s->order);
     memset(s, 0, sizeof *s);
@@ -304,6 +311,100 @@ void ug_scene_set_world_pos(UgScene *s, int node, float x, float y) {
     }
     n->props.w[UG_P_POS] = lx;
     n->props.w[UG_P_POS + 1] = ly;
+}
+
+/* ---- application property writes ---- */
+static int ensure_own_scripts(UgNode *n) {
+    const UgFngObject *o = n->obj;
+    if (n->own || o->nscripts <= 0) return n->own != NULL;
+    UgScript *own = (UgScript *)calloc((size_t)o->nscripts, sizeof *own);
+    if (!own) return 0;
+    for (int i = 0; i < o->nscripts; i++) {
+        own[i] = o->scripts[i];
+        if (own[i].ntracks > 0) {
+            own[i].tracks = (UgTrack *)malloc((size_t)own[i].ntracks * sizeof(UgTrack));
+            if (!own[i].tracks) { for (int k = 0; k < i; k++) free(own[k].tracks); free(own); return 0; }
+            memcpy(own[i].tracks, o->scripts[i].tracks, (size_t)own[i].ntracks * sizeof(UgTrack));
+        }
+    }
+    ptrdiff_t cur = n->pl.cur ? n->pl.cur - o->scripts : -1;
+    n->own = own;
+    n->nown = o->nscripts;
+    n->pl.scripts = own;
+    n->pl.nscripts = o->nscripts;
+    n->pl.cur = cur >= 0 && cur < o->nscripts ? &own[cur] : NULL;
+    return 1;
+}
+
+void ug_scene_app_write(UgScene *s, int node, int prop, int ncomp, const float *v) {
+    if (node < 0 || node >= s->n || prop < 0 || ncomp <= 0 || prop + ncomp > UG_NPROPS) return;
+    UgNode *n = &s->nodes[node];
+    int has_track = 0;
+    for (int i = 0; i < n->obj->nscripts && !has_track; i++)
+        for (int k = 0; k < n->obj->scripts[i].ntracks && !has_track; k++) {
+            const UgTrack *tr = &n->obj->scripts[i].tracks[k];
+            int tn = ug_type_ncomp(tr->type);
+            if ((int)tr->prop < prop + ncomp && (int)tr->prop + tn > prop) has_track = 1;
+        }
+    if (has_track && ensure_own_scripts(n)) {
+        for (int i = 0; i < n->nown; i++)
+            for (int k = 0; k < n->own[i].ntracks; k++) {
+                UgTrack *tr = &n->own[i].tracks[k];
+                int tn = ug_type_ncomp(tr->type);
+                if ((int)tr->prop >= prop + ncomp || (int)tr->prop + tn <= prop) continue;
+                if (!tr->has_base) {
+                    memset(&tr->base, 0, sizeof tr->base);
+                    tr->base.t = -1;
+                    if (tr->type == UG_VT_QUAT) tr->base.v[3] = 1.0f;
+                    tr->has_base = 1;
+                }
+                for (int c = 0; c < tn; c++) {
+                    int w = (int)tr->prop + c - prop;
+                    if (w >= 0 && w < ncomp) tr->base.v[c] = v[w];
+                }
+            }
+    }
+    for (int c = 0; c < ncomp; c++) n->props.w[prop + c] = v[c];
+    /* keep the evaluated state consistent with the new base (authored deltas stay relative to it) */
+    if (n->pl.cur) ug_script_apply(n->pl.cur, n->pl.t, &n->props);
+}
+
+void ug_scene_app_set_world_pos(UgScene *s, int node, float x, float y) {
+    if (node < 0 || node >= s->n) return;
+    UgNode *n = &s->nodes[node];
+    float lx = x, ly = y;
+    if (n->parent >= 0) {
+        const UgNode *p = &s->nodes[n->parent];
+        float det = p->wa * p->wd - p->wb * p->wc;
+        float dx = x - p->we, dy = y - p->wf;
+        if (fabsf(det) > 1e-6f) {
+            lx = (p->wd * dx - p->wc * dy) / det;
+            ly = (-p->wb * dx + p->wa * dy) / det;
+        }
+    }
+    float v[2] = { lx, ly };
+    ug_scene_app_write(s, node, UG_P_POS, 2, v);
+}
+void ug_scene_app_set_size(UgScene *s, int node, float w, float h) {
+    float v[2] = { w, h };
+    ug_scene_app_write(s, node, UG_P_SIZE, 2, v);
+}
+void ug_scene_app_set_alpha(UgScene *s, int node, float a) {
+    ug_scene_app_write(s, node, UG_P_COLOR + 3, 1, &a);
+}
+int ug_scene_start_script(UgScene *s, int node, uint32_t script_hash) {
+    if (node < 0 || node >= s->n) return 0;
+    UgNode *n = &s->nodes[node];
+    return ug_player_start(&n->pl, script_hash, &n->props);
+}
+int ug_scene_find_name(const UgScene *s, uint32_t name_hash) {
+    int found = -1;
+    for (int i = 0; i < s->n; i++) {
+        if (s->nodes[i].obj->name_hash != name_hash) continue;
+        if (found >= 0) return -2;
+        found = i;
+    }
+    return found;
 }
 
 void ug_scene_refocus(UgScene *s) {

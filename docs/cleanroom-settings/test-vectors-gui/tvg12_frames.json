@@ -1,0 +1,2284 @@
+{
+ "id": "tvg12_frames",
+ "spec": "SPEC_GUI_ART_AMEND1.md",
+ "provenance": "Synthetic. Authored numbers read from the retail 2004 packages (UI_pause.fng / UI_PauseOptionsMain.fng in GLOBAL/InGameCommon, UI_Options.fng / UI_PC_Customize_Options.fng in FRONTEND/FRONTB.LZC.bacc, UI_InGameDialog.fng, GenericDialog_SMALL.fng); expected values computed from the AMEND1 rules A1-A6. Entries tagged retail_crosscheck were measured on the user-supplied retail screenshots (pause in free roam, frontend Audio page) and are informative only (tolerance 2.5 px).",
+ "mapping": {
+  "rule": "px = W/2 + s*X ; py = H/2 + s*Y ; s = min(W/640, H/480); X,Y = composed centred virtual coordinates (x right, y down)",
+  "resolutions": [
+   {
+    "W": 1920,
+    "H": 1080,
+    "s": 2.25,
+    "origin": [
+     960.0,
+     540.0
+    ]
+   },
+   {
+    "W": 1280,
+    "H": 720,
+    "s": 1.5,
+    "origin": [
+     640.0,
+     360.0
+    ]
+   },
+   {
+    "W": 640,
+    "H": 480,
+    "s": 1.0,
+    "origin": [
+     320.0,
+     240.0
+    ]
+   }
+  ]
+ },
+ "tolerance_px": {
+  "centre": 1.0,
+  "size": 1.0,
+  "retail_crosscheck": 2.5
+ },
+ "cases": [
+  {
+   "name": "anchor_read_rule",
+   "package": "UI_pause.fng",
+   "object": "OPTION_MASTER",
+   "authored_centre": [
+    0.3884,
+    -14.2961
+   ],
+   "chained_script_0x6048A18B_position": [
+    0.0,
+    170.0
+   ],
+   "expected_anchor": [
+    0.3884,
+    -14.2961
+   ],
+   "expected_px": {
+    "1920x1080": {
+     "centre": [
+      960.874,
+      507.834
+     ],
+     "size": [
+      265.5,
+      132.75
+     ]
+    },
+    "1280x720": {
+     "centre": [
+      640.583,
+      338.556
+     ],
+     "size": [
+      177.0,
+      88.5
+     ]
+    },
+    "640x480": {
+     "centre": [
+      320.388,
+      225.704
+     ],
+     "size": [
+      118.0,
+      59.0
+     ]
+    }
+   },
+   "must_not_equal_px": {
+    "1920x1080": {
+     "centre": [
+      960.0,
+      922.5
+     ]
+    },
+    "1280x720": {
+     "centre": [
+      640.0,
+      615.0
+     ]
+    },
+    "640x480": {
+     "centre": [
+      320.0,
+      410.0
+     ]
+    }
+   },
+   "note": "anchor is captured once when the screen is created, before the Init chain moves the hidden master; using the chained value (0,170) reproduces the defect D1 (icons at ~y 922 px at 1080p)."
+  },
+  {
+   "name": "glow_pause",
+   "package": "UI_pause.fng",
+   "chain": [
+    {
+     "object": "glow 0xDF422345",
+     "local": [
+      39.2555,
+      6.9964
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    },
+    {
+     "object": "0x8D7E0C53 (presentation group)",
+     "local": [
+      -39.0,
+      -21.0
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    }
+   ],
+   "expected_virtual_centre": [
+    0.2555,
+    -14.0036
+   ],
+   "size_virtual": [
+    126,
+    62
+   ],
+   "expected_px": {
+    "1920x1080": {
+     "centre": [
+      960.575,
+      508.492
+     ],
+     "size": [
+      283.5,
+      139.5
+     ]
+    },
+    "1280x720": {
+     "centre": [
+      640.383,
+      338.995
+     ],
+     "size": [
+      189.0,
+      93.0
+     ]
+    },
+    "640x480": {
+     "centre": [
+      320.256,
+      225.996
+     ],
+     "size": [
+      126.0,
+      62.0
+     ]
+    }
+   },
+   "retail_crosscheck": {
+    "1920x1080_focus_frame_line_centre": [
+     962.0,
+     509.0
+    ]
+   },
+   "coincides_with": "option slot centre within 0.4 units (about 0.9 px at 1080p)"
+  },
+  {
+   "name": "icon_backing_pause",
+   "package": "UI_pause.fng",
+   "chain": [
+    {
+     "object": "backing 0x687FDA31",
+     "local": [
+      39.26,
+      6.71
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    },
+    {
+     "object": "0x8D7E0C53 (presentation group)",
+     "local": [
+      -39.0,
+      -21.0
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    }
+   ],
+   "expected_virtual_centre": [
+    0.26,
+    -14.29
+   ],
+   "size_virtual": [
+    126,
+    62
+   ],
+   "expected_px": {
+    "1920x1080": {
+     "centre": [
+      960.585,
+      507.848
+     ],
+     "size": [
+      283.5,
+      139.5
+     ]
+    },
+    "1280x720": {
+     "centre": [
+      640.39,
+      338.565
+     ],
+     "size": [
+      189.0,
+      93.0
+     ]
+    },
+    "640x480": {
+     "centre": [
+      320.26,
+      225.71
+     ],
+     "size": [
+      126.0,
+      62.0
+     ]
+    }
+   }
+  },
+  {
+   "name": "panel_row_strip_pause",
+   "package": "UI_pause.fng",
+   "chain": [
+    {
+     "object": "U2_Menu_Box 548x62",
+     "local": [
+      0,
+      0
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    },
+    {
+     "object": "row group 0x371F1C93",
+     "local": [
+      41.29,
+      7.0817
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    },
+    {
+     "object": "0x8D7E0C53 (presentation group)",
+     "local": [
+      -39.0,
+      -21.0
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    }
+   ],
+   "expected_virtual_centre": [
+    2.29,
+    -13.9183
+   ],
+   "size_virtual": [
+    548,
+    62
+   ],
+   "expected_px": {
+    "1920x1080": {
+     "centre": [
+      965.153,
+      508.684
+     ],
+     "size": [
+      1233.0,
+      139.5
+     ]
+    },
+    "1280x720": {
+     "centre": [
+      643.435,
+      339.123
+     ],
+     "size": [
+      822.0,
+      93.0
+     ]
+    },
+    "640x480": {
+     "centre": [
+      322.29,
+      226.082
+     ],
+     "size": [
+      548.0,
+      62.0
+     ]
+    }
+   },
+   "retail_crosscheck": {
+    "1920x1080_strip_y_px": [
+     441,
+     579.5
+    ]
+   }
+  },
+  {
+   "name": "glow_hub_after_fadein",
+   "package": "UI_PauseOptionsMain.fng",
+   "chain": [
+    {
+     "object": "glow 0xDF422345",
+     "local": [
+      39.2555,
+      6.9964
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    },
+    {
+     "object": "0x8D7E0C53 (presentation group, hub, after FadeIn)",
+     "local": [
+      -39.26,
+      -21.0
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    }
+   ],
+   "expected_virtual_centre": [
+    -0.0045,
+    -14.0036
+   ],
+   "size_virtual": [
+    126,
+    62
+   ],
+   "expected_px": {
+    "1920x1080": {
+     "centre": [
+      959.99,
+      508.492
+     ],
+     "size": [
+      283.5,
+      139.5
+     ]
+    },
+    "1280x720": {
+     "centre": [
+      639.993,
+      338.995
+     ],
+     "size": [
+      189.0,
+      93.0
+     ]
+    },
+    "640x480": {
+     "centre": [
+      319.996,
+      225.996
+     ],
+     "size": [
+      126.0,
+      62.0
+     ]
+    }
+   }
+  },
+  {
+   "name": "panel_row_strip_hub_after_fadein",
+   "package": "UI_PauseOptionsMain.fng",
+   "chain": [
+    {
+     "object": "U2_Menu_Box 548x62",
+     "local": [
+      0,
+      0
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    },
+    {
+     "object": "row group 0x371F1C93",
+     "local": [
+      41.0,
+      7.0
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    },
+    {
+     "object": "0x8D7E0C53 (presentation group, hub, after FadeIn)",
+     "local": [
+      -39.26,
+      -21.0
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    }
+   ],
+   "expected_virtual_centre": [
+    1.74,
+    -14.0
+   ],
+   "size_virtual": [
+    548,
+    62
+   ],
+   "expected_px": {
+    "1920x1080": {
+     "centre": [
+      963.915,
+      508.5
+     ],
+     "size": [
+      1233.0,
+      139.5
+     ]
+    },
+    "1280x720": {
+     "centre": [
+      642.61,
+      339.0
+     ],
+     "size": [
+      822.0,
+      93.0
+     ]
+    },
+    "640x480": {
+     "centre": [
+      321.74,
+      226.0
+     ],
+     "size": [
+      548.0,
+      62.0
+     ]
+    }
+   }
+  },
+  {
+   "name": "icon_title_anchor_pause",
+   "package": "UI_pause.fng",
+   "chain": [
+    {
+     "object": "ICON_TITLE (text anchor, scale 0.7)",
+     "local": [
+      41.29,
+      41.0
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    },
+    {
+     "object": "0x8D7E0C53 (presentation group)",
+     "local": [
+      -39.0,
+      -21.0
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    }
+   ],
+   "expected_virtual_centre": [
+    2.29,
+    20.0
+   ],
+   "size_virtual": null,
+   "expected_px": {
+    "1920x1080": {
+     "centre": [
+      965.153,
+      585.0
+     ]
+    },
+    "1280x720": {
+     "centre": [
+      643.435,
+      390.0
+     ]
+    },
+    "640x480": {
+     "centre": [
+      322.29,
+      260.0
+     ]
+    }
+   }
+  },
+  {
+   "name": "header_text_anchor_pause",
+   "package": "UI_pause.fng",
+   "chain": [
+    {
+     "object": "Header_text (text anchor, scale 0.75)",
+     "local": [
+      -247.71,
+      -61.29
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    },
+    {
+     "object": "0x8D7E0C53 (presentation group)",
+     "local": [
+      -39.0,
+      -21.0
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    }
+   ],
+   "expected_virtual_centre": [
+    -286.71,
+    -82.29
+   ],
+   "size_virtual": null,
+   "expected_px": {
+    "1920x1080": {
+     "centre": [
+      314.902,
+      354.848
+     ]
+    },
+    "1280x720": {
+     "centre": [
+      209.935,
+      236.565
+     ]
+    },
+    "640x480": {
+     "centre": [
+      33.29,
+      157.71
+     ]
+    }
+   }
+  },
+  {
+   "name": "rail_backing_pause",
+   "package": "UI_pause.fng",
+   "chain": [
+    {
+     "object": "ScrollBar_Backing",
+     "local": [
+      3.0,
+      -52.0
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    }
+   ],
+   "expected_virtual_centre": [
+    3.0,
+    -52.0
+   ],
+   "size_virtual": [
+    562,
+    8
+   ],
+   "expected_px": {
+    "1920x1080": {
+     "centre": [
+      966.75,
+      423.0
+     ],
+     "size": [
+      1264.5,
+      18.0
+     ]
+    },
+    "1280x720": {
+     "centre": [
+      644.5,
+      282.0
+     ],
+     "size": [
+      843.0,
+      12.0
+     ]
+    },
+    "640x480": {
+     "centre": [
+      323.0,
+      188.0
+     ],
+     "size": [
+      562.0,
+      8.0
+     ]
+    }
+   }
+  },
+  {
+   "name": "rail_tab_pause_N4_c1",
+   "package": "UI_pause.fng",
+   "chain": [
+    {
+     "object": "ScrollBar_Handle (x set by app: -270)",
+     "local": [
+      -270.0,
+      -52.2821
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    }
+   ],
+   "expected_virtual_centre": [
+    -270.0,
+    -52.2821
+   ],
+   "size_virtual": [
+    16,
+    16
+   ],
+   "expected_px": {
+    "1920x1080": {
+     "centre": [
+      352.5,
+      422.365
+     ],
+     "size": [
+      36.0,
+      36.0
+     ]
+    },
+    "1280x720": {
+     "centre": [
+      235.0,
+      281.577
+     ],
+     "size": [
+      24.0,
+      24.0
+     ]
+    },
+    "640x480": {
+     "centre": [
+      50.0,
+      187.718
+     ],
+     "size": [
+      16.0,
+      16.0
+     ]
+    }
+   },
+   "retail_crosscheck": {
+    "1920x1080": [
+     352.0,
+     424.0
+    ]
+   }
+  },
+  {
+   "name": "right_arrow_pause",
+   "package": "UI_pause.fng",
+   "chain": [
+    {
+     "object": "ScrollBar_Arrow_2",
+     "local": [
+      259.1396,
+      -12.7695
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    }
+   ],
+   "expected_virtual_centre": [
+    259.1396,
+    -12.7695
+   ],
+   "size_virtual": [
+    26,
+    26
+   ],
+   "expected_px": {
+    "1920x1080": {
+     "centre": [
+      1543.064,
+      511.269
+     ],
+     "size": [
+      58.5,
+      58.5
+     ]
+    },
+    "1280x720": {
+     "centre": [
+      1028.709,
+      340.846
+     ],
+     "size": [
+      39.0,
+      39.0
+     ]
+    },
+    "640x480": {
+     "centre": [
+      579.14,
+      227.231
+     ],
+     "size": [
+      26.0,
+      26.0
+     ]
+    }
+   },
+   "retail_crosscheck": {
+    "1920x1080": [
+     1543.5,
+     511.5
+    ]
+   }
+  },
+  {
+   "name": "left_arrow_pause",
+   "package": "UI_pause.fng",
+   "chain": [
+    {
+     "object": "ScrollBar_Arrow_1 (rotated 180 deg about own centre)",
+     "local": [
+      -250.2907,
+      -12.7695
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    }
+   ],
+   "expected_virtual_centre": [
+    -250.2907,
+    -12.7695
+   ],
+   "size_virtual": [
+    26,
+    26
+   ],
+   "expected_px": {
+    "1920x1080": {
+     "centre": [
+      396.846,
+      511.269
+     ],
+     "size": [
+      58.5,
+      58.5
+     ]
+    },
+    "1280x720": {
+     "centre": [
+      264.564,
+      340.846
+     ],
+     "size": [
+      39.0,
+      39.0
+     ]
+    },
+    "640x480": {
+     "centre": [
+      69.709,
+      227.231
+     ],
+     "size": [
+      26.0,
+      26.0
+     ]
+    }
+   }
+  },
+  {
+   "name": "dialog_dim_quad",
+   "package": "UI_InGameDialog.fng",
+   "chain": [
+    {
+     "object": "0x014245E2 U2_Menu_Box 1070x650",
+     "local": [
+      43.0,
+      124.0
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    },
+    {
+     "object": "0x8D7E0C53",
+     "local": [
+      -43.0,
+      -124.0
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    }
+   ],
+   "expected_virtual_centre": [
+    0.0,
+    0.0
+   ],
+   "size_virtual": [
+    1070,
+    650
+   ],
+   "expected_px": {
+    "1920x1080": {
+     "centre": [
+      960.0,
+      540.0
+     ],
+     "size": [
+      2407.5,
+      1462.5
+     ]
+    },
+    "1280x720": {
+     "centre": [
+      640.0,
+      360.0
+     ],
+     "size": [
+      1605.0,
+      975.0
+     ]
+    },
+    "640x480": {
+     "centre": [
+      320.0,
+      240.0
+     ],
+     "size": [
+      1070.0,
+      650.0
+     ]
+    }
+   }
+  },
+  {
+   "name": "dialog_button1",
+   "package": "UI_InGameDialog.fng",
+   "chain": [
+    {
+     "object": "U2_Menu_Box_Layer1 214x42",
+     "local": [
+      0,
+      0
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    },
+    {
+     "object": "button1 group",
+     "local": [
+      -151.0,
+      74.0
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    }
+   ],
+   "expected_virtual_centre": [
+    -151.0,
+    74.0
+   ],
+   "size_virtual": [
+    214,
+    42
+   ],
+   "expected_px": {
+    "1920x1080": {
+     "centre": [
+      620.25,
+      706.5
+     ],
+     "size": [
+      481.5,
+      94.5
+     ]
+    },
+    "1280x720": {
+     "centre": [
+      413.5,
+      471.0
+     ],
+     "size": [
+      321.0,
+      63.0
+     ]
+    },
+    "640x480": {
+     "centre": [
+      169.0,
+      314.0
+     ],
+     "size": [
+      214.0,
+      42.0
+     ]
+    }
+   }
+  },
+  {
+   "name": "dialog_button2",
+   "package": "UI_InGameDialog.fng",
+   "chain": [
+    {
+     "object": "U2_Menu_Box_Layer1 214x42",
+     "local": [
+      0,
+      0
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    },
+    {
+     "object": "Button2 group",
+     "local": [
+      151.0,
+      74.0
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    }
+   ],
+   "expected_virtual_centre": [
+    151.0,
+    74.0
+   ],
+   "size_virtual": [
+    214,
+    42
+   ],
+   "expected_px": {
+    "1920x1080": {
+     "centre": [
+      1299.75,
+      706.5
+     ],
+     "size": [
+      481.5,
+      94.5
+     ]
+    },
+    "1280x720": {
+     "centre": [
+      866.5,
+      471.0
+     ],
+     "size": [
+      321.0,
+      63.0
+     ]
+    },
+    "640x480": {
+     "centre": [
+      471.0,
+      314.0
+     ],
+     "size": [
+      214.0,
+      42.0
+     ]
+    }
+   }
+  },
+  {
+   "name": "dialog_button2_right_cap",
+   "package": "UI_InGameDialog.fng",
+   "chain": [
+    {
+     "object": "U2_Menu_Text_Corner 42x42",
+     "local": [
+      128.0,
+      0.0
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    },
+    {
+     "object": "Button2 group",
+     "local": [
+      151.0,
+      74.0
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    }
+   ],
+   "expected_virtual_centre": [
+    279.0,
+    74.0
+   ],
+   "size_virtual": [
+    42,
+    42
+   ],
+   "expected_px": {
+    "1920x1080": {
+     "centre": [
+      1587.75,
+      706.5
+     ],
+     "size": [
+      94.5,
+      94.5
+     ]
+    },
+    "1280x720": {
+     "centre": [
+      1058.5,
+      471.0
+     ],
+     "size": [
+      63.0,
+      63.0
+     ]
+    },
+    "640x480": {
+     "centre": [
+      599.0,
+      314.0
+     ],
+     "size": [
+      42.0,
+      42.0
+     ]
+    }
+   }
+  },
+  {
+   "name": "small_dialog_button2",
+   "package": "GenericDialog_SMALL.fng",
+   "chain": [
+    {
+     "object": "U2_Menu_Box_Layer1 214x42",
+     "local": [
+      0,
+      0
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    },
+    {
+     "object": "Button2 group",
+     "local": [
+      150.0,
+      74.0
+     ],
+     "scale": [
+      1,
+      1
+     ]
+    }
+   ],
+   "expected_virtual_centre": [
+    150.0,
+    74.0
+   ],
+   "size_virtual": [
+    214,
+    42
+   ],
+   "expected_px": {
+    "1920x1080": {
+     "centre": [
+      1297.5,
+      706.5
+     ],
+     "size": [
+      481.5,
+      94.5
+     ]
+    },
+    "1280x720": {
+     "centre": [
+      865.0,
+      471.0
+     ],
+     "size": [
+      321.0,
+      63.0
+     ]
+    },
+    "640x480": {
+     "centre": [
+      470.0,
+      314.0
+     ],
+     "size": [
+      214.0,
+      42.0
+     ]
+    }
+   },
+   "retail_crosscheck": {
+    "note": "retail frontend shot: button centres x +-150.2 units, y 73.7"
+   }
+  },
+  {
+   "name": "group_scale_rule_example",
+   "package": "UI_Options.fng",
+   "tag": "inferred (public FEngLib order); not exercised on screen",
+   "chain": [
+    {
+     "object": "child box",
+     "local": [
+      -17.7,
+      1.0
+     ],
+     "size": [
+      500.81,
+      36.0
+     ]
+    },
+    {
+     "object": "OPTION_BACKING_14",
+     "local": [
+      5.0,
+      -128.0
+     ],
+     "scale": [
+      1.0,
+      1.5
+     ]
+    }
+   ],
+   "expected_virtual_centre": [
+    -12.7,
+    -126.5
+   ],
+   "size_virtual": [
+    500.81,
+    54.0
+   ],
+   "expected_px": {
+    "1920x1080": {
+     "centre": [
+      931.425,
+      255.375
+     ],
+     "size": [
+      1126.822,
+      121.5
+     ]
+    },
+    "1280x720": {
+     "centre": [
+      620.95,
+      170.25
+     ],
+     "size": [
+      751.215,
+      81.0
+     ]
+    },
+    "640x480": {
+     "centre": [
+      307.3,
+      113.5
+     ],
+     "size": [
+      500.81,
+      54.0
+     ]
+    }
+   }
+  },
+  {
+   "name": "list_masters_pre_chain_UI_Options_row1",
+   "package": "UI_Options.fng",
+   "TITLE_MASTER": {
+    "used_centre": [
+     -151.0,
+     -120.0
+    ],
+    "chained_not_used": [
+     -132.0,
+     -120.0
+    ]
+   },
+   "DATA_MASTER": {
+    "used_centre": [
+     126.0,
+     -122.0
+    ],
+    "chained_not_used": [
+     109.0,
+     -122.0
+    ]
+   },
+   "row1_left_arrow": {
+    "expected_virtual_centre": [
+     6.0,
+     -126.0
+    ],
+    "size_virtual": [
+     24,
+     24
+    ],
+    "expected_px": {
+     "1920x1080": {
+      "centre": [
+       973.5,
+       256.5
+      ],
+      "size": [
+       54.0,
+       54.0
+      ]
+     },
+     "1280x720": {
+      "centre": [
+       649.0,
+       171.0
+      ],
+      "size": [
+       36.0,
+       36.0
+      ]
+     },
+     "640x480": {
+      "centre": [
+       326.0,
+       114.0
+      ],
+      "size": [
+       24.0,
+       24.0
+      ]
+     }
+    },
+    "retail_crosscheck_virtual": [
+     6.2,
+     -126.2
+    ]
+   },
+   "row1_right_arrow": {
+    "expected_virtual_centre": [
+     246.0,
+     -126.0
+    ],
+    "size_virtual": [
+     24,
+     24
+    ],
+    "expected_px": {
+     "1920x1080": {
+      "centre": [
+       1513.5,
+       256.5
+      ],
+      "size": [
+       54.0,
+       54.0
+      ]
+     },
+     "1280x720": {
+      "centre": [
+       1009.0,
+       171.0
+      ],
+      "size": [
+       36.0,
+       36.0
+      ]
+     },
+     "640x480": {
+      "centre": [
+       566.0,
+       114.0
+      ],
+      "size": [
+       24.0,
+       24.0
+      ]
+     }
+    },
+    "retail_crosscheck_virtual": [
+     246.2,
+     -126.2
+    ]
+   },
+   "row1_backing_group_origin": [
+    5.0,
+    -128.0
+   ],
+   "wrong_if_chained_DATA_MASTER_left_arrow_x": -11
+  },
+  {
+   "name": "pause_explore_rest_c1",
+   "package": "UI_pause.fng",
+   "anchor": [
+    0.3884,
+    -14.2961
+   ],
+   "N": 4,
+   "focused": 1,
+   "scroll_offset_s": 0.0,
+   "panel_row_strip": {
+    "centre": [
+     2.29,
+     -13.9183
+    ],
+    "size": [
+     548,
+     62
+    ]
+   },
+   "slots": [
+    {
+     "slot": "option_1",
+     "visible": true,
+     "virtual_centre": [
+      0.3884,
+      -14.2961
+     ],
+     "size_virtual": [
+      118.0,
+      59.0
+     ],
+     "expected_px": {
+      "1920x1080": {
+       "centre": [
+        960.874,
+        507.834
+       ],
+       "size": [
+        265.5,
+        132.75
+       ]
+      },
+      "1280x720": {
+       "centre": [
+        640.583,
+        338.556
+       ],
+       "size": [
+        177.0,
+        88.5
+       ]
+      },
+      "640x480": {
+       "centre": [
+        320.388,
+        225.704
+       ],
+       "size": [
+        118.0,
+        59.0
+       ]
+      }
+     },
+     "inside_panel_row": true
+    },
+    {
+     "slot": "option_2",
+     "visible": true,
+     "virtual_centre": [
+      158.3884,
+      -14.2961
+     ],
+     "size_virtual": [
+      94.4,
+      47.2
+     ],
+     "expected_px": {
+      "1920x1080": {
+       "centre": [
+        1316.374,
+        507.834
+       ],
+       "size": [
+        212.4,
+        106.2
+       ]
+      },
+      "1280x720": {
+       "centre": [
+        877.583,
+        338.556
+       ],
+       "size": [
+        141.6,
+        70.8
+       ]
+      },
+      "640x480": {
+       "centre": [
+        478.388,
+        225.704
+       ],
+       "size": [
+        94.4,
+        47.2
+       ]
+      }
+     },
+     "inside_panel_row": true
+    },
+    {
+     "slot": "option_3",
+     "visible": false,
+     "virtual_centre": [
+      316.3884,
+      -14.2961
+     ],
+     "size_virtual": [
+      94.4,
+      47.2
+     ],
+     "disabled": true
+    },
+    {
+     "slot": "option_4",
+     "visible": false,
+     "virtual_centre": [
+      474.3884,
+      -14.2961
+     ],
+     "size_virtual": [
+      94.4,
+      47.2
+     ]
+    }
+   ],
+   "note": "career free roam: 1 Return to Explore Mode, 2 Options, 3 Replay (disabled), 4 Quit to Main Menu. Verifier reference: option_1 (960.9,507.8) 265.5x132.75; option_2 (1316.4,507.8) 212.4x106.2."
+  },
+  {
+   "name": "pause_explore_rest_c2_options",
+   "package": "UI_pause.fng",
+   "anchor": [
+    0.3884,
+    -14.2961
+   ],
+   "N": 4,
+   "focused": 2,
+   "scroll_offset_s": -158.0,
+   "panel_row_strip": {
+    "centre": [
+     2.29,
+     -13.9183
+    ],
+    "size": [
+     548,
+     62
+    ]
+   },
+   "slots": [
+    {
+     "slot": "option_1",
+     "visible": true,
+     "virtual_centre": [
+      -157.6116,
+      -14.2961
+     ],
+     "size_virtual": [
+      94.4,
+      47.2
+     ],
+     "expected_px": {
+      "1920x1080": {
+       "centre": [
+        605.374,
+        507.834
+       ],
+       "size": [
+        212.4,
+        106.2
+       ]
+      },
+      "1280x720": {
+       "centre": [
+        403.583,
+        338.556
+       ],
+       "size": [
+        141.6,
+        70.8
+       ]
+      },
+      "640x480": {
+       "centre": [
+        162.388,
+        225.704
+       ],
+       "size": [
+        94.4,
+        47.2
+       ]
+      }
+     },
+     "inside_panel_row": true
+    },
+    {
+     "slot": "option_2",
+     "visible": true,
+     "virtual_centre": [
+      0.3884,
+      -14.2961
+     ],
+     "size_virtual": [
+      118.0,
+      59.0
+     ],
+     "expected_px": {
+      "1920x1080": {
+       "centre": [
+        960.874,
+        507.834
+       ],
+       "size": [
+        265.5,
+        132.75
+       ]
+      },
+      "1280x720": {
+       "centre": [
+        640.583,
+        338.556
+       ],
+       "size": [
+        177.0,
+        88.5
+       ]
+      },
+      "640x480": {
+       "centre": [
+        320.388,
+        225.704
+       ],
+       "size": [
+        118.0,
+        59.0
+       ]
+      }
+     },
+     "inside_panel_row": true
+    },
+    {
+     "slot": "option_3",
+     "visible": true,
+     "virtual_centre": [
+      158.3884,
+      -14.2961
+     ],
+     "size_virtual": [
+      94.4,
+      47.2
+     ],
+     "disabled": true,
+     "expected_px": {
+      "1920x1080": {
+       "centre": [
+        1316.374,
+        507.834
+       ],
+       "size": [
+        212.4,
+        106.2
+       ]
+      },
+      "1280x720": {
+       "centre": [
+        877.583,
+        338.556
+       ],
+       "size": [
+        141.6,
+        70.8
+       ]
+      },
+      "640x480": {
+       "centre": [
+        478.388,
+        225.704
+       ],
+       "size": [
+        94.4,
+        47.2
+       ]
+      }
+     },
+     "inside_panel_row": true
+    },
+    {
+     "slot": "option_4",
+     "visible": false,
+     "virtual_centre": [
+      316.3884,
+      -14.2961
+     ],
+     "size_virtual": [
+      94.4,
+      47.2
+     ]
+    }
+   ]
+  },
+  {
+   "name": "pause_explore_rest_c4_quit",
+   "package": "UI_pause.fng",
+   "anchor": [
+    0.3884,
+    -14.2961
+   ],
+   "N": 4,
+   "focused": 4,
+   "scroll_offset_s": -474.0,
+   "panel_row_strip": {
+    "centre": [
+     2.29,
+     -13.9183
+    ],
+    "size": [
+     548,
+     62
+    ]
+   },
+   "slots": [
+    {
+     "slot": "option_1",
+     "visible": false,
+     "virtual_centre": [
+      -473.6116,
+      -14.2961
+     ],
+     "size_virtual": [
+      94.4,
+      47.2
+     ]
+    },
+    {
+     "slot": "option_2",
+     "visible": false,
+     "virtual_centre": [
+      -315.6116,
+      -14.2961
+     ],
+     "size_virtual": [
+      94.4,
+      47.2
+     ]
+    },
+    {
+     "slot": "option_3",
+     "visible": true,
+     "virtual_centre": [
+      -157.6116,
+      -14.2961
+     ],
+     "size_virtual": [
+      94.4,
+      47.2
+     ],
+     "disabled": true,
+     "expected_px": {
+      "1920x1080": {
+       "centre": [
+        605.374,
+        507.834
+       ],
+       "size": [
+        212.4,
+        106.2
+       ]
+      },
+      "1280x720": {
+       "centre": [
+        403.583,
+        338.556
+       ],
+       "size": [
+        141.6,
+        70.8
+       ]
+      },
+      "640x480": {
+       "centre": [
+        162.388,
+        225.704
+       ],
+       "size": [
+        94.4,
+        47.2
+       ]
+      }
+     },
+     "inside_panel_row": true
+    },
+    {
+     "slot": "option_4",
+     "visible": true,
+     "virtual_centre": [
+      0.3884,
+      -14.2961
+     ],
+     "size_virtual": [
+      118.0,
+      59.0
+     ],
+     "expected_px": {
+      "1920x1080": {
+       "centre": [
+        960.874,
+        507.834
+       ],
+       "size": [
+        265.5,
+        132.75
+       ]
+      },
+      "1280x720": {
+       "centre": [
+        640.583,
+        338.556
+       ],
+       "size": [
+        177.0,
+        88.5
+       ]
+      },
+      "640x480": {
+       "centre": [
+        320.388,
+        225.704
+       ],
+       "size": [
+        118.0,
+        59.0
+       ]
+      }
+     },
+     "inside_panel_row": true
+    }
+   ],
+   "note": "Right from Options skips disabled Replay; Quit focused, Replay visible on its left as a 0.8 neighbour."
+  },
+  {
+   "name": "hub_rest_c1_audio",
+   "package": "UI_PauseOptionsMain.fng",
+   "anchor": [
+    0.39,
+    -14.3
+   ],
+   "N": 4,
+   "focused": 1,
+   "scroll_offset_s": 0.0,
+   "panel_row_strip": {
+    "centre": [
+     1.74,
+     -14.0
+    ],
+    "size": [
+     548,
+     62
+    ]
+   },
+   "slots": [
+    {
+     "slot": "option_1",
+     "visible": true,
+     "virtual_centre": [
+      0.39,
+      -14.3
+     ],
+     "size_virtual": [
+      118.0,
+      59.0
+     ],
+     "expected_px": {
+      "1920x1080": {
+       "centre": [
+        960.877,
+        507.825
+       ],
+       "size": [
+        265.5,
+        132.75
+       ]
+      },
+      "1280x720": {
+       "centre": [
+        640.585,
+        338.55
+       ],
+       "size": [
+        177.0,
+        88.5
+       ]
+      },
+      "640x480": {
+       "centre": [
+        320.39,
+        225.7
+       ],
+       "size": [
+        118.0,
+        59.0
+       ]
+      }
+     },
+     "inside_panel_row": true
+    },
+    {
+     "slot": "option_2",
+     "visible": true,
+     "virtual_centre": [
+      158.39,
+      -14.3
+     ],
+     "size_virtual": [
+      94.4,
+      47.2
+     ],
+     "expected_px": {
+      "1920x1080": {
+       "centre": [
+        1316.377,
+        507.825
+       ],
+       "size": [
+        212.4,
+        106.2
+       ]
+      },
+      "1280x720": {
+       "centre": [
+        877.585,
+        338.55
+       ],
+       "size": [
+        141.6,
+        70.8
+       ]
+      },
+      "640x480": {
+       "centre": [
+        478.39,
+        225.7
+       ],
+       "size": [
+        94.4,
+        47.2
+       ]
+      }
+     },
+     "inside_panel_row": true
+    },
+    {
+     "slot": "option_3",
+     "visible": false,
+     "virtual_centre": [
+      316.39,
+      -14.3
+     ],
+     "size_virtual": [
+      94.4,
+      47.2
+     ]
+    },
+    {
+     "slot": "option_4",
+     "visible": false,
+     "virtual_centre": [
+      474.39,
+      -14.3
+     ],
+     "size_virtual": [
+      94.4,
+      47.2
+     ]
+    }
+   ]
+  },
+  {
+   "name": "hub_rest_c2_display",
+   "package": "UI_PauseOptionsMain.fng",
+   "anchor": [
+    0.39,
+    -14.3
+   ],
+   "N": 4,
+   "focused": 2,
+   "scroll_offset_s": -158.0,
+   "panel_row_strip": {
+    "centre": [
+     1.74,
+     -14.0
+    ],
+    "size": [
+     548,
+     62
+    ]
+   },
+   "slots": [
+    {
+     "slot": "option_1",
+     "visible": true,
+     "virtual_centre": [
+      -157.61,
+      -14.3
+     ],
+     "size_virtual": [
+      94.4,
+      47.2
+     ],
+     "expected_px": {
+      "1920x1080": {
+       "centre": [
+        605.377,
+        507.825
+       ],
+       "size": [
+        212.4,
+        106.2
+       ]
+      },
+      "1280x720": {
+       "centre": [
+        403.585,
+        338.55
+       ],
+       "size": [
+        141.6,
+        70.8
+       ]
+      },
+      "640x480": {
+       "centre": [
+        162.39,
+        225.7
+       ],
+       "size": [
+        94.4,
+        47.2
+       ]
+      }
+     },
+     "inside_panel_row": true
+    },
+    {
+     "slot": "option_2",
+     "visible": true,
+     "virtual_centre": [
+      0.39,
+      -14.3
+     ],
+     "size_virtual": [
+      118.0,
+      59.0
+     ],
+     "expected_px": {
+      "1920x1080": {
+       "centre": [
+        960.877,
+        507.825
+       ],
+       "size": [
+        265.5,
+        132.75
+       ]
+      },
+      "1280x720": {
+       "centre": [
+        640.585,
+        338.55
+       ],
+       "size": [
+        177.0,
+        88.5
+       ]
+      },
+      "640x480": {
+       "centre": [
+        320.39,
+        225.7
+       ],
+       "size": [
+        118.0,
+        59.0
+       ]
+      }
+     },
+     "inside_panel_row": true
+    },
+    {
+     "slot": "option_3",
+     "visible": true,
+     "virtual_centre": [
+      158.39,
+      -14.3
+     ],
+     "size_virtual": [
+      94.4,
+      47.2
+     ],
+     "expected_px": {
+      "1920x1080": {
+       "centre": [
+        1316.377,
+        507.825
+       ],
+       "size": [
+        212.4,
+        106.2
+       ]
+      },
+      "1280x720": {
+       "centre": [
+        877.585,
+        338.55
+       ],
+       "size": [
+        141.6,
+        70.8
+       ]
+      },
+      "640x480": {
+       "centre": [
+        478.39,
+        225.7
+       ],
+       "size": [
+        94.4,
+        47.2
+       ]
+      }
+     },
+     "inside_panel_row": true
+    },
+    {
+     "slot": "option_4",
+     "visible": false,
+     "virtual_centre": [
+      316.39,
+      -14.3
+     ],
+     "size_virtual": [
+      94.4,
+      47.2
+     ]
+    }
+   ],
+   "note": "Display neighbour/focused icons keep the 2:1 aspect of the 128x64 texture: 118x59 focused, 94.4x47.2 neighbours (uniform 0.8)."
+  },
+  {
+   "name": "hub_tween_c1_to_c2_t150ms",
+   "package": "UI_PauseOptionsMain.fng",
+   "anchor": [
+    0.39,
+    -14.3
+   ],
+   "N": 4,
+   "focused": 2,
+   "scroll_offset_s": -79.0,
+   "panel_row_strip": null,
+   "slots": [
+    {
+     "slot": "option_1",
+     "visible": true,
+     "virtual_centre": [
+      -78.61,
+      -14.3
+     ],
+     "size_virtual": [
+      94.4,
+      47.2
+     ],
+     "expected_px": {
+      "1920x1080": {
+       "centre": [
+        783.127,
+        507.825
+       ],
+       "size": [
+        212.4,
+        106.2
+       ]
+      },
+      "1280x720": {
+       "centre": [
+        522.085,
+        338.55
+       ],
+       "size": [
+        141.6,
+        70.8
+       ]
+      },
+      "640x480": {
+       "centre": [
+        241.39,
+        225.7
+       ],
+       "size": [
+        94.4,
+        47.2
+       ]
+      }
+     }
+    },
+    {
+     "slot": "option_2",
+     "visible": true,
+     "virtual_centre": [
+      79.39,
+      -14.3
+     ],
+     "size_virtual": [
+      118.0,
+      59.0
+     ],
+     "expected_px": {
+      "1920x1080": {
+       "centre": [
+        1138.627,
+        507.825
+       ],
+       "size": [
+        265.5,
+        132.75
+       ]
+      },
+      "1280x720": {
+       "centre": [
+        759.085,
+        338.55
+       ],
+       "size": [
+        177.0,
+        88.5
+       ]
+      },
+      "640x480": {
+       "centre": [
+        399.39,
+        225.7
+       ],
+       "size": [
+        118.0,
+        59.0
+       ]
+      }
+     }
+    },
+    {
+     "slot": "option_3",
+     "visible": true,
+     "virtual_centre": [
+      237.39,
+      -14.3
+     ],
+     "size_virtual": [
+      94.4,
+      47.2
+     ],
+     "expected_px": {
+      "1920x1080": {
+       "centre": [
+        1494.127,
+        507.825
+       ],
+       "size": [
+        212.4,
+        106.2
+       ]
+      },
+      "1280x720": {
+       "centre": [
+        996.085,
+        338.55
+       ],
+       "size": [
+        141.6,
+        70.8
+       ]
+      },
+      "640x480": {
+       "centre": [
+        557.39,
+        225.7
+       ],
+       "size": [
+        94.4,
+        47.2
+       ]
+      }
+     }
+    },
+    {
+     "slot": "option_4",
+     "visible": false,
+     "virtual_centre": [
+      395.39,
+      -14.3
+     ],
+     "size_virtual": [
+      94.4,
+      47.2
+     ]
+    }
+   ],
+   "note": "0.15 s after Right from Audio: s = -158*(3u^2-2u^3), u=0.5 -> -79; focus (full size) already on Display."
+  }
+ ]
+}

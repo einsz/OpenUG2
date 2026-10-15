@@ -1,7 +1,15 @@
 #!/usr/bin/env python3
-"""Run every case of pause_menu_vectors/behavior.json (BEHAVIOR.md: item-row slide, snapping marker,
-arrow rules, pointer rules, immediate resume) against the real adapter via build/pause_menu_test.
-The vector file is a verbatim copy of the approved vectors; this script supplies the drivers."""
+"""Run the cases of pause_menu_vectors/behavior.json (BEHAVIOR.md: snapping marker, arrow rules, pointer
+rules, resume) against the real adapter via build/pause_menu_test.
+The vector file is a verbatim copy of the approved vectors; this script supplies the drivers.
+
+SPEC_GUI_ART (approved 2026-10-14) supersedes parts of BEHAVIOR.md; those cases are not skipped silently:
+  * item-row slide: exponential ease-out (R1.5-R1.7) -> cubic Hermite over 0.3 s, slot size 0.8x, window
+    +-240 (SPEC_GUI_ART 3.2; vectors tvg08, tests/gui_art_test). Cases that sample the old curve are
+    listed in SLIDE_SUPERSEDED; the position samples inside the other cases are only checked at t = 0.
+  * resume: immediate (BEHAVIOR 5) -> the screen plays its 320 ms exit script and resumes at exit-complete
+    (SPEC_GUI_ART 2.4, tvg11). authored_exit_fade and resume_immediate_* are checked against that rule.
+"""
 import json
 import subprocess
 import sys
@@ -92,7 +100,8 @@ def run_arrow_case(case):
     final = at(got, last + 300)
 
     for t, v in e.get("expected_scroll_position_s", {}).items():
-        near(at(got, t)["s"], v, SCROLL, f"{cid} s@{t}")
+        if int(t) == 0:                        # the old curve is superseded; the start of the move is not
+            near(at(got, t)["s"], v, SCROLL, f"{cid} s@{t}")
     for t, xy in e.get("marker_center_by_ms", {}).items():
         near_list(at(got, t)["marker"], xy, POS, f"{cid} marker@{t}")
     for t, v in e.get("right_arrow_visible_by_ms", {}).items():
@@ -137,10 +146,17 @@ def run_arrow_case(case):
         assert got["blinks"] == key["blinks"] and got["last_blink"] == key["last_blink"], cid
 
 
+SLIDE_SUPERSEDED = {"slide_one_step_table", "icon_alpha_vs_distance", "slide_right_one_step_items",
+                    "slide_retarget_mid_animation", "slide_reversal_mid_animation", "slide_frame_rate_independence"}
+SETTLE_MS = 340      # pointer gestures are judged after the 320 ms exit and the 300 ms scroll have finished
+skipped = []
 count = 0
 
 for case in vec["cases"]:
     cid = case["id"]
+    if cid in SLIDE_SUPERSEDED:
+        skipped.append(cid)
+        continue
 
     if cid in ("authored_right_arrow_blink", "authored_left_arrow_blink"):
         side = "right" if "right" in cid else "left"
@@ -161,14 +177,15 @@ for case in vec["cases"]:
 
     elif cid == "authored_exit_fade":
         fade = case["fade"]
-        # Package data: every authored fade is fully transparent by 100 ms (the root group by 80 ms)
-        # and the exit-complete event (320 ms) is presentation only; resume never waits for either.
+        # Package data: every authored fade is fully transparent by 100 ms (the root group by 80 ms) and
+        # the exit-complete event is at 320 ms. SPEC_GUI_ART 2.4 makes the application wait for it.
         for name, f in fade.items():
             end = 80 if name == "package_root_group" else 100
             assert f["alpha"][str(end)] == 0 and f["alpha"]["140"] == 0, name
         assert case["item_activation_sequence"]["exit_complete_event_at_ms"] == 320
         res = run("behavior-resume", "Resume_item_Enter")
-        assert not res["closing_after_input"] and res["overlay_alpha_zero_by_ms_after_input"] <= 100
+        assert res["paused_after_processing_frame"]["100"] and not res["paused_after_processing_frame"]["120"], res
+        assert 19 <= res["exit_frames"] - 0 <= 21, res
 
     elif cid in ("marker_snap_2_items", "marker_snap_5_items_rapid"):
         n, start = case["catalogue_N"], case["start_i"]
@@ -285,7 +302,7 @@ for case in vec["cases"]:
             evs = ["0:right_click"]
         pre = events(case["inputs"]) if "inputs" in case else None
         spec = ",".join(x for x in [pre] + evs if x)
-        end = max(int(s.split(":")[0]) for s in spec.split(",")) + 5
+        end = max(int(s.split(":")[0]) for s in spec.split(",")) + SETTLE_MS
         got = timeline(CATALOGUE, start, spec, [-1, end])
         before, after = at(got, -1), at(got, end)
         if "invoked_at_press" in e:
@@ -320,18 +337,20 @@ for case in vec["cases"]:
         trigger = case["trigger"]
         e = case["expected"]
         got = run("behavior-resume", trigger)
-        assert got["paused_after_processing_frame"] == e["paused_after_processing_frame"], (cid, got)
-        for key in ("simulation_advances_from_frame", "gameplay_clock_advances_from_frame",
-                    "gameplay_input_accepted_from_frame", "audio_resumed_from_frame",
-                    "triggering_input_forwarded_to_gameplay", "menu_accepts_input_after_resume"):
+        # SPEC_GUI_ART 2.4: the exit script runs first, so the menu is still paused on the input frame and
+        # the game resumes at exit-complete (320 ms = 20 frames of 16.667 ms). Everything else of the
+        # approved vector stands: the input is never forwarded and the closed menu accepts nothing.
+        assert got["paused_after_processing_frame"]["99"] and got["paused_after_processing_frame"]["100"], (cid, got)
+        assert not got["paused_after_processing_frame"][str(100 + 20)], (cid, got)
+        assert 119 <= got["simulation_advances_from_frame"] <= 121, (cid, got)
+        assert got["simulation_advances_from_frame"] == got["gameplay_clock_advances_from_frame"] == got["audio_resumed_from_frame"], (cid, got)
+        assert got["gameplay_input_accepted_from_frame"] == got["simulation_advances_from_frame"], (cid, got)
+        for key in ("triggering_input_forwarded_to_gameplay", "menu_accepts_input_after_resume"):
             assert got[key] == e[key], (cid, key, got[key], e[key])
-        assert got["max_resume_latency_frames"] <= e["max_resume_latency_frames"]
-        assert got["overlay_alpha_zero_by_ms_after_input"] <= e["overlay_alpha_zero_by_ms_after_input"]
-        assert not got["closing_after_input"], "no fade/timer may gate resume"
 
     else:
         raise AssertionError(f"unhandled behavior vector {cid}")
     count += 1
 
-print(f"pause behavior vectors: PASS ({count} cases from behavior.json against the real adapter)")
+print(f"pause behavior vectors: PASS ({count} cases from behavior.json against the real adapter; {len(skipped)} superseded by SPEC_GUI_ART 3.2: {', '.join(skipped)})")
 print("Host-loop vectors run through a model of src/main.c's frame order; audio/clock follow the same RESUME action.")

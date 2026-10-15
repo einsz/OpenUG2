@@ -1,0 +1,254 @@
+{
+ "provenance": "Synthetic inputs; mapping [static]. Keys resolve through LANGUAGES/<lang>.bin; English shown for convenience. Resolution texts are literal ASCII (functional).",
+ "cases": [
+  {
+   "row": "Resolution",
+   "value": 0,
+   "expected_text": "640x480"
+  },
+  {
+   "row": "Resolution",
+   "value": 1,
+   "expected_text": "800x600"
+  },
+  {
+   "row": "Resolution",
+   "value": 2,
+   "expected_text": "1024x768"
+  },
+  {
+   "row": "Resolution",
+   "value": 3,
+   "expected_text": "1280x960"
+  },
+  {
+   "row": "Resolution",
+   "value": 4,
+   "expected_text": "1280x1024"
+  },
+  {
+   "row": "Resolution",
+   "value": 5,
+   "expected_text": "1600x1200"
+  },
+  {
+   "row": "Resolution",
+   "value": 6,
+   "expected_text": null,
+   "note": "value text is left unchanged (not set) for indices outside 0..5"
+  },
+  {
+   "row": "Car Reflection Detail",
+   "value": 0,
+   "expected_key": "0xB55E7678",
+   "expected_en": "Low"
+  },
+  {
+   "row": "Car Reflection Detail",
+   "value": 1,
+   "expected_key": "0x612AF8A6",
+   "expected_en": "High"
+  },
+  {
+   "row": "Car Reflection Detail",
+   "value": 7,
+   "expected_key": "0x612AF8A6",
+   "expected_en": "High",
+   "note": "any non-zero"
+  },
+  {
+   "row": "Car Geometry Detail",
+   "value": 0,
+   "expected_key": "0xB55E7678",
+   "expected_en": "Low"
+  },
+  {
+   "row": "Car Geometry Detail",
+   "value": 1,
+   "expected_key": "0x612AF8A6",
+   "expected_en": "High"
+  },
+  {
+   "row": "Car Geometry Detail",
+   "value": 7,
+   "expected_key": "0x612AF8A6",
+   "expected_en": "High",
+   "note": "any non-zero"
+  },
+  {
+   "row": "Car Headlight",
+   "value": 0,
+   "expected_key": "0x0000CCFA",
+   "expected_en": "Off"
+  },
+  {
+   "row": "Car Headlight",
+   "value": 1,
+   "expected_key": "0x0000063C",
+   "expected_en": "On"
+  },
+  {
+   "row": "Crowds",
+   "value": 0,
+   "expected_key": "0x0000CCFA",
+   "expected_en": "Off"
+  },
+  {
+   "row": "Crowds",
+   "value": 1,
+   "expected_key": "0x0000063C",
+   "expected_en": "On"
+  },
+  {
+   "row": "Light Trails",
+   "value": 0,
+   "expected_key": "0x0000CCFA",
+   "expected_en": "Off"
+  },
+  {
+   "row": "Light Trails",
+   "value": 1,
+   "expected_key": "0x0000063C",
+   "expected_en": "On"
+  },
+  {
+   "row": "Light Glow",
+   "value": 0,
+   "expected_key": "0x0000CCFA",
+   "expected_en": "Off"
+  },
+  {
+   "row": "Light Glow",
+   "value": 1,
+   "expected_key": "0x0000063C",
+   "expected_en": "On"
+  },
+  {
+   "row": "Particle System",
+   "value": 0,
+   "expected_key": "0x0000CCFA",
+   "expected_en": "Off"
+  },
+  {
+   "row": "Particle System",
+   "value": 1,
+   "expected_key": "0x0000063C",
+   "expected_en": "On"
+  },
+  {
+   "row": "Motion Blur",
+   "value": 0,
+   "expected_key": "0x0000CCFA",
+   "expected_en": "Off"
+  },
+  {
+   "row": "Motion Blur",
+   "value": 1,
+   "expected_key": "0x0000063C",
+   "expected_en": "On"
+  },
+  {
+   "row": "Fog",
+   "value": 0,
+   "expected_key": "0x0000CCFA",
+   "expected_en": "Off"
+  },
+  {
+   "row": "Fog",
+   "value": 1,
+   "expected_key": "0x0000063C",
+   "expected_en": "On"
+  },
+  {
+   "row": "Depth Of Field",
+   "value": 0,
+   "expected_key": "0x0000CCFA",
+   "expected_en": "Off"
+  },
+  {
+   "row": "Depth Of Field",
+   "value": 1,
+   "expected_key": "0x0000063C",
+   "expected_en": "On"
+  },
+  {
+   "row": "Tinting",
+   "value": 0,
+   "expected_key": "0x0000CCFA",
+   "expected_en": "Off"
+  },
+  {
+   "row": "Tinting",
+   "value": 1,
+   "expected_key": "0x0000063C",
+   "expected_en": "On"
+  },
+  {
+   "row": "Horizon Fog",
+   "value": 0,
+   "expected_key": "0x0000CCFA",
+   "expected_en": "Off"
+  },
+  {
+   "row": "Horizon Fog",
+   "value": 1,
+   "expected_key": "0x0000063C",
+   "expected_en": "On"
+  },
+  {
+   "row": "Over Bright",
+   "value": 0,
+   "expected_key": "0x0000CCFA",
+   "expected_en": "Off"
+  },
+  {
+   "row": "Over Bright",
+   "value": 1,
+   "expected_key": "0x0000063C",
+   "expected_en": "On"
+  },
+  {
+   "row": "Enhanced Contrast",
+   "value": 0,
+   "expected_key": "0x0000CCFA",
+   "expected_en": "Off"
+  },
+  {
+   "row": "Enhanced Contrast",
+   "value": 1,
+   "expected_key": "0x0000063C",
+   "expected_en": "On"
+  },
+  {
+   "row": "Rain Splatter",
+   "value": 0,
+   "expected_key": "0x0000CCFA",
+   "expected_en": "Off"
+  },
+  {
+   "row": "Rain Splatter",
+   "value": 1,
+   "expected_key": "0x0000063C",
+   "expected_en": "On"
+  },
+  {
+   "row": "Vsync",
+   "value": 0,
+   "expected_key": "0x88576CFF",
+   "expected_en": "Off"
+  },
+  {
+   "row": "Vsync",
+   "value": 1,
+   "expected_key": "0x0000063C",
+   "expected_en": "On"
+  },
+  {
+   "row": "Vsync",
+   "value": 5,
+   "expected_key": "0x0000063C",
+   "expected_en": "On",
+   "note": "any non-zero"
+  }
+ ]
+}
