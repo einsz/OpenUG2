@@ -26,6 +26,12 @@ static int hat_centidegrees(Uint8 h) {
 }
 
 static void open_pad(CxInput *c, int device_index, int slot) {
+    if (!SDL_IsGameController(device_index)) {      /* HID oddities (system-control, media keys) enumerate as one-axis joysticks */
+        SDL_Joystick *probe = SDL_JoystickOpen(device_index);
+        int real = probe && SDL_JoystickNumAxes(probe) >= 2;
+        if (probe) SDL_JoystickClose(probe);
+        if (!real) return;
+    }
     SDL_Joystick *j = SDL_JoystickOpen(device_index);
     if (!j) return;
     CbPad *p = &c->b.pad[slot];
