@@ -80,3 +80,37 @@ Standalone 3D resistance is tested; playable adapter remains an explicitly level
 XY fixture with deferred vertical/contact/angular coupling. Complete Stage-2
 world-motion fidelity and original runtime differential are not established.
 Implementer native smoke/build results were reported, not rerun by verifier.
+
+## Stage3 service-braking verification — 2026-10-15
+
+Fresh implementer `stage3_braking_implementation` and independent fresh verifier
+`stage3_braking_verification` completed the approved Stage3 round. Hashes:
+Stage3 `d4689a16861df810159760a6a668ef3714966fd6c20a30e3b2b54f355c41c6f7`;
+Stage1 `61f14ebb5c850fa8aa414ee20baae001fb64d4fff692e9a7d6698dbabce399bb`;
+Stage2 `d3072359aa25bf0ef541504805f70b3579829bb9b1310cda8ba1a568286c6cb6`.
+Independent six-suite run passed: 479 Stage3, 348 Stage2, 3606 Stage1 checks,
+gameplay adapter, clock and collision. Independent numerical/property oracle
+passed 346,974 checks; fresh strict Stage3 and ASan/UBSan Stage3+adapter passed
+(leaks disabled). No divergence/new reviewer cycle required. See
+stage3/VERIFICATION.md and stage3/VERIFIER_AMENDMENTS.md; private synthetic
+scripts/logs are ignored in cleanroom/verification/stage3/.
+Verifier changed no implementation, specification or shared vector. GLES/debug
+builds are implementer-reported. The native 2100-frame audit reaches its requested
+braking phase, but sampled tick1920–2070 rows show service pedal/requested torque
+zero after the near-rest host policy selects reverse; it does not demonstrate
+native service braking. Synthetic adapter fixtures do cover nonzero braking.
+Original-runtime differential remains unperformed; no retail parity, stopping
+curve, exact x87 rounding or Stage4/5 contact/lateral/handbrake fidelity claim.
+
+## Stage3 supplemental native service audit — 2026-10-15
+
+Fresh verifier `stage3_audit_verification` passed the early diagnostic S interval:
+10,000 extracted-block gating/schedule cases, 40 identical pre-interval baseline
+telemetry rows, and independent parsing of moving service pedal/torque, wheel/body
+deceleration, release and resumed acceleration in the completed 420-frame native
+log. Wall/rail/nonfinite/bounds flags are zero. See
+stage3/NATIVE_AUDIT_VERIFICATION.md. No implementation/spec changes or amendments;
+no further phase needed for this diagnostic delta. Core tests were not repeated;
+build/exit0 are implementer-reported. This closes the old native-pedal evidence
+gap while preserving the old report's historical observations. Original-runtime
+parity, retail stopping curve and Stage4/5 behavior remain unverified.

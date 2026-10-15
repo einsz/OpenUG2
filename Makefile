@@ -32,7 +32,7 @@ UGUI_IMAGE_LIBS := $(shell pkg-config --libs libpng libcrypto)
 override CFLAGS += $(shell pkg-config --cflags libpng libcrypto)
 # engine modules: orchestrator + Renderer/Physics/AI/Audio/Resources/World
 GAME_UI_SRC := $(wildcard src/ugui/*.c) src/pause_menu.c src/pause_screen.c src/pause_entries.c src/gui_view.c src/gui_carousel.c src/gui_dialog.c src/gui_layout.c src/gui_timing.c src/options_menu.c src/settings.c src/frontend/frontend.c src/frontend/frontend_draw.c
-SRC  := src/main.c src/render.c src/render_params.c src/physics.c src/drivetrain.c src/resistance.c src/drive_stage1.c src/ai.c src/audio.c src/resource.c src/world.c src/world_instance.c src/world_resident.c src/world_mesh.c src/hud.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/rhi_gl_state.c src/rhi_gl.c src/camera.c src/tex_override.c $(GAME_UI_SRC)
+SRC  := src/main.c src/render.c src/render_params.c src/physics.c src/drivetrain.c src/braking.c src/resistance.c src/drive_stage1.c src/ai.c src/audio.c src/resource.c src/world.c src/world_instance.c src/world_resident.c src/world_mesh.c src/hud.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/rhi_gl_state.c src/rhi_gl.c src/camera.c src/tex_override.c $(GAME_UI_SRC)
 HDRS := src/world_collision_rules.h src/world_collision.h src/race_log.h src/race.h src/traffic_heatmap.h src/asset_chunks.h src/car_config.h src/car_mod.h src/nfsu2.h src/render.h src/physics.h src/ai.h src/audio.h src/resource.h src/debug.h src/world.h src/world_instance.h src/world_resident.h src/world_mesh.h src/world_capture_policy.h src/world_group_reader.h src/world_scenery.h src/ground_motion.h src/hud.h src/hud_asset.h src/hud_texture.h src/hud_baseline.h src/hud_host.h src/rhi_gl_state.h src/rhi.h src/rhi_gl.h src/render_params.h src/camera.h src/tex_override.h
 HDRS += src/options_menu.h src/settings.h src/pause_menu_binding.h src/pause_menu.h src/pause_menu_layout.h src/pause_screen.h src/pause_entries.h src/gui_view.h src/gui_carousel.h src/gui_dialog.h src/gui_layout.h src/gui_timing.h src/frontend/frontend.h src/frontend/frontend_draw.h $(wildcard src/ugui/*.h)
 
@@ -40,7 +40,7 @@ HDRS += src/options_menu.h src/settings.h src/pause_menu_binding.h src/pause_men
 GUI_ART_SRC := src/gui_timing.c src/pause_entries.c src/gui_carousel.c src/gui_dialog.c src/gui_layout.c src/pause_screen.c
 GUI_ART_HDR := $(wildcard src/gui_*.h) src/pause_entries.h src/pause_screen.h
 
-HDRS += src/ug2_track_collision.h src/drivetrain.h src/resistance.h src/drive_stage1.h
+HDRS += src/ug2_track_collision.h src/drivetrain.h src/braking.h src/resistance.h src/drive_stage1.h
 
 .DEFAULT_GOAL := nfsu2   # keep `make` building the binary, not the generated header
 
@@ -111,9 +111,9 @@ camera-test: tools/camera_test.c src/camera.c src/camera.h src/nfsu2.h
 
 # Stage 1 drivetrain / acceleration vs docs/cleanroom-driving-physics/test-vectors
 # (docs/cleanroom-driving-physics/IMPL_DESIGN.md). Pure maths tests: no SDL/GL.
-drivetrain-test: tools/drivetrain_test.c src/drivetrain.c src/drivetrain.h
+drivetrain-test: tools/drivetrain_test.c src/drivetrain.c src/braking.c src/drivetrain.h src/braking.h
 	@mkdir -p build
-	$(CC) $(CFLAGS) -Isrc tools/drivetrain_test.c src/drivetrain.c -o build/drivetrain_test -lm
+	$(CC) $(CFLAGS) -Isrc tools/drivetrain_test.c src/drivetrain.c src/braking.c -o build/drivetrain_test -lm
 	./build/drivetrain_test "$(VECTORS)"
 
 .PHONY: drivetrain-test
@@ -537,9 +537,9 @@ pause-menu-gl-test: build/pause_menu_gl_test
 .PHONY: pause-menu-gl-test
 
 # Synthetic gameplay integration checks; no installation or GL required.
-drive-stage1-test: tools/drive_stage1_test.c src/drive_stage1.c src/drive_stage1.h src/drivetrain.c src/resistance.c src/physics.c $(HDRS)
+drive-stage1-test: tools/drive_stage1_test.c src/drive_stage1.c src/drive_stage1.h src/drivetrain.c src/braking.c src/resistance.c src/physics.c $(HDRS)
 	@mkdir -p build
-	$(CC) $(CFLAGS) -Isrc tools/drive_stage1_test.c src/drive_stage1.c src/drivetrain.c src/resistance.c src/physics.c -o build/drive_stage1_test -lm
+	$(CC) $(CFLAGS) -Isrc tools/drive_stage1_test.c src/drive_stage1.c src/drivetrain.c src/braking.c src/resistance.c src/physics.c -o build/drive_stage1_test -lm
 	./build/drive_stage1_test
 
 .PHONY: drive-stage1-test
@@ -585,8 +585,16 @@ gui-test: gui-art-test gui-view-test gui-frames-test options-menu-test pause-men
 
 # Approved Stage-2 synthetic vectors and full-vector boundary checks (no assets/GL).
 STAGE2_VECTORS ?= docs/cleanroom-driving-physics/stage2/test-vectors
-resistance-test: tools/resistance_test.c tools/test_json.h src/resistance.c src/resistance.h src/drivetrain.c src/drivetrain.h
+resistance-test: tools/resistance_test.c tools/test_json.h src/resistance.c src/resistance.h src/drivetrain.c src/drivetrain.h src/braking.c src/braking.h
 	@mkdir -p build
-	$(CC) $(CFLAGS) -Isrc tools/resistance_test.c src/resistance.c src/drivetrain.c -o build/resistance_test -lm
+	$(CC) $(CFLAGS) -Isrc tools/resistance_test.c src/resistance.c src/drivetrain.c src/braking.c -o build/resistance_test -lm
 	./build/resistance_test "$(STAGE2_VECTORS)"
 .PHONY: resistance-test
+
+# Approved Stage3 synthetic components; no original data, SDL or GL.
+STAGE3_VECTORS ?= docs/cleanroom-driving-physics/stage3/test-vectors
+braking-test: tools/braking_test.c tools/test_json.h src/braking.c src/braking.h src/drivetrain.c src/drivetrain.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Isrc tools/braking_test.c src/braking.c src/drivetrain.c -o build/braking_test -lm
+	./build/braking_test "$(STAGE3_VECTORS)"
+.PHONY: braking-test

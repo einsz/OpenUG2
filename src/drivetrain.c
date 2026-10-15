@@ -330,13 +330,12 @@ void drv_frame_begin(Drivetrain *d, const DrvInput *in, float frame_dt, double r
     const double rpm = (double)(float)(d->omega_e * DRV_KR);
     double t0 = clampd(in->throttle, 0.0, 1.0), b0 = clampd(in->brake, 0.0, 1.0), hb0 = clampd(in->handbrake, 0.0, 1.0);
 
-    /* S1-5.1 pedal exclusivity */
-    if (t0 > b0 && t0 > hb0) {
-        if (b0 < 0.5) b0 = 0.0;
-        if (hb0 < 0.5) hb0 = 0.0;
-    } else if (t0 < 0.5) {
-        t0 = 0.0;
-    }
+    /* One shared S1-5.1/S3-2 operation, before engine-only shaping. */
+    BrkPedals pedals={(float)t0,(float)b0,(float)hb0};
+    brk_pedals(&pedals,d->brakes.enabled?d->brakes.exclusivity:1);
+    t0=pedals.throttle;b0=pedals.service;hb0=pedals.handbrake;
+    if(d->brakes.enabled)
+        brk_distribute(&d->brakes.car,&pedals,(double)d->env.body_speed*BRK_MPH,&d->brakes.frame);
     /* S1-5.2 dead zone */
     double t = t0 <= 0.15 ? 0.0 : t0;
     /* S1-5.3 anti-stall floor */
@@ -398,6 +397,30 @@ double drv_wheel_resistance(float omega,float surface,int damage) {
     return -(double).002f*surface*omega-(damage?(double).1f*omega:0);
 }
 
+int drv_brakes_supply(Drivetrain *d,const BrkCar *car,unsigned locks,int relief_disabled,int exclusivity) {
+    if(!d || !car || locks>15 || !isfinite(car->service) || car->service<0 ||
+       !isfinite(car->handbrake) || car->handbrake<0 || !isfinite(car->rear_share) ||
+       car->rear_share<0 || car->rear_share>1)return -1;
+    BrkCar supplied=*car;
+    memset(&d->brakes,0,sizeof d->brakes);
+    d->brakes.enabled=1;d->brakes.car=supplied;
+    d->brakes.exclusivity=!!exclusivity;d->brakes.relief_disabled=!!relief_disabled;
+    for(int i=0;i<4;i++)d->brakes.locked[i]=d->env.wheel[i].locked=(locks>>i)&1;
+    return 0;
+}
+
+double drv_wheel_derivative(Drivetrain *d,int i,float h) {
+    DrvWheel *w=&d->wheel[i];const DrvWheelEnv *e=&d->env.wheel[i];
+    const double radius=d->car.wheel_radius[i];
+    double net=.5*((double)w->tau-radius*w->force+w->tau_smooth);
+    w->tau_smooth=(float)net;
+    double acceleration=e->locked?0:
+        (net+drv_wheel_resistance(w->omega,e->roll_drag,e->drag_flag))/(double)DRV_WHEEL_INERTIA;
+    /* S3-5: gripping correction follows locked torque/drag zeroing. */
+    if(w->gripping && (double)h>.001)acceleration-=(double)w->slip_speed/(radius*h);
+    return acceleration;
+}
+
 void drv_integrate(Drivetrain *d, float h) {
     const double dh = (double)h;
     /* (a) derivatives from the current state */
@@ -406,17 +429,7 @@ void drv_integrate(Drivetrain *d, float h) {
     const double we_dot = (te + (double)d->feedback) / (double)d->car.engine_inertia;
     const double c_dot = (double)d->car.clutch_rate * (double)d->tune.rate_scale * CLUTCH_RATE_K[d->mode & 3];
     double w_dot[4];
-    for (int i = 0; i < 4; i++) {
-        DrvWheel *w = &d->wheel[i];
-        const DrvWheelEnv *e = &d->env.wheel[i];
-        const double R = d->car.wheel_radius[i];
-        double tb = 0.5 * ((double)w->tau - R * (double)w->force + (double)w->tau_smooth);
-        w->tau_smooth = (float)tb;
-        if (e->locked) { w_dot[i] = 0.0; continue; }
-        double wd = (tb + drv_wheel_resistance(w->omega,e->roll_drag,e->drag_flag)) / (double)DRV_WHEEL_INERTIA;
-        if (w->gripping && dh > 0.001) wd -= (double)w->slip_speed / (R * dh);
-        w_dot[i] = wd;
-    }
+    for (int i = 0; i < 4; i++) w_dot[i]=drv_wheel_derivative(d,i,h);
     /* (b) explicit Euler on every state scalar */
     d->omega_e = (float)((double)d->omega_e + dh * we_dot);
     d->engage = (float)((double)d->engage + dh * c_dot);
@@ -425,6 +438,10 @@ void drv_integrate(Drivetrain *d, float h) {
         w->phi = (float)((double)w->phi + dh * (double)w->omega);
         w->omega = (float)((double)w->omega + dh * w_dot[i]);
     }
+    drv_post(d);
+}
+
+void drv_post(Drivetrain *d) {
     /* (c) post-steps in block order: wheels (+ suspension, later stage), engine, clutch */
     for (int i = 0; i < 4; i++) {
         DrvWheel *w = &d->wheel[i];
@@ -437,7 +454,7 @@ void drv_integrate(Drivetrain *d, float h) {
             w->phi = (float)((double)w->phi + turn_limit);
             if (w->phi < -reset_limit) w->phi = 0;
         }
-        w->dir = w->omega > 1e-5f ? DRV_DIR_FORWARD : (w->omega >= -1e-5f ? DRV_DIR_STOPPED : DRV_DIR_BACKWARD);
+        brk_direction_post(&w->omega,&w->dir);
     }
     engine_post(d);
     clutch_post(d);
@@ -490,25 +507,55 @@ double drv_lock_correction(const Drivetrain *d) {
     return (ae - aw) / dlock;
 }
 
+static double grip_multiplier(const Drivetrain *d,int i) {
+    double gamma=(double)d->tune.grip_q*(1-.025*(double)d->tune.grip_loc_x);
+    return i>1?gamma*d->env.rear_grip_multiplier:gamma;
+}
+static double rear_speed_multiplier(const Drivetrain *d,int i) {
+    if(d->tune.is_player && i>1 && !d->env.wheel[i].locked && d->wheel[i].omega>=0)
+        return .85+.15*clampd(((double)d->env.body_speed-13.4108)*.11185,0,1);
+    return 1;
+}
+void drv_prepare_tyre(Drivetrain *d,int i) {
+    DrvWheel *w=&d->wheel[i];DrvWheelEnv *e=&d->env.wheel[i];
+    const int axle=i>1;
+    const double radius=d->car.wheel_radius[i],load=e->load;
+    /* Pre-decision grip uses incoming lock/spin (S3-4). */
+    const double mu=(double)e->mu_slide_surface*grip_multiplier(d,i)*d->car.mu_slide[axle]*rear_speed_multiplier(d,i);
+    const double slip=radius*w->omega-e->vx,mag=hypot(slip,e->vy);
+    if(d->brakes.enabled) {
+        BrkInput in={.radius=(float)radius,.omega=w->omega,.vx=e->vx,.vy=e->vy,
+            .load=e->load,.mu=mu,.service=d->brakes.frame.service[i],
+            .handbrake=d->brakes.handbrake[i],.tau=w->tau,.locked=e->locked,
+            .relief_disabled=d->brakes.relief_disabled};
+        BrkResult out=brk_prepare(&in);
+        w->tau=out.tau;w->omega=out.omega;e->locked=d->brakes.locked[i]=out.locked;
+    }
+    w->slip_speed=(float)slip;w->gripping=1;
+    if(mag>0 && (e->vx!=0 || e->vy!=0)) {
+        if(fabs(slip)>.5 || fabs((double)e->slip_angle)>d->car.theta_max[axle] || e->locked) {
+            double force=w->w_long*slip*load*mu/mag;
+            double lateral=-e->vy*load*mu/mag*w->w_lat;
+            if((double)d->env.body_speed*MPS_TO_MPH<1 && mu>.1){force/=mu;lateral/=mu;}
+            w->force=(float)force;w->force_lat=(float)lateral;w->gripping=0;
+        }
+    }
+    if(w->gripping) {
+        w->force=(float)((double)w->w_long*w->tau/radius);
+        w->force_lat=(float)((double)w->w_lat*e->lateral_grip_force);
+    }
+}
+
 void drv_couple(Drivetrain *d, const DrvEnv *env, DrvBodyAccelFn body, void *body_ud) {
     const DrvCar *c = &d->car;
     const double Iw = DRV_WHEEL_INERTIA;
     d->env = *env;
+    env=&d->env;
+    if(d->brakes.enabled)for(int i=0;i<4;i++)d->env.wheel[i].locked=d->brakes.locked[i];
     d->contact_count = 0;
     for (int i = 0; i < 4; i++) if (env->wheel[i].contact) d->contact_count++;
     for (int i = 0; i < 4; i++) {            /* idempotent: normally already zero after the post-step */
         d->wheel[i].tau = 0.0f; d->wheel[i].force = 0.0f; d->wheel[i].force_lat = 0.0f;
-    }
-
-    /* grip multipliers (S1-7.8) */
-    double gamma[4], kv[4];
-    for (int i = 0; i < 4; i++) {
-        const DrvWheelEnv *e = &env->wheel[i];
-        gamma[i] = (double)d->tune.grip_q * (1.0 - 0.025 * (double)d->tune.grip_loc_x);
-        if (i > 1) gamma[i] *= env->rear_grip_multiplier;
-        kv[i] = 1.0;
-        if (d->tune.is_player && i > 1 && !e->locked && d->wheel[i].omega >= 0.0f)
-            kv[i] = 0.85 + 0.15 * clampd(((double)env->body_speed - 13.4108) * 0.11185, 0.0, 1.0);
     }
 
     const double wside = d->omega_w; /* S1-7.3: clutch post-step snapshot. */
@@ -520,32 +567,8 @@ void drv_couple(Drivetrain *d, const DrvEnv *env, DrvBodyAccelFn body, void *bod
     else if (d->mode == DRV_CLUTCH_LOCKED)
         dist(d, te0);
 
-    /* S1-7.4 tyre preparation */
-    for (int i = 0; i < 4; i++) {
-        DrvWheel *w = &d->wheel[i];
-        const DrvWheelEnv *e = &env->wheel[i];
-        const int ax = i > 1;
-        const double R = c->wheel_radius[i], N = e->load;
-        const double si = R * (double)w->omega - (double)e->vx;
-        const double vy = e->vy;
-        const double mag = hypot(si, vy);
-        w->slip_speed = (float)si;
-        w->gripping = 1;
-        if (mag > 0.0 && (e->vx != 0.0f || e->vy != 0.0f)) {
-            double mu = (double)e->mu_slide_surface * gamma[i] * (double)c->mu_slide[ax] * kv[i];
-            double Fs = N * mu / mag;
-            if (fabs(si) > 0.5 || fabs((double)e->slip_angle) > (double)c->theta_max[ax] || e->locked) {
-                double F = (double)w->w_long * si * Fs, Fy = -vy * Fs * (double)w->w_lat;
-                if ((double)env->body_speed * MPS_TO_MPH < 1.0 && mu > 0.1) { F /= mu; Fy /= mu; }
-                w->force = (float)F; w->force_lat = (float)Fy;
-                w->gripping = 0;
-            }
-        }
-        if (w->gripping) {
-            w->force = (float)((double)w->w_long * (double)w->tau / R);
-            w->force_lat = (float)((double)w->w_lat * (double)e->lateral_grip_force);
-        }
-    }
+    /* S1-7.4 plus S3-3/4: brakes, sampled slip, lock and tyre branch. */
+    for(int i=0;i<4;i++)drv_prepare_tyre(d,i);
 
     /* S1-7.5 iterative pass */
     for (int pass = 0; pass < 5; pass++) {
@@ -569,7 +592,7 @@ void drv_couple(Drivetrain *d, const DrvEnv *env, DrvBodyAccelFn body, void *bod
         DrvWheel *w = &d->wheel[i];
         const DrvWheelEnv *e = &env->wheel[i];
         const int ax = i > 1;
-        const double Fmax = (double)e->mu_peak_surface * (double)c->mu_peak[ax] * gamma[i] * (double)e->load * kv[i];
+        const double Fmax = (double)e->mu_peak_surface * (double)c->mu_peak[ax] * grip_multiplier(d,i) * (double)e->load * rear_speed_multiplier(d,i);
         const int boosted = w->tau > 0.0f && !e->locked;
         double F = (double)w->force, Fy = (double)w->force_lat;
         double Ft = boosted ? 1.5 * F : F;

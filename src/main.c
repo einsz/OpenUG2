@@ -2093,7 +2093,7 @@ int main(int argc, char **argv) {
     audio_selftest();
     /* Point at your own NFSU2 install/data directory (contains TRACKS/, CARS/).
        Usage: nfsu2 [DATA_DIR] [options]
-         --drivetrain     opt in to stock Stage-1 drivetrain (docs/DRIVETRAIN.md)
+         --drivetrain     opt in to stock Stage-1/2/3 drivetrain (docs/DRIVETRAIN.md)
          --car NAME       car folder under CARS/ (default HUMMER)
          --track NAME     STREAM .BUN under TRACKS/ (default STREAML4RA).
                           The bundles overlap as route/event supersets; ALL is
@@ -4619,15 +4619,17 @@ int main(int argc, char **argv) {
             N2PhysicsAttr pa;
             int physics_from_global=n2_global_physics_attr(globdata,globlen,carname,&pa);
             if(g_stage1_requested) {
-                DrvCar stock;ResCar resistance;
+                DrvCar stock;ResCar resistance;BrkCar brakes;
                 if(!stage1_car_read(globdata,globlen,carname,&stock) ||
-                   !stage2_car_read(globdata,globlen,carname,&resistance) || stage1_drive_init(&g_stage1,&stock,&resistance,0)) {
-                    fprintf(stderr,"--drivetrain: no valid stock Stage-1/2 tuning for %s\n",carname);
+                   !stage2_car_read(globdata,globlen,carname,&resistance) ||
+                   !stage3_car_read(globdata,globlen,carname,&brakes) || stage1_drive_init(&g_stage1,&stock,&resistance,0) ||
+                   stage3_drive_brakes(&g_stage1,&brakes,0,0)) {
+                    fprintf(stderr,"--drivetrain: no valid stock Stage-1/2/3 tuning for %s\n",carname);
                     return 2;
                 }
-                printf("Stage-1/2 drivetrain enabled: stock tuning, automatic; W forward, S brake/reverse, Space hold.\n"
-                       "  Existing planar chassis/suspension/brake adapters; Stage-2 resistance/caps; nitrous/upgrades disabled; drag/drift use legacy physics.\n"
-                       "  Supplied ordinary fixture: G=1 a=0, unit body/wheel surface factors, no bonus/damage/alternate aero, w=0; level XY projection.\n");
+                printf("Stage-1/2/3 drivetrain enabled: stock tuning, automatic; W forward, S brake/reverse, Space hold.\n"
+                       "  Planar chassis/suspension and Space hold adapters; Stage-2 resistance/caps; Stage-3 service brakes; nitrous/upgrades disabled; drag/drift use legacy physics.\n"
+                       "  Supplied ordinary fixture: G=1 a=0, unit body/wheel surface factors, no bonus/damage/alternate aero, w=0; level XY projection; initial locks=0, relief enabled.\n");
             }
             g_vehicle_source_valid=physics_from_global;
             if(physics_from_global)g_vehicle_source=pa;
@@ -6658,10 +6660,11 @@ int main(int argc, char **argv) {
                     printf("car switch deferred: stop the car before selecting %s\n", next_car);
                 } else {
                     CarSwitchCandidate candidate;
-                    DrvCar next_stage1;ResCar next_resistance;
+                    DrvCar next_stage1;ResCar next_resistance;BrkCar next_brakes;
                     if (!prepare_car_switch(&candidate, dataroot, next_car) ||
                         (g_stage1_requested && (!stage1_car_read(candidate.globaldata,candidate.globallen,next_car,&next_stage1) ||
-                         !stage2_car_read(candidate.globaldata,candidate.globallen,next_car,&next_resistance)))) {
+                         !stage2_car_read(candidate.globaldata,candidate.globallen,next_car,&next_resistance) ||
+                         !stage3_car_read(candidate.globaldata,candidate.globallen,next_car,&next_brakes)))) {
                         car_switch_release(&candidate);
                         fprintf(stderr, "car switch failed for %s; keeping %s\n",
                                 next_car, carname);
@@ -6730,7 +6733,10 @@ int main(int argc, char **argv) {
                            swap starts the new car without that decal. */
                         clear_car_vinyl();
                         carname = next_car; selcar = requested; kit_cursor = 0;
-                        if(g_stage1_requested)stage1_drive_init(&g_stage1,&next_stage1,&next_resistance,0);
+                        if(g_stage1_requested) {
+                            stage1_drive_init(&g_stage1,&next_stage1,&next_resistance,0);
+                            stage3_drive_brakes(&g_stage1,&next_brakes,0,0);
+                        }
                         g_dbg.body_kit_current = 0; g_dbg.mod_current = carcfg;
                         g_ride_ready = 0;
                         printf("car switched in process: %s (position and world preserved)\n", carname);
@@ -7417,7 +7423,7 @@ int main(int argc, char **argv) {
         static int stage1_previous=-1;
         if(g_stage1_requested && stage1_active!=stage1_previous) {
             stage1_drive_reset(&g_stage1,vel,heading);
-            printf("drivetrain: %s\n",stage1_active?"Stage 1/2 (stock resistance, planar host chassis adapters)":"legacy race-mode physics (drag/drift outside Stage 1)");
+            printf("drivetrain: %s\n",stage1_active?"Stage 1/2/3 (stock service brakes/resistance, planar host chassis adapters)":"legacy race-mode physics (drag/drift outside Stage 1)");
             stage1_previous=stage1_active;
         }
         int pf_spawns=0;
@@ -7491,6 +7497,10 @@ int main(int argc, char **argv) {
         static double da_clampsum = 0;
         if (daudit) {
             if      (da_f < 120)  { throttle =  0.0f; steer = 0.0f; }
+            /* Exercise service braking while still on the early straight;
+               the later S phase can instead select reverse after an obstacle. */
+            else if (stage1_active && da_f >= 300 && da_f < 345)
+                                 { throttle = -1.0f; steer = 0.0f; }
             else if (da_f < 720)  { throttle =  1.0f; steer = 0.0f; }
             else if (da_f < 1920) { throttle =  1.0f;
                                     steer = ((da_f - 720) / 120) % 2 ? -1.0f : 1.0f; }
@@ -8129,6 +8139,13 @@ int main(int argc, char **argv) {
                        g_stage1.body.force[0],g_stage1.body.force[1],g_stage1.body.z,
                        g_stage1.aero.load,g_stage1.resistance_car.limit_mph,
                        g_stage1.resistance_input.scale,g_stage1.resistance_input.reduction);
+                const Drivetrain *drive=&g_stage1.drivetrain;
+                printf("STAGE3 tick=%ld brake=%.3f strength=%.6f rearShare=%.3f reliefDisabled=%d locks=%d%d%d%d requested=(%.6f,%.6f) force=(%.6f,%.6f) spin=(%.3f,%.3f)\n",
+                       da_f,drive->brake,drive->brakes.car.service,drive->brakes.car.rear_share,
+                       drive->brakes.relief_disabled,drive->brakes.locked[0],drive->brakes.locked[1],
+                       drive->brakes.locked[2],drive->brakes.locked[3],
+                       drive->brakes.frame.service[0],drive->brakes.frame.service[2],
+                       drive->force_long[0],drive->force_long[2],drive->wheel[0].omega,drive->wheel[2].omega);
             }
             if (da_f == shotframes - 1) {
                 float sk2 = speed < 0 ? -speed : speed;

@@ -1,4 +1,4 @@
-/* Gameplay adapter for approved Stage 1. Chassis/contact/brakes remain
+/* Gameplay adapter for approved Stages 1/2/3. Chassis/contact/handbrake remain
  * OpenUG2 approximations; see docs/DRIVETRAIN.md. No SDL, GL or file IO. */
 #ifndef OPENUG2_DRIVE_STAGE1_H
 #define OPENUG2_DRIVE_STAGE1_H
@@ -17,12 +17,18 @@ typedef struct {
     float body_surface[4],rolling_surface[4];
     unsigned damage_mask;
     int state_code,alternate_movement,disable_stabilize;
+    unsigned initial_lock_mask; /* explicit host reset fixture, not a retail default */
     float wheel_travel; /* mean signed angular travel during the last host tick */
 } Stage1Drive;
 /* Read only approved stock S1-1 fields via independent GLOBALB framing. */
 int stage1_car_read(const unsigned char *data,long length,const char *name,DrvCar *out);
 /* Read only approved S2-1 stock fields from the same independent framing. */
 int stage2_car_read(const unsigned char *data,long length,const char *name,ResCar *out);
+/* Read only approved S3-1 stock fields via the same framing. */
+int stage3_car_read(const unsigned char *data,long length,const char *name,BrkCar *out);
+/* Stage3 configuration is mandatory for gameplay service brakes. Initial lock
+ * mask and relief switch are explicit host inputs (U3-2/3), not retail defaults. */
+int stage3_drive_brakes(Stage1Drive *state,const BrkCar *car,unsigned initial_lock_mask,int relief_disabled);
 /* Initial reduction is mandatory (U2-1). This host supplies ordinary mode,
  * G=1, no bonus/alternate mode/damage and unit surface channels explicitly. */
 int stage1_drive_init(Stage1Drive *state,const DrvCar *car,const ResCar *resistance,float reduction);
@@ -31,7 +37,7 @@ int stage1_drive_init(Stage1Drive *state,const DrvCar *car,const ResCar *resista
 void stage1_drive_reset(Stage1Drive *state,const float velocity[2],float heading);
 /* One host 60 Hz tick, subdivided per S1-2.2. Pedal: W=+1, S=-1.
  * S brakes forward then selects reverse at rest; W brakes reverse then auto.
- * Brake/handbrake, contact loads and chassis steering are adapters.
+ * Service braking uses Stage3; handbrake, loads and steering are host adapters.
  * Stage 2 uses an explicit level-body XY slice; suspension owns vertical motion. */
 float stage1_drive_step(Stage1Drive *state,float position[3],float velocity[2],
     float *heading,float *speed,float pedal,float steer,int handbrake,

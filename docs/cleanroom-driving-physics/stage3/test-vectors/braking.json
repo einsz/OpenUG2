@@ -1,0 +1,1277 @@
+{
+  "schema": "stage3-braking-derived-v1",
+  "provenance": "Synthetic mathematical fixtures inferred from static evidence; not retail runtime captures.",
+  "numeric_convention": "Input scalars converted to binary32; double evaluation of equations; binary32 stores for state outputs. A/C and relief_scale diagnostics use double. See README tolerances.",
+  "cases": [
+    {
+      "id": "pedal_release",
+      "component": "pedals",
+      "inputs": {
+        "u": 0.0,
+        "b": 0.0,
+        "hb": 0.0,
+        "exclusivity": true
+      },
+      "expected": {
+        "u": 0,
+        "b": 0.0,
+        "hb": 0.0
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-2; E3-1. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "pedal_small_service",
+      "component": "pedals",
+      "inputs": {
+        "u": 0.0,
+        "b": 0.10000000149011612,
+        "hb": 0.0,
+        "exclusivity": true
+      },
+      "expected": {
+        "u": 0,
+        "b": 0.10000000149011612,
+        "hb": 0.0
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-2; E3-1. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "pedal_dominant_throttle",
+      "component": "pedals",
+      "inputs": {
+        "u": 0.699999988079071,
+        "b": 0.30000001192092896,
+        "hb": 0.20000000298023224,
+        "exclusivity": true
+      },
+      "expected": {
+        "u": 0.699999988079071,
+        "b": 0,
+        "hb": 0
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-2; E3-1. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "pedal_half_retained",
+      "component": "pedals",
+      "inputs": {
+        "u": 0.800000011920929,
+        "b": 0.5,
+        "hb": 0.10000000149011612,
+        "exclusivity": true
+      },
+      "expected": {
+        "u": 0.800000011920929,
+        "b": 0.5,
+        "hb": 0
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-2; E3-1. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "pedal_tied_throttle",
+      "component": "pedals",
+      "inputs": {
+        "u": 0.4000000059604645,
+        "b": 0.4000000059604645,
+        "hb": 0.0,
+        "exclusivity": true
+      },
+      "expected": {
+        "u": 0,
+        "b": 0.4000000059604645,
+        "hb": 0.0
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-2; E3-1. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "pedal_brake_dominant",
+      "component": "pedals",
+      "inputs": {
+        "u": 0.30000001192092896,
+        "b": 0.800000011920929,
+        "hb": 0.0,
+        "exclusivity": true
+      },
+      "expected": {
+        "u": 0,
+        "b": 0.800000011920929,
+        "hb": 0.0
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-2; E3-1. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "pedal_no_exclusivity",
+      "component": "pedals",
+      "inputs": {
+        "u": 0.699999988079071,
+        "b": 0.30000001192092896,
+        "hb": 0.20000000298023224,
+        "exclusivity": false
+      },
+      "expected": {
+        "u": 0.699999988079071,
+        "b": 0.30000001192092896,
+        "hb": 0.20000000298023224
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-2; E3-1. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "split_zero",
+      "component": "distribution",
+      "inputs": {
+        "Kb": 0.5,
+        "beta": 0.4000000059604645,
+        "u": 0.0,
+        "b": 0.0,
+        "vmph": 20.0
+      },
+      "expected": {
+        "coefficients": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "service_magnitudes": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-2; E3-1. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "split_half",
+      "component": "distribution",
+      "inputs": {
+        "Kb": 0.5,
+        "beta": 0.25,
+        "u": 0.0,
+        "b": 0.5,
+        "vmph": 20.0
+      },
+      "expected": {
+        "coefficients": [
+          0.75,
+          0.75,
+          0.25,
+          0.25
+        ],
+        "service_magnitudes": [
+          1.5,
+          1.5,
+          0.5,
+          0.5
+        ]
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-2; E3-1. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "split_full",
+      "component": "distribution",
+      "inputs": {
+        "Kb": 0.5,
+        "beta": 0.25,
+        "u": 0.0,
+        "b": 1.0,
+        "vmph": 20.0
+      },
+      "expected": {
+        "coefficients": [
+          1.5,
+          1.5,
+          0.5,
+          0.5
+        ],
+        "service_magnitudes": [
+          3.0,
+          3.0,
+          1.0,
+          1.0
+        ]
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-2; E3-1. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "split_front_only",
+      "component": "distribution",
+      "inputs": {
+        "Kb": 0.5,
+        "beta": 0.0,
+        "u": 0.0,
+        "b": 1.0,
+        "vmph": 20.0
+      },
+      "expected": {
+        "coefficients": [
+          2.0,
+          2.0,
+          0.0,
+          0.0
+        ],
+        "service_magnitudes": [
+          4.0,
+          4.0,
+          0.0,
+          0.0
+        ]
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-2; E3-1. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "split_rear_only",
+      "component": "distribution",
+      "inputs": {
+        "Kb": 0.5,
+        "beta": 1.0,
+        "u": 0.0,
+        "b": 1.0,
+        "vmph": 20.0
+      },
+      "expected": {
+        "coefficients": [
+          0.0,
+          0.0,
+          2.0,
+          2.0
+        ],
+        "service_magnitudes": [
+          0.0,
+          0.0,
+          4.0,
+          4.0
+        ]
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-2; E3-1. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "split_small_pedal",
+      "component": "distribution",
+      "inputs": {
+        "Kb": 0.5,
+        "beta": 0.4000000059604645,
+        "u": 0.0,
+        "b": 0.10000000149011612,
+        "vmph": 20.0
+      },
+      "expected": {
+        "coefficients": [
+          0.11999999731779099,
+          0.11999999731779099,
+          0.08000000566244125,
+          0.08000000566244125
+        ],
+        "service_magnitudes": [
+          0.23999999463558197,
+          0.23999999463558197,
+          0.1600000113248825,
+          0.1600000113248825
+        ]
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-2; E3-1. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "overlap_at_rest",
+      "component": "distribution",
+      "inputs": {
+        "Kb": 0.5,
+        "beta": 0.25,
+        "u": 1.0,
+        "b": 1.0,
+        "vmph": 0.0
+      },
+      "expected": {
+        "coefficients": [
+          1.5,
+          1.5,
+          0.0,
+          0.0
+        ],
+        "service_magnitudes": [
+          3.0,
+          3.0,
+          0.0,
+          0.0
+        ]
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-2; E3-1. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "overlap_below_speed",
+      "component": "distribution",
+      "inputs": {
+        "Kb": 0.5,
+        "beta": 0.25,
+        "u": 1.0,
+        "b": 1.0,
+        "vmph": 5.0
+      },
+      "expected": {
+        "coefficients": [
+          1.5,
+          1.5,
+          0.25,
+          0.25
+        ],
+        "service_magnitudes": [
+          3.0,
+          3.0,
+          0.5,
+          0.5
+        ]
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-2; E3-1. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "overlap_speed_equal",
+      "component": "distribution",
+      "inputs": {
+        "Kb": 0.5,
+        "beta": 0.25,
+        "u": 1.0,
+        "b": 1.0,
+        "vmph": 10.0
+      },
+      "expected": {
+        "coefficients": [
+          1.5,
+          1.5,
+          0.5,
+          0.5
+        ],
+        "service_magnitudes": [
+          3.0,
+          3.0,
+          1.0,
+          1.0
+        ]
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-2; E3-1. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "overlap_throttle_equal",
+      "component": "distribution",
+      "inputs": {
+        "Kb": 0.5,
+        "beta": 0.25,
+        "u": 0.800000011920929,
+        "b": 1.0,
+        "vmph": 5.0
+      },
+      "expected": {
+        "coefficients": [
+          1.5,
+          1.5,
+          0.5,
+          0.5
+        ],
+        "service_magnitudes": [
+          3.0,
+          3.0,
+          1.0,
+          1.0
+        ]
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-2; E3-1. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "overlap_brake_equal",
+      "component": "distribution",
+      "inputs": {
+        "Kb": 0.5,
+        "beta": 0.25,
+        "u": 1.0,
+        "b": 0.5,
+        "vmph": 5.0
+      },
+      "expected": {
+        "coefficients": [
+          0.75,
+          0.75,
+          0.25,
+          0.25
+        ],
+        "service_magnitudes": [
+          1.5,
+          1.5,
+          0.5,
+          0.5
+        ]
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-2; E3-1. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "perfect_roll_no_lock_decision",
+      "component": "preparation",
+      "inputs": {
+        "R": 0.5,
+        "omega": 20.0,
+        "vx": 10.0,
+        "vy": 0.0,
+        "N": 4.0,
+        "mu": 1.0,
+        "B": 1.0,
+        "H": 0.0,
+        "tau_initial": 0.0,
+        "locked": false,
+        "relief_disabled": false
+      },
+      "expected": {
+        "slip": 0.0,
+        "tau": -1.0,
+        "relief_scale": 1,
+        "decision_evaluated": false,
+        "Q": null,
+        "A": null,
+        "C": null,
+        "omega": 20.0,
+        "locked": false,
+        "sliding": false,
+        "initial_longitudinal_force": -2.0
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-3/S3-4/S3-5 and S1-7.4; E3-2/E3-3/E3-5. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "forward_relief",
+      "component": "preparation",
+      "inputs": {
+        "R": 0.5,
+        "omega": 10.0,
+        "vx": 10.0,
+        "vy": 0.0,
+        "N": 4.0,
+        "mu": 1.0,
+        "B": 2.0,
+        "H": 0.0,
+        "tau_initial": 0.0,
+        "locked": false,
+        "relief_disabled": false
+      },
+      "expected": {
+        "slip": -5.0,
+        "tau": -0.20000000298023224,
+        "relief_scale": 0.1,
+        "decision_evaluated": true,
+        "Q": 4.0,
+        "A": 2.4000000953674316,
+        "C": 3.000000014901161,
+        "omega": 10.0,
+        "locked": false,
+        "sliding": true,
+        "initial_longitudinal_force": -4.0
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-3/S3-4/S3-5 and S1-7.4; E3-2/E3-3/E3-5. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "relief_threshold_equal",
+      "component": "preparation",
+      "inputs": {
+        "R": 0.5,
+        "omega": 19.0,
+        "vx": 10.0,
+        "vy": 0.0,
+        "N": 4.0,
+        "mu": 1.0,
+        "B": 2.0,
+        "H": 0.0,
+        "tau_initial": 0.0,
+        "locked": false,
+        "relief_disabled": false
+      },
+      "expected": {
+        "slip": -0.5,
+        "tau": -2.0,
+        "relief_scale": 1,
+        "decision_evaluated": true,
+        "Q": 4.0,
+        "A": 2.4000000953674316,
+        "C": 3.9000000283122063,
+        "omega": 19.0,
+        "locked": false,
+        "sliding": false,
+        "initial_longitudinal_force": -4.0
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-3/S3-4/S3-5 and S1-7.4; E3-2/E3-3/E3-5. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "relief_disabled",
+      "component": "preparation",
+      "inputs": {
+        "R": 0.5,
+        "omega": 10.0,
+        "vx": 10.0,
+        "vy": 0.0,
+        "N": 4.0,
+        "mu": 1.0,
+        "B": 2.0,
+        "H": 0.0,
+        "tau_initial": 0.0,
+        "locked": false,
+        "relief_disabled": true
+      },
+      "expected": {
+        "slip": -5.0,
+        "tau": -2.0,
+        "relief_scale": 1,
+        "decision_evaluated": true,
+        "Q": 4.0,
+        "A": 2.4000000953674316,
+        "C": 3.000000014901161,
+        "omega": 10.0,
+        "locked": false,
+        "sliding": true,
+        "initial_longitudinal_force": -4.0
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-3/S3-4/S3-5 and S1-7.4; E3-2/E3-3/E3-5. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "relief_net_drive_positive",
+      "component": "preparation",
+      "inputs": {
+        "R": 0.5,
+        "omega": 10.0,
+        "vx": 10.0,
+        "vy": 0.0,
+        "N": 4.0,
+        "mu": 1.0,
+        "B": 2.0,
+        "H": 0.0,
+        "tau_initial": 3.0,
+        "locked": false,
+        "relief_disabled": false
+      },
+      "expected": {
+        "slip": -5.0,
+        "tau": 1.0,
+        "relief_scale": 1,
+        "decision_evaluated": true,
+        "Q": 4.0,
+        "A": 2.4000000953674316,
+        "C": 3.000000014901161,
+        "omega": 10.0,
+        "locked": false,
+        "sliding": true,
+        "initial_longitudinal_force": -4.0
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-3/S3-4/S3-5 and S1-7.4; E3-2/E3-3/E3-5. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "relief_without_service",
+      "component": "preparation",
+      "inputs": {
+        "R": 0.5,
+        "omega": 10.0,
+        "vx": 10.0,
+        "vy": 0.0,
+        "N": 4.0,
+        "mu": 1.0,
+        "B": 0.0,
+        "H": 0.0,
+        "tau_initial": -2.0,
+        "locked": false,
+        "relief_disabled": false
+      },
+      "expected": {
+        "slip": -5.0,
+        "tau": -0.20000000298023224,
+        "relief_scale": 0.1,
+        "decision_evaluated": true,
+        "Q": 4.0,
+        "A": 0.0,
+        "C": 3.000000014901161,
+        "omega": 10.0,
+        "locked": false,
+        "sliding": true,
+        "initial_longitudinal_force": -4.0
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-3/S3-4/S3-5 and S1-7.4; E3-2/E3-3/E3-5. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "handbrake_suppresses_relief",
+      "component": "preparation",
+      "inputs": {
+        "R": 0.5,
+        "omega": 10.0,
+        "vx": 10.0,
+        "vy": 0.0,
+        "N": 4.0,
+        "mu": 1.0,
+        "B": 1.0,
+        "H": 0.25,
+        "tau_initial": 0.0,
+        "locked": false,
+        "relief_disabled": false
+      },
+      "expected": {
+        "slip": -5.0,
+        "tau": -1.25,
+        "relief_scale": 1,
+        "decision_evaluated": true,
+        "Q": 4.0,
+        "A": 1.5000000596046448,
+        "C": 3.000000014901161,
+        "omega": 10.0,
+        "locked": false,
+        "sliding": true,
+        "initial_longitudinal_force": -4.0
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-3/S3-4/S3-5 and S1-7.4; E3-2/E3-3/E3-5. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "reverse_no_mirrored_relief",
+      "component": "preparation",
+      "inputs": {
+        "R": 0.5,
+        "omega": -10.0,
+        "vx": -10.0,
+        "vy": 0.0,
+        "N": 4.0,
+        "mu": 1.0,
+        "B": 2.0,
+        "H": 0.0,
+        "tau_initial": 0.0,
+        "locked": false,
+        "relief_disabled": false
+      },
+      "expected": {
+        "slip": 5.0,
+        "tau": 2.0,
+        "relief_scale": 1,
+        "decision_evaluated": true,
+        "Q": 4.0,
+        "A": 2.4000000953674316,
+        "C": 3.000000014901161,
+        "omega": -10.0,
+        "locked": false,
+        "sliding": true,
+        "initial_longitudinal_force": 4.0
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-3/S3-4/S3-5 and S1-7.4; E3-2/E3-3/E3-5. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "zero_spin_positive_torque",
+      "component": "preparation",
+      "inputs": {
+        "R": 0.5,
+        "omega": 0.0,
+        "vx": 1.0,
+        "vy": 0.0,
+        "N": 4.0,
+        "mu": 1.0,
+        "B": 0.25,
+        "H": 0.0,
+        "tau_initial": 0.0,
+        "locked": false,
+        "relief_disabled": false
+      },
+      "expected": {
+        "slip": -1.0,
+        "tau": 0.25,
+        "relief_scale": 1,
+        "decision_evaluated": true,
+        "Q": 4.0,
+        "A": 0.30000001192092896,
+        "C": 2.0,
+        "omega": 0.0,
+        "locked": false,
+        "sliding": true,
+        "initial_longitudinal_force": -4.0
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-3/S3-4/S3-5 and S1-7.4; E3-2/E3-3/E3-5. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "incoming_lock_skips_torque_then_unlock",
+      "component": "preparation",
+      "inputs": {
+        "R": 0.5,
+        "omega": 0.0,
+        "vx": 5.0,
+        "vy": 0.0,
+        "N": 4.0,
+        "mu": 1.0,
+        "B": 0.0,
+        "H": 0.0,
+        "tau_initial": 0.0,
+        "locked": true,
+        "relief_disabled": false
+      },
+      "expected": {
+        "slip": -5.0,
+        "tau": 0.0,
+        "relief_scale": 1,
+        "decision_evaluated": true,
+        "Q": 4.0,
+        "A": 0.0,
+        "C": 2.0,
+        "omega": 0.0,
+        "locked": false,
+        "sliding": true,
+        "initial_longitudinal_force": -4.0
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-3/S3-4/S3-5 and S1-7.4; E3-2/E3-3/E3-5. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "incoming_lock_retained_at_rest",
+      "component": "preparation",
+      "inputs": {
+        "R": 0.5,
+        "omega": 0.0,
+        "vx": 0.0,
+        "vy": 0.0,
+        "N": 4.0,
+        "mu": 1.0,
+        "B": 0.0,
+        "H": 0.0,
+        "tau_initial": 0.0,
+        "locked": true,
+        "relief_disabled": false
+      },
+      "expected": {
+        "slip": 0.0,
+        "tau": 0.0,
+        "relief_scale": 1,
+        "decision_evaluated": false,
+        "Q": null,
+        "A": null,
+        "C": null,
+        "omega": 0.0,
+        "locked": true,
+        "sliding": false,
+        "initial_longitudinal_force": 0.0
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-3/S3-4/S3-5 and S1-7.4; E3-2/E3-3/E3-5. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "spin_at_stationary_contact",
+      "component": "preparation",
+      "inputs": {
+        "R": 0.5,
+        "omega": 5.0,
+        "vx": 0.0,
+        "vy": 0.0,
+        "N": 4.0,
+        "mu": 1.0,
+        "B": 2.0,
+        "H": 0.0,
+        "tau_initial": 0.0,
+        "locked": false,
+        "relief_disabled": false
+      },
+      "expected": {
+        "slip": 2.5,
+        "tau": -2.0,
+        "relief_scale": 1,
+        "decision_evaluated": false,
+        "Q": null,
+        "A": null,
+        "C": null,
+        "omega": 5.0,
+        "locked": false,
+        "sliding": false,
+        "initial_longitudinal_force": -4.0
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-3/S3-4/S3-5 and S1-7.4; E3-2/E3-3/E3-5. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "new_lock_preserves_pre_stop_slip",
+      "component": "preparation",
+      "inputs": {
+        "R": 0.5,
+        "omega": 2.0,
+        "vx": 5.0,
+        "vy": 0.0,
+        "N": 4.0,
+        "mu": 1.0,
+        "B": 3.0,
+        "H": 0.0,
+        "tau_initial": 0.0,
+        "locked": false,
+        "relief_disabled": true
+      },
+      "expected": {
+        "slip": -4.0,
+        "tau": -3.0,
+        "relief_scale": 1,
+        "decision_evaluated": true,
+        "Q": 4.0,
+        "A": 3.6000001430511475,
+        "C": 2.2000000029802322,
+        "omega": 0,
+        "locked": true,
+        "sliding": true,
+        "initial_longitudinal_force": -4.0
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-3/S3-4/S3-5 and S1-7.4; E3-2/E3-3/E3-5. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "weak_brake_snap_without_lock",
+      "component": "preparation",
+      "inputs": {
+        "R": 0.5,
+        "omega": 0.0,
+        "vx": 5.0,
+        "vy": 0.0,
+        "N": 0.0,
+        "mu": 1.0,
+        "B": 0.5,
+        "H": 0.0,
+        "tau_initial": 0.0,
+        "locked": false,
+        "relief_disabled": false
+      },
+      "expected": {
+        "slip": -5.0,
+        "tau": 0.5,
+        "relief_scale": 1,
+        "decision_evaluated": true,
+        "Q": 0.0,
+        "A": 0.6000000238418579,
+        "C": 0.0,
+        "omega": 0,
+        "locked": false,
+        "sliding": true,
+        "initial_longitudinal_force": -0.0
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-3/S3-4/S3-5 and S1-7.4; E3-2/E3-3/E3-5. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "zero_load_spinning_lock",
+      "component": "preparation",
+      "inputs": {
+        "R": 0.5,
+        "omega": 1.0,
+        "vx": 5.0,
+        "vy": 0.0,
+        "N": 0.0,
+        "mu": 1.0,
+        "B": 2.0,
+        "H": 0.0,
+        "tau_initial": 0.0,
+        "locked": false,
+        "relief_disabled": false
+      },
+      "expected": {
+        "slip": -4.5,
+        "tau": -0.2222222238779068,
+        "relief_scale": 0.1111111111111111,
+        "decision_evaluated": true,
+        "Q": 0.0,
+        "A": 2.4000000953674316,
+        "C": 0.10000000149011612,
+        "omega": 0,
+        "locked": true,
+        "sliding": true,
+        "initial_longitudinal_force": -0.0
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-3/S3-4/S3-5 and S1-7.4; E3-2/E3-3/E3-5. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "zero_load_high_spin_no_lock",
+      "component": "preparation",
+      "inputs": {
+        "R": 0.5,
+        "omega": 100.0,
+        "vx": 5.0,
+        "vy": 0.0,
+        "N": 0.0,
+        "mu": 1.0,
+        "B": 2.0,
+        "H": 0.0,
+        "tau_initial": 0.0,
+        "locked": false,
+        "relief_disabled": false
+      },
+      "expected": {
+        "slip": 45.0,
+        "tau": -2.0,
+        "relief_scale": 1,
+        "decision_evaluated": true,
+        "Q": 0.0,
+        "A": 2.4000000953674316,
+        "C": 10.000000149011612,
+        "omega": 100.0,
+        "locked": false,
+        "sliding": true,
+        "initial_longitudinal_force": 0.0
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-3/S3-4/S3-5 and S1-7.4; E3-2/E3-3/E3-5. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "lock_test_equality_unlocks",
+      "component": "preparation",
+      "inputs": {
+        "R": 0.5,
+        "omega": 0.0,
+        "vx": 1.0,
+        "vy": 0.0,
+        "N": 1.2000000476837158,
+        "mu": 1.0,
+        "B": 0.5,
+        "H": 0.0,
+        "tau_initial": 0.0,
+        "locked": true,
+        "relief_disabled": false
+      },
+      "expected": {
+        "slip": -1.0,
+        "tau": 0.0,
+        "relief_scale": 1,
+        "decision_evaluated": true,
+        "Q": 1.2000000476837158,
+        "A": 0.6000000238418579,
+        "C": 0.6000000238418579,
+        "omega": 0.0,
+        "locked": false,
+        "sliding": true,
+        "initial_longitudinal_force": -1.2000000476837158
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-3/S3-4/S3-5 and S1-7.4; E3-2/E3-3/E3-5. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "lateral_motion_reduces_Q",
+      "component": "preparation",
+      "inputs": {
+        "R": 0.5,
+        "omega": 2.0,
+        "vx": 3.0,
+        "vy": 4.0,
+        "N": 4.0,
+        "mu": 1.0,
+        "B": 2.0,
+        "H": 0.0,
+        "tau_initial": 0.0,
+        "locked": false,
+        "relief_disabled": true
+      },
+      "expected": {
+        "slip": -2.0,
+        "tau": -2.0,
+        "relief_scale": 1,
+        "decision_evaluated": true,
+        "Q": 2.4,
+        "A": 2.4000000953674316,
+        "C": 1.4000000029802322,
+        "omega": 0,
+        "locked": true,
+        "sliding": true,
+        "initial_longitudinal_force": -1.7888543605804443
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-3/S3-4/S3-5 and S1-7.4; E3-2/E3-3/E3-5. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "slip_relief_does_not_reduce_lock_strength",
+      "component": "preparation",
+      "inputs": {
+        "R": 0.5,
+        "omega": 2.0,
+        "vx": 20.0,
+        "vy": 0.0,
+        "N": 4.0,
+        "mu": 1.0,
+        "B": 4.0,
+        "H": 0.0,
+        "tau_initial": 0.0,
+        "locked": false,
+        "relief_disabled": false
+      },
+      "expected": {
+        "slip": -19.0,
+        "tau": -0.10526315867900848,
+        "relief_scale": 0.02631578947368421,
+        "decision_evaluated": true,
+        "Q": 4.0,
+        "A": 4.800000190734863,
+        "C": 2.2000000029802322,
+        "omega": 0,
+        "locked": true,
+        "sliding": true,
+        "initial_longitudinal_force": -4.0
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-3/S3-4/S3-5 and S1-7.4; E3-2/E3-3/E3-5. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "omega_sign_ignores_vehicle_direction",
+      "component": "preparation",
+      "inputs": {
+        "R": 0.5,
+        "omega": 10.0,
+        "vx": -10.0,
+        "vy": 0.0,
+        "N": 4.0,
+        "mu": 1.0,
+        "B": 1.0,
+        "H": 0.0,
+        "tau_initial": 0.0,
+        "locked": false,
+        "relief_disabled": false
+      },
+      "expected": {
+        "slip": 15.0,
+        "tau": -1.0,
+        "relief_scale": 1,
+        "decision_evaluated": true,
+        "Q": 4.0,
+        "A": 1.2000000476837158,
+        "C": 3.000000014901161,
+        "omega": 10.0,
+        "locked": false,
+        "sliding": true,
+        "initial_longitudinal_force": 4.0
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-3/S3-4/S3-5 and S1-7.4; E3-2/E3-3/E3-5. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "cross_forward",
+      "component": "direction_post",
+      "inputs": {
+        "old_dir": "forward",
+        "integrated_omega": -0.5
+      },
+      "expected": {
+        "omega": 0,
+        "dir": "stopped"
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-6; E3-4. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "cross_reverse",
+      "component": "direction_post",
+      "inputs": {
+        "old_dir": "backward",
+        "integrated_omega": 0.5
+      },
+      "expected": {
+        "omega": 0,
+        "dir": "stopped"
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-6; E3-4. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "stopped_can_start_forward",
+      "component": "direction_post",
+      "inputs": {
+        "old_dir": "stopped",
+        "integrated_omega": 0.5
+      },
+      "expected": {
+        "omega": 0.5,
+        "dir": "forward"
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-6; E3-4. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "stopped_can_start_reverse",
+      "component": "direction_post",
+      "inputs": {
+        "old_dir": "stopped",
+        "integrated_omega": -0.5
+      },
+      "expected": {
+        "omega": -0.5,
+        "dir": "backward"
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-6; E3-4. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "positive_epsilon",
+      "component": "direction_post",
+      "inputs": {
+        "old_dir": "stopped",
+        "integrated_omega": 9.999999747378752e-06
+      },
+      "expected": {
+        "omega": 9.999999747378752e-06,
+        "dir": "stopped"
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-6; E3-4. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "negative_epsilon",
+      "component": "direction_post",
+      "inputs": {
+        "old_dir": "stopped",
+        "integrated_omega": -9.999999747378752e-06
+      },
+      "expected": {
+        "omega": -9.999999747378752e-06,
+        "dir": "stopped"
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-6; E3-4. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "tiny_spin_retained",
+      "component": "direction_post",
+      "inputs": {
+        "old_dir": "stopped",
+        "integrated_omega": 4.999999873689376e-06
+      },
+      "expected": {
+        "omega": 4.999999873689376e-06,
+        "dir": "stopped"
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-6; E3-4. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "forward_no_cross",
+      "component": "direction_post",
+      "inputs": {
+        "old_dir": "forward",
+        "integrated_omega": 0.10000000149011612
+      },
+      "expected": {
+        "omega": 0.10000000149011612,
+        "dir": "forward"
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-6; E3-4. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "lock_core_equal_one",
+      "component": "lock_comparison",
+      "inputs": {
+        "A": 1,
+        "C": 0.5,
+        "omega": 2
+      },
+      "expected": {
+        "omega": 0,
+        "locked": false
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-4; E3-3. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "lock_core_equal_capacity",
+      "component": "lock_comparison",
+      "inputs": {
+        "A": 2,
+        "C": 2,
+        "omega": 2
+      },
+      "expected": {
+        "omega": 2,
+        "locked": false
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-4; E3-3. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "lock_core_above_one",
+      "component": "lock_comparison",
+      "inputs": {
+        "A": 1.25,
+        "C": 0.5,
+        "omega": 2
+      },
+      "expected": {
+        "omega": 0,
+        "locked": true
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-4; E3-3. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "lock_core_below_one",
+      "component": "lock_comparison",
+      "inputs": {
+        "A": 0.75,
+        "C": 0.5,
+        "omega": 2
+      },
+      "expected": {
+        "omega": 0,
+        "locked": false
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-4; E3-3. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "locked_sliding",
+      "component": "wheel_derivative",
+      "inputs": {
+        "tau": -2,
+        "R": 0.5,
+        "force": -1,
+        "smoothed_previous": 1,
+        "omega": 3,
+        "rho": 1,
+        "damage": 0,
+        "inertia": 0.009999999776482582,
+        "locked": true,
+        "gripping": false,
+        "h": 0.004000000189989805,
+        "slip": -5
+      },
+      "expected": {
+        "smoothed": -0.25,
+        "angular_acceleration": 0
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-5 and S1-8.1; E3-5. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "locked_gripping_correction",
+      "component": "wheel_derivative",
+      "inputs": {
+        "tau": -2,
+        "R": 0.5,
+        "force": -1,
+        "smoothed_previous": 1,
+        "omega": 3,
+        "rho": 1,
+        "damage": 0,
+        "inertia": 0.009999999776482582,
+        "locked": true,
+        "gripping": true,
+        "h": 0.004000000189989805,
+        "slip": 1
+      },
+      "expected": {
+        "smoothed": -0.25,
+        "angular_acceleration": -499.9999694824219
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-5 and S1-8.1; E3-5. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "locked_gripping_small_step",
+      "component": "wheel_derivative",
+      "inputs": {
+        "tau": -2,
+        "R": 0.5,
+        "force": -1,
+        "smoothed_previous": 1,
+        "omega": 3,
+        "rho": 1,
+        "damage": 0,
+        "inertia": 0.009999999776482582,
+        "locked": true,
+        "gripping": true,
+        "h": 0.0005000000237487257,
+        "slip": 1
+      },
+      "expected": {
+        "smoothed": -0.25,
+        "angular_acceleration": 0
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-5 and S1-8.1; E3-5. Fixture inputs are deliberately chosen; no original assets."
+    },
+    {
+      "id": "unlocked_brake_derivative",
+      "component": "wheel_derivative",
+      "inputs": {
+        "tau": -2,
+        "R": 0.5,
+        "force": -1,
+        "smoothed_previous": 1,
+        "omega": 3,
+        "rho": 1,
+        "damage": 0,
+        "inertia": 0.009999999776482582,
+        "locked": false,
+        "gripping": false,
+        "h": 0.004000000189989805,
+        "slip": -5
+      },
+      "expected": {
+        "smoothed": -0.25,
+        "angular_acceleration": -25.600000381469727
+      },
+      "provenance": "Synthetic formula calculation, not runtime observation or a public-source capture; S3-5 and S1-8.1; E3-5. Fixture inputs are deliberately chosen; no original assets."
+    }
+  ]
+}

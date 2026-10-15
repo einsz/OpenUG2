@@ -26,6 +26,7 @@
  * double. Spec-unknown values are explicit fields of DrvTune. */
 #ifndef OPENUG2_DRIVETRAIN_H
 #define OPENUG2_DRIVETRAIN_H
+#include "braking.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -121,7 +122,7 @@ typedef struct DrvWheelEnv {
     float mu_peak_surface;  /* muS,pk  (1.0 on ordinary road) */
     float mu_slide_surface; /* muS,sl  (1.0) */
     float roll_drag;        /* rho_S, surface rolling-drag factor (1.0) */
-    int   locked;           /* wheel lock state (Stage 3) */
+    int   locked;           /* Stage1 supplied input; Stage3 current-lock mirror */
     int   drag_flag;        /* zeta_i (0/1) */
     float lateral_grip_force; /* gripping-branch lateral force before wT (Stage 4); default 0 */
 } DrvWheelEnv;
@@ -193,6 +194,15 @@ typedef struct Drivetrain {
     int   manual_last_gear;     /* remembered pre-change g (S1-4.5), supplied initial value */
     int   assist_state_supplied; /* U-2: -2 decisions disabled until drv_assist_supply() */
 
+    /* Stage3 is explicit opt-in. Initial locks and relief/exclusivity switches
+     * must be supplied; disabled preserves the Stage1 brake-free boundary. */
+    struct {
+        int enabled,exclusivity,relief_disabled,locked[4];
+        BrkCar car;
+        BrkFrame frame;
+        float handbrake[4]; /* injected H, not an inferred eta producer (S3-8) */
+    } brakes;
+
     /* last coupling results (outputs for the body integrator) */
     DrvEnv env;
     float  force_long[4], force_lat[4], load[4];
@@ -227,6 +237,14 @@ double drv_lock_correction(const Drivetrain *d);
 /* S2-4 / S1-8.1: unsmoothed wheel resistance, including airborne wheels. */
 double drv_wheel_resistance(float omega,float surface,int damage);
 
+/* S3-0/U3-2/U3-3: enable with explicit initial lock mask and switches.
+ * H remains zero unless a later-stage caller injects nonnegative per-wheel H. */
+int drv_brakes_supply(Drivetrain *d,const BrkCar *car,unsigned initial_lock_mask,
+                     int relief_disabled,int exclusivity);
+/* Isolated preparation/derivative boundaries, also used by the coupled solver. */
+void drv_prepare_tyre(Drivetrain *d,int wheel);
+double drv_wheel_derivative(Drivetrain *d,int wheel,float h);
+
 /* ---- per-frame and per-substep operations ---------------------------------- */
 /* S1-4.5 / U-2: supply initial selected gear, elapsed seconds and remembered
  * pre-change gear. Selected may be neutral or 2..top; remembered is 0..top.
@@ -239,6 +257,8 @@ int drv_assist_select(Drivetrain *d, int selected);
 void drv_frame_begin(Drivetrain *d, const DrvInput *in, float frame_dt, double rpm_override);
 /* S1-2.4 a, b, c: derivatives, explicit Euler, wheel/engine/clutch post-steps. */
 void drv_integrate(Drivetrain *d, float h);
+/* S3-7: optional correction sweep, with no derivative or Euler integration. */
+void drv_post(Drivetrain *d);
 /* S1-2.4 e / S1-7: coupling. Fills force_long, force_lat, load, torques, Phi. */
 void drv_couple(Drivetrain *d, const DrvEnv *env, DrvBodyAccelFn body, void *body_ud);
 
