@@ -674,7 +674,7 @@ void st_reg_close(StRegStore *s) {
 }
 
 /* ---- in-memory store (also the cache of the INI store) ---- */
-typedef struct MemEntry { char *name; int is_dword; uint32_t dword; char *str; } MemEntry;
+typedef struct MemEntry { char *name; int is_dword; uint32_t dword; char *str; int dirty; } MemEntry;  /* dirty: written through this store */
 typedef struct MemStore {
     MemEntry *e; size_t n, cap;
     char *path;               /* non-NULL: INI store, flushed after every write */
@@ -736,13 +736,16 @@ static int mem_get_string(void *impl, const char *name, char *buf, size_t cap) {
     strcpy(buf, e->str);
     return 1;
 }
+static void ini_refresh(MemStore *m);
 static int mem_set_dword(void *impl, const char *name, uint32_t v) {
     MemStore *m = (MemStore *)impl;
     if (m->path && !ini_name_valid(name)) return ST_E_ARG;
+    if (m->path) ini_refresh(m);
     MemEntry *e = mem_slot(m, name);
     if (!e) return ST_E_NOMEM;
     free(e->str); e->str = NULL;
     e->is_dword = 1; e->dword = v;
+    e->dirty = 1;
     return m->path ? ini_flush(m) : ST_OK;
 }
 static int mem_set_string(void *impl, const char *name, const char *v) {
@@ -750,10 +753,12 @@ static int mem_set_string(void *impl, const char *name, const char *v) {
     if (m->path && !ini_name_valid(name)) return ST_E_ARG;
     char *copy = dup_str(v);
     if (!copy) return ST_E_NOMEM;
+    if (m->path) ini_refresh(m);
     MemEntry *e = mem_slot(m, name);
     if (!e) { free(copy); return ST_E_NOMEM; }
     free(e->str);
     e->is_dword = 0; e->str = copy;
+    e->dirty = 1;
     return m->path ? ini_flush(m) : ST_OK;
 }
 static void mem_close(void *impl) {
@@ -913,6 +918,31 @@ static int ini_read(FILE *f, MemStore *m) {
     return rc;
 }
 
+/* Another store on the same file may have written since this one was opened (the graphics store lives as long as
+ * the pause menu, the controls store is opened per save). Before a write, adopt every value of the file that
+ * this store did not write itself, so the whole-file rewrite cannot drop the other store's values. A file that
+ * is missing or unreadable leaves the cache as it is. */
+static void ini_refresh(MemStore *m) {
+    FILE *f = fopen(m->path, "rb");
+    if (!f) return;
+    MemStore *disk = (MemStore *)calloc(1, sizeof *disk);
+    if (!disk) { fclose(f); return; }
+    int rc = ini_read(f, disk);
+    fclose(f);
+    if (rc == ST_OK) {
+        for (size_t i = 0; i < disk->n; i++) {
+            MemEntry *d = &disk->e[i], *e = mem_find(m, d->name);
+            if (e && e->dirty) continue;
+            if (!e) { e = mem_slot(m, d->name); if (!e) break; }
+            char *copy = d->is_dword ? NULL : (d->str ? dup_str(d->str) : NULL);
+            if (!d->is_dword && !copy) continue;
+            free(e->str);
+            e->is_dword = d->is_dword; e->dword = d->dword; e->str = copy;
+        }
+    }
+    mem_close(disk);
+}
+
 int st_reg_open_ini(StRegStore *s, const char *path) {
     if (!path || !*path) return ST_E_ARG;
     MemStore *m = (MemStore *)calloc(1, sizeof *m);
@@ -925,6 +955,7 @@ int st_reg_open_ini(StRegStore *s, const char *path) {
         m->path = NULL;
         int rc = ini_read(f, m);
         m->path = path_keep;
+        for (size_t i = 0; i < m->n; i++) m->e[i].dirty = 0;     /* loaded, not written */
         if (fclose(f) != 0 && rc == ST_OK) rc = ST_E_IO;
         if (rc != ST_OK) { mem_close(m); return rc; }
     } else if (errno != ENOENT) { mem_close(m); return ST_E_IO; }

@@ -6285,6 +6285,7 @@ int main(int argc, char **argv) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) { running = 0; continue; }
+            uint32_t pad_edge = cx_joy_edges(&g_cx, &e);   /* every event, so hat state stays current while paused */
             int pause_allowed = 1;
 #ifdef OPENUG2_MENU
             pause_allowed = !frontend_open;
@@ -6320,10 +6321,24 @@ int main(int argc, char **argv) {
             }
             if (pause_frame) continue;
             if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_1 &&
-                !e.key.repeat) {
+                !e.key.repeat && !cx_key_bound(&g_cx, (int)e.key.keysym.scancode)) {   /* a binding wins over the overlay key */
                 g_devui = !g_devui;
                 printf("developer overlay: %s (toggle: 1)\n", g_devui ? "on" : "off");
                 continue;
+            }
+            /* Pad presses of once-per-press actions (the keyboard ones are handled by the key-down paths below). */
+            if (pad_edge) {
+                if (race_state==1 && !g_dbg.freecam && world.city.race.active && world.city.race.kind==N2_RACE_DRAG) {
+                    if (pad_edge & ((1u<<CB_ACT_SHIFT_UP)|(1u<<CB_ACT_SHIFT_DOWN))) { drag_shift=(pad_edge&(1u<<CB_ACT_SHIFT_UP))?1:-1; continue; }
+                    if (pad_edge & ((1u<<CB_ACT_STEER_LEFT)|(1u<<CB_ACT_STEER_RIGHT))) { drag_change=(pad_edge&(1u<<CB_ACT_STEER_LEFT))?1:-1; continue; }
+                }
+                if ((pad_edge & (1u<<CB_ACT_CAMERA)) && race_state != 3) {
+                    int drift_ev=world.city.race.active && world.city.race.kind==N2_RACE_DRIFT;
+                    int ev_id=world.city.race.active && world.city.race.ev>=0
+                        ? world.city.ev[world.city.race.ev].id : 0;
+                    gamecam_cycle(&gc,1,cam_drift_allowed(drift_ev,ev_id));
+                    continue;
+                }
             }
             int text_input=0;
 #ifdef DEBUG_UI

@@ -68,7 +68,12 @@ void cx_init(CxInput *c) {
     c->profile = (StProfile *)calloc(1, sizeof *c->profile);
     c->have_root = st_default_profile_root(c->profile_root, sizeof c->profile_root) == ST_OK;
     if (c->profile) {
-        if (!c->have_root || st_profile_load(c->profile_root, CS_PROFILE_NAME, c->profile) != ST_OK) {
+        int lrc = c->have_root ? st_profile_load(c->profile_root, CS_PROFILE_NAME, c->profile) : ST_E_ARG;
+        c->profile_writable = lrc == ST_OK;
+        if (lrc != ST_OK) {
+            /* Defaults stand in for the session, but the file is only ever created when it is genuinely absent:
+             * a corrupt, incompatible or unreadable profile is preserved (its pad bindings are not saved). */
+            c->profile_writable = c->have_root && !st_profile_exists(c->profile_root, CS_PROFILE_NAME);
             memset(c->profile, 0, sizeof *c->profile);
             st_profile_defaults(c->profile, 0);
             snprintf(c->profile->name, sizeof c->profile->name, "%s", CS_PROFILE_NAME);
@@ -95,7 +100,7 @@ int cx_save(CxInput *c) {
         if (cs_kb_save(&s, &c->b.kb) != ST_OK) rc = -1;
         st_reg_close(&s);
     } else rc = -1;
-    if (c->profile && c->have_root) {
+    if (c->profile && c->have_root && c->profile_writable) {
         cs_pads_store(c->profile, &c->b);
         if (st_profile_save(c->profile_root, c->profile) != ST_OK) rc = -1;
     } else rc = -1;
@@ -169,6 +174,32 @@ int cx_action_down(const CxInput *c, const Uint8 *keys, int action) {
     int n = cb_kb_keys(&c->b.kb, action, k);
     for (int i = 0; i < n; i++) if (keys && keys[k[i]]) return 1;
     return pad_action_down(c, action);
+}
+
+uint32_t cx_joy_edges(CxInput *c, const SDL_Event *e) {
+    uint32_t out = 0;
+    if (e->type == SDL_JOYBUTTONDOWN) {
+        for (int i = 0; i < CB_MAX_PADS; i++) {
+            if (!c->joy[i] || SDL_JoystickInstanceID(c->joy[i]) != e->jbutton.which) continue;
+            int b = e->jbutton.button;
+            if (b >= 0 && b < CB_BIND_BUTTONS) { int a = c->b.pad[i].dev.binding[b]; if (a > 0 && a < 32) out |= 1u << a; }
+        }
+    } else if (e->type == SDL_JOYHATMOTION) {
+        static const Uint8 mask[4] = { SDL_HAT_DOWN, SDL_HAT_UP, SDL_HAT_LEFT, SDL_HAT_RIGHT };
+        for (int i = 0; i < CB_MAX_PADS; i++) {
+            if (!c->joy[i] || SDL_JoystickInstanceID(c->joy[i]) != e->jhat.which) continue;
+            int h = e->jhat.hat;
+            if (h < 0 || h >= CB_BIND_POVS) continue;
+            Uint8 now = e->jhat.value, fresh = (Uint8)(now & ~c->hat_prev[i][h]);
+            c->hat_prev[i][h] = now;
+            for (int d = 0; d < 4; d++) {
+                if (!(fresh & mask[d])) continue;
+                int a = c->b.pad[i].dev.binding[CB_BIND_BUTTONS + 4 * h + d];
+                if (a > 0 && a < 32) out |= 1u << a;
+            }
+        }
+    }
+    return out;
 }
 
 int cx_key_is(const CxInput *c, int scancode, int action) {

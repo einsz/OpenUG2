@@ -121,6 +121,107 @@ int main(void) {
     if (vp < 0) vp = 0;
     CHECK(cx_key_is(c, SDL_SCANCODE_N, CB_ACT_NITROUS) && !cx_key_is(c, SDL_SCANCODE_LALT, CB_ACT_NITROUS), "keyboard binding survives a restart");
     CHECK(c->b.pad[vp].present && c->b.pad[vp].dev.binding[9] == CB_ACT_NITROUS && c->b.pad[vp].dev.binding[8] == CB_ACT_HYD_PRESSURE, "pad record survives a restart");
+
+    /* review 1: the controls store and a longer-lived store on the same INI (the graphics store) must not
+     * overwrite each other's values */
+    char cfg[1024];
+    StRegStore gs, fs;
+    CHECK(st_default_config_path(cfg, sizeof cfg) == ST_OK && st_reg_open_ini(&gs, cfg) == ST_OK, "open the long-lived store first");
+    cb_kb_capture(&c->b.kb, CB_ACT_CAMERA, 0, SDL_SCANCODE_Y);
+    CHECK(cx_save(c) == 0, "controls save after the other store was opened");
+    CHECK(st_reg_set_dword(&gs, "TestGraphicsValue", 7) == ST_OK, "the older store writes afterwards (display Back)");
+    st_reg_close(&gs);
+    CbBindings *lb = (CbBindings *)calloc(1, sizeof *lb);
+    cb_bindings_defaults(lb);
+    uint32_t gv = 0;
+    CHECK(st_reg_open_ini(&fs, cfg) == ST_OK && cs_kb_load(&fs, &lb->kb) && st_reg_get_dword(&fs, "TestGraphicsValue", &gv) && gv == 7,
+          "both stores' values are in the file");
+    st_reg_close(&fs);
+    CHECK(cx_key_is(c, SDL_SCANCODE_Y, CB_ACT_CAMERA), "camera key in memory");
+    int kk[2];
+    CHECK(cb_kb_keys(&lb->kb, CB_ACT_CAMERA, kk) >= 1 && kk[0] == SDL_SCANCODE_Y, "the keyboard binding survived the older store's write");
+    CHECK(cb_kb_keys(&lb->kb, CB_ACT_NITROUS, kk) >= 1 && kk[0] == SDL_SCANCODE_N, "the earlier binding survived too");
+    free(lb);
+
+    /* review 2: a profile that exists but cannot be loaded is never overwritten; an absent one is created */
+    char ppath[1100];
+    snprintf(ppath, sizeof ppath, "%s/OPENUG2/OPENUG2", c->profile_root);
+    cx_shutdown(c);
+    memset(c, 0, sizeof *c);
+    {
+        FILE *pf = fopen(ppath, "wb");
+        CHECK(pf != NULL, "profile file path");
+        if (pf) { fwrite("not a profile file at all, kept as is", 1, 37, pf); fclose(pf); }
+    }
+    cx_init(c);
+    CHECK(!c->profile_writable, "a corrupt profile is not writable");
+    cb_kb_capture(&c->b.kb, CB_ACT_HUD, 0, SDL_SCANCODE_U);
+    CHECK(cx_save(c) != 0, "pad bindings could not be saved");
+    {
+        char buf[64] = { 0 };
+        FILE *pf = fopen(ppath, "rb");
+        size_t n = pf ? fread(buf, 1, sizeof buf, pf) : 0;
+        if (pf) fclose(pf);
+        CHECK(n == 37 && !memcmp(buf, "not a profile file at all, kept as is", 37), "the corrupt profile's bytes are unchanged");
+    }
+    StRegStore ks;
+    CbBindings *kb2 = (CbBindings *)calloc(1, sizeof *kb2);
+    cb_bindings_defaults(kb2);
+    CHECK(st_reg_open_ini(&ks, cfg) == ST_OK && cs_kb_load(&ks, &kb2->kb) && cb_kb_keys(&kb2->kb, CB_ACT_HUD, kk) >= 1 && kk[0] == SDL_SCANCODE_U,
+          "the keyboard bindings are still saved");
+    st_reg_close(&ks);
+    free(kb2);
+    cx_shutdown(c);
+    memset(c, 0, sizeof *c);
+    CHECK(remove(ppath) == 0, "remove the garbage profile");
+    cx_init(c);
+    CHECK(c->profile_writable, "an absent profile may be created");
+    CHECK(cx_save(c) == 0, "and is created by a save");
+    {
+        FILE *pf = fopen(ppath, "rb");
+        CHECK(pf != NULL, "profile file now exists");
+        if (pf) fclose(pf);
+    }
+    vp = find_virtual(c);
+    if (vp < 0) vp = 0;
+    j = c->joy[vp];
+
+    /* review 3: pad presses of once-per-press actions, one edge per press */
+    cb_pad_assign_control(&c->b.pad[vp].dev, CB_ACT_CAMERA, 0, 4);
+    cb_pad_assign_control(&c->b.pad[vp].dev, CB_ACT_SHIFT_UP, 0, 5);
+    SDL_Event ev;
+    memset(&ev, 0, sizeof ev);
+    ev.type = SDL_JOYBUTTONDOWN; ev.jbutton.which = SDL_JoystickInstanceID(j); ev.jbutton.button = 4;
+    CHECK(cx_joy_edges(c, &ev) == (1u << CB_ACT_CAMERA), "camera button press: one camera edge");
+    ev.type = SDL_JOYBUTTONUP;
+    CHECK(cx_joy_edges(c, &ev) == 0, "release: nothing");
+    ev.type = SDL_JOYBUTTONDOWN;
+    CHECK(cx_joy_edges(c, &ev) == (1u << CB_ACT_CAMERA), "repress: another edge");
+    ev.jbutton.button = 5;
+    CHECK(cx_joy_edges(c, &ev) == (1u << CB_ACT_SHIFT_UP), "shift up button");
+    ev.jbutton.which = SDL_JoystickInstanceID(j) + 1000;
+    CHECK(cx_joy_edges(c, &ev) == 0, "another device's button: nothing");
+    memset(&ev, 0, sizeof ev);
+    ev.type = SDL_JOYHATMOTION; ev.jhat.which = SDL_JoystickInstanceID(j); ev.jhat.hat = 0;
+    c->b.pad[vp].dev.binding[CB_BIND_BUTTONS + CB_DIR_UP] = CB_ACT_CAMERA;
+    ev.jhat.value = SDL_HAT_UP;
+    CHECK(cx_joy_edges(c, &ev) == (1u << CB_ACT_CAMERA), "POV up pressed: one edge");
+    CHECK(cx_joy_edges(c, &ev) == 0, "POV still held: no repeat");
+    ev.jhat.value = SDL_HAT_RIGHTUP;
+    CHECK(cx_joy_edges(c, &ev) == (1u << CB_ACT_STEER_RIGHT), "adding a direction: only the new one is an edge");
+    ev.jhat.value = SDL_HAT_CENTERED;
+    CHECK(cx_joy_edges(c, &ev) == 0, "POV released: nothing");
+    ev.jhat.value = SDL_HAT_UP;
+    CHECK(cx_joy_edges(c, &ev) == (1u << CB_ACT_CAMERA), "POV repressed: another edge");
+    ev.jhat.value = SDL_HAT_LEFT;
+    CHECK(cx_joy_edges(c, &ev) == (1u << CB_ACT_STEER_LEFT), "POV left: the steering action (lane change in drag)");
+
+    /* review 4: a key bound to Camera or a drag shift is not an overlay key */
+    CHECK(!cx_key_bound(c, SDL_SCANCODE_1), "1 is free by default");
+    cb_kb_capture(&c->b.kb, CB_ACT_CAMERA, 0, SDL_SCANCODE_1);
+    CHECK(cx_key_bound(c, SDL_SCANCODE_1) && cx_key_is(c, SDL_SCANCODE_1, CB_ACT_CAMERA), "1 bound to Camera is reported bound");
+    cb_kb_capture(&c->b.kb, CB_ACT_SHIFT_UP, 0, SDL_SCANCODE_1);
+    CHECK(cx_key_bound(c, SDL_SCANCODE_1) && cx_key_is(c, SDL_SCANCODE_1, CB_ACT_SHIFT_UP), "1 bound to Shift Up is reported bound");
     cx_shutdown(c);
     free(c);
     SDL_JoystickDetachVirtual(vi);
