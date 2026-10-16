@@ -1,0 +1,1673 @@
+{
+  "format_version": 1,
+  "evidence_status": "derived synthetic; no reference runtime",
+  "cases": [
+    {
+      "id": "curve_I_0.5",
+      "component": "uniform_curve",
+      "input": {
+        "curve": "I",
+        "x": 0.5
+      },
+      "expected": {
+        "value": 0.14800000190734863
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": ""
+    },
+    {
+      "id": "curve_I_-0.5",
+      "component": "uniform_curve",
+      "input": {
+        "curve": "I",
+        "x": -0.5
+      },
+      "expected": {
+        "value": -0.14800000190734863
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": ""
+    },
+    {
+      "id": "curve_J_0.5",
+      "component": "uniform_curve",
+      "input": {
+        "curve": "J",
+        "x": 0.5
+      },
+      "expected": {
+        "value": 0.2879999876022339
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": ""
+    },
+    {
+      "id": "curve_J_2",
+      "component": "uniform_curve",
+      "input": {
+        "curve": "J",
+        "x": 2
+      },
+      "expected": {
+        "value": 1.0
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": ""
+    },
+    {
+      "id": "curve_Lk_0",
+      "component": "uniform_curve",
+      "input": {
+        "curve": "Lk",
+        "x": 0
+      },
+      "expected": {
+        "value": 40.0
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": ""
+    },
+    {
+      "id": "curve_Lk_160",
+      "component": "uniform_curve",
+      "input": {
+        "curve": "Lk",
+        "x": 160
+      },
+      "expected": {
+        "value": 2.9000000953674316
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": ""
+    },
+    {
+      "id": "curve_La_160",
+      "component": "uniform_curve",
+      "input": {
+        "curve": "La",
+        "x": 160
+      },
+      "expected": {
+        "value": 7.0
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": ""
+    },
+    {
+      "id": "curve_R_0",
+      "component": "uniform_curve",
+      "input": {
+        "curve": "R",
+        "x": 0
+      },
+      "expected": {
+        "value": 1.0
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": ""
+    },
+    {
+      "id": "curve_E_4",
+      "component": "uniform_curve",
+      "input": {
+        "curve": "E",
+        "x": 4
+      },
+      "expected": {
+        "value": 1.100000023841858
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": ""
+    },
+    {
+      "id": "key_rest",
+      "component": "steering_kernel",
+      "input": {
+        "device": "keyboard",
+        "raw": 0,
+        "vctl": 0,
+        "h": 0,
+        "e": 1,
+        "old_degrees": 0,
+        "previous_limit": 45,
+        "sigma_degrees": 0,
+        "latch": false,
+        "body_speed": 0,
+        "throttle": 1,
+        "brake": 0,
+        "handbrake": 0,
+        "gain": 1,
+        "dt": 0.016666666666666666
+      },
+      "expected": {
+        "mapped": 0.0,
+        "limit": 40.0,
+        "latch": false,
+        "angle_degrees_before_quantization": 0.0,
+        "command": 0,
+        "next_previous_limit": 40.0
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "History averages and speed are supplied fixture inputs; command exact integer, other outputs tolerant."
+    },
+    {
+      "id": "key_step",
+      "component": "steering_kernel",
+      "input": {
+        "device": "keyboard",
+        "raw": 1,
+        "vctl": 0,
+        "h": 0,
+        "e": 1,
+        "old_degrees": 0,
+        "previous_limit": 45,
+        "sigma_degrees": 0,
+        "latch": false,
+        "body_speed": 0,
+        "throttle": 1,
+        "brake": 0,
+        "handbrake": 0,
+        "gain": 1,
+        "dt": 0.016666666666666666
+      },
+      "expected": {
+        "mapped": 1.0,
+        "limit": 40.0,
+        "latch": false,
+        "angle_degrees_before_quantization": 3.0,
+        "command": 546,
+        "next_previous_limit": 40.0
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "History averages and speed are supplied fixture inputs; command exact integer, other outputs tolerant."
+    },
+    {
+      "id": "key_mirror",
+      "component": "steering_kernel",
+      "input": {
+        "device": "keyboard",
+        "raw": -1,
+        "vctl": 0,
+        "h": 0,
+        "e": 1,
+        "old_degrees": 0,
+        "previous_limit": 45,
+        "sigma_degrees": 0,
+        "latch": false,
+        "body_speed": 0,
+        "throttle": 1,
+        "brake": 0,
+        "handbrake": 0,
+        "gain": 1,
+        "dt": 0.016666666666666666
+      },
+      "expected": {
+        "mapped": -1.0,
+        "limit": 40.0,
+        "latch": false,
+        "angle_degrees_before_quantization": -3.0,
+        "command": 64990,
+        "next_previous_limit": 40.0
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "History averages and speed are supplied fixture inputs; command exact integer, other outputs tolerant."
+    },
+    {
+      "id": "key_reverse",
+      "component": "steering_kernel",
+      "input": {
+        "device": "keyboard",
+        "raw": 1,
+        "vctl": -10,
+        "h": 0,
+        "e": 1,
+        "old_degrees": 0,
+        "previous_limit": 45,
+        "sigma_degrees": 0,
+        "latch": false,
+        "body_speed": 10,
+        "throttle": 1,
+        "brake": 0,
+        "handbrake": 0,
+        "gain": 1,
+        "dt": 0.016666666666666666
+      },
+      "expected": {
+        "mapped": 1.0,
+        "limit": 40.0,
+        "latch": false,
+        "angle_degrees_before_quantization": 3.0,
+        "command": 546,
+        "next_previous_limit": 40.0
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "History averages and speed are supplied fixture inputs; command exact integer, other outputs tolerant."
+    },
+    {
+      "id": "key_fast",
+      "component": "steering_kernel",
+      "input": {
+        "device": "keyboard",
+        "raw": 1,
+        "vctl": 160,
+        "h": 0,
+        "e": 1,
+        "old_degrees": 0,
+        "previous_limit": 45,
+        "sigma_degrees": 0,
+        "latch": false,
+        "body_speed": 50,
+        "throttle": 1,
+        "brake": 0,
+        "handbrake": 0,
+        "gain": 1,
+        "dt": 0.016666666666666666
+      },
+      "expected": {
+        "mapped": 1.0,
+        "limit": 2.9000000953674316,
+        "latch": false,
+        "angle_degrees_before_quantization": 0.9599999928474503,
+        "command": 174,
+        "next_previous_limit": 2.9000000953674316
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "History averages and speed are supplied fixture inputs; command exact integer, other outputs tolerant."
+    },
+    {
+      "id": "key_release",
+      "component": "steering_kernel",
+      "input": {
+        "device": "keyboard",
+        "raw": 0,
+        "vctl": 0,
+        "h": 0,
+        "e": 1,
+        "old_degrees": 12,
+        "previous_limit": 45,
+        "sigma_degrees": 0,
+        "latch": false,
+        "body_speed": 0,
+        "throttle": 1,
+        "brake": 0,
+        "handbrake": 0,
+        "gain": 1,
+        "dt": 0.016666666666666666
+      },
+      "expected": {
+        "mapped": 0.0,
+        "limit": 40.0,
+        "latch": false,
+        "angle_degrees_before_quantization": 9.0,
+        "command": 1638,
+        "next_previous_limit": 40.0
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "History averages and speed are supplied fixture inputs; command exact integer, other outputs tolerant."
+    },
+    {
+      "id": "analog_half",
+      "component": "steering_kernel",
+      "input": {
+        "device": "analog",
+        "raw": 0.5,
+        "vctl": 0,
+        "h": 0,
+        "e": 1,
+        "old_degrees": 0,
+        "previous_limit": 45,
+        "sigma_degrees": 0,
+        "latch": false,
+        "body_speed": 0,
+        "throttle": 1,
+        "brake": 0,
+        "handbrake": 0,
+        "gain": 1,
+        "dt": 0.016666666666666666
+      },
+      "expected": {
+        "mapped": 0.2879999876022339,
+        "limit": 45.0,
+        "latch": false,
+        "angle_degrees_before_quantization": 12.959999442100525,
+        "command": 2359,
+        "next_previous_limit": 45
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "History averages and speed are supplied fixture inputs; command exact integer, other outputs tolerant."
+    },
+    {
+      "id": "analog_mirror",
+      "component": "steering_kernel",
+      "input": {
+        "device": "analog",
+        "raw": -0.5,
+        "vctl": 0,
+        "h": 0,
+        "e": 1,
+        "old_degrees": 0,
+        "previous_limit": 45,
+        "sigma_degrees": 0,
+        "latch": false,
+        "body_speed": 0,
+        "throttle": 1,
+        "brake": 0,
+        "handbrake": 0,
+        "gain": 1,
+        "dt": 0.016666666666666666
+      },
+      "expected": {
+        "mapped": -0.2879999876022339,
+        "limit": 45.0,
+        "latch": false,
+        "angle_degrees_before_quantization": -12.959999442100525,
+        "command": 63177,
+        "next_previous_limit": 45
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "History averages and speed are supplied fixture inputs; command exact integer, other outputs tolerant."
+    },
+    {
+      "id": "analog_fast",
+      "component": "steering_kernel",
+      "input": {
+        "device": "analog",
+        "raw": 1,
+        "vctl": 160,
+        "h": 0,
+        "e": 1,
+        "old_degrees": 0,
+        "previous_limit": 45,
+        "sigma_degrees": 0,
+        "latch": false,
+        "body_speed": 50,
+        "throttle": 1,
+        "brake": 0,
+        "handbrake": 0,
+        "gain": 1,
+        "dt": 0.016666666666666666
+      },
+      "expected": {
+        "mapped": 1.0,
+        "limit": 7.0,
+        "latch": false,
+        "angle_degrees_before_quantization": 7.0,
+        "command": 1274,
+        "next_previous_limit": 45
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "History averages and speed are supplied fixture inputs; command exact integer, other outputs tolerant."
+    },
+    {
+      "id": "analog_counter",
+      "component": "steering_kernel",
+      "input": {
+        "device": "analog",
+        "raw": -1,
+        "vctl": 160,
+        "h": 0,
+        "e": 1,
+        "old_degrees": 0,
+        "previous_limit": 45,
+        "sigma_degrees": 20,
+        "latch": false,
+        "body_speed": 20,
+        "throttle": 1,
+        "brake": 0,
+        "handbrake": 0,
+        "gain": 1,
+        "dt": 0.016666666666666666
+      },
+      "expected": {
+        "mapped": -1.0,
+        "limit": 20,
+        "latch": true,
+        "angle_degrees_before_quantization": -20.0,
+        "command": 61896,
+        "next_previous_limit": 45
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "History averages and speed are supplied fixture inputs; command exact integer, other outputs tolerant."
+    },
+    {
+      "id": "key_counter",
+      "component": "steering_kernel",
+      "input": {
+        "device": "keyboard",
+        "raw": -1,
+        "vctl": 160,
+        "h": 0,
+        "e": 1,
+        "old_degrees": 0,
+        "previous_limit": 45,
+        "sigma_degrees": 20,
+        "latch": false,
+        "body_speed": 20,
+        "throttle": 1,
+        "brake": 0,
+        "handbrake": 0,
+        "gain": 1,
+        "dt": 0.1
+      },
+      "expected": {
+        "mapped": -1.0,
+        "limit": 18.99999976158142,
+        "latch": true,
+        "angle_degrees_before_quantization": -5.759999957084702,
+        "command": 64488,
+        "next_previous_limit": 18.99999976158142
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "History averages and speed are supplied fixture inputs; command exact integer, other outputs tolerant."
+    },
+    {
+      "id": "key_enter_equal",
+      "component": "steering_kernel",
+      "input": {
+        "device": "keyboard",
+        "raw": 1,
+        "vctl": 0,
+        "h": 0,
+        "e": 1,
+        "old_degrees": 0,
+        "previous_limit": 45,
+        "sigma_degrees": 15,
+        "latch": false,
+        "body_speed": 20,
+        "throttle": 1,
+        "brake": 0,
+        "handbrake": 0,
+        "gain": 1,
+        "dt": 0.016666666666666666
+      },
+      "expected": {
+        "mapped": 1.0,
+        "limit": 40.0,
+        "latch": false,
+        "angle_degrees_before_quantization": 3.0,
+        "command": 546,
+        "next_previous_limit": 40.0
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "History averages and speed are supplied fixture inputs; command exact integer, other outputs tolerant."
+    },
+    {
+      "id": "key_exit_equal",
+      "component": "steering_kernel",
+      "input": {
+        "device": "keyboard",
+        "raw": 0,
+        "vctl": 0,
+        "h": 0,
+        "e": 1,
+        "old_degrees": 0,
+        "previous_limit": 45,
+        "sigma_degrees": 5,
+        "latch": true,
+        "body_speed": 20,
+        "throttle": 1,
+        "brake": 0,
+        "handbrake": 0,
+        "gain": 1,
+        "dt": 0.016666666666666666
+      },
+      "expected": {
+        "mapped": 0.0,
+        "limit": 40.0,
+        "latch": true,
+        "angle_degrees_before_quantization": 0.0,
+        "command": 0,
+        "next_previous_limit": 40.0
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "History averages and speed are supplied fixture inputs; command exact integer, other outputs tolerant."
+    },
+    {
+      "id": "history_floor",
+      "component": "steering_kernel",
+      "input": {
+        "device": "analog",
+        "raw": 1,
+        "vctl": 160,
+        "h": 0.5,
+        "e": 1,
+        "old_degrees": 0,
+        "previous_limit": 30,
+        "sigma_degrees": 0,
+        "latch": false,
+        "body_speed": 50,
+        "throttle": 1,
+        "brake": 0,
+        "handbrake": 0,
+        "gain": 1,
+        "dt": 0.016666666666666666
+      },
+      "expected": {
+        "mapped": 1.0,
+        "limit": 30,
+        "latch": false,
+        "angle_degrees_before_quantization": 30.0,
+        "command": 5461,
+        "next_previous_limit": 30
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "History averages and speed are supplied fixture inputs; command exact integer, other outputs tolerant."
+    },
+    {
+      "id": "geometry_0",
+      "component": "front_geometry",
+      "input": {
+        "command": 0,
+        "wheelbase": 2.5,
+        "track": 1.5
+      },
+      "expected": {
+        "front_angles": [
+          0.0,
+          0.0
+        ],
+        "rear_angles": [
+          0,
+          0
+        ]
+      },
+      "absolute_tolerance": 3e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": ""
+    },
+    {
+      "id": "geometry_4096",
+      "component": "front_geometry",
+      "input": {
+        "command": 4096,
+        "wheelbase": 2.5,
+        "track": 1.5
+      },
+      "expected": {
+        "front_angles": [
+          0.3178155627563569,
+          0.39269909262657166
+        ],
+        "rear_angles": [
+          0,
+          0
+        ]
+      },
+      "absolute_tolerance": 3e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": ""
+    },
+    {
+      "id": "geometry_61440",
+      "component": "front_geometry",
+      "input": {
+        "command": 61440,
+        "wheelbase": 2.5,
+        "track": 1.5
+      },
+      "expected": {
+        "front_angles": [
+          -0.3926992416381836,
+          -0.31781566035653397
+        ],
+        "rear_angles": [
+          0,
+          0
+        ]
+      },
+      "absolute_tolerance": 3e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": ""
+    },
+    {
+      "id": "geometry_8192",
+      "component": "front_geometry",
+      "input": {
+        "command": 8192,
+        "wheelbase": 2.5,
+        "track": 1.5
+      },
+      "expected": {
+        "front_angles": [
+          0.5338345657526328,
+          0.7853981852531433
+        ],
+        "rear_angles": [
+          0,
+          0
+        ]
+      },
+      "absolute_tolerance": 3e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": ""
+    },
+    {
+      "id": "slip_0_0",
+      "component": "contact_heading_slip",
+      "input": {
+        "vx": 0,
+        "vy": 0
+      },
+      "expected": {
+        "heading_units": 0,
+        "alpha": 0.0
+      },
+      "absolute_tolerance": 2e-06,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Heading exact integer. Folded slip uses binary32 angular conversion."
+    },
+    {
+      "id": "slip_1_0",
+      "component": "contact_heading_slip",
+      "input": {
+        "vx": 1,
+        "vy": 0
+      },
+      "expected": {
+        "heading_units": 0,
+        "alpha": 0.0
+      },
+      "absolute_tolerance": 2e-06,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Heading exact integer. Folded slip uses binary32 angular conversion."
+    },
+    {
+      "id": "slip_-1_0",
+      "component": "contact_heading_slip",
+      "input": {
+        "vx": -1,
+        "vy": 0
+      },
+      "expected": {
+        "heading_units": 32768,
+        "alpha": 0.0
+      },
+      "absolute_tolerance": 2e-06,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Heading exact integer. Folded slip uses binary32 angular conversion."
+    },
+    {
+      "id": "slip_0_1",
+      "component": "contact_heading_slip",
+      "input": {
+        "vx": 0,
+        "vy": 1
+      },
+      "expected": {
+        "heading_units": 16384,
+        "alpha": 1.5707963705062866
+      },
+      "absolute_tolerance": 2e-06,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Heading exact integer. Folded slip uses binary32 angular conversion."
+    },
+    {
+      "id": "slip_0_-1",
+      "component": "contact_heading_slip",
+      "input": {
+        "vx": 0,
+        "vy": -1
+      },
+      "expected": {
+        "heading_units": 49152,
+        "alpha": -1.5707964897155762
+      },
+      "absolute_tolerance": 2e-06,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Heading exact integer. Folded slip uses binary32 angular conversion."
+    },
+    {
+      "id": "slip_1_1",
+      "component": "contact_heading_slip",
+      "input": {
+        "vx": 1,
+        "vy": 1
+      },
+      "expected": {
+        "heading_units": 8192,
+        "alpha": 0.7853981852531433
+      },
+      "absolute_tolerance": 2e-06,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Heading exact integer. Folded slip uses binary32 angular conversion."
+    },
+    {
+      "id": "slip_1_-1",
+      "component": "contact_heading_slip",
+      "input": {
+        "vx": 1,
+        "vy": -1
+      },
+      "expected": {
+        "heading_units": 57344,
+        "alpha": -0.785398006439209
+      },
+      "absolute_tolerance": 2e-06,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Heading exact integer. Folded slip uses binary32 angular conversion."
+    },
+    {
+      "id": "slip_-1_1",
+      "component": "contact_heading_slip",
+      "input": {
+        "vx": -1,
+        "vy": 1
+      },
+      "expected": {
+        "heading_units": 24576,
+        "alpha": -0.785398006439209
+      },
+      "absolute_tolerance": 2e-06,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Heading exact integer. Folded slip uses binary32 angular conversion."
+    },
+    {
+      "id": "slip_-1_-1",
+      "component": "contact_heading_slip",
+      "input": {
+        "vx": -1,
+        "vy": -1
+      },
+      "expected": {
+        "heading_units": 40960,
+        "alpha": 0.7853982448577881
+      },
+      "absolute_tolerance": 2e-06,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Heading exact integer. Folded slip uses binary32 angular conversion."
+    },
+    {
+      "id": "slip_256_5",
+      "component": "contact_heading_slip",
+      "input": {
+        "vx": 256,
+        "vy": 5
+      },
+      "expected": {
+        "heading_units": 224,
+        "alpha": 0.02147573232650757
+      },
+      "absolute_tolerance": 2e-06,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Heading exact integer. Folded slip uses binary32 angular conversion."
+    },
+    {
+      "id": "slip_256_154",
+      "component": "contact_heading_slip",
+      "input": {
+        "vx": 256,
+        "vy": 154
+      },
+      "expected": {
+        "heading_units": 5632,
+        "alpha": 0.5399612784385681
+      },
+      "absolute_tolerance": 2e-06,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Heading exact integer. Folded slip uses binary32 angular conversion."
+    },
+    {
+      "id": "slip_100_1",
+      "component": "contact_heading_slip",
+      "input": {
+        "vx": 100,
+        "vy": 1
+      },
+      "expected": {
+        "heading_units": 96,
+        "alpha": 0.00920388475060463
+      },
+      "absolute_tolerance": 2e-06,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Heading exact integer. Folded slip uses binary32 angular conversion."
+    },
+    {
+      "id": "slip_100_-1",
+      "component": "contact_heading_slip",
+      "input": {
+        "vx": 100,
+        "vy": -1
+      },
+      "expected": {
+        "heading_units": 65440,
+        "alpha": -0.009203910827636719
+      },
+      "absolute_tolerance": 2e-06,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Heading exact integer. Folded slip uses binary32 angular conversion."
+    },
+    {
+      "id": "lat_zero",
+      "component": "gripping_lateral",
+      "input": {
+        "N": 5,
+        "A": 12,
+        "D": 1,
+        "K": 1,
+        "alpha": 0,
+        "vx": 10,
+        "wT": 1
+      },
+      "expected": {
+        "Fy": 0.0
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": ""
+    },
+    {
+      "id": "lat_forward",
+      "component": "gripping_lateral",
+      "input": {
+        "N": 5,
+        "A": 12,
+        "D": 1,
+        "K": 1,
+        "alpha": 0.04,
+        "vx": 10,
+        "wT": 1
+      },
+      "expected": {
+        "Fy": -6.078310080267208
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": ""
+    },
+    {
+      "id": "lat_mirror",
+      "component": "gripping_lateral",
+      "input": {
+        "N": 5,
+        "A": 12,
+        "D": 1,
+        "K": 1,
+        "alpha": -0.04,
+        "vx": 10,
+        "wT": 1
+      },
+      "expected": {
+        "Fy": 6.078310080267208
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": ""
+    },
+    {
+      "id": "lat_reverse",
+      "component": "gripping_lateral",
+      "input": {
+        "N": 5,
+        "A": 12,
+        "D": 1,
+        "K": 1,
+        "alpha": -0.04,
+        "vx": -10,
+        "wT": 1
+      },
+      "expected": {
+        "Fy": -6.078310080267208
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": ""
+    },
+    {
+      "id": "lat_air",
+      "component": "gripping_lateral",
+      "input": {
+        "N": 0,
+        "A": 12,
+        "D": 1,
+        "K": 1,
+        "alpha": 0.04,
+        "vx": 10,
+        "wT": 1
+      },
+      "expected": {
+        "Fy": -0.0
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": ""
+    },
+    {
+      "id": "lat_angle_clamp",
+      "component": "gripping_lateral",
+      "input": {
+        "N": 5,
+        "A": 12,
+        "D": 1,
+        "K": 1,
+        "alpha": 0.5,
+        "vx": 10,
+        "wT": 1
+      },
+      "expected": {
+        "Fy": -9.499999985098828
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": ""
+    },
+    {
+      "id": "lat_load_clamp",
+      "component": "gripping_lateral",
+      "input": {
+        "N": 50,
+        "A": 12,
+        "D": 1,
+        "K": 1,
+        "alpha": 0.5,
+        "vx": 10,
+        "wT": 1
+      },
+      "expected": {
+        "Fy": -17.74999976158142
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": ""
+    },
+    {
+      "id": "lat_multiplier",
+      "component": "gripping_lateral",
+      "input": {
+        "N": 5,
+        "A": 12,
+        "D": 1,
+        "K": 1,
+        "alpha": 0.04,
+        "vx": 10,
+        "wT": 0.5
+      },
+      "expected": {
+        "Fy": -3.039155040133604
+      },
+      "absolute_tolerance": 2e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": ""
+    },
+    {
+      "id": "cap_equal",
+      "component": "combined_cap",
+      "input": {
+        "Fx": 3,
+        "Fy": 4,
+        "limit": 5,
+        "tau": 0,
+        "locked": false,
+        "vx": 1,
+        "alpha": 0
+      },
+      "expected": {
+        "Fx": 3,
+        "Fy": 4
+      },
+      "absolute_tolerance": 4e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Exact/ideal sine adapter only for post-cap correction; retail trig precision remains U4-3."
+    },
+    {
+      "id": "cap_over",
+      "component": "combined_cap",
+      "input": {
+        "Fx": 6,
+        "Fy": 8,
+        "limit": 5,
+        "tau": 0,
+        "locked": false,
+        "vx": 1,
+        "alpha": 0
+      },
+      "expected": {
+        "Fx": 3.0,
+        "Fy": 4.0
+      },
+      "absolute_tolerance": 4e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Exact/ideal sine adapter only for post-cap correction; retail trig precision remains U4-3."
+    },
+    {
+      "id": "drive_under",
+      "component": "combined_cap",
+      "input": {
+        "Fx": 1,
+        "Fy": 1,
+        "limit": 5,
+        "tau": 1,
+        "locked": false,
+        "vx": 1,
+        "alpha": 0
+      },
+      "expected": {
+        "Fx": 1.0,
+        "Fy": 1
+      },
+      "absolute_tolerance": 4e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Exact/ideal sine adapter only for post-cap correction; retail trig precision remains U4-3."
+    },
+    {
+      "id": "drive_over",
+      "component": "combined_cap",
+      "input": {
+        "Fx": 4,
+        "Fy": 3,
+        "limit": 5,
+        "tau": 1,
+        "locked": false,
+        "vx": 1,
+        "alpha": 0
+      },
+      "expected": {
+        "Fx": 4.47213595499958,
+        "Fy": 2.23606797749979
+      },
+      "absolute_tolerance": 4e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Exact/ideal sine adapter only for post-cap correction; retail trig precision remains U4-3."
+    },
+    {
+      "id": "drive_locked",
+      "component": "combined_cap",
+      "input": {
+        "Fx": 4,
+        "Fy": 3,
+        "limit": 5,
+        "tau": 1,
+        "locked": true,
+        "vx": 1,
+        "alpha": 0
+      },
+      "expected": {
+        "Fx": 4,
+        "Fy": 3
+      },
+      "absolute_tolerance": 4e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Exact/ideal sine adapter only for post-cap correction; retail trig precision remains U4-3."
+    },
+    {
+      "id": "post_cap_angle",
+      "component": "combined_cap",
+      "input": {
+        "Fx": 6,
+        "Fy": -8,
+        "limit": 5,
+        "tau": 0,
+        "locked": false,
+        "vx": 10,
+        "alpha": 0.1
+      },
+      "expected": {
+        "Fx": 3.059900052368311,
+        "Fy": -4.0
+      },
+      "absolute_tolerance": 4e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Exact/ideal sine adapter only for post-cap correction; retail trig precision remains U4-3."
+    },
+    {
+      "id": "boundary_vx",
+      "component": "combined_cap",
+      "input": {
+        "Fx": 6,
+        "Fy": -8,
+        "limit": 5,
+        "tau": 0,
+        "locked": false,
+        "vx": 1,
+        "alpha": 0.1
+      },
+      "expected": {
+        "Fx": 3.0,
+        "Fy": -4.0
+      },
+      "absolute_tolerance": 4e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Exact/ideal sine adapter only for post-cap correction; retail trig precision remains U4-3."
+    },
+    {
+      "id": "zero_load",
+      "component": "combined_cap",
+      "input": {
+        "Fx": 6,
+        "Fy": 8,
+        "limit": 0,
+        "tau": 0,
+        "locked": false,
+        "vx": 1,
+        "alpha": 0
+      },
+      "expected": {
+        "Fx": 0.0,
+        "Fy": 0.0
+      },
+      "absolute_tolerance": 4e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Exact/ideal sine adapter only for post-cap correction; retail trig precision remains U4-3."
+    },
+    {
+      "id": "tiny_bypass",
+      "component": "combined_cap",
+      "input": {
+        "Fx": 0.0005,
+        "Fy": 0,
+        "limit": 0,
+        "tau": 0,
+        "locked": false,
+        "vx": 1,
+        "alpha": 0
+      },
+      "expected": {
+        "Fx": 0.0005,
+        "Fy": 0
+      },
+      "absolute_tolerance": 4e-05,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Exact/ideal sine adapter only for post-cap correction; retail trig precision remains U4-3."
+    },
+    {
+      "id": "contact_straight",
+      "component": "planar_contact_velocity",
+      "input": {
+        "body_velocity": [
+          10,
+          0
+        ],
+        "yaw_rate": 0,
+        "arm": [
+          1,
+          0.75
+        ],
+        "wheel_angle": 0
+      },
+      "expected": {
+        "centre_velocity": [
+          10.0,
+          0
+        ],
+        "vx": 10.0,
+        "vy": 0.0
+      },
+      "absolute_tolerance": 0.003,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Ideal trig adapter, supplied planar mount arm; physical suspension not inferred."
+    },
+    {
+      "id": "contact_steer",
+      "component": "planar_contact_velocity",
+      "input": {
+        "body_velocity": [
+          10,
+          0
+        ],
+        "yaw_rate": 0,
+        "arm": [
+          1,
+          0.75
+        ],
+        "wheel_angle": 0.1
+      },
+      "expected": {
+        "centre_velocity": [
+          10.0,
+          0
+        ],
+        "vx": 9.950041652780259,
+        "vy": -0.9983341664682815
+      },
+      "absolute_tolerance": 0.003,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Ideal trig adapter, supplied planar mount arm; physical suspension not inferred."
+    },
+    {
+      "id": "contact_yaw",
+      "component": "planar_contact_velocity",
+      "input": {
+        "body_velocity": [
+          10,
+          0
+        ],
+        "yaw_rate": 2,
+        "arm": [
+          1,
+          0.75
+        ],
+        "wheel_angle": 0
+      },
+      "expected": {
+        "centre_velocity": [
+          8.5,
+          2
+        ],
+        "vx": 8.5,
+        "vy": 2.0
+      },
+      "absolute_tolerance": 0.003,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Ideal trig adapter, supplied planar mount arm; physical suspension not inferred."
+    },
+    {
+      "id": "contact_reverse",
+      "component": "planar_contact_velocity",
+      "input": {
+        "body_velocity": [
+          -10,
+          0
+        ],
+        "yaw_rate": 0,
+        "arm": [
+          1,
+          0.75
+        ],
+        "wheel_angle": 0.1
+      },
+      "expected": {
+        "centre_velocity": [
+          -10.0,
+          0
+        ],
+        "vx": -9.950041652780259,
+        "vy": 0.9983341664682815
+      },
+      "absolute_tolerance": 0.003,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Ideal trig adapter, supplied planar mount arm; physical suspension not inferred."
+    },
+    {
+      "id": "yaw_positive",
+      "component": "planar_body_contribution",
+      "input": {
+        "contact_arm_force_rows_rx_ry_Fx_Fy": [
+          [
+            1,
+            0.75,
+            0,
+            2
+          ],
+          [
+            1,
+            -0.75,
+            0,
+            2
+          ]
+        ],
+        "mass": 2,
+        "Iz_inverse": 0.25,
+        "external_force": [
+          0,
+          0
+        ],
+        "external_moment": 0,
+        "h": 0.01
+      },
+      "expected": {
+        "acceleration": [
+          0.0,
+          2.0
+        ],
+        "yaw_acceleration": 1.0,
+        "delta_velocity": [
+          0.0,
+          0.02
+        ],
+        "delta_yaw_rate": 0.01
+      },
+      "absolute_tolerance": 1e-06,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Tyre-only contribution with supplied effective forces/arms/inertia; other Stage2 and extra yaw contributions explicitly zero."
+    },
+    {
+      "id": "yaw_mirror",
+      "component": "planar_body_contribution",
+      "input": {
+        "contact_arm_force_rows_rx_ry_Fx_Fy": [
+          [
+            1,
+            0.75,
+            0,
+            -2
+          ],
+          [
+            1,
+            -0.75,
+            0,
+            -2
+          ]
+        ],
+        "mass": 2,
+        "Iz_inverse": 0.25,
+        "external_force": [
+          0,
+          0
+        ],
+        "external_moment": 0,
+        "h": 0.01
+      },
+      "expected": {
+        "acceleration": [
+          0.0,
+          -2.0
+        ],
+        "yaw_acceleration": -1.0,
+        "delta_velocity": [
+          0.0,
+          -0.02
+        ],
+        "delta_yaw_rate": -0.01
+      },
+      "absolute_tolerance": 1e-06,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Tyre-only contribution with supplied effective forces/arms/inertia; other Stage2 and extra yaw contributions explicitly zero."
+    },
+    {
+      "id": "yaw_cancel",
+      "component": "planar_body_contribution",
+      "input": {
+        "contact_arm_force_rows_rx_ry_Fx_Fy": [
+          [
+            1,
+            0.75,
+            3,
+            0
+          ],
+          [
+            1,
+            -0.75,
+            3,
+            0
+          ]
+        ],
+        "mass": 2,
+        "Iz_inverse": 0.25,
+        "external_force": [
+          0,
+          0
+        ],
+        "external_moment": 0,
+        "h": 0.01
+      },
+      "expected": {
+        "acceleration": [
+          3.0,
+          0.0
+        ],
+        "yaw_acceleration": 0.0,
+        "delta_velocity": [
+          0.03,
+          0.0
+        ],
+        "delta_yaw_rate": 0.0
+      },
+      "absolute_tolerance": 1e-06,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Tyre-only contribution with supplied effective forces/arms/inertia; other Stage2 and extra yaw contributions explicitly zero."
+    },
+    {
+      "id": "airborne",
+      "component": "planar_body_contribution",
+      "input": {
+        "contact_arm_force_rows_rx_ry_Fx_Fy": [
+          [
+            1,
+            0.75,
+            0,
+            0
+          ],
+          [
+            1,
+            -0.75,
+            0,
+            0
+          ]
+        ],
+        "mass": 2,
+        "Iz_inverse": 0.25,
+        "external_force": [
+          0,
+          0
+        ],
+        "external_moment": 0,
+        "h": 0.01
+      },
+      "expected": {
+        "acceleration": [
+          0.0,
+          0.0
+        ],
+        "yaw_acceleration": 0.0,
+        "delta_velocity": [
+          0.0,
+          0.0
+        ],
+        "delta_yaw_rate": 0.0
+      },
+      "absolute_tolerance": 1e-06,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "Tyre-only contribution with supplied effective forces/arms/inertia; other Stage2 and extra yaw contributions explicitly zero."
+    },
+    {
+      "id": "slip_equal",
+      "component": "tyre_branch",
+      "input": {
+        "stored_slip": 0.5,
+        "alpha": 0.1,
+        "A": 12,
+        "new_locked": false,
+        "vx": 10,
+        "vy": 1
+      },
+      "expected": {
+        "sliding": false
+      },
+      "absolute_tolerance": 0,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": ""
+    },
+    {
+      "id": "slip_over",
+      "component": "tyre_branch",
+      "input": {
+        "stored_slip": 0.5001,
+        "alpha": 0.1,
+        "A": 12,
+        "new_locked": false,
+        "vx": 10,
+        "vy": 1
+      },
+      "expected": {
+        "sliding": true
+      },
+      "absolute_tolerance": 0,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": ""
+    },
+    {
+      "id": "angle_equal",
+      "component": "tyre_branch",
+      "input": {
+        "stored_slip": 0,
+        "alpha": 0.1,
+        "A": 0.1,
+        "new_locked": false,
+        "vx": 10,
+        "vy": 1
+      },
+      "expected": {
+        "sliding": false
+      },
+      "absolute_tolerance": 0,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": ""
+    },
+    {
+      "id": "angle_over",
+      "component": "tyre_branch",
+      "input": {
+        "stored_slip": 0,
+        "alpha": 0.1001,
+        "A": 0.1,
+        "new_locked": false,
+        "vx": 10,
+        "vy": 1
+      },
+      "expected": {
+        "sliding": true
+      },
+      "absolute_tolerance": 0,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": ""
+    },
+    {
+      "id": "locked",
+      "component": "tyre_branch",
+      "input": {
+        "stored_slip": 0,
+        "alpha": 0,
+        "A": 12,
+        "new_locked": true,
+        "vx": 10,
+        "vy": 0
+      },
+      "expected": {
+        "sliding": false
+      },
+      "absolute_tolerance": 0,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": "New lock alone does not select sliding when stored_slip=vy=0; the nonzero-slip predicate fails."
+    },
+    {
+      "id": "spin_at_rest",
+      "component": "tyre_branch",
+      "input": {
+        "stored_slip": 5,
+        "alpha": 0,
+        "A": 12,
+        "new_locked": true,
+        "vx": 0,
+        "vy": 0
+      },
+      "expected": {
+        "sliding": false
+      },
+      "absolute_tolerance": 0,
+      "relative_tolerance": 2e-05,
+      "provenance": "synthetic calculation from S4 requirements; no retail execution",
+      "note": ""
+    },
+    {
+      "id": "locked_with_motion",
+      "component": "tyre_branch",
+      "input": {
+        "stored_slip": 0.1,
+        "alpha": 0,
+        "A": 12,
+        "new_locked": true,
+        "vx": 10,
+        "vy": 0
+      },
+      "expected": {
+        "sliding": true
+      },
+      "absolute_tolerance": 0,
+      "relative_tolerance": 0,
+      "provenance": "reviewer synthetic calculation from S1-7.4, S3-4/5 and S4-5; no retail execution",
+      "note": "Nonzero stored slip and contact motion enable the predicate; new lock selects sliding below the slip threshold."
+    }
+  ]
+}

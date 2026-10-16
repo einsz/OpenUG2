@@ -1,0 +1,187 @@
+{
+ "about": "Language label key -> English text in LANGUAGES/English.bin (observed). Keys are functional lookup data; texts are given only as check values.",
+ "groups": {
+  "screen": [
+   {
+    "key": "0x04DC6DB5",
+    "english": "Controls"
+   },
+   {
+    "key": "0xC7CA52ED",
+    "english": "Options"
+   },
+   {
+    "key": "0x5CF08EB7",
+    "english": "Keyboard Configuration"
+   },
+   {
+    "key": "0xF91FBA4D",
+    "english": "Joypad Configuration"
+   },
+   {
+    "key": "0x14D4BD3B",
+    "english": "Wheel Configuration"
+   },
+   {
+    "key": "0x1B15F53C",
+    "english": "Primary"
+   },
+   {
+    "key": "0x37E740E0",
+    "english": "Secondary"
+   },
+   {
+    "key": "0x8BAB66EF",
+    "english": "Configure your settings"
+   },
+   {
+    "key": "0x23CF49AA",
+    "english": "Press a button to use for this function"
+   },
+   {
+    "key": "0xFED0D3DF",
+    "english": "Press enter to assign a new key or button"
+   }
+  ],
+  "reset_dialog": [
+   {
+    "key": "0x2BBCCA6B",
+    "english": "Reset to default settings?"
+   },
+   {
+    "key": "0x00000639",
+    "english": "OK"
+   },
+   {
+    "key": "0x541389E5",
+    "english": "Cancel"
+   }
+  ],
+  "help_bar": [
+   {
+    "key": "0x1C101778",
+    "english": "Quit Game"
+   },
+   {
+    "key": "0x1C0787E6",
+    "english": "Back"
+   },
+   {
+    "key": "0xB7D0D273",
+    "english": "Reset Keys To Default"
+   }
+  ],
+  "rows": [
+   {
+    "key": "0x153E7337",
+    "english": "Steering (Left)"
+   },
+   {
+    "key": "0xBD7BA1AA",
+    "english": "Steering (Right)"
+   },
+   {
+    "key": "0x409607E2",
+    "english": "Throttle"
+   },
+   {
+    "key": "0x82EBCC98",
+    "english": "Back / Reverse"
+   },
+   {
+    "key": "0x3EB318CE",
+    "english": "Shift Up"
+   },
+   {
+    "key": "0xB7D33921",
+    "english": "Shift Down"
+   },
+   {
+    "key": "0xB3D1EA35",
+    "english": "Handbrake"
+   },
+   {
+    "key": "0xDF5AEF26",
+    "english": "Nitrous Boost"
+   },
+   {
+    "key": "0x419CA63A",
+    "english": "Camera"
+   },
+   {
+    "key": "0x35B9F571",
+    "english": "Look Back"
+   },
+   {
+    "key": "0x4A1341B3",
+    "english": "Enter Race / Shop"
+   },
+   {
+    "key": "0x1E7E3391",
+    "english": "World Map"
+   },
+   {
+    "key": "0x58BAEBBA",
+    "english": "Read SMS"
+   },
+   {
+    "key": "0x735B2E6C",
+    "english": "Career Statistics"
+   },
+   {
+    "key": "0x6FC04E6F",
+    "english": "Reset Car"
+   },
+   {
+    "key": "0xA081F0CC",
+    "english": "Hydraulics Pressure"
+   },
+   {
+    "key": "0x64730AAC",
+    "english": "Hydraulics Bounce"
+   },
+   {
+    "key": "0x6F99F62A",
+    "english": "Pause"
+   }
+  ],
+  "options_hub": [
+   {
+    "key": "0xE76CD783",
+    "english": "Audio"
+   },
+   {
+    "key": "0x4204D527",
+    "english": "Display"
+   },
+   {
+    "key": "0xD0CF6EE1",
+    "english": "Gameplay"
+   },
+   {
+    "key": "0xF760EABE",
+    "english": "Player"
+   },
+   {
+    "key": "0x04DC6DB5",
+    "english": "Controls"
+   },
+   {
+    "key": "0xDCFB6B36",
+    "english": "EA GAMESÂ TRAX"
+   },
+   {
+    "key": "0x0905101F",
+    "english": "Credits"
+   },
+   {
+    "key": "0x7D347E05",
+    "english": "Online Options"
+   },
+   {
+    "key": "0x19889765",
+    "english": "LAN Options"
+   }
+  ]
+ }
+}

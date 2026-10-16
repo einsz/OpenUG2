@@ -1,0 +1,873 @@
+{
+  "provenance": "Invented independent host display requirements; no original runtime/data/code.",
+  "tolerance": {
+    "scalar_absolute": 2e-06,
+    "axis_absolute": 2e-05
+  },
+  "vectors": [
+    {
+      "id": "linear-motion",
+      "before": {
+        "origin": [
+          0,
+          0,
+          0.32
+        ]
+      },
+      "after": {
+        "origin": [
+          0.16666666666666666,
+          0,
+          0.32
+        ]
+      },
+      "alphas": [
+        0,
+        0.25,
+        0.5,
+        0.75,
+        1
+      ],
+      "expected_origin_x": [
+        0,
+        0.041666666666666664,
+        0.08333333333333333,
+        0.125,
+        0.16666666666666666
+      ],
+      "require_same_time_channels": [
+        "chassis",
+        "wheel roots",
+        "lamps",
+        "camera player target"
+      ],
+      "provenance": {
+        "method": "synthetic mathematical fixture",
+        "source": "Independent host requirements RS-0 through RS-5; values invented by proposal author/reviewer and evaluated from the specified arithmetic, not observed retail behavior or copied assets."
+      }
+    },
+    {
+      "id": "independent-wheel",
+      "before": {
+        "travel": [
+          0,
+          0.01,
+          0.02,
+          0.03
+        ],
+        "steer": [
+          0,
+          0.1,
+          0,
+          0
+        ],
+        "spin": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "after": {
+        "travel": [
+          0.04,
+          0.03,
+          0,
+          -0.01
+        ],
+        "steer": [
+          0.2,
+          -0.1,
+          0,
+          0
+        ],
+        "spin": [
+          0.1,
+          0.2,
+          0.3,
+          0.4
+        ]
+      },
+      "alpha": 0.5,
+      "expected": {
+        "travel": [
+          0.02,
+          0.02,
+          0.01,
+          0.01
+        ],
+        "steer": [
+          0.1,
+          0,
+          0,
+          0
+        ],
+        "spin": [
+          0.05,
+          0.1,
+          0.15,
+          0.2
+        ]
+      },
+      "provenance": {
+        "method": "synthetic mathematical fixture",
+        "source": "Independent host requirements RS-0 through RS-5; values invented by proposal author/reviewer and evaluated from the specified arithmetic, not observed retail behavior or copied assets."
+      }
+    },
+    {
+      "id": "spin-wrap-and-fast-turn",
+      "before_spin": [
+        6.2,
+        0,
+        1,
+        0
+      ],
+      "after_spin_unwrapped": [
+        6.4,
+        12.566370614359172,
+        1.1,
+        -12.566370614359172
+      ],
+      "alpha": 0.5,
+      "expected_spin_unwrapped": [
+        6.3,
+        6.283185307179586,
+        1.05,
+        -6.283185307179586
+      ],
+      "provenance": {
+        "method": "synthetic mathematical fixture",
+        "source": "Independent host requirements RS-0 through RS-5; values invented by proposal author/reviewer and evaluated from the specified arithmetic, not observed retail behavior or copied assets."
+      },
+      "expected_display_phase": [
+        0.01681469282041359,
+        0,
+        1.05,
+        0
+      ]
+    },
+    {
+      "id": "quarter-yaw",
+      "before_yaw": 0,
+      "after_yaw": 1.5707963267948966,
+      "alpha": 0.5,
+      "expected_forward": [
+        0.7071067811865476,
+        0.7071067811865476,
+        0
+      ],
+      "expected_lateral": [
+        -0.7071067811865476,
+        0.7071067811865476,
+        0
+      ],
+      "expected_up": [
+        0,
+        0,
+        1
+      ],
+      "provenance": {
+        "method": "synthetic mathematical fixture",
+        "source": "Independent host requirements RS-0 through RS-5; values invented by proposal author/reviewer and evaluated from the specified arithmetic, not observed retail behavior or copied assets."
+      }
+    },
+    {
+      "id": "stationary",
+      "before_equals_after": true,
+      "alphas": [
+        0,
+        0.1,
+        0.5,
+        0.9,
+        1
+      ],
+      "expected": "all presentation channels stationary; physics bitwise unchanged",
+      "provenance": {
+        "method": "synthetic mathematical fixture",
+        "source": "Independent host requirements RS-0 through RS-5; values invented by proposal author/reviewer and evaluated from the specified arithmetic, not observed retail behavior or copied assets."
+      },
+      "snapshot": {
+        "origin": [
+          3,
+          -2,
+          0.32
+        ],
+        "basis": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ],
+        "hub_local": [
+          [
+            1,
+            0.8,
+            -0.2
+          ],
+          [
+            1,
+            -0.8,
+            -0.2
+          ],
+          [
+            -1,
+            0.8,
+            -0.2
+          ],
+          [
+            -1,
+            -0.8,
+            -0.2
+          ]
+        ],
+        "travel": [
+          0.01,
+          0.02,
+          0.03,
+          0.04
+        ],
+        "steer": [
+          0.1,
+          0.2,
+          0,
+          0
+        ],
+        "spin": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "camera_target_offset_local": [
+          0,
+          0,
+          0.5
+        ]
+      }
+    },
+    {
+      "id": "basis-properties",
+      "yaw_pairs": [
+        [
+          0.2,
+          0.21
+        ],
+        [
+          3.13,
+          -3.13
+        ]
+      ],
+      "alphas": [
+        0,
+        0.25,
+        0.5,
+        0.75,
+        1
+      ],
+      "expected": "continuous proper orthonormal right-handed basis; endpoint agreement",
+      "provenance": {
+        "method": "synthetic mathematical fixture",
+        "source": "Independent host requirements RS-0 through RS-5; values invented by proposal author/reviewer and evaluated from the specified arithmetic, not observed retail behavior or copied assets."
+      },
+      "expected_midpoint_yaws": [
+        0.205,
+        3.141592653589793
+      ]
+    },
+    {
+      "id": "reset-and-mode-switch",
+      "old_origin": [
+        0,
+        0,
+        0.32
+      ],
+      "new_origin": [
+        100,
+        200,
+        5
+      ],
+      "events": [
+        "reset",
+        "teleport",
+        "car switch",
+        "dynamic to legacy",
+        "legacy to dynamic",
+        "initialization",
+        "geometry generation change",
+        "actor generation change"
+      ],
+      "alphas": [
+        0,
+        0.5,
+        1
+      ],
+      "expected_origin": [
+        100,
+        200,
+        5
+      ],
+      "expected": "all channels from new snapshot; no old basis/wheel history",
+      "provenance": {
+        "method": "synthetic mathematical fixture",
+        "source": "Independent host requirements RS-0 through RS-5; values invented by proposal author/reviewer and evaluated from the specified arithmetic, not observed retail behavior or copied assets."
+      },
+      "new_snapshot": {
+        "origin": [
+          100,
+          200,
+          5
+        ],
+        "basis": [
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            -1,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ],
+        "travel": [
+          0.04,
+          0.03,
+          0.02,
+          0.01
+        ],
+        "steer": [
+          -0.1,
+          -0.2,
+          0,
+          0
+        ],
+        "spin": [
+          4,
+          3,
+          2,
+          1
+        ]
+      }
+    },
+    {
+      "id": "zero-multiple-ticks",
+      "completed_tick_origins": [
+        0,
+        0.16666666666666666,
+        0.3333333333333333,
+        0.5
+      ],
+      "render_schedule": [
+        {
+          "last_tick": 1,
+          "alpha": 0.25,
+          "x": 0.041666666666666664
+        },
+        {
+          "last_tick": 1,
+          "alpha": 0.75,
+          "x": 0.125
+        },
+        {
+          "last_tick": 3,
+          "alpha": 0.5,
+          "x": 0.4166666666666667
+        }
+      ],
+      "expected": "sample last adjacent completed pair; tick state bitwise unchanged",
+      "provenance": {
+        "method": "synthetic mathematical fixture",
+        "source": "Independent host requirements RS-0 through RS-5; values invented by proposal author/reviewer and evaluated from the specified arithmetic, not observed retail behavior or copied assets."
+      }
+    },
+    {
+      "id": "alpha-one-and-follow-mode",
+      "alpha": 1,
+      "expected": "all player presentation channels equal current snapshot; when following another actor camera uses followed actor, not player axes",
+      "provenance": {
+        "method": "synthetic mathematical fixture",
+        "source": "Independent host requirements RS-0 through RS-5; values invented by proposal author/reviewer and evaluated from the specified arithmetic, not observed retail behavior or copied assets."
+      },
+      "player": {
+        "origin": [
+          10,
+          0,
+          0
+        ],
+        "yaw": 0
+      },
+      "followed_actor": {
+        "origin": [
+          0,
+          20,
+          0
+        ],
+        "yaw": 1.5707963267948966
+      },
+      "expected_camera_actor_origin": [
+        0,
+        20,
+        0
+      ],
+      "expected_camera_actor_forward": [
+        0,
+        1,
+        0
+      ]
+    },
+    {
+      "id": "hub-lamp-sampled-basis",
+      "before": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "yaw": 0,
+        "hub_local": [
+          [
+            1,
+            1,
+            -0.2
+          ],
+          [
+            1,
+            -1,
+            -0.2
+          ],
+          [
+            -1,
+            1,
+            -0.2
+          ],
+          [
+            -1,
+            -1,
+            -0.2
+          ]
+        ]
+      },
+      "after": {
+        "origin": [
+          2,
+          0,
+          0
+        ],
+        "yaw": 1.5707963267948966,
+        "hub_local": [
+          [
+            1,
+            1,
+            0
+          ],
+          [
+            1,
+            -1,
+            0
+          ],
+          [
+            -1,
+            1,
+            0
+          ],
+          [
+            -1,
+            -1,
+            0
+          ]
+        ]
+      },
+      "alpha": 0.5,
+      "expected_world_hubs": [
+        [
+          1,
+          1.4142135623730951,
+          -0.1
+        ],
+        [
+          2.414213562373095,
+          0,
+          -0.1
+        ],
+        [
+          -0.41421356237309515,
+          0,
+          -0.1
+        ],
+        [
+          1,
+          -1.4142135623730951,
+          -0.1
+        ]
+      ],
+      "lamp_local": [
+        2,
+        0,
+        0.5
+      ],
+      "expected_world_lamp": [
+        2.414213562373095,
+        1.4142135623730951,
+        0.5
+      ],
+      "camera_target_offset_local": [
+        0,
+        0,
+        0.5
+      ],
+      "expected_world_camera_target": [
+        1,
+        0,
+        0.5
+      ],
+      "provenance": {
+        "method": "synthetic mathematical fixture",
+        "source": "Independent host requirements RS-0 through RS-5; values invented by proposal author/reviewer and evaluated from the specified arithmetic, not observed retail behavior or copied assets."
+      }
+    },
+    {
+      "id": "wheel-physical-side-and-sense",
+      "basis": [
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          -1,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1
+        ]
+      ],
+      "hub_local": [
+        [
+          1,
+          0.8,
+          0
+        ],
+        [
+          1,
+          -0.8,
+          0
+        ],
+        [
+          -1,
+          0.8,
+          0
+        ],
+        [
+          -1,
+          -0.8,
+          0
+        ]
+      ],
+      "expected_side_dot_lateral_signs": [
+        1,
+        -1,
+        1,
+        -1
+      ],
+      "before_spin": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "after_spin": [
+        1,
+        2,
+        -3,
+        -4
+      ],
+      "alpha": 0.25,
+      "expected_spin": [
+        0.25,
+        0.5,
+        -0.75,
+        -1
+      ],
+      "expected": "Physical mount identity and supplied physical spin sense survive fixed mesh conversion; each outward face dot lateral has the listed sign.",
+      "provenance": {
+        "method": "synthetic mathematical fixture",
+        "source": "Independent host requirements RS-0 through RS-5; values invented by proposal author/reviewer and evaluated from the specified arithmetic, not observed retail behavior or copied assets."
+      }
+    },
+    {
+      "id": "tilted-and-half-turn-bases",
+      "basis_pairs": [
+        [
+          [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ],
+            [
+              0,
+              -1,
+              0
+            ]
+          ]
+        ],
+        [
+          [
+            [
+              0,
+              0,
+              -1
+            ],
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              1,
+              0,
+              0
+            ]
+          ],
+          [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              -1,
+              0
+            ],
+            [
+              0,
+              0,
+              -1
+            ]
+          ]
+        ],
+        [
+          [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          [
+            [
+              -1,
+              0,
+              0
+            ],
+            [
+              0,
+              -1,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ]
+        ]
+      ],
+      "alphas": [
+        0,
+        0.001,
+        0.25,
+        0.5,
+        0.75,
+        0.999,
+        1
+      ],
+      "expected": "Proper orthonormal right-handed finite axes at all samples, endpoint equality, repeatability and continuous alpha path, including deterministic half-turn branch; no unique interior basis mandated.",
+      "provenance": {
+        "method": "synthetic mathematical fixture",
+        "source": "Independent host requirements RS-0 through RS-5; values invented by proposal author/reviewer and evaluated from the specified arithmetic, not observed retail behavior or copied assets."
+      }
+    },
+    {
+      "id": "pause-snap-current",
+      "before": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "yaw": 0,
+        "spin": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "after": {
+        "origin": [
+          5,
+          6,
+          7
+        ],
+        "yaw": 0.2,
+        "spin": [
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "input_alpha": 0.25,
+      "events": [
+        "pause",
+        "explicit snap"
+      ],
+      "expected_origin": [
+        5,
+        6,
+        7
+      ],
+      "expected_yaw": 0.2,
+      "expected_spin": [
+        4,
+        5,
+        6,
+        7
+      ],
+      "expected": "All channels use current snapshot, not residual alpha.",
+      "provenance": {
+        "method": "synthetic mathematical fixture",
+        "source": "Independent host requirements RS-0 through RS-5; values invented by proposal author/reviewer and evaluated from the specified arithmetic, not observed retail behavior or copied assets."
+      }
+    },
+    {
+      "id": "read-only-cadence",
+      "completed_tick_inputs": "Same deterministic supplied inputs and initial state for both runs; use any valid dynamic fixture from the approved companion suite.",
+      "render_alphas_by_completed_tick_run_a": [
+        [
+          1
+        ],
+        [
+          1
+        ],
+        [
+          1
+        ],
+        [
+          1
+        ]
+      ],
+      "render_alphas_by_completed_tick_run_b": [
+        [
+          0,
+          0.2,
+          0.7
+        ],
+        [
+          0.1,
+          0.9
+        ],
+        [],
+        [
+          0,
+          0.5,
+          1
+        ]
+      ],
+      "expected": "All complete simulation state and fixed-tick outputs bitwise equal between runs. Each individual sample leaves simulation state unchanged; simulation query/derivative/preparation counts equal. Presentation outputs follow each supplied alpha; empty render group performs no presentation.",
+      "provenance": {
+        "method": "synthetic mathematical fixture",
+        "source": "Independent host requirements RS-0 through RS-5; values invented by proposal author/reviewer and evaluated from the specified arithmetic, not observed retail behavior or copied assets."
+      }
+    },
+    {
+      "id": "yaw-label-wrap",
+      "before_yaw": 3.13,
+      "after_yaw": -3.13,
+      "alpha": 0.5,
+      "expected_forward": [
+        -1,
+        0,
+        0
+      ],
+      "expected_lateral": [
+        0,
+        -1,
+        0
+      ],
+      "expected_up": [
+        0,
+        0,
+        1
+      ],
+      "provenance": {
+        "method": "synthetic mathematical fixture",
+        "source": "Independent host requirements RS-0 through RS-5; values invented by proposal author/reviewer and evaluated from the specified arithmetic, not observed retail behavior or copied assets."
+      }
+    }
+  ],
+  "schema_notes": {
+    "partial_snapshots": "Unspecified channels use a compatible finite identical value at both endpoints: zero vectors/scalars, identity basis, stable geometry/identity. Property vectors explicitly override this with their fixture inputs.",
+    "wheel_order": [
+      "front-positive-lateral",
+      "front-negative-lateral",
+      "rear-positive-lateral",
+      "rear-negative-lateral"
+    ],
+    "basis": "Columns are forward, lateral, up; right-handed z-up body coordinates.",
+    "property_checks": "axis lengths=1; pairwise dots=0; forward cross lateral=up; endpoints match; repeatability; continuity evaluated with progressively halved alpha steps (no finite jump or invalid basis)."
+  }
+}

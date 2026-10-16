@@ -1,0 +1,145 @@
+{
+ "about": "Synthetic keyboard rebinding scenarios evaluated with the rules of spec 6.3 (analyst model). display_after lists [primary, secondary] DIK per affected action; 0x00 = shown as \"---\". \"previous\" start = the result of the preceding case.",
+ "cases": [
+  {
+   "name": "primary replaced, old primary key freed",
+   "start": "defaults",
+   "capture": {
+    "action": 6,
+    "column": 0,
+    "key_dik": "0x31"
+   },
+   "result": "assigned",
+   "display_after": {
+    "6": [
+     "0x31",
+     "0xB8"
+    ]
+   }
+  },
+  {
+   "name": "secondary replaced",
+   "start": "defaults",
+   "capture": {
+    "action": 6,
+    "column": 1,
+    "key_dik": "0x31"
+   },
+   "result": "assigned",
+   "display_after": {
+    "6": [
+     "0x38",
+     "0x31"
+    ]
+   }
+  },
+  {
+   "name": "key stolen from another action (W from Throttle to Nitrous primary)",
+   "start": "defaults",
+   "capture": {
+    "action": 6,
+    "column": 0,
+    "key_dik": "0x11"
+   },
+   "result": "assigned",
+   "display_after": {
+    "1": [
+     "0xC8",
+     "0x00"
+    ],
+    "6": [
+     "0x11",
+     "0xB8"
+    ]
+   }
+  },
+  {
+   "name": "assign current secondary key as primary: secondary cleared",
+   "start": "defaults",
+   "capture": {
+    "action": 1,
+    "column": 0,
+    "key_dik": "0x11"
+   },
+   "result": "assigned",
+   "display_after": {
+    "1": [
+     "0x11",
+     "0x00"
+    ]
+   }
+  },
+  {
+   "name": "assign current primary key as secondary: primary empty -> promoted, secondary cleared",
+   "start": "defaults",
+   "capture": {
+    "action": 1,
+    "column": 1,
+    "key_dik": "0xC8"
+   },
+   "result": "assigned",
+   "display_after": {
+    "1": [
+     "0xC8",
+     "0x00"
+    ]
+   }
+  },
+  {
+   "name": "Escape cancels",
+   "start": "defaults",
+   "capture": {
+    "action": 1,
+    "column": 0,
+    "key_dik": "0x01"
+   },
+   "result": "cancelled",
+   "display_after": {
+    "1": [
+     "0xC8",
+     "0x11"
+    ],
+    "12": [
+     "0x01",
+     "0x19"
+    ]
+   }
+  },
+  {
+   "name": "step 1: steal Up from Throttle into Camera secondary (Throttle then shows W in both columns)",
+   "start": "defaults",
+   "capture": {
+    "action": 10,
+    "column": 1,
+    "key_dik": "0xC8"
+   },
+   "result": "assigned",
+   "display_after": {
+    "1": [
+     "0x11",
+     "0x11"
+    ],
+    "10": [
+     "0x2E",
+     "0xC8"
+    ]
+   }
+  },
+  {
+   "name": "step 2 (from step 1): Throttle secondary := V while its primary entry is empty -> V promoted to primary, W dropped",
+   "start": "previous",
+   "capture": {
+    "action": 1,
+    "column": 1,
+    "key_dik": "0x2F"
+   },
+   "result": "assigned",
+   "display_after": {
+    "1": [
+     "0x2F",
+     "0x00"
+    ]
+   }
+  }
+ ]
+}

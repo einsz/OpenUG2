@@ -1,0 +1,7 @@
+All cases are invented component inputs with expected values calculated from the companion equations. They are not original-runtime captures and contain no original car or package table. Decimal fields designate binary32 inputs. Compare integer outcomes and branch choices exactly; use the SPEC tolerance for floating outputs.
+
+The scoring-curve fixture uses the ordinary nonoptimal shift setting and exercises the pre-shift rpm/stop rule, last generated sample zeroing and 64-point resampling. Its score is approximate within the stated arithmetic tolerance.
+
+Reviewer-added cases enter the named component boundary: supplied mean/grade values are intermediate values, and supplied rpm/threshold fixtures exercise the generation decision directly. The shift-equality fixture's nonconstant torque curve distinguishes retaining pre-shift rpm from recalculating rpm with the new ratio. The grade-order fixture uses invented descriptors and intentionally fails the activation equality guard. A negative-mean case and exact mean endpoints distinguish conditional per-component clamping; a large-cancellation case distinguishes binary32 accumulation. Forced class, resistance equality and threshold equality are exact predicate checks. The unit-map fixture uses the row-to-subrecord subtraction without converting stored values.
+
+The reviewer recalculated stored inertia outputs and the two-sample score with explicit binary32 inputs/stores. All cases have individual derivation provenance. No local asset rows, package tables, original assets or runtime traces are included.

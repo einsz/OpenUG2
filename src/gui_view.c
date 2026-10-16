@@ -2,6 +2,7 @@
  * (handler, exit, dim), 3 (carousel), 4 (rows, sliders, scrollbar), 5 (headers), 6 (dialogs), 8. */
 #include "gui_view.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -76,6 +77,7 @@ static int screen_start(GvScreen *s, const UgFngPackage *pk, const UgAssets *ass
     sample_anchor(&s->scene, hn("OPTION_MASTER"), &s->opt_master);       /* before the first update (A6) */
     sample_anchor(&s->scene, hn("TITLE_MASTER"), &s->title_master);
     sample_anchor(&s->scene, hn("DATA_MASTER"), &s->data_master);
+    sample_anchor(&s->scene, hn("DATA_MASTER2"), &s->data_master2);
     ug_scene_update(&s->scene, 0);
     s->draw_ok = 1;
     return 1;
@@ -541,6 +543,220 @@ void gv_list_sync(GvList *v, const OptionsMenu *m, float dt_ms) {
         float rh = rail->obj->size[1] > 0 ? rail->obj->size[1] : 282.0f;
         ug_scene_app_set_world_pos(sc, v->tab, sc->nodes[v->tab].we,
                                    gl_scroll_tab_y(rail->wf, rh, focus + 1, m->nrows));
+    }
+    ug_scene_relayout(sc);
+}
+
+/* ---- Controls ------------------------------------------------------------------------------------------ */
+
+#define H_CTL_TITLE 0x4E11CF90u          /* device-selector title (3.1) */
+#define H_CTL_ARROW_L 0xD1CDA594u
+#define H_CTL_ARROW_R 0x9345E4A7u
+#define H_CTL_COL1 0x666593C4u           /* Primary / Secondary column headers */
+#define H_CTL_COL2 0x59ABA1E8u
+#define H_CTL_TAB 0x3FBB7A4Eu            /* scroll tab */
+
+int gv_controls_bind(GvControls *v, GvScreen *s, const ControlsMenu *m) {
+    memset(v, 0, sizeof *v);
+    v->scr = s;
+    v->hl_row = v->hl_col = -1;
+    v->seen_build = m->build_serial;
+    v->seen_blink = m->blink_serial;
+    v->seen_scroll = m->scroll_serial;
+    v->seen_capture = m->capture_serial;
+    if (!s->loaded) return 0;
+    UgScene *sc = &s->scene;
+    int bad = 0;
+    int tm = find(s, hn("TITLE_MASTER"), &bad), dm = find(s, hn("DATA_MASTER"), &bad), dm2 = find(s, hn("DATA_MASTER2"), &bad);
+    v->header = find(s, H_HEADER, &bad);
+    v->title = find(s, H_CTL_TITLE, &bad);
+    v->arrow_l = find(s, H_CTL_ARROW_L, &bad);
+    v->arrow_r = find(s, H_CTL_ARROW_R, &bad);
+    v->col1 = find(s, H_CTL_COL1, &bad);
+    v->col2 = find(s, H_CTL_COL2, &bad);
+    v->instr = find(s, hn("Instructions_Label"), &bad);
+    v->rail = find(s, hn("ScrollBar_Backing"), &bad);
+    v->tab = find(s, H_CTL_TAB, &bad);
+    v->arrow1 = find(s, hn("ScrollBar_Arrow_1"), &bad);
+    v->arrow2 = find(s, hn("ScrollBar_Arrow_2"), &bad);
+    for (int n = 1; n <= GV_CTL_SLOTS; n++) {
+        GvCtlRow *r = &v->row[n];
+        r->name = find(s, hnf("OPTION_NAME_%d", n), &bad);
+        r->data = find(s, hnf("OPTION_DATA_%d", n), &bad);
+        r->data2 = find(s, hnf("OPTION_DATA_2_%d", n), &bad);
+        r->backing = find(s, hnf("OPTIONS_BACKING_%d", n), &bad);
+        if (r->name >= 0 && r->data >= 0 && r->data2 >= 0) v->nslots = n; else break;
+    }
+    const char *missing = bad ? "an ambiguous object name" : tm < 0 ? "TITLE_MASTER" : dm < 0 ? "DATA_MASTER" : dm2 < 0 ? "DATA_MASTER2" :
+                          v->header < 0 ? "Header_text" : v->title < 0 ? "selector title" : v->arrow_l < 0 || v->arrow_r < 0 ? "selector arrows" :
+                          v->col1 < 0 || v->col2 < 0 ? "column headers" : v->instr < 0 ? "Instructions_Label" :
+                          v->rail < 0 || v->tab < 0 || v->arrow1 < 0 || v->arrow2 < 0 ? "scrollbar" :
+                          v->nslots < CB_MAX_ROWS ? "row slots" : NULL;
+    if (!missing && !(s->title_master.found && s->data_master.found && s->data_master2.found)) missing = "anchors";
+    if (!missing && s->title_master.h <= 0) missing = "row pitch";
+    if (missing) {
+        snprintf(s->status, sizeof s->status, "%s: authored Controls binding unavailable (%s)", s->name, missing);
+        return 0;
+    }
+    v->tx = s->title_master.x - s->title_master.w / 2;               /* top-left + size, read once (A6) */
+    v->ty = s->title_master.y - s->title_master.h / 2;
+    v->th = s->title_master.h;
+    v->dx[0] = s->data_master.x - s->data_master.w / 2;
+    v->dx[1] = s->data_master2.x - s->data_master2.w / 2;
+    v->dw = s->data_master.w;
+    hide(sc, tm, 1);                                                  /* anchors are never drawn */
+    hide(sc, dm, 1);
+    hide(sc, dm2, 1);
+    v->bound = 1;
+    return 1;
+}
+
+/* The anchor y that puts the top of a text at `top`: a vertically centred text is anchored at the middle of
+ * its line (CONTROLS_SPEC 3.8: "top y_k" for all three columns). */
+static float ctl_text_y(const UgScene *sc, int node, float top) {
+    const UgNode *n = &sc->nodes[node];
+    if (!(n->obj->justify & UG_J_VCENTER) || !n->face) return top;
+    return top + 0.5f * (float)n->face->line_height * n->props.w[UG_P_SIZE + 1] * fabsf(n->wd);
+}
+
+static void ctl_park(UgScene *sc, GvCtlRow *r) {
+    int o[4] = { r->name, r->data, r->data2, r->backing };
+    for (int i = 0; i < 4; i++) {
+        if (o[i] < 0) continue;
+        hide(sc, o[i], 1);
+        if (!r->parked) ug_scene_app_set_world_pos(sc, o[i], sc->nodes[o[i]].we, GL_ROW_OFFSCREEN_Y);
+    }
+    r->parked = 1;
+}
+
+static void ctl_row_script(UgScene *sc, const GvCtlRow *r, int col, uint32_t script) {
+    start(sc, col ? r->data2 : r->data, script);
+    start(sc, r->name, script);
+    start(sc, r->backing, script);
+}
+
+void gv_controls_sync(GvControls *v, const ControlsMenu *m, float dt_ms) {
+    if (!v->bound || !cm_is_open(m)) return;
+    GvScreen *s = v->scr;
+    UgScene *sc = &s->scene;
+    const UgAssets *as = s->assets;
+    static uint32_t pulse = 0;
+    if (!pulse) pulse = hn("Pulse");
+
+    /* texts: every one from the language file (3.1, 3.3, 3.5); no fallback text exists */
+    settext(sc, v->header, gv_text(as, CM_KEY_HEADER, NULL));
+    settext(sc, v->title, gv_text(as, cm_title_key(m), NULL));
+    settext(sc, v->col1, gv_text(as, CM_KEY_PRIMARY, NULL));
+    settext(sc, v->col2, gv_text(as, CM_KEY_SECONDARY, NULL));
+    settext(sc, v->instr, gv_text(as, cm_instruction_key(m), NULL));
+
+    int ready = s->enter_done || s->time_ms >= GV_ENTER_FALLBACK_MS;
+    if (m->build_serial != v->seen_build) {                           /* a device change rebuilt the rows */
+        v->seen_build = m->build_serial;
+        v->hl_row = v->hl_col = -1;
+        for (int n = 1; n <= v->nslots; n++) {
+            GvCtlRow *r = &v->row[n];
+            int o[4] = { r->name, r->data, r->data2, r->backing };
+            for (int i = 0; i < 4; i++) start(sc, o[i], H_UNHIGHLIGHT);
+            r->hl_fade_ms = 0;
+        }
+    }
+
+    /* rows */
+    int focus = m->focus_row;
+    if (focus >= 0) v->tab_row = focus;
+    for (int n = 1; n <= v->nslots; n++) {
+        GvCtlRow *r = &v->row[n];
+        int i = n - 1;
+        if (i >= cm_row_count(m) || !cm_row_visible(m, i)) { ctl_park(sc, r); continue; }
+        r->parked = 0;
+        int k = i - m->top;
+        float y = v->ty + v->th * (float)k;
+        if (r->hl_fade_ms > 0 && !(i == focus)) r->hl_fade_ms -= dt_ms;
+        const CbRow *row = cm_row(m, i);
+        hide(sc, r->name, 0);
+        settext(sc, r->name, gv_text(as, row->label_key, NULL));
+        {
+            const UgNode *nn = &sc->nodes[r->name];
+            float x = v->tx;
+            if (nn->obj->justify & UG_J_CENTER) x += s->title_master.w / 2;
+            else if (nn->obj->justify & UG_J_RIGHT) x += s->title_master.w;
+            ug_scene_app_set_world_pos(sc, r->name, x, ctl_text_y(sc, r->name, y));
+        }
+        for (int c = 0; c < 2; c++) {
+            int node = c ? r->data2 : r->data;
+            hide(sc, node, 0);
+            cm_cell_text(m, i, c, r->text[c]);
+            settext(sc, node, r->text[c]);
+            ug_scene_app_set_world_pos(sc, node, v->dx[c] + v->dw / 2, ctl_text_y(sc, node, y));
+        }
+        if (r->backing >= 0) {
+            int lit = i == focus || r->hl_fade_ms > 0;
+            hide(sc, r->backing, !lit);
+            ug_scene_app_set_world_pos(sc, r->backing, v->tx + 276.0f, y + 8.0f);   /* (tx + 276, y_k + 8) */
+        }
+    }
+
+    /* focus scripts (4.4): UnHighlight the old cell and its row, Highlight the new one; the selector title too */
+    if (ready) {
+        int want_title = focus < 0;
+        if (v->hl_title != want_title) { start(sc, v->title, want_title ? H_HIGHLIGHT : H_UNHIGHLIGHT); v->hl_title = want_title; }
+        int row = focus, col = m->focus_col;
+        if (v->hl_row != row || v->hl_col != col) {
+            if (v->hl_row >= 0 && v->hl_row < m->nrows) {
+                GvCtlRow *o = &v->row[v->hl_row + 1];
+                ctl_row_script(sc, o, v->hl_col, H_UNHIGHLIGHT);
+                o->hl_fade_ms = HL_FADE_MS;
+            }
+            if (row >= 0) {
+                GvCtlRow *n = &v->row[row + 1];
+                ctl_row_script(sc, n, col, H_HIGHLIGHT);
+                n->hl_fade_ms = 0;
+            }
+            v->hl_row = row;
+            v->hl_col = col;
+        }
+    }
+    /* capture: the cell starts Pulse (keyboard Accept only); when it ends the focused cell is highlighted again */
+    if (m->capture_serial != v->seen_capture) {
+        v->seen_capture = m->capture_serial;
+        if (m->capturing && m->cap_pulse && m->cap_row >= 0 && m->cap_row < m->nrows) {
+            const GvCtlRow *r = &v->row[m->cap_row + 1];
+            start(sc, m->cap_col ? r->data2 : r->data, pulse);
+        } else if (!m->capturing && v->was_capturing && m->cap_row >= 0 && m->cap_row < m->nrows) {
+            const GvCtlRow *r = &v->row[m->cap_row + 1];
+            start(sc, m->cap_col ? r->data2 : r->data, H_HIGHLIGHT);
+        }
+        v->was_capturing = m->capturing;
+    }
+
+    /* selector arrows: hidden with one device, otherwise Static; the arrow of a change blinks */
+    int arrows = cm_arrows_visible(m);
+    hide(sc, v->arrow_l, !arrows);
+    hide(sc, v->arrow_r, !arrows);
+    if (m->blink_serial != v->seen_blink) {
+        v->seen_blink = m->blink_serial;
+        if (arrows) {
+            start(sc, m->blink_dir < 0 ? v->arrow_l : v->arrow_r, H_BLINK);
+            start(sc, m->blink_dir < 0 ? v->arrow_r : v->arrow_l, H_STATIC);
+        }
+    }
+    /* Up/Down: the package blinks its scroll arrows */
+    if (m->scroll_serial != v->seen_scroll) {
+        v->seen_scroll = m->scroll_serial;
+        start(sc, m->scroll_dir < 0 ? v->arrow1 : v->arrow2, H_BLINK);
+    }
+
+    /* scrollbar (3.6): the tab follows the focused row and is not moved while the selector is focused */
+    int bar = cm_scrollbar_visible(m);
+    hide(sc, v->rail, !bar);
+    hide(sc, v->tab, !bar);
+    hide(sc, v->arrow1, !bar);
+    hide(sc, v->arrow2, !bar);
+    if (bar) {
+        const UgNode *rail = &sc->nodes[v->rail];
+        float rh = rail->obj->size[1];
+        ug_scene_app_set_world_pos(sc, v->tab, sc->nodes[v->tab].we, gl_scroll_tab_y(rail->wf, rh, v->tab_row + 1, cm_row_count(m)));
     }
     ug_scene_relayout(sc);
 }

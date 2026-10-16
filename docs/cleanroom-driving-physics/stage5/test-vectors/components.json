@@ -1,0 +1,2109 @@
+{
+  "status": "synthetic, static-inferred formulas; not runtime captures",
+  "cases": [
+    {
+      "id": "preload_0_1",
+      "operation": "preload",
+      "inputs": {
+        "mass": 1.2,
+        "centre": [
+          0.2,
+          0,
+          0.1
+        ],
+        "front_mount_x": 1.4,
+        "rear_mount_x": -1.2,
+        "cF": 0.1,
+        "cR": 0.15,
+        "kA": 0.4,
+        "v": 0,
+        "e_previous": 1
+      },
+      "expected": {
+        "total": 11.760000228881836,
+        "front_each": 3.166153907775879,
+        "rear_each": 2.713846206665039,
+        "rear_share": 0.23076923191547394,
+        "front_share": 0.26923076808452606,
+        "wheel_inertia": 0.009999999776482582
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "preload_20_1",
+      "operation": "preload",
+      "inputs": {
+        "mass": 1.2,
+        "centre": [
+          0.2,
+          0,
+          0.1
+        ],
+        "front_mount_x": 1.4,
+        "rear_mount_x": -1.2,
+        "cF": 0.1,
+        "cR": 0.15,
+        "kA": 0.4,
+        "v": 20,
+        "e_previous": 1
+      },
+      "expected": {
+        "total": 13.760000228881836,
+        "front_each": 3.704615354537964,
+        "rear_each": 3.175384759902954,
+        "rear_share": 0.23076923191547394,
+        "front_share": 0.26923076808452606,
+        "wheel_inertia": 0.009999999776482582
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "preload_-20_1",
+      "operation": "preload",
+      "inputs": {
+        "mass": 1.2,
+        "centre": [
+          0.2,
+          0,
+          0.1
+        ],
+        "front_mount_x": 1.4,
+        "rear_mount_x": -1.2,
+        "cF": 0.1,
+        "cR": 0.15,
+        "kA": 0.4,
+        "v": -20,
+        "e_previous": 1
+      },
+      "expected": {
+        "total": 11.760000228881836,
+        "front_each": 3.166153907775879,
+        "rear_each": 2.713846206665039,
+        "rear_share": 0.23076923191547394,
+        "front_share": 0.26923076808452606,
+        "wheel_inertia": 0.009999999776482582
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "preload_20_0",
+      "operation": "preload",
+      "inputs": {
+        "mass": 1.2,
+        "centre": [
+          0.2,
+          0,
+          0.1
+        ],
+        "front_mount_x": 1.4,
+        "rear_mount_x": -1.2,
+        "cF": 0.1,
+        "cR": 0.15,
+        "kA": 0.4,
+        "v": 20,
+        "e_previous": 0
+      },
+      "expected": {
+        "total": 11.760000228881836,
+        "front_each": 3.166153907775879,
+        "rear_each": 2.713846206665039,
+        "rear_share": 0.23076923191547394,
+        "front_share": 0.26923076808452606,
+        "wheel_inertia": 0.009999999776482582
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "suspension_zero",
+      "operation": "suspension",
+      "inputs": {
+        "candidate": 0,
+        "old_travel": 0,
+        "h": 0.01,
+        "old_rate": 0,
+        "pair_travel": 0,
+        "preload": 0,
+        "lower": -0.2,
+        "upper": 0.2,
+        "progression": 2,
+        "stiffness": 20,
+        "d_positive": 2,
+        "d_nonpositive": 3,
+        "antiroll": 5
+      },
+      "expected": {
+        "travel": 0.0,
+        "rate": 0.0,
+        "contact": true,
+        "scalar_load": 0.0
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "suspension_loaded",
+      "operation": "suspension",
+      "inputs": {
+        "candidate": 0,
+        "old_travel": 0,
+        "h": 0.01,
+        "old_rate": 0,
+        "pair_travel": 0,
+        "preload": 3,
+        "lower": -0.2,
+        "upper": 0.2,
+        "progression": 2,
+        "stiffness": 20,
+        "d_positive": 2,
+        "d_nonpositive": 3,
+        "antiroll": 5
+      },
+      "expected": {
+        "travel": 0.0,
+        "rate": 0.0,
+        "contact": true,
+        "scalar_load": 3.0
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "suspension_compression",
+      "operation": "suspension",
+      "inputs": {
+        "candidate": 0.1,
+        "old_travel": 0,
+        "h": 0.1,
+        "old_rate": 0,
+        "pair_travel": 0,
+        "preload": 3,
+        "lower": -0.2,
+        "upper": 0.2,
+        "progression": 2,
+        "stiffness": 20,
+        "d_positive": 2,
+        "d_nonpositive": 3,
+        "antiroll": 5
+      },
+      "expected": {
+        "travel": 0.10000000149011612,
+        "rate": 1.0,
+        "contact": true,
+        "scalar_load": 7.900000095367432
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "suspension_rebound",
+      "operation": "suspension",
+      "inputs": {
+        "candidate": 0,
+        "old_travel": 0.1,
+        "h": 0.1,
+        "old_rate": 0,
+        "pair_travel": 0.1,
+        "preload": 3,
+        "lower": -0.2,
+        "upper": 0.2,
+        "progression": 2,
+        "stiffness": 20,
+        "d_positive": 2,
+        "d_nonpositive": 3,
+        "antiroll": 5
+      },
+      "expected": {
+        "travel": 0.0,
+        "rate": -1.0,
+        "contact": true,
+        "scalar_load": 0.0
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "suspension_liftoff",
+      "operation": "suspension",
+      "inputs": {
+        "candidate": -0.3,
+        "old_travel": 0,
+        "h": 0.1,
+        "old_rate": 0,
+        "pair_travel": 0,
+        "preload": 3,
+        "lower": -0.2,
+        "upper": 0.2,
+        "progression": 2,
+        "stiffness": 20,
+        "d_positive": 2,
+        "d_nonpositive": 3,
+        "antiroll": 5
+      },
+      "expected": {
+        "travel": -0.20000000298023224,
+        "rate": -2.0,
+        "contact": false,
+        "scalar_load": 0
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "suspension_lower_equal",
+      "operation": "suspension",
+      "inputs": {
+        "candidate": -0.2,
+        "old_travel": 0,
+        "h": 0.1,
+        "old_rate": 0,
+        "pair_travel": 0,
+        "preload": 3,
+        "lower": -0.2,
+        "upper": 0.2,
+        "progression": 2,
+        "stiffness": 20,
+        "d_positive": 2,
+        "d_nonpositive": 3,
+        "antiroll": 5
+      },
+      "expected": {
+        "travel": -0.20000000298023224,
+        "rate": -2.0,
+        "contact": true,
+        "scalar_load": 0.0
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "suspension_upper_equal",
+      "operation": "suspension",
+      "inputs": {
+        "candidate": 0.2,
+        "old_travel": 0,
+        "h": 0.1,
+        "old_rate": 0,
+        "pair_travel": 0,
+        "preload": 3,
+        "lower": -0.2,
+        "upper": 0.2,
+        "progression": 2,
+        "stiffness": 20,
+        "d_positive": 2,
+        "d_nonpositive": 3,
+        "antiroll": 5
+      },
+      "expected": {
+        "travel": 0.20000000298023224,
+        "rate": 2.0,
+        "contact": true,
+        "scalar_load": 13.600000381469727
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "suspension_upper_clamped",
+      "operation": "suspension",
+      "inputs": {
+        "candidate": 0.3,
+        "old_travel": 0,
+        "h": 0.1,
+        "old_rate": 0,
+        "pair_travel": 0,
+        "preload": 3,
+        "lower": -0.2,
+        "upper": 0.2,
+        "progression": 2,
+        "stiffness": 20,
+        "d_positive": 2,
+        "d_nonpositive": 3,
+        "antiroll": 5
+      },
+      "expected": {
+        "travel": 0.20000000298023224,
+        "rate": 2.0,
+        "contact": true,
+        "scalar_load": 13.600000381469727
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "suspension_rate_threshold",
+      "operation": "suspension",
+      "inputs": {
+        "candidate": 0.1,
+        "old_travel": 0,
+        "h": 9.999999747378752e-05,
+        "old_rate": 7,
+        "pair_travel": 0,
+        "preload": 3,
+        "lower": -0.2,
+        "upper": 0.2,
+        "progression": 2,
+        "stiffness": 20,
+        "d_positive": 2,
+        "d_nonpositive": 3,
+        "antiroll": 5
+      },
+      "expected": {
+        "travel": 0.10000000149011612,
+        "rate": 7,
+        "contact": true,
+        "scalar_load": 19.899999618530273
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "suspension_zero_sweep",
+      "operation": "suspension",
+      "inputs": {
+        "candidate": 0.1,
+        "old_travel": 0,
+        "h": 0,
+        "old_rate": 7,
+        "pair_travel": 0,
+        "preload": 3,
+        "lower": -0.2,
+        "upper": 0.2,
+        "progression": 2,
+        "stiffness": 20,
+        "d_positive": 2,
+        "d_nonpositive": 3,
+        "antiroll": 5
+      },
+      "expected": {
+        "travel": 0.10000000149011612,
+        "rate": 7,
+        "contact": true,
+        "scalar_load": 19.899999618530273
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "suspension_lateral_pair",
+      "operation": "suspension",
+      "inputs": {
+        "candidate": 0.1,
+        "old_travel": 0.1,
+        "h": 0.1,
+        "old_rate": 0,
+        "pair_travel": -0.1,
+        "preload": 3,
+        "lower": -0.2,
+        "upper": 0.2,
+        "progression": 2,
+        "stiffness": 20,
+        "d_positive": 2,
+        "d_nonpositive": 3,
+        "antiroll": 5
+      },
+      "expected": {
+        "travel": 0.10000000149011612,
+        "rate": 0.0,
+        "contact": true,
+        "scalar_load": 6.400000095367432
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "pair_sequential",
+      "operation": "pair_sequence",
+      "inputs": {
+        "incoming_travel": [
+          0,
+          0
+        ],
+        "candidates": [
+          0.1,
+          0.2
+        ],
+        "h": 0.1,
+        "preload": 3,
+        "progression": 0,
+        "stiffness": 10,
+        "d_positive": 0,
+        "d_nonpositive": 0,
+        "antiroll": 5,
+        "lower": -0.3,
+        "upper": 0.3
+      },
+      "expected": {
+        "travel": [
+          0.1,
+          0.2
+        ],
+        "scalar_load": [
+          4.5,
+          5.5
+        ]
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "query_level",
+      "operation": "ground_travel",
+      "inputs": {
+        "point": [
+          0,
+          0,
+          0.3
+        ],
+        "body_up": [
+          0,
+          0,
+          1
+        ],
+        "normal": [
+          0,
+          0,
+          1
+        ],
+        "height": 0,
+        "found": true,
+        "height_offset": 0,
+        "bump": 0,
+        "surface": 1,
+        "radius": 0.3
+      },
+      "expected": {
+        "distance": -0.3,
+        "candidate": 0.0,
+        "effective_surface": 1
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "query_slope",
+      "operation": "ground_travel",
+      "inputs": {
+        "point": [
+          0,
+          0,
+          0.3
+        ],
+        "body_up": [
+          0,
+          0,
+          1
+        ],
+        "normal": [
+          0.6,
+          0,
+          0.8
+        ],
+        "height": 0,
+        "found": true,
+        "height_offset": 0,
+        "bump": 0,
+        "surface": 1,
+        "radius": 0.3
+      },
+      "expected": {
+        "distance": -0.3,
+        "candidate": 0.0,
+        "effective_surface": 1
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "query_airborne",
+      "operation": "ground_travel",
+      "inputs": {
+        "point": [
+          0,
+          0,
+          2
+        ],
+        "body_up": [
+          0,
+          0,
+          1
+        ],
+        "normal": [
+          0,
+          0,
+          1
+        ],
+        "height": 0,
+        "found": true,
+        "height_offset": 0,
+        "bump": 0,
+        "surface": 1,
+        "radius": 0.3
+      },
+      "expected": {
+        "distance": -2,
+        "candidate": -1.7,
+        "effective_surface": 1
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "query_missing",
+      "operation": "ground_travel",
+      "inputs": {
+        "point": [
+          0,
+          0,
+          0.3
+        ],
+        "body_up": [
+          0,
+          0,
+          1
+        ],
+        "normal": [
+          0,
+          0,
+          1
+        ],
+        "height": 0,
+        "found": false,
+        "height_offset": 0,
+        "bump": 0,
+        "surface": 1,
+        "radius": 0.3
+      },
+      "expected": {
+        "distance": -10000.3,
+        "candidate": -10000.0,
+        "effective_surface": 1
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "query_steep",
+      "operation": "ground_travel",
+      "inputs": {
+        "point": [
+          0,
+          0,
+          0.3
+        ],
+        "body_up": [
+          0,
+          0,
+          1
+        ],
+        "normal": [
+          1,
+          0,
+          0
+        ],
+        "height": 0,
+        "found": true,
+        "height_offset": 0,
+        "bump": 0,
+        "surface": 1,
+        "radius": 0.3
+      },
+      "expected": {
+        "distance": -100,
+        "candidate": -99.7,
+        "effective_surface": 0
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "up_dot_0.0009999999310821295",
+      "operation": "ground_dot_boundary",
+      "inputs": {
+        "up_dot": 0.0009999999310821295,
+        "normal_height_difference": 0.1,
+        "surface": 8
+      },
+      "expected": {
+        "distance": -100,
+        "effective_surface": 0
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "up_dot_0.0010000000474974513",
+      "operation": "ground_dot_boundary",
+      "inputs": {
+        "up_dot": 0.0010000000474974513,
+        "normal_height_difference": 0.1,
+        "surface": 8
+      },
+      "expected": {
+        "distance": 99.9999952502551,
+        "effective_surface": 8
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "up_dot_0.0010000001639127731",
+      "operation": "ground_dot_boundary",
+      "inputs": {
+        "up_dot": 0.0010000001639127731,
+        "normal_height_difference": 0.1,
+        "surface": 8
+      },
+      "expected": {
+        "distance": 99.99998360872537,
+        "effective_surface": 8
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "alignment_level",
+      "operation": "alignment",
+      "inputs": {
+        "lateral_dot_normal": 0,
+        "scalar_load": 4
+      },
+      "expected": {
+        "alignment": 1,
+        "normal_load": 4.0
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "alignment_camber",
+      "operation": "alignment",
+      "inputs": {
+        "lateral_dot_normal": 0.25,
+        "scalar_load": 4
+      },
+      "expected": {
+        "alignment": 0.75,
+        "normal_load": 3.0
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "alignment_floor",
+      "operation": "alignment",
+      "inputs": {
+        "lateral_dot_normal": 0.5,
+        "scalar_load": 4
+      },
+      "expected": {
+        "alignment": 0.30000001192092896,
+        "normal_load": 1.2000000476837158
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "alignment_orthogonal",
+      "operation": "alignment",
+      "inputs": {
+        "lateral_dot_normal": 1,
+        "scalar_load": 4
+      },
+      "expected": {
+        "alignment": 0.30000001192092896,
+        "normal_load": 1.2000000476837158
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "alignment_zero",
+      "operation": "alignment",
+      "inputs": {
+        "lateral_dot_normal": 0,
+        "scalar_load": 0
+      },
+      "expected": {
+        "alignment": 1,
+        "normal_load": 0.0
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "application_nonlevel_default",
+      "operation": "force_application",
+      "inputs": {
+        "heading": [
+          0.8,
+          0,
+          -0.6
+        ],
+        "lateral": [
+          0,
+          1,
+          0
+        ],
+        "wheel_up": [
+          0.6,
+          0,
+          0.8
+        ],
+        "normal": [
+          0,
+          0,
+          1
+        ],
+        "centre": [
+          0,
+          0,
+          1
+        ],
+        "wheel_centre": [
+          1,
+          1,
+          0.4
+        ],
+        "radius": 0.3,
+        "contact": true,
+        "Fx": 2,
+        "Fy": -1,
+        "N": 4,
+        "basis": 1
+      },
+      "expected": {
+        "force": [
+          4,
+          -1,
+          2
+        ],
+        "point": [
+          1,
+          1,
+          0.1
+        ],
+        "moment": [
+          1.1,
+          -5.6,
+          -5
+        ]
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "application_noncontact",
+      "operation": "force_application",
+      "inputs": {
+        "contact": false,
+        "Fx": 2,
+        "Fy": -1,
+        "N": 4
+      },
+      "expected": {
+        "applied_force": [
+          0,
+          0,
+          0
+        ],
+        "applied_moment": [
+          0,
+          0,
+          0
+        ]
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "bottom_-1",
+      "operation": "bottom_impulse",
+      "inputs": {
+        "closing": -1,
+        "mass": 1.2,
+        "normal": [
+          0,
+          0,
+          1
+        ],
+        "upper_limit_test": true,
+        "caps_above_request": true
+      },
+      "expected": {
+        "requested": 0,
+        "extra_zero_duration_sweep": true
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "bottom_0",
+      "operation": "bottom_impulse",
+      "inputs": {
+        "closing": 0,
+        "mass": 1.2,
+        "normal": [
+          0,
+          0,
+          1
+        ],
+        "upper_limit_test": true,
+        "caps_above_request": true
+      },
+      "expected": {
+        "requested": 0,
+        "extra_zero_duration_sweep": true
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "bottom_2",
+      "operation": "bottom_impulse",
+      "inputs": {
+        "closing": 2,
+        "mass": 1.2,
+        "normal": [
+          0,
+          0,
+          1
+        ],
+        "upper_limit_test": true,
+        "caps_above_request": true
+      },
+      "expected": {
+        "requested": 0.5399999618530273,
+        "extra_zero_duration_sweep": true
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "blend_hold",
+      "operation": "handbrake_blend",
+      "inputs": {
+        "hb": 1,
+        "old_blend": 1,
+        "frame_dt": 0.01
+      },
+      "expected": {
+        "blend": 0.800000011920929
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "blend_hold_floor",
+      "operation": "handbrake_blend",
+      "inputs": {
+        "hb": 1,
+        "old_blend": 0.6,
+        "frame_dt": 0.02
+      },
+      "expected": {
+        "blend": 0.5
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "blend_release",
+      "operation": "handbrake_blend",
+      "inputs": {
+        "hb": 0,
+        "old_blend": 0.5,
+        "frame_dt": 0.1
+      },
+      "expected": {
+        "blend": 0.6000000238418579
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "blend_release_cap",
+      "operation": "handbrake_blend",
+      "inputs": {
+        "hb": 0,
+        "old_blend": 0.95,
+        "frame_dt": 0.1
+      },
+      "expected": {
+        "blend": 1.0
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "blend_below_half",
+      "operation": "handbrake_blend",
+      "inputs": {
+        "hb": 0.4999999701976776,
+        "old_blend": 0.8,
+        "frame_dt": 0.01
+      },
+      "expected": {
+        "blend": 0.8100000023841858
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "blend_equal_half",
+      "operation": "handbrake_blend",
+      "inputs": {
+        "hb": 0.5,
+        "old_blend": 0.8,
+        "frame_dt": 0.01
+      },
+      "expected": {
+        "blend": 0.6000000238418579
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "handbrake_zero",
+      "operation": "handbrake_coefficient",
+      "inputs": {
+        "hb": 0,
+        "role": 1,
+        "v": 20,
+        "sigma_if_forward": 1,
+        "vm": 40,
+        "Kh": 0.3
+      },
+      "expected": {
+        "eta": [
+          0,
+          0,
+          0.0,
+          0.0
+        ],
+        "handbrake_torque": [
+          0,
+          0,
+          0.0,
+          0.0
+        ],
+        "sigma_used": 1
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "handbrake_threshold",
+      "operation": "handbrake_coefficient",
+      "inputs": {
+        "hb": 0.20000000298023224,
+        "role": 1,
+        "v": 20,
+        "sigma_if_forward": 1,
+        "vm": 40,
+        "Kh": 0.3
+      },
+      "expected": {
+        "eta": [
+          0,
+          0,
+          0.20000000298023224,
+          0.20000000298023224
+        ],
+        "handbrake_torque": [
+          0,
+          0,
+          0.6000000089406967,
+          0.6000000089406967
+        ],
+        "sigma_used": 1
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "handbrake_above_threshold",
+      "operation": "handbrake_coefficient",
+      "inputs": {
+        "hb": 0.20000001788139343,
+        "role": 1,
+        "v": 20,
+        "sigma_if_forward": 1,
+        "vm": 40,
+        "Kh": 0.3
+      },
+      "expected": {
+        "eta": [
+          0,
+          0,
+          0.7000000476837158,
+          0.7000000476837158
+        ],
+        "handbrake_torque": [
+          0,
+          0,
+          2.1000000536441803,
+          2.1000000536441803
+        ],
+        "sigma_used": 1
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "handbrake_slip_equal",
+      "operation": "handbrake_coefficient",
+      "inputs": {
+        "hb": 1,
+        "role": 1,
+        "v": 20,
+        "sigma_if_forward": 0.30000001192092896,
+        "vm": 40,
+        "Kh": 0.3
+      },
+      "expected": {
+        "eta": [
+          0,
+          0,
+          1.0,
+          1.0
+        ],
+        "handbrake_torque": [
+          0,
+          0,
+          3.0,
+          3.0
+        ],
+        "sigma_used": 0.30000001192092896
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "handbrake_slip_above",
+      "operation": "handbrake_coefficient",
+      "inputs": {
+        "hb": 1,
+        "role": 1,
+        "v": 20,
+        "sigma_if_forward": 0.30000004172325134,
+        "vm": 40,
+        "Kh": 0.3
+      },
+      "expected": {
+        "eta": [
+          0,
+          0,
+          1.5,
+          1.5
+        ],
+        "handbrake_torque": [
+          0,
+          0,
+          4.5,
+          4.5
+        ],
+        "sigma_used": 0.30000004172325134
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "handbrake_speed_equal",
+      "operation": "handbrake_coefficient",
+      "inputs": {
+        "hb": 1,
+        "role": 1,
+        "v": 20,
+        "sigma_if_forward": 1,
+        "vm": 80,
+        "Kh": 0.3
+      },
+      "expected": {
+        "eta": [
+          0,
+          0,
+          1.0,
+          1.0
+        ],
+        "handbrake_torque": [
+          0,
+          0,
+          3.0,
+          3.0
+        ],
+        "sigma_used": 1
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "handbrake_reverse",
+      "operation": "handbrake_coefficient",
+      "inputs": {
+        "hb": 1,
+        "role": 1,
+        "v": -20,
+        "sigma_if_forward": 1,
+        "vm": -40,
+        "Kh": 0.3
+      },
+      "expected": {
+        "eta": [
+          0,
+          0,
+          1.0,
+          1.0
+        ],
+        "handbrake_torque": [
+          0,
+          0,
+          3.0,
+          3.0
+        ],
+        "sigma_used": 0
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "handbrake_nonplayer",
+      "operation": "handbrake_coefficient",
+      "inputs": {
+        "hb": 1,
+        "role": 0,
+        "v": -20,
+        "sigma_if_forward": 0,
+        "vm": -40,
+        "Kh": 0.3
+      },
+      "expected": {
+        "eta": [
+          0,
+          0,
+          1.5,
+          1.5
+        ],
+        "handbrake_torque": [
+          0,
+          0,
+          4.5,
+          4.5
+        ],
+        "sigma_used": 0
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "grip_straight",
+      "operation": "rear_grip",
+      "inputs": {
+        "role": 1,
+        "effective_eta": 0,
+        "sigma": 0,
+        "speed": 10,
+        "tilt": 0,
+        "blend": 1,
+        "b0": 0.4,
+        "b1": 0.2,
+        "event": 0,
+        "q": 1,
+        "X": 0,
+        "v0": 0,
+        "s0": 0
+      },
+      "expected": {
+        "factor": 1.0,
+        "front_grip": 1,
+        "rear_grip": 1.0
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "grip_slip_bonus",
+      "operation": "rear_grip",
+      "inputs": {
+        "role": 1,
+        "effective_eta": 0,
+        "sigma": 0.5,
+        "speed": 15,
+        "tilt": 0,
+        "blend": 1,
+        "b0": 0.4,
+        "b1": 0.2,
+        "event": 0.5,
+        "q": 1,
+        "X": 0,
+        "v0": 0,
+        "s0": 0
+      },
+      "expected": {
+        "factor": 1.125,
+        "front_grip": 1,
+        "rear_grip": 1.125
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "grip_handbrake_suppressed",
+      "operation": "rear_grip",
+      "inputs": {
+        "role": 1,
+        "effective_eta": 1,
+        "sigma": 0.3,
+        "speed": 15,
+        "tilt": 0,
+        "blend": 0.5,
+        "b0": 0.4,
+        "b1": 0.2,
+        "event": 0.5,
+        "q": 1,
+        "X": 0,
+        "v0": 0,
+        "s0": 0
+      },
+      "expected": {
+        "factor": 1,
+        "front_grip": 1,
+        "rear_grip": 1.0
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "grip_threshold_bonus",
+      "operation": "rear_grip",
+      "inputs": {
+        "role": 1,
+        "effective_eta": 1,
+        "sigma": 0.3490658700466156,
+        "speed": 15,
+        "tilt": 0,
+        "blend": 0.5,
+        "b0": 0.4,
+        "b1": 0.2,
+        "event": 0.5,
+        "q": 1,
+        "X": 0,
+        "v0": 0,
+        "s0": 0
+      },
+      "expected": {
+        "factor": 1.087266467511654,
+        "front_grip": 1.0,
+        "rear_grip": 1.043633233755827
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "grip_tilted",
+      "operation": "rear_grip",
+      "inputs": {
+        "role": 1,
+        "effective_eta": 1,
+        "sigma": 0,
+        "speed": 15,
+        "tilt": 0.2,
+        "blend": 0.5,
+        "b0": 0.4,
+        "b1": 0.2,
+        "event": 0,
+        "q": 1,
+        "X": 0,
+        "v0": 0,
+        "s0": 0
+      },
+      "expected": {
+        "factor": 1.2,
+        "front_grip": 1,
+        "rear_grip": 1.1
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "grip_nonplayer",
+      "operation": "rear_grip",
+      "inputs": {
+        "role": 0,
+        "effective_eta": 0,
+        "sigma": 0.5,
+        "speed": 15,
+        "tilt": 0,
+        "blend": 1,
+        "b0": 0.4,
+        "b1": 0.2,
+        "event": 0,
+        "q": 1,
+        "X": 0,
+        "v0": 0,
+        "s0": 0
+      },
+      "expected": {
+        "factor": 1.15,
+        "front_grip": 0.8500000238418579,
+        "rear_grip": 0.9775000274181366
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "grip_cap",
+      "operation": "rear_grip",
+      "inputs": {
+        "role": 1,
+        "effective_eta": 0,
+        "sigma": 3,
+        "speed": 90,
+        "tilt": 0,
+        "blend": 1,
+        "b0": 0.4,
+        "b1": 0.2,
+        "event": 1,
+        "q": 1,
+        "X": 0,
+        "v0": 0,
+        "s0": 0
+      },
+      "expected": {
+        "factor": 1.3499999940395355,
+        "front_grip": 1,
+        "rear_grip": 1.3499999940395355
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "simultaneous_0",
+      "operation": "service_distribution_corrected",
+      "inputs": {
+        "v": 0,
+        "throttle": 1,
+        "brake": 1,
+        "beta": 0.4,
+        "Kb": 0.3,
+        "after_exclusivity": true
+      },
+      "expected": {
+        "vm": 0.0,
+        "coefficients": [
+          1.2,
+          1.2,
+          0.0,
+          0.0
+        ],
+        "requested_B": [
+          1.44,
+          1.44,
+          0.0,
+          0.0
+        ]
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "simultaneous_2",
+      "operation": "service_distribution_corrected",
+      "inputs": {
+        "v": 2,
+        "throttle": 1,
+        "brake": 1,
+        "beta": 0.4,
+        "Kb": 0.3,
+        "after_exclusivity": true
+      },
+      "expected": {
+        "vm": 4.473999977111816,
+        "coefficients": [
+          1.2,
+          1.2,
+          0.22370000183582306,
+          0.22370000183582306
+        ],
+        "requested_B": [
+          1.44,
+          1.44,
+          0.26844000262677664,
+          0.26844000262677664
+        ]
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "simultaneous_-2",
+      "operation": "service_distribution_corrected",
+      "inputs": {
+        "v": -2,
+        "throttle": 1,
+        "brake": 1,
+        "beta": 0.4,
+        "Kb": 0.3,
+        "after_exclusivity": true
+      },
+      "expected": {
+        "vm": -4.473999977111816,
+        "coefficients": [
+          1.2,
+          1.2,
+          -0.22370000183582306,
+          -0.22370000183582306
+        ],
+        "requested_B": [
+          1.44,
+          1.44,
+          -0.26844000262677664,
+          -0.26844000262677664
+        ]
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "service_speed_9.999999046325684",
+      "operation": "service_exception_boundary",
+      "inputs": {
+        "vm": 9.999999046325684,
+        "throttle": 1,
+        "brake": 1,
+        "beta": 0.4
+      },
+      "expected": {
+        "rear_coefficient": 0.4999999701976776
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "service_speed_10",
+      "operation": "service_exception_boundary",
+      "inputs": {
+        "vm": 10,
+        "throttle": 1,
+        "brake": 1,
+        "beta": 0.4
+      },
+      "expected": {
+        "rear_coefficient": 0.8
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "service_speed_10.000000953674316",
+      "operation": "service_exception_boundary",
+      "inputs": {
+        "vm": 10.000000953674316,
+        "throttle": 1,
+        "brake": 1,
+        "beta": 0.4
+      },
+      "expected": {
+        "rear_coefficient": 0.8
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "service_throttle_0.7999999523162842",
+      "operation": "service_exception_boundary",
+      "inputs": {
+        "vm": 0,
+        "throttle": 0.7999999523162842,
+        "brake": 1,
+        "beta": 0.4
+      },
+      "expected": {
+        "rear_coefficient": 0.8
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "service_throttle_0.800000011920929",
+      "operation": "service_exception_boundary",
+      "inputs": {
+        "vm": 0,
+        "throttle": 0.800000011920929,
+        "brake": 1,
+        "beta": 0.4
+      },
+      "expected": {
+        "rear_coefficient": 0.8
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "service_throttle_0.8000000715255737",
+      "operation": "service_exception_boundary",
+      "inputs": {
+        "vm": 0,
+        "throttle": 0.8000000715255737,
+        "brake": 1,
+        "beta": 0.4
+      },
+      "expected": {
+        "rear_coefficient": 0
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "bump_0_0",
+      "operation": "bump",
+      "inputs": {
+        "x": 0,
+        "y": 0,
+        "frequency": 1,
+        "amplitude": 0.05
+      },
+      "expected": {
+        "displacement": 0.0
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "bump_0.5_0.5",
+      "operation": "bump",
+      "inputs": {
+        "x": 0.5,
+        "y": 0.5,
+        "frequency": 1,
+        "amplitude": 0.05
+      },
+      "expected": {
+        "displacement": 0.011250000000000001
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "bump_-0.25_0.25",
+      "operation": "bump",
+      "inputs": {
+        "x": -0.25,
+        "y": 0.25,
+        "frequency": 1,
+        "amplitude": 0.05
+      },
+      "expected": {
+        "displacement": -0.0012499999999999998
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "bump_-1_-1",
+      "operation": "bump",
+      "inputs": {
+        "x": -1,
+        "y": -1,
+        "frequency": 1,
+        "amplitude": 0.05
+      },
+      "expected": {
+        "displacement": -0.015
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "bump_1_0",
+      "operation": "bump",
+      "inputs": {
+        "x": 1,
+        "y": 0,
+        "frequency": 1,
+        "amplitude": 0.05
+      },
+      "expected": {
+        "displacement": 0.020000000000000004
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "surface_distinct_channels",
+      "operation": "surface_composition",
+      "inputs": {
+        "surface_ids": [
+          15,
+          8,
+          1,
+          1
+        ],
+        "contacts": [
+          true,
+          true,
+          false,
+          false
+        ],
+        "Fx": 0,
+        "Fy": 0,
+        "omega": 10,
+        "wheel_inertia": 0.01
+      },
+      "expected": {
+        "body_drag_mean": 3,
+        "spin_drag_id15": 1.0499999523162842,
+        "peak_id15": 0.9599999785423279,
+        "sliding_id15": 0.9480000138282776
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "frame_latency",
+      "operation": "scheduling",
+      "inputs": {
+        "old_prepared_force": [
+          1,
+          0,
+          0
+        ],
+        "frame_new_hb": 1,
+        "h": 0.01,
+        "mass": 1,
+        "old_blend": 1,
+        "frame_dt": 0.02
+      },
+      "expected": {
+        "first_derivative_wheel_force": [
+          1,
+          0,
+          0
+        ],
+        "new_frame_blend": 0.6,
+        "coefficient_refreshes": 1,
+        "blend_refreshes": 1,
+        "extra_sweep_euler_steps": 0
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "pair_zero_sweep",
+      "operation": "scheduling_pair",
+      "inputs": {
+        "incoming_travel": [
+          0,
+          0
+        ],
+        "candidates": [
+          0.1,
+          0.2
+        ],
+        "h": 0.1,
+        "preload": 3,
+        "stiffness": 10,
+        "antiroll": 5,
+        "d_positive": 0,
+        "d_nonpositive": 0,
+        "progression": 0
+      },
+      "expected": {
+        "first_loads": [
+          4.5,
+          5.5
+        ],
+        "after_zero_sweep_loads": [
+          3.5,
+          5.5
+        ],
+        "rates_retained": [
+          1,
+          2
+        ]
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "four_brake_pitch",
+      "operation": "prescribed_four_contact",
+      "inputs": {
+        "axis": "pitch",
+        "sine": -0.1,
+        "cosine": 0.99498743710662,
+        "mounts": [
+          [
+            1.4,
+            0.8,
+            0
+          ],
+          [
+            1.4,
+            -0.8,
+            0
+          ],
+          [
+            -1.2,
+            0.8,
+            0
+          ],
+          [
+            -1.2,
+            -0.8,
+            0
+          ]
+        ],
+        "centre_position": [
+          0,
+          0,
+          0.3
+        ],
+        "centre_offset": [
+          0,
+          0,
+          0
+        ],
+        "normal": [
+          0,
+          0,
+          1
+        ],
+        "height": 0,
+        "radius": 0.3,
+        "incoming_travel": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lower": -0.2,
+        "upper": 0.2,
+        "preload_each": 3,
+        "stiffness": 10,
+        "antiroll": 5,
+        "d_positive": 0,
+        "d_nonpositive": 0,
+        "progression": 0,
+        "h": 0.1,
+        "pedals_label_only": [
+          0,
+          1,
+          0
+        ],
+        "body_axes": [
+          [
+            0.99498743710662,
+            0,
+            -0.1
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0.1,
+            0,
+            0.99498743710662
+          ]
+        ]
+      },
+      "expected": {
+        "travel": [
+          0.13919394955852604,
+          0.13919394955852604,
+          -0.12211588240886906,
+          -0.12211588240886906
+        ],
+        "aligned_load": [
+          5.087909243377891,
+          4.391939495585261,
+          1.1682617638669641,
+          1.7788411759113094
+        ],
+        "contact": [
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "four_throttle_pitch",
+      "operation": "prescribed_four_contact",
+      "inputs": {
+        "axis": "pitch",
+        "sine": 0.1,
+        "cosine": 0.99498743710662,
+        "mounts": [
+          [
+            1.4,
+            0.8,
+            0
+          ],
+          [
+            1.4,
+            -0.8,
+            0
+          ],
+          [
+            -1.2,
+            0.8,
+            0
+          ],
+          [
+            -1.2,
+            -0.8,
+            0
+          ]
+        ],
+        "centre_position": [
+          0,
+          0,
+          0.3
+        ],
+        "centre_offset": [
+          0,
+          0,
+          0
+        ],
+        "normal": [
+          0,
+          0,
+          1
+        ],
+        "height": 0,
+        "radius": 0.3,
+        "incoming_travel": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lower": -0.2,
+        "upper": 0.2,
+        "preload_each": 3,
+        "stiffness": 10,
+        "antiroll": 5,
+        "d_positive": 0,
+        "d_nonpositive": 0,
+        "progression": 0,
+        "h": 0.1,
+        "pedals_label_only": [
+          1,
+          0,
+          0
+        ],
+        "body_axes": [
+          [
+            0.99498743710662,
+            0,
+            0.1
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            -0.1,
+            0,
+            0.99498743710662
+          ]
+        ]
+      },
+      "expected": {
+        "travel": [
+          -0.14221663871405327,
+          -0.14221663871405327,
+          0.11909319325334183,
+          0.11909319325334183
+        ],
+        "aligned_load": [
+          0.8667504192892008,
+          1.5778336128594672,
+          4.786397898800128,
+          4.1909319325334184
+        ],
+        "contact": [
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "four_lateral_roll",
+      "operation": "prescribed_four_contact",
+      "inputs": {
+        "axis": "roll",
+        "sine": 0.1,
+        "cosine": 0.99498743710662,
+        "mounts": [
+          [
+            1.4,
+            0.8,
+            0
+          ],
+          [
+            1.4,
+            -0.8,
+            0
+          ],
+          [
+            -1.2,
+            0.8,
+            0
+          ],
+          [
+            -1.2,
+            -0.8,
+            0
+          ]
+        ],
+        "centre_position": [
+          0,
+          0,
+          0.3
+        ],
+        "centre_offset": [
+          0,
+          0,
+          0
+        ],
+        "normal": [
+          0,
+          0,
+          1
+        ],
+        "height": 0,
+        "radius": 0.3,
+        "incoming_travel": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lower": -0.2,
+        "upper": 0.2,
+        "preload_each": 3,
+        "stiffness": 10,
+        "antiroll": 5,
+        "d_positive": 0,
+        "d_nonpositive": 0,
+        "progression": 0,
+        "h": 0.1,
+        "pedals_label_only": [
+          0,
+          0,
+          0
+        ],
+        "body_axes": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            0.99498743710662,
+            0.1
+          ],
+          [
+            0,
+            -0.1,
+            0.99498743710662
+          ]
+        ]
+      },
+      "expected": {
+        "travel": [
+          -0.08191436979850059,
+          0.07889168064297336,
+          -0.08191436979850059,
+          0.07889168064297336
+        ],
+        "aligned_load": [
+          1.7004330749015917,
+          4.4092291762916185,
+          1.7004330749015917,
+          4.4092291762916185
+        ],
+        "contact": [
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "four_level_four",
+      "operation": "prescribed_four_contact",
+      "inputs": {
+        "axis": "pitch",
+        "sine": 0,
+        "cosine": 1.0,
+        "mounts": [
+          [
+            1.4,
+            0.8,
+            0
+          ],
+          [
+            1.4,
+            -0.8,
+            0
+          ],
+          [
+            -1.2,
+            0.8,
+            0
+          ],
+          [
+            -1.2,
+            -0.8,
+            0
+          ]
+        ],
+        "centre_position": [
+          0,
+          0,
+          0.3
+        ],
+        "centre_offset": [
+          0,
+          0,
+          0
+        ],
+        "normal": [
+          0,
+          0,
+          1
+        ],
+        "height": 0,
+        "radius": 0.3,
+        "incoming_travel": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "lower": -0.2,
+        "upper": 0.2,
+        "preload_each": 3,
+        "stiffness": 10,
+        "antiroll": 5,
+        "d_positive": 0,
+        "d_nonpositive": 0,
+        "progression": 0,
+        "h": 0.1,
+        "pedals_label_only": [
+          0,
+          0,
+          0
+        ],
+        "body_axes": [
+          [
+            1.0,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1.0
+          ]
+        ]
+      },
+      "expected": {
+        "travel": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "aligned_load": [
+          3.0,
+          3.0,
+          3.0,
+          3.0
+        ],
+        "contact": [
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    },
+    {
+      "id": "grip_threshold_below",
+      "operation": "rear_grip",
+      "inputs": {
+        "role": 1,
+        "effective_eta": 1,
+        "sigma": 0.3490658402442932,
+        "speed": 15,
+        "tilt": 0,
+        "blend": 0.5,
+        "b0": 0.4,
+        "b1": 0.2,
+        "event": 0.5,
+        "q": 1,
+        "X": 0,
+        "v0": 0,
+        "s0": 0
+      },
+      "expected": {
+        "factor": 1,
+        "front_grip": 1,
+        "rear_grip": 1
+      },
+      "provenance": "Synthetic calculation from the static-inferred Stage5 contract; no original runtime execution."
+    }
+  ]
+}

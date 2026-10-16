@@ -1478,6 +1478,20 @@ void render_car_pipelines(const RProg *r, UG2CarPipelines *p) {
     p->halo = rhi_pipeline_create(&d);
 }
 
+/* ---- tire-mark pass (SPEC TM-15) ---- */
+void render_mark_begin(const RProg *r, RMarkSaved *saved) {
+    saved->unlit = r->p->uUnlit; saved->use_tex = r->p->uUseTex; saved->alpha = r->p->uAlpha;
+    saved->vcolor = r->p->uVColor; saved->vista = r->p->uVista;
+    rhi_cmd_bind_pipeline(pipelines_of(r)->car.glass);   /* src alpha / 1-src alpha, depth <= no write, no cull, no bias */
+    render_model(r, NULL);             /* vertices are world space: identity */
+    r->p->uUnlit = 0.0f; r->p->uUseTex = 1.0f; r->p->uAlpha = 1.0f; r->p->uVColor = 0.0f;
+    r->p->uVista = 2.0f;               /* mark law in the fragment shader */
+}
+void render_mark_end(const RProg *r, const RMarkSaved *saved) {
+    r->p->uVista = saved->vista; r->p->uUnlit = saved->unlit; r->p->uUseTex = saved->use_tex;
+    r->p->uAlpha = saved->alpha; r->p->uVColor = saved->vcolor;
+}
+
 /* ---- effect pipelines ----
  * Car shadow and collision walls: position only (attribute 0, 12 B). Rain:
  * RainVertex (position, uv, fade). All blend with alpha and never cull or

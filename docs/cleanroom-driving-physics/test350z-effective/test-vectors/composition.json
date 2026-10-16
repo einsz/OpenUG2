@@ -1,0 +1,762 @@
+{
+  "provenance": "Invented synthetic component fixtures; calculated from SPEC.md, no original runtime execution or retail tables.",
+  "cases": [
+    {
+      "id": "weights-sentinel",
+      "category": 1,
+      "selected_contributions_in_level_order": [
+        [
+          0.25,
+          -1,
+          0.125
+        ],
+        [
+          0.5,
+          0.5,
+          0.125
+        ]
+      ],
+      "expected_weights": [
+        0.75,
+        0.5,
+        0.25
+      ],
+      "expected_mean": 0.5,
+      "expected_grade": 1.5,
+      "provenance": "Invented synthetic inputs; expected outputs mathematically derived from the indicated SPEC.md component equations, not original-runtime observations."
+    },
+    {
+      "id": "weights-mean-only-clamp",
+      "category": 9,
+      "selected_contributions_in_level_order": [
+        [
+          -0.25,
+          1.25
+        ]
+      ],
+      "expected_weights": [
+        -0.25,
+        1.25
+      ],
+      "expected_mean": 0.5,
+      "expected_grade": 1.5,
+      "provenance": "Invented synthetic inputs; expected outputs mathematically derived from the indicated SPEC.md component equations, not original-runtime observations."
+    },
+    {
+      "id": "weights-second-pass",
+      "category": 1,
+      "selected_contributions_in_level_order": [
+        [
+          2,
+          2,
+          0.5
+        ]
+      ],
+      "expected_weights": [
+        1,
+        1,
+        0.5
+      ],
+      "expected_mean": 0.833333358168602,
+      "expected_grade": 2.5,
+      "provenance": "Invented synthetic inputs; expected outputs mathematically derived from the indicated SPEC.md component equations, not original-runtime observations."
+    },
+    {
+      "id": "mass-centre",
+      "category": 0,
+      "mean": 0.5,
+      "initial": {
+        "centre_x": 0.1,
+        "yaw_multiplier": 2,
+        "mass": 2
+      },
+      "targets": {
+        "centre_x_delta": 0.2,
+        "yaw_multiplier": 4,
+        "mass_scale": 0.8
+      },
+      "expected": {
+        "centre_x": 0.2,
+        "yaw_multiplier": 3,
+        "mass": 1.8
+      },
+      "provenance": "Invented synthetic inputs; expected outputs mathematically derived from the indicated SPEC.md component equations, not original-runtime observations."
+    },
+    {
+      "id": "secondary-zero-fraction",
+      "category": 4,
+      "mean": 0,
+      "initial_primary": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "initial_secondary": [
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "target_secondary": [
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9
+      ],
+      "expected_primary": [
+        1.5,
+        2.5,
+        3.5,
+        4.5,
+        5.5,
+        6.5,
+        7.5,
+        8.5,
+        9.5
+      ],
+      "expected_secondary": [
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "provenance": "Invented synthetic inputs; expected outputs mathematically derived from the indicated SPEC.md component equations, not original-runtime observations."
+    },
+    {
+      "id": "transmission-distinct-components",
+      "category": 1,
+      "weights": [
+        0.25,
+        0.5,
+        0.5
+      ],
+      "mean": 0.4166666666666667,
+      "variant2": {
+        "ratios": [
+          -3,
+          0,
+          3,
+          2,
+          1,
+          0,
+          0,
+          0
+        ],
+        "front_final": 4,
+        "rear_final": 5,
+        "rear_share": 1,
+        "launch": 0.75
+      },
+      "initial": {
+        "clutch_rate": 2,
+        "coupling": 10,
+        "engine_inertia": 0.1
+      },
+      "targets": {
+        "clutch_rate": 6,
+        "coupling": 30,
+        "engine_inertia_delta": 0.2
+      },
+      "expected": {
+        "variant_index": 2,
+        "gear_count": 3,
+        "clutch_rate": 3,
+        "coupling": 15,
+        "engine_inertia": 0.2,
+        "ratios": [
+          -3,
+          0,
+          3,
+          2,
+          1,
+          0,
+          0,
+          0
+        ],
+        "front_final": 4,
+        "rear_final": 5,
+        "rear_share": 1,
+        "launch": 0.75
+      },
+      "provenance": "Invented synthetic inputs; expected outputs mathematically derived from the indicated SPEC.md component equations, not original-runtime observations."
+    },
+    {
+      "id": "suspension-distinct-components",
+      "category": 5,
+      "weights": [
+        0.5,
+        0.25,
+        0.75
+      ],
+      "mean": 0.5,
+      "initial_axle": [
+        1,
+        20,
+        2,
+        3,
+        8,
+        0.2,
+        -0.2,
+        0.1
+      ],
+      "target_axle": [
+        3,
+        40,
+        4,
+        7,
+        16,
+        0.4,
+        -0.4,
+        0.3
+      ],
+      "initial_steer": 1,
+      "target_steer": 2,
+      "initial_centre_z": 0.5,
+      "centre_lowering": 0.2,
+      "initial_mount_z": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "mount_delta_front": 0.1,
+      "mount_delta_rear": 0.2,
+      "expected_axle": [
+        2,
+        30,
+        3,
+        5,
+        10,
+        0.3,
+        -0.3,
+        0.2
+      ],
+      "expected_steer": 1.75,
+      "expected_centre_z": 0.4,
+      "expected_mount_z": [
+        0.05,
+        0.05,
+        0.1,
+        0.1
+      ],
+      "provenance": "Invented synthetic inputs; expected outputs mathematically derived from the indicated SPEC.md component equations, not original-runtime observations."
+    },
+    {
+      "id": "brakes",
+      "category": 6,
+      "mean": 0.5,
+      "initial": {
+        "rear_share": 0.4,
+        "handbrake": 2,
+        "service": 4
+      },
+      "targets": {
+        "rear_share": 0.6,
+        "handbrake": 6,
+        "service": 8
+      },
+      "expected": {
+        "rear_share": 0.5,
+        "handbrake": 4,
+        "service": 6
+      },
+      "provenance": "Invented synthetic inputs; expected outputs mathematically derived from the indicated SPEC.md component equations, not original-runtime observations."
+    },
+    {
+      "id": "limit-independent-of-fraction",
+      "category": 7,
+      "mean": 0,
+      "selected_indices": [
+        45
+      ],
+      "initial_limit": 100,
+      "expected_limit": 0,
+      "provenance": "Invented synthetic inputs; expected outputs mathematically derived from the indicated SPEC.md component equations, not original-runtime observations."
+    },
+    {
+      "id": "tyre-independent-channels",
+      "category": 8,
+      "mean": 0.25,
+      "initial_axle": [
+        12,
+        3,
+        2,
+        1,
+        0.8
+      ],
+      "target_axle": [
+        8,
+        7,
+        6,
+        2,
+        1.6
+      ],
+      "expected_axle": [
+        11,
+        4,
+        3,
+        1.25,
+        1
+      ],
+      "provenance": "Invented synthetic inputs; expected outputs mathematically derived from the indicated SPEC.md component equations, not original-runtime observations."
+    },
+    {
+      "id": "aero-additive",
+      "category": 9,
+      "weights": [
+        0.25,
+        0.75
+      ],
+      "mean": 0.5,
+      "initial": [
+        1,
+        2,
+        3
+      ],
+      "source_pair1": [
+        2,
+        4,
+        6
+      ],
+      "source_pair2": [
+        6,
+        8,
+        10
+      ],
+      "expected": [
+        3,
+        11,
+        11
+      ],
+      "provenance": "Invented synthetic inputs; expected outputs mathematically derived from the indicated SPEC.md component equations, not original-runtime observations."
+    },
+    {
+      "id": "inertia",
+      "mass": 2,
+      "dimensions": [
+        4,
+        2,
+        1
+      ],
+      "yaw_multiplier": 1.5,
+      "expected_diagonal": [
+        0.8333333730697632,
+        2.8333334922790527,
+        3.3333334922790527
+      ],
+      "expected_second_yaw": 5,
+      "provenance": "Invented synthetic inputs; expected outputs mathematically derived from the indicated SPEC.md component equations, not original-runtime observations."
+    },
+    {
+      "id": "class-strict-thresholds",
+      "scores": [
+        0,
+        273,
+        273.001,
+        401,
+        401.001,
+        500,
+        500.001
+      ],
+      "expected_classes": [
+        3,
+        3,
+        2,
+        2,
+        1,
+        1,
+        0
+      ],
+      "provenance": "Invented synthetic inputs; expected outputs mathematically derived from the indicated SPEC.md component equations, not original-runtime observations."
+    },
+    {
+      "id": "scoring-curve-two-samples",
+      "mass": 1,
+      "radius_front": 1,
+      "radius_rear": 1,
+      "front_final": 1,
+      "rear_final": 1,
+      "rear_share": 1,
+      "ratios": [
+        -1,
+        0,
+        100,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "gear_count": 1,
+      "engine_idle": 0,
+      "engine_shift": 125,
+      "engine_max": 1000,
+      "primary_torque_samples": [
+        0.02,
+        0.02,
+        0.02,
+        0.02,
+        0.02,
+        0.02,
+        0.02,
+        0.02,
+        0.02
+      ],
+      "drag": 0,
+      "expected_generated_count": 2,
+      "expected_generated_after_trim": [
+        2,
+        0
+      ],
+      "expected_curve_end": 2.682163715362549,
+      "expected_resampled_count": 64,
+      "expected_resampled_first": 2,
+      "expected_resampled_last": 0,
+      "expected_score": 4.023245811462402,
+      "expected_class": 3,
+      "provenance": "Invented synthetic inputs; expected outputs mathematically derived from the indicated SPEC.md component equations, not original-runtime observations."
+    },
+    {
+      "id": "weights-mean-boundaries-no-clamp",
+      "component": "E1",
+      "input_weights": [
+        [
+          -0.25,
+          0.25
+        ],
+        [
+          -0.25,
+          2.25
+        ]
+      ],
+      "expected_weights": [
+        [
+          -0.25,
+          0.25
+        ],
+        [
+          -0.25,
+          2.25
+        ]
+      ],
+      "expected_means": [
+        0,
+        1
+      ],
+      "expected_grades": [
+        0,
+        3
+      ],
+      "provenance": "Reviewer-invented synthetic inputs; expected outputs mathematically derived from the named SPEC.md component, not original-runtime observations."
+    },
+    {
+      "id": "weights-negative-mean-clamp",
+      "component": "E1",
+      "category": 9,
+      "selected_contributions_in_level_order": [
+        [
+          -0.5,
+          0.25
+        ]
+      ],
+      "expected_weights": [
+        0,
+        0.25
+      ],
+      "expected_mean": 0.125,
+      "expected_grade": 0.375,
+      "provenance": "Reviewer-invented synthetic inputs; expected outputs mathematically derived from the named SPEC.md component, not original-runtime observations."
+    },
+    {
+      "id": "weights-b32-each-addition",
+      "component": "E1",
+      "category": 0,
+      "selected_contributions_in_level_order": [
+        [
+          16777216
+        ],
+        [
+          1
+        ],
+        [
+          -16777216
+        ]
+      ],
+      "expected_weights": [
+        0
+      ],
+      "expected_mean": 0,
+      "expected_grade": 0,
+      "provenance": "Reviewer-invented synthetic inputs; expected outputs mathematically derived from the named SPEC.md component, not original-runtime observations."
+    },
+    {
+      "id": "variant-rounding-and-outside",
+      "component": "E3",
+      "component_weight2": [
+        0,
+        0.5,
+        1,
+        1.5,
+        -0.5
+      ],
+      "expected_variant_indices": [
+        0,
+        2,
+        3,
+        5,
+        -1
+      ],
+      "expected_copy_variant": [
+        false,
+        true,
+        true,
+        false,
+        false
+      ],
+      "boundary": "Nonzero category mean is separately supplied for each case; out-of-range q retains base variant fields, while nonvariant E3 changes still apply.",
+      "provenance": "Reviewer-invented synthetic inputs; expected outputs mathematically derived from the named SPEC.md component, not original-runtime observations."
+    },
+    {
+      "id": "transmission-zero-stops-count",
+      "component": "E3",
+      "selected_variant_ratios": [
+        -3,
+        0,
+        3,
+        0,
+        2,
+        1,
+        0,
+        0
+      ],
+      "expected_gear_count": 1,
+      "provenance": "Reviewer-invented synthetic inputs; expected outputs mathematically derived from the named SPEC.md component, not original-runtime observations."
+    },
+    {
+      "id": "nitrous-unscaled-copy",
+      "component": "E2 category2",
+      "mean": 0.25,
+      "weight0": 0.25,
+      "initial_capacity": 2,
+      "target_capacity": 6,
+      "initial_opaque_scalar": 10,
+      "target_opaque_scalar": 30,
+      "expected_capacity": 3,
+      "expected_opaque_scalar": 30,
+      "provenance": "Reviewer-invented synthetic inputs; expected outputs mathematically derived from the named SPEC.md component, not original-runtime observations."
+    },
+    {
+      "id": "engine-rpm-grade-rounding",
+      "component": "E2 category7",
+      "mean": 0.5,
+      "grade": 1.5,
+      "initial_rpm": [
+        100,
+        200,
+        300
+      ],
+      "source_variant2_rpm_deltas": [
+        10,
+        20,
+        30
+      ],
+      "expected_variant_index": 2,
+      "expected_rpm": [
+        110,
+        220,
+        330
+      ],
+      "provenance": "Reviewer-invented synthetic inputs; expected outputs mathematically derived from the named SPEC.md component, not original-runtime observations."
+    },
+    {
+      "id": "scoring-shift-equality",
+      "component": "E6 single generation decision",
+      "pre_shift_rpm": 100,
+      "current_gear": 2,
+      "gear_count": 2,
+      "upshift_threshold": 100,
+      "ratios": [
+        -1,
+        0,
+        2,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "final_drive": 1,
+      "inverse_radius": 1,
+      "mass": 1,
+      "torque_curve_domain": [
+        0,
+        200
+      ],
+      "torque_curve_samples": [
+        0,
+        25,
+        50,
+        75,
+        100,
+        125,
+        150,
+        175,
+        200
+      ],
+      "expected_gear": 3,
+      "expected_lookup_rpm": 100,
+      "expected_acceleration": 100,
+      "expected_stop": false,
+      "provenance": "Reviewer-invented synthetic inputs; expected outputs mathematically derived from the named SPEC.md component, not original-runtime observations."
+    },
+    {
+      "id": "scoring-top-shift-equality",
+      "component": "E6 single generation decision",
+      "pre_shift_rpm": 100,
+      "current_gear": 2,
+      "gear_count": 1,
+      "upshift_threshold": 100,
+      "expected_gear": 3,
+      "expected_stop": true,
+      "expected_sample_appended": false,
+      "provenance": "Reviewer-invented synthetic inputs; expected outputs mathematically derived from the named SPEC.md component, not original-runtime observations."
+    },
+    {
+      "id": "scoring-resistance-equality",
+      "component": "E6 score loop one iteration",
+      "speed": 2,
+      "drag": 1,
+      "mass": 2,
+      "curve_acceleration": 2,
+      "initial_score": 1,
+      "expected_resistance": 2,
+      "expected_stop": false,
+      "expected_score": 1,
+      "expected_next_speed": 3.3410818576812744,
+      "provenance": "Reviewer-invented synthetic inputs; expected outputs mathematically derived from the named SPEC.md component, not original-runtime observations."
+    },
+    {
+      "id": "class-forced-nonzero",
+      "component": "E6",
+      "source_override_signed32": [
+        0,
+        1,
+        -1
+      ],
+      "supplied_score": 600,
+      "expected_classes": [
+        0,
+        3,
+        3
+      ],
+      "expected_score_evaluated": [
+        true,
+        false,
+        false
+      ],
+      "provenance": "Reviewer-invented synthetic inputs; expected outputs mathematically derived from the named SPEC.md component, not original-runtime observations."
+    },
+    {
+      "id": "grade-order-selection-guard",
+      "component": "E0",
+      "requested_grades": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "invented_package_rows": [
+        {
+          "category": 0,
+          "level": 2,
+          "descriptors": [
+            {
+              "index": 0,
+              "requires": [
+                1
+              ],
+              "excludes": []
+            }
+          ]
+        },
+        {
+          "category": 1,
+          "level": 1,
+          "descriptors": [
+            {
+              "index": 1,
+              "requires": [],
+              "excludes": []
+            }
+          ]
+        }
+      ],
+      "expected_grade_major_flags": [
+        1
+      ],
+      "expected_companion_level_major_flags": [
+        0,
+        1
+      ],
+      "expected_activation_available": false,
+      "provenance": "Reviewer-invented synthetic inputs; expected outputs mathematically derived from the named SPEC.md component, not original-runtime observations."
+    },
+    {
+      "id": "consumer-offset-unit-map",
+      "component": "E5",
+      "row_offsets": [
+        544,
+        768,
+        928
+      ],
+      "expected_effective_offsets": [
+        272,
+        496,
+        656
+      ],
+      "meanings": [
+        "mass tonnes",
+        "idle rpm",
+        "speed threshold mph"
+      ],
+      "input_values": [
+        2,
+        1000,
+        100
+      ],
+      "expected_composed_values_without_modification": [
+        2,
+        1000,
+        100
+      ],
+      "provenance": "Reviewer-invented synthetic inputs; expected outputs mathematically derived from the named SPEC.md component, not original-runtime observations."
+    }
+  ]
+}

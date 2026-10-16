@@ -830,8 +830,11 @@ static void test_profile_files(void) {
     st_profile_delete(root, "Tester One");
     CHECK(st_profile_load(root, "Tester One", &q) == ST_E_NOTFOUND, "missing profile -> not found");
     CHECK(!st_profile_exists(root, "Tester One"), "no profile directory yet");
+    CHECK(st_profile_status(root, "Tester One") == ST_E_NOTFOUND, "missing directory is positively absent");
+    CHECK(st_profile_status(root, "bad/name") == ST_E_ARG, "invalid status query is not absence");
     CHECK(st_profile_save(root, &p) == ST_OK, "save profile (creates directories)");
     CHECK(st_profile_exists(root, "Tester One") && st_profiles_exist(root), "profile directory exists");
+    CHECK(st_profile_status(root, "Tester One") == ST_OK, "occupied directory status");
     CHECK(st_profile_path(root, "Tester One", path, sizeof path) == ST_OK && strstr(path, "Tester One/Tester One"),
           "path is <root>/<NAME>/<NAME>");
     FILE *f = fopen(path, "rb");

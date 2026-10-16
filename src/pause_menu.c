@@ -12,6 +12,7 @@
 #include "gui_timing.h"
 #include "gui_view.h"
 #include "pause_screen.h"
+#include "controls_sdl.h"
 #include "ugui/ugui_gl.h"
 #include "ugui/ugui_assets.h"
 #include "ugui/ugui_ui.h"
@@ -22,8 +23,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-typedef enum { PM_NONE = 0, PM_PAUSE, PM_HUB, PM_LIST } PmView;
-typedef enum { PMK_NONE = 0, PMK_LEFT, PMK_RIGHT, PMK_UP, PMK_DOWN, PMK_ACCEPT, PMK_BACK, PMK_START } PmKey;
+typedef enum { PM_NONE = 0, PM_PAUSE, PM_HUB, PM_LIST, PM_CONTROLS } PmView;
+typedef enum { PMK_NONE = 0, PMK_LEFT, PMK_RIGHT, PMK_UP, PMK_DOWN, PMK_ACCEPT, PMK_BACK, PMK_START, PMK_RESET } PmKey;
 
 #define PAUSE_HEADING_KEY 0x6C839FBEu      /* "Pause" */
 #define PAUSE_ROOT_NAME 0x8D7E0C53u        /* presentation group of UI_pause.fng */
@@ -47,9 +48,10 @@ struct PauseMenu {
     OmScreen view_screen;
     GvCarousel car_v;
     GvList list_v;
+    GvControls ctl_v;            /* UI_Options_PC_Controller.fng */
     int visual;                  /* the current screen was built and can be drawn */
     int pause_root;
-    unsigned seen_ps_exit, seen_ps_dialog, seen_hub_exit;
+    unsigned seen_ps_exit, seen_ps_dialog, seen_hub_exit, seen_ctl_dialog;
     GvDialog dlg_v;
     int dlg_loaded, dlg_failed;
     unsigned icon_warned;        /* entries whose missing icon was reported */
@@ -59,6 +61,8 @@ struct PauseMenu {
     OptionsMenu options;         /* hub, Display and Customize, SPEC_GUI */
     StGraphics *opt_gfx; const StGfxCaps *opt_caps; StRegStore *opt_store;
     int options_enabled;         /* the host lent the settings: the Options entry exists */
+    CxInput *cx;                 /* bindings and joysticks, lent by the host (Controls screen) */
+    int controls_checked;        /* the Controls resources were verified (once, at creation) */
     int capture_actions, capture_last_action;
     char status[256];
     char dlg_status[220];
@@ -115,6 +119,9 @@ static void pause_switch_view(PauseMenu *p, PmView want, OmScreen scr) {
         } else if (want == PM_HUB) {
             ok = gv_carousel_bind(&p->car_v, &p->scr, &p->options.hub);
             p->seen_hub_exit = p->options.exit_serial;
+        } else if (want == PM_CONTROLS) {
+            ok = gv_controls_bind(&p->ctl_v, &p->scr, &p->options.cm);
+            p->seen_ctl_dialog = p->options.dialog_serial;
         } else {
             ok = gv_list_bind(&p->list_v, &p->scr, &p->options);
         }
@@ -158,7 +165,8 @@ static void pause_entries_to_view(PauseMenu *p, GvEntry out[PE_MAX]) {
 
 /* Applies the state machines to the authored objects and advances the scenes. */
 static void pause_views_update(PauseMenu *p, float ms) {
-    PmView want = om_is_open(&p->options) ? (om_screen(&p->options) == OM_SCREEN_HUB ? PM_HUB : PM_LIST) : PM_PAUSE;
+    PmView want = !om_is_open(&p->options) ? PM_PAUSE : om_screen(&p->options) == OM_SCREEN_HUB ? PM_HUB :
+                  om_screen(&p->options) == OM_SCREEN_CONTROLS ? PM_CONTROLS : PM_LIST;
     OmScreen scr = want == PM_PAUSE ? OM_SCREEN_CLOSED : om_screen(&p->options);
     if (want != p->view || scr != p->view_screen) pause_switch_view(p, want, scr);
     if (p->visual && p->scr.loaded) {
@@ -181,16 +189,23 @@ static void pause_views_update(PauseMenu *p, float ms) {
                 p->seen_hub_exit = p->options.exit_serial;
                 gv_screen_exit(&p->scr);
             }
-            GvEntry e[OM_HUB_ENTRIES];
-            for (int i = 0; i < OM_HUB_ENTRIES; i++) {
-                const OmHubEntry *h = om_hub_entry(i);
+            GvEntry e[OM_HUB_MAX];
+            int nh = om_hub_count(&p->options);
+            for (int i = 0; i < nh; i++) {
+                const OmHubEntry *h = om_hub_entry_of(&p->options, i);
                 e[i].tex = gv_texture(&p->assets, h->icon_key);
                 e[i].label = gv_text(&p->assets, h->label_key, h->label);
             }
             uint32_t key;
             const char *hd = om_header(p->options.cfg.ctx, OM_SCREEN_HUB, 0, &key);
-            gv_carousel_apply(&p->car_v, &p->options.hub, e, OM_HUB_ENTRIES, gv_text(&p->assets, key, hd),
+            gv_carousel_apply(&p->car_v, &p->options.hub, e, nh, gv_text(&p->assets, key, hd),
                               p->options.blink_serial, p->options.blink_dir);
+        } else if (p->view == PM_CONTROLS) {
+            if (p->options.dialog_serial != p->seen_ctl_dialog) {      /* the reset dialog dims the screen (1.4) */
+                p->seen_ctl_dialog = p->options.dialog_serial;
+                gv_screen_dim(&p->scr, om_dialog_is_open(&p->options));
+            }
+            gv_controls_sync(&p->ctl_v, &p->options.cm, ms);
         } else {
             gv_list_sync(&p->list_v, &p->options, ms);
         }
@@ -274,6 +289,50 @@ void pause_menu_set_options(PauseMenu *p, StGraphics *gfx, const StGfxCaps *caps
     p->opt_gfx = gfx; p->opt_caps = caps; p->opt_store = store;
     p->options_enabled = gfx && caps;
 }
+/* Every original resource the Controls screen needs, checked once (CONTROLS_SPEC R1-R3): the package and its
+ * eight textures, the hub icon, the dialog package and every language text it shows. Nothing is substituted: if
+ * one is missing the hub simply has no Controls entry. */
+static int controls_resources_ok(PauseMenu *p) {
+    static const uint32_t texts[] = {
+        0x04DC6DB5u, 0x5CF08EB7u, 0xF91FBA4Du, 0x14D4BD3Bu, 0x1B15F53Cu, 0x37E740E0u, 0x8BAB66EFu, 0x23CF49AAu, 0xFED0D3DFu,
+        0x2BBCCA6Bu, 0x00000639u, 0x541389E5u,
+        0x153E7337u, 0xBD7BA1AAu, 0x409607E2u, 0x82EBCC98u, 0x3EB318CEu, 0xB7D33921u, 0xB3D1EA35u, 0xDF5AEF26u, 0x419CA63Au,
+        0x35B9F571u, 0x4A1341B3u, 0x1E7E3391u, 0x58BAEBBAu, 0x735B2E6Cu, 0x6FC04E6Fu, 0xA081F0CCu, 0x64730AACu, 0x6F99F62Au
+    };
+    static const uint32_t textures[] = {
+        0xA04A7B26u,                                           /* OPTIONS_ICON_CONTROLS */
+        0xA67C3FE2u, 0xC8C5F8A6u, 0x367B3E04u, 0x9C7C3C73u, 0xDA10B4A1u, 0x014245E2u, 0xD253B8F3u, 0xAD749E02u
+    };
+    if (!p->assets_open || !p->compatible || !p->gl || !p->assets.have_strings) return 0;
+    for (size_t i = 0; i < sizeof texts / sizeof texts[0]; i++)
+        if (!ug_strtab_get(&p->assets.strings, texts[i])) return 0;
+    for (size_t i = 0; i < sizeof textures / sizeof textures[0]; i++)
+        if (!gv_texture(&p->assets, textures[i])) return 0;
+    if (!ug_assets_package(&p->assets, om_dialog_package_name())) return 0;
+    GvScreen scr;
+    GvControls cv;
+    ControlsMenu cm;
+    CbBindings *b = calloc(1, sizeof *b);
+    if (!b) return 0;
+    cb_bindings_defaults(b);
+    memset(&cm, 0, sizeof cm);
+    cm_open(&cm, b, NULL);
+    int ok = gv_screen_load(&scr, &p->assets, om_package_name(OM_CTX_INGAME, OM_SCREEN_CONTROLS)) &&
+             gv_controls_bind(&cv, &scr, &cm);
+    if (!ok) fprintf(stderr, "pause: Controls screen unavailable (%s)\n", scr.status);
+    gv_screen_free(&scr);
+    free(b);
+    return ok;
+}
+
+void pause_menu_set_controls(PauseMenu *p, CxInput *cx) {
+    if (!p) return;
+    p->cx = cx;
+    CmPlatform plat;
+    memset(&plat, 0, sizeof plat);
+    if (cx) cx_platform(cx, &plat);
+    om_set_controls(&p->options, cx ? &cx->b : NULL, &plat, cx && controls_resources_ok(p));
+}
 int pause_menu_options_open(const PauseMenu *p) { return p && om_is_open(&p->options); }
 OptionsMenu *pause_menu_options(PauseMenu *p) { return p ? &p->options : NULL; }
 int pause_menu_visual_available(const PauseMenu *p) { return p && p->open && p->visual && p->compatible && p->gl; }
@@ -286,8 +345,8 @@ const char *pause_menu_caption(const PauseMenu *p) {
     if (!p) return "";
     if (om_is_open(&p->options)) {
         if (om_screen(&p->options) == OM_SCREEN_HUB) {
-            const OmHubEntry *h = om_hub_entry(om_hub_focus(&p->options));
-            return h ? h->label : "";
+            const OmHubEntry *h = om_hub_entry_of(&p->options, om_hub_focus(&p->options));
+            return h && h->label ? h->label : "";
         }
         return "";
     }
@@ -316,6 +375,7 @@ static OmInput om_of(PmKey k) {
     case PMK_ACCEPT: return OM_IN_ACCEPT;
     case PMK_BACK: return OM_IN_BACK;
     case PMK_START: return OM_IN_START;
+    case PMK_RESET: return OM_IN_RESET;
     default: return OM_IN_NONE;
     }
 }
@@ -380,8 +440,13 @@ static void pause_pill_hover(PauseMenu *p, float x, float y) {
 void pause_menu_event(PauseMenu *p, const SDL_Event *e, SDL_Window *win) {
     if (!pause_menu_is_open(p)) return;
     PmKey k = PMK_NONE;
+    if (e->type == SDL_KEYDOWN && !e->key.repeat && om_controls_capturing(&p->options)) {
+        om_key_down(&p->options, (int)e->key.keysym.scancode);     /* a capture takes the raw key: Escape cancels */
+        return;
+    }
     if (e->type == SDL_KEYDOWN && !e->key.repeat) {
         switch (e->key.keysym.sym) {
+        case SDLK_DELETE: k = PMK_RESET; break;                    /* Reset Keys To Default (the help-bar pill is not drawn) */
         case SDLK_LEFT: k = PMK_LEFT; break;
         case SDLK_RIGHT: k = PMK_RIGHT; break;
         case SDLK_UP: k = PMK_UP; break;
@@ -399,6 +464,7 @@ void pause_menu_event(PauseMenu *p, const SDL_Event *e, SDL_Window *win) {
         case SDL_CONTROLLER_BUTTON_A: k = PMK_ACCEPT; break;
         case SDL_CONTROLLER_BUTTON_B: case SDL_CONTROLLER_BUTTON_BACK: k = PMK_BACK; break;
         case SDL_CONTROLLER_BUTTON_START: k = PMK_START; break;
+        case SDL_CONTROLLER_BUTTON_Y: k = PMK_RESET; break;
         default: break;
         }
     } else if (e->type == SDL_MOUSEBUTTONDOWN && e->button.button == SDL_BUTTON_RIGHT) k = PMK_BACK;
@@ -421,6 +487,7 @@ void pause_menu_event(PauseMenu *p, const SDL_Event *e, SDL_Window *win) {
             float x, y;
             pause_menu_to_virtual(pause_menu_transform(w, h), e->motion.x, e->motion.y, &x, &y);
             pause_pill_hover(p, x, y);                       /* hover never changes the selection (unspecified, SPEC_GUI_ART 10) */
+            om_pointer_move(&p->options, x - 320, y - 240);  /* Controls: hover focuses a cell or the selector (4.4) */
         }
         return;
     }
@@ -455,11 +522,18 @@ FeAction pause_menu_update(PauseMenu *p, float seconds) {
     if (p->pill_initialized) { ug_anim_update(&p->pill_pulse, ms); ug_anim_update(&p->pill_glow, ms); }
     FeAction a = FE_ACTION_NONE;
     if (om_is_open(&p->options) || p->options.nevents) {
+        if (p->cx && om_controls_capturing(&p->options)) {          /* a joystick capture reads the device each frame */
+            int pad = p->options.cm.dev[p->options.cm.cur].pad;
+            CbPadSample sample;
+            if (pad >= 0) { cx_sample(p->cx, pad, &sample); om_pad_frame(&p->options, &sample); }
+        }
         om_update(&p->options, seconds);
         OmEvent oe;
         while ((oe = om_poll_event(&p->options)) != OM_EV_NONE) {
             if (oe == OM_EV_RESUME_GAME) a = FE_ACTION_RESUME;           /* Start: nothing is written (SPEC_GUI 5.2) */
-            else if (oe == OM_EV_LEAVE_TO_PAUSE) {                       /* hub Back: the pause screen is built afresh */
+            else if (oe == OM_EV_CONTROLS_CHANGED) {                     /* Controls left with edited bindings (D4) */
+                if (p->cx && cx_save(p->cx)) fprintf(stderr, "controls: could not save the bindings\n");
+            } else if (oe == OM_EV_LEAVE_TO_PAUSE) {                       /* hub Back: the pause screen is built afresh */
                 pause_start_pause_screen(p);
                 pause_pill_clear(p);
             }
@@ -610,6 +684,8 @@ int pause_menu_capture_replay(PauseMenu *p, const char *events, float elapsed_ms
         else if (!strcmp(name, "Enter") || !strcmp(name, "Continue")) pause_key(p, PMK_ACCEPT);
         else if (!strcmp(name, "Back") || !strcmp(name, "Escape") || !strcmp(name, "right_click")) pause_key(p, PMK_BACK);
         else if (!strcmp(name, "Start")) pause_key(p, PMK_START);
+        else if (!strcmp(name, "Reset")) pause_key(p, PMK_RESET);
+        else if (fields >= 3 && !strcmp(name, "key")) { if (om_controls_capturing(&p->options)) om_key_down(&p->options, (int)x); }   /* key:SDL scancode */
         else if (!strcmp(name, "rail_up") || (fields >= 3 && (!strcmp(name, "rail_down") || !strcmp(name, "rail_move")))) {}
         else if (fields == 4 && !strcmp(name, "pointer")) {
             PauseTransform t = pause_menu_transform(w, h);
@@ -624,7 +700,8 @@ int pause_menu_capture_replay(PauseMenu *p, const char *events, float elapsed_ms
     pause_capture_advance(p, elapsed_ms - previous);
     fprintf(stderr, "pause capture: elapsed=%.3f ui=%.3f screen=%s selected=%d open=%d dialog=%d actions=%d last_action=%d caption=%s status=%s\n",
             elapsed_ms, p->ui_ms, om_is_open(&p->options) ? (om_screen(&p->options) == OM_SCREEN_HUB ? "hub" :
-            om_screen(&p->options) == OM_SCREEN_DISPLAY ? "display" : "customize") : "pause",
+            om_screen(&p->options) == OM_SCREEN_DISPLAY ? "display" :
+            om_screen(&p->options) == OM_SCREEN_CONTROLS ? "controls" : "customize") : "pause",
             om_is_open(&p->options) ? (om_screen(&p->options) == OM_SCREEN_HUB ? om_hub_focus(&p->options) : om_focus(&p->options)) : ps_selected(&p->ps),
             p->open, pause_menu_dialog_open(p), p->capture_actions, p->capture_last_action, pause_menu_caption(p), p->status);
     return 1;
