@@ -1,0 +1,300 @@
+{
+ "about": "UI_Options_PC_Controller.fng facts (observed in FRONTEND/FRONTB.LZC.bacc). Positions are the stored object values (centred 640x480 virtual units, centre of the object; text: anchor). No package bytes are reproduced; sha256 is of the decoded package for identification.",
+ "package": {
+  "name": "UI_Options_PC_Controller.fng",
+  "key": "0xE0EE65E6",
+  "container": "FRONTEND/FRONTB.LZC.bacc",
+  "chunk": "0x00030210 (JDLZ)",
+  "decoded_bytes": 150288,
+  "sha256": "2bb9e09940bfb041e678852628a66398d62a0ec44a598dd27085b762f9aaab25",
+  "objects": 181,
+  "resources": [
+   "(Untextured Simple Image)",
+   "U2_Menu_Box.tga",
+   "U2_Menu_Text_Corner.tga",
+   "U2_Menu_Arrow.tga",
+   "ConduitMdITC_TT21i.ffn",
+   "U2_Scroller_Corner.tga",
+   "U2_Scroller_Tab.tga",
+   "U2_Menu_Box_White.tga",
+   "U2_Menu_RoundedCorner.tga",
+   "U2_Menu_Corner_white.tga"
+  ]
+ },
+ "row_templates": {
+  "option_name_": [
+   1,
+   20
+  ],
+  "OPTION_DATA_": [
+   1,
+   20
+  ],
+  "OPTION_DATA_2_": [
+   1,
+   20
+  ],
+  "Options_Backing_": [
+   1,
+   20
+  ]
+ },
+ "objects": [
+  {
+   "name": "Header_text",
+   "hash": "0x42ADB44C",
+   "role": "screen title text; application sets label 0x04DC6DB5",
+   "present": true,
+   "type": 2,
+   "stored_pos": [
+    -247.71,
+    -63.0
+   ],
+   "stored_size": [
+    0.8,
+    0.8
+   ]
+  },
+  {
+   "name": "(no name, hash only)",
+   "hash": "0x4E11CF90",
+   "role": "device-selector title text; label set per device class (spec 3.2)",
+   "present": true,
+   "type": 2,
+   "stored_pos": [
+    -5.0,
+    -169.0
+   ],
+   "stored_size": [
+    0.7,
+    0.7
+   ]
+  },
+  {
+   "name": "(no name, hash only)",
+   "hash": "0xD1CDA594",
+   "role": "device-selector left arrow (previous device)",
+   "present": true,
+   "type": 1,
+   "stored_pos": [
+    -266.0,
+    -158.0
+   ],
+   "stored_size": [
+    24.0,
+    24.0
+   ]
+  },
+  {
+   "name": "(no name, hash only)",
+   "hash": "0x9345E4A7",
+   "role": "device-selector right arrow (next device)",
+   "present": true,
+   "type": 1,
+   "stored_pos": [
+    265.0,
+    -158.0
+   ],
+   "stored_size": [
+    24.0,
+    24.0
+   ]
+  },
+  {
+   "name": "(no name, hash only)",
+   "hash": "0x666593C4",
+   "role": "column header; application sets label 0x1B15F53C",
+   "present": true,
+   "type": 2,
+   "stored_pos": [
+    9.0,
+    -138.0
+   ],
+   "stored_size": [
+    0.7,
+    0.7
+   ]
+  },
+  {
+   "name": "(no name, hash only)",
+   "hash": "0x59ABA1E8",
+   "role": "column header; application sets label 0x37E740E0",
+   "present": true,
+   "type": 2,
+   "stored_pos": [
+    172.0,
+    -138.0
+   ],
+   "stored_size": [
+    0.7,
+    0.7
+   ]
+  },
+  {
+   "name": "Instructions_Label",
+   "hash": "0x4F79F553",
+   "role": "instruction line (spec 3.5)",
+   "present": true,
+   "type": 2,
+   "stored_pos": [
+    -5.0,
+    153.0
+   ],
+   "stored_size": [
+    0.7,
+    0.7
+   ]
+  },
+  {
+   "name": "TITLE_MASTER",
+   "hash": "0xA753C46C",
+   "role": "anchor of the action-name column; row pitch = its height",
+   "present": true,
+   "type": 1,
+   "stored_pos": [
+    -187.0,
+    -88.0
+   ],
+   "stored_size": [
+    180.0,
+    36.0
+   ]
+  },
+  {
+   "name": "DATA_MASTER",
+   "hash": "0xC128B184",
+   "role": "anchor of the Primary column; cell size = its size",
+   "present": true,
+   "type": 1,
+   "stored_pos": [
+    11.0,
+    -90.0
+   ],
+   "stored_size": [
+    150.0,
+    24.0
+   ]
+  },
+  {
+   "name": "DATA_MASTER2",
+   "hash": "0xE63EE236",
+   "role": "anchor of the Secondary column",
+   "present": true,
+   "type": 1,
+   "stored_pos": [
+    173.0,
+    -90.0
+   ],
+   "stored_size": [
+    150.0,
+    24.0
+   ]
+  },
+  {
+   "name": "ScrollBar_Backing",
+   "hash": "0x688A1551",
+   "role": "scroll track",
+   "present": true,
+   "type": 1,
+   "stored_pos": [
+    273.0,
+    20.0
+   ],
+   "stored_size": [
+    8.0,
+    242.0
+   ]
+  },
+  {
+   "name": "ScrollBar_Handle (hash)",
+   "hash": "0x3FBB7A4E",
+   "role": "scroll tab",
+   "present": true,
+   "type": 1,
+   "stored_pos": [
+    273.0,
+    -50.0
+   ],
+   "stored_size": [
+    16.0,
+    16.0
+   ]
+  },
+  {
+   "name": "ScrollBar_Arrow_1",
+   "hash": "0x444969FD",
+   "role": "scroll up arrow",
+   "present": true,
+   "type": 1,
+   "stored_pos": [
+    273.0,
+    -126.0
+   ],
+   "stored_size": [
+    24.0,
+    24.0
+   ]
+  },
+  {
+   "name": "ScrollBar_Arrow_2",
+   "hash": "0x444969FE",
+   "role": "scroll down arrow",
+   "present": true,
+   "type": 1,
+   "stored_pos": [
+    273.0,
+    166.0
+   ],
+   "stored_size": [
+    24.0,
+    24.0
+   ]
+  },
+  {
+   "name": "(event handler, hash only)",
+   "hash": "0x47FF4E7C",
+   "role": "never drawn; CALL (enter) / FORWARD (exit) scripts",
+   "present": true,
+   "type": 2,
+   "stored_pos": [
+    169.0,
+    -335.0
+   ],
+   "stored_size": [
+    1.0,
+    1.0
+   ]
+  }
+ ],
+ "other_packages": [
+  {
+   "name": "UI_OptionsMain.fng",
+   "key": "0x1E74C936",
+   "container": "FRONTEND/FRONTB.LZC.bacc",
+   "decoded_bytes": 36220
+  },
+  {
+   "name": "GenericDialog_SMALL.fng",
+   "key": "0x6962C0CD",
+   "container": "GLOBAL/GLOBALB.BUN and FRONTEND/FRONTB.LZC.bacc",
+   "decoded_bytes": 18112
+  },
+  {
+   "name": "UI_PC_Help_Bar.fng",
+   "key": "0x33AC1CB4",
+   "container": "GLOBAL/GLOBALB.BUN (raw chunk 0x00030203)",
+   "decoded_bytes": 50944
+  }
+ ],
+ "texture_keys_in_GLOBALB": {
+  "U2_Menu_Box": "0xA67C3FE2",
+  "U2_Menu_Text_Corner": "0xC8C5F8A6",
+  "U2_Menu_Arrow": "0x367B3E04",
+  "U2_Scroller_Corner": "0x9C7C3C73",
+  "U2_Scroller_Tab": "0xDA10B4A1",
+  "U2_Menu_Box_White": "0x014245E2",
+  "U2_Menu_RoundedCorner": "0xD253B8F3",
+  "U2_Menu_Corner_white": "0xAD749E02",
+  "OPTIONS_ICON_CONTROLS": "0xA04A7B26"
+ }
+}

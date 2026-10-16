@@ -59,6 +59,16 @@ void gd_spec(GdSpec *out, GdKind kind, const GdContext *ctx) {
         out->back_msg = MSG_DEFAULTS_NO;          /* Back = No */
         return;
     }
+    if (kind == GD_CONTROLS_RESET) {              /* CONTROLS_SPEC 4.6: texts come from the language file only */
+        out->package = PKG_SMALL;
+        out->package_key = KEY_PKG_SMALL;
+        out->message_key = T_DEFAULTS.key;        /* the same message key as Default Settings */
+        out->label_key[0] = 0x00000639u;          /* OK */
+        out->label_key[1] = 0x541389E5u;          /* Cancel */
+        out->result_msg[1] = MSG_DEFAULTS_NO;
+        out->back_msg = MSG_DEFAULTS_NO;
+        return;
+    }
     switch (kind) {
     case GD_QUIT: t = quit_text(ctx); ok = 0x30ED2368u; break;
     case GD_RESTART: t = ctx->substate4 ? &T_RESTART_LOST : &T_RESTART; ok = 0xE1A57D51u; break;
@@ -103,7 +113,7 @@ void gd_input(GuiDialog *d, GdInput in) {
 }
 
 void gd_button_extent(GdKind kind, int button, float e[4]) {
-    float cx = kind == GD_DEFAULTS ? 150.0f : 151.0f;        /* button centres, 6 */
+    float cx = kind == GD_DEFAULTS || kind == GD_CONTROLS_RESET ? 150.0f : 151.0f;        /* button centres, 6 */
     cx = button ? cx : -cx;
     e[0] = cx - 149.0f;                                      /* 128 + 21 */
     e[2] = cx + 149.0f;

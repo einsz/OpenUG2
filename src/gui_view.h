@@ -20,6 +20,7 @@
 #include "gui_dialog.h"
 #include "gui_layout.h"
 #include "options_menu.h"
+#include "controls_menu.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -57,6 +58,7 @@ typedef struct GvScreen {
     GvAnchor opt_master;         /* OPTION_MASTER (carousel packages) */
     GvAnchor title_master;       /* TITLE_MASTER and DATA_MASTER (list packages) */
     GvAnchor data_master;
+    GvAnchor data_master2;       /* DATA_MASTER2 (Controls) */
 } GvScreen;
 
 /* Loads `package_name` from the assets, builds the scene (PC build, hint text hidden) and runs the
@@ -136,6 +138,37 @@ int gv_list_bind(GvList *v, GvScreen *s, const OptionsMenu *m);
 /* Writes the menu state into the objects (placement, text, sliders, focus scripts, scrollbar, dim,
  * exit). dt_ms advances the highlight fade-out bookkeeping. */
 void gv_list_sync(GvList *v, const OptionsMenu *m, float dt_ms);
+
+/* ---- Controls (UI_Options_PC_Controller) -------------------------------------------------------- */
+#define GV_CTL_SLOTS 20          /* option_name_n / OPTION_DATA_n / OPTION_DATA_2_n / Options_Backing_n, n = 1..20 */
+typedef struct GvCtlRow {
+    int name, data, data2, backing;
+    int parked;
+    float hl_fade_ms;            /* the backing stays visible while UnHighlight plays */
+    char text[2][CB_NAME_MAX];   /* cell texts (the scene keeps the pointers) */
+} GvCtlRow;
+
+typedef struct GvControls {
+    GvScreen *scr;
+    GvCtlRow row[GV_CTL_SLOTS + 1];          /* indexed by slot number */
+    int nslots;
+    int header, title, arrow_l, arrow_r, col1, col2, instr;
+    int rail, tab, arrow1, arrow2;
+    float tx, ty, th, dx[2], dw;             /* anchors as top-left + size (3.8) */
+    int hl_row, hl_col;                      /* highlighted cell, -1 none */
+    int hl_title;                            /* the selector title runs Highlight */
+    int tab_row;                             /* row the scroll tab follows */
+    unsigned seen_build, seen_blink, seen_scroll, seen_capture;
+    int was_capturing;
+    int bound;
+} GvControls;
+
+/* Binds the authored objects by name hash. Returns 0 (status says what is missing) when any object the screen
+ * needs is absent or ambiguous; the screen is then not drawn (CONTROLS_SPEC R3). */
+int gv_controls_bind(GvControls *v, GvScreen *s, const ControlsMenu *m);
+/* Writes the state of the Controls screen into the objects: texts (language file only), row placement and
+ * window, focus scripts, capture pulse, selector arrows, scrollbar. */
+void gv_controls_sync(GvControls *v, const ControlsMenu *m, float dt_ms);
 
 /* ---- two-button dialog (UI_InGameDialog / GenericDialog_SMALL) ---------------------------- */
 typedef struct GvDialog {

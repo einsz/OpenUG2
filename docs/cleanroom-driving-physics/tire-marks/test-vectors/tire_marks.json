@@ -1,0 +1,2401 @@
+{
+ "lay_predicate": [
+  {
+   "name": "sliding straight",
+   "input": {
+    "contact": true,
+    "masked": false,
+    "Ux": 10,
+    "Uy": 0,
+    "sliding": true,
+    "u": 1,
+    "N": 3
+   },
+   "lay": true
+  },
+  {
+   "name": "gripping low load",
+   "input": {
+    "contact": true,
+    "masked": false,
+    "Ux": 10,
+    "Uy": 0,
+    "sliding": false,
+    "u": 0.9,
+    "N": 3
+   },
+   "lay": false
+  },
+  {
+   "name": "gripping saturated heavy",
+   "input": {
+    "contact": true,
+    "masked": false,
+    "Ux": 10,
+    "Uy": 2,
+    "sliding": false,
+    "u": 1.0,
+    "N": 8.5
+   },
+   "lay": true
+  },
+  {
+   "name": "gripping product exactly 8",
+   "input": {
+    "contact": true,
+    "masked": false,
+    "Ux": 10,
+    "Uy": 0,
+    "sliding": false,
+    "u": 1.0,
+    "N": 8.0
+   },
+   "lay": false
+  },
+  {
+   "name": "airborne",
+   "input": {
+    "contact": false,
+    "masked": false,
+    "Ux": 10,
+    "Uy": 0,
+    "sliding": true,
+    "u": 0,
+    "N": 0
+   },
+   "lay": false
+  },
+  {
+   "name": "masked wheel",
+   "input": {
+    "contact": true,
+    "masked": true,
+    "Ux": 10,
+    "Uy": 0,
+    "sliding": true,
+    "u": 1,
+    "N": 3
+   },
+   "lay": false
+  },
+  {
+   "name": "slow 1.0 exactly",
+   "input": {
+    "contact": true,
+    "masked": false,
+    "Ux": 0.6,
+    "Uy": 0.8,
+    "sliding": true,
+    "u": 1,
+    "N": 3
+   },
+   "lay": false
+  },
+  {
+   "name": "slow vertical only",
+   "input": {
+    "contact": true,
+    "masked": false,
+    "Ux": 0.0,
+    "Uy": 0.5,
+    "sliding": true,
+    "u": 1,
+    "N": 3
+   },
+   "lay": false
+  },
+  {
+   "name": "just above 1",
+   "input": {
+    "contact": true,
+    "masked": false,
+    "Ux": 1.001,
+    "Uy": 0,
+    "sliding": true,
+    "u": 1,
+    "N": 3
+   },
+   "lay": true
+  }
+ ],
+ "sample_geometry": [
+  {
+   "name": "240SX front, rolling straight, sliding (lock), road",
+   "input": {
+    "C": [
+     10,
+     5,
+     0.3135
+    ],
+    "U": [
+     20,
+     0,
+     0
+    ],
+    "lateral": [
+     0,
+     1,
+     0
+    ],
+    "tyre_width": 0.205,
+    "surface_width_factor": 1.0,
+    "sliding": true,
+    "surface": 1,
+    "ground": "flat z=0"
+   },
+   "expected": {
+    "align": 1.0,
+    "half_width": 0.1025,
+    "centre": [
+     10.0,
+     5.0,
+     0.0
+    ],
+    "across": [
+     0.0,
+     0.1025,
+     0.0
+    ],
+    "intensity": 1.0,
+    "across_q": [
+     0,
+     6,
+     0
+    ],
+    "intensity_byte": 255,
+    "across_decoded": [
+     0.0,
+     0.09375,
+     0.0
+    ]
+   }
+  },
+  {
+   "name": "same, gripping but heavy-loaded",
+   "input": {
+    "C": [
+     10,
+     5,
+     0.3135
+    ],
+    "U": [
+     20,
+     0,
+     0
+    ],
+    "lateral": [
+     0,
+     1,
+     0
+    ],
+    "tyre_width": 0.205,
+    "surface_width_factor": 1.0,
+    "sliding": false,
+    "surface": 1,
+    "ground": "flat z=0"
+   },
+   "expected": {
+    "align": 1.0,
+    "half_width": 0.1025,
+    "centre": [
+     10.0,
+     5.0,
+     0.0
+    ],
+    "across": [
+     0.0,
+     0.1025,
+     0.0
+    ],
+    "intensity": 0.3333333,
+    "across_q": [
+     0,
+     6,
+     0
+    ],
+    "intensity_byte": 85,
+    "across_decoded": [
+     0.0,
+     0.09375,
+     0.0
+    ]
+   }
+  },
+  {
+   "name": "30 deg slip angle, sliding, road",
+   "input": {
+    "C": [
+     0,
+     0,
+     0.33
+    ],
+    "U": [
+     12.9903811,
+     7.5,
+     0
+    ],
+    "lateral": [
+     0,
+     1,
+     0
+    ],
+    "tyre_width": 0.235,
+    "surface_width_factor": 1.0,
+    "sliding": true,
+    "surface": 1,
+    "ground": "flat z=0"
+   },
+   "expected": {
+    "align": 0.8660254,
+    "half_width": 0.101758,
+    "centre": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "across": [
+     -0.050879,
+     0.088125,
+     0.0
+    ],
+    "intensity": 0.8660254,
+    "across_q": [
+     -3,
+     5,
+     0
+    ],
+    "intensity_byte": 220,
+    "across_decoded": [
+     -0.046875,
+     0.078125,
+     0.0
+    ]
+   }
+  },
+  {
+   "name": "70 deg slip angle, sliding, dirt",
+   "input": {
+    "C": [
+     0,
+     0,
+     0.33
+    ],
+    "U": [
+     5.1303021,
+     14.0953893,
+     0
+    ],
+    "lateral": [
+     0,
+     1,
+     0
+    ],
+    "tyre_width": 0.235,
+    "surface_width_factor": 1.4,
+    "sliding": true,
+    "surface": 8,
+    "ground": "flat z=0"
+   },
+   "expected": {
+    "align": 0.3420202,
+    "half_width": 0.08225,
+    "centre": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "across": [
+     -0.0772897,
+     0.0281312,
+     0.0
+    ],
+    "intensity": 0.3420202,
+    "across_q": [
+     -4,
+     1,
+     0
+    ],
+    "intensity_byte": 87,
+    "across_decoded": [
+     -0.0625,
+     0.015625,
+     0.0
+    ]
+   }
+  },
+  {
+   "name": "pure sideways slide, grass",
+   "input": {
+    "C": [
+     0,
+     0,
+     0.33
+    ],
+    "U": [
+     0,
+     12,
+     0
+    ],
+    "lateral": [
+     0,
+     1,
+     0
+    ],
+    "tyre_width": 0.225,
+    "surface_width_factor": 1.4,
+    "sliding": true,
+    "surface": 15,
+    "ground": "flat z=0"
+   },
+   "expected": {
+    "align": 0.0,
+    "half_width": 0.07875,
+    "centre": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "across": [
+     -0.07875,
+     0.0,
+     0.0
+    ],
+    "intensity": 0.3,
+    "across_q": [
+     -5,
+     0,
+     0
+    ],
+    "intensity_byte": 76,
+    "across_decoded": [
+     -0.078125,
+     0.0,
+     0.0
+    ]
+   }
+  },
+  {
+   "name": "puddle",
+   "input": {
+    "C": [
+     0,
+     0,
+     0.33
+    ],
+    "U": [
+     12,
+     0,
+     0
+    ],
+    "lateral": [
+     0,
+     1,
+     0
+    ],
+    "tyre_width": 0.225,
+    "surface_width_factor": 1.0,
+    "sliding": true,
+    "surface": 13,
+    "ground": "flat z=0"
+   },
+   "expected": {
+    "align": 1.0,
+    "half_width": 0.1125,
+    "centre": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "across": [
+     0.0,
+     0.1125,
+     0.0
+    ],
+    "intensity": 0.0,
+    "across_q": [
+     0,
+     7,
+     0
+    ],
+    "intensity_byte": 0,
+    "across_decoded": [
+     0.0,
+     0.109375,
+     0.0
+    ]
+   }
+  },
+  {
+   "name": "cross slope, travelling +x",
+   "input": {
+    "C": [
+     0,
+     0,
+     0.33
+    ],
+    "U": [
+     12,
+     0,
+     0
+    ],
+    "lateral": [
+     0,
+     1,
+     0
+    ],
+    "tyre_width": 0.225,
+    "surface_width_factor": 1.0,
+    "sliding": true,
+    "surface": 1,
+    "ground": "z=0.1*y"
+   },
+   "expected": {
+    "align": 1.0,
+    "half_width": 0.1125,
+    "centre": [
+     0.0,
+     0.0,
+     -0.0
+    ],
+    "across": [
+     0.0,
+     0.1119417,
+     0.0111942
+    ],
+    "intensity": 1.0,
+    "across_q": [
+     0,
+     7,
+     0
+    ],
+    "intensity_byte": 255,
+    "across_decoded": [
+     0.0,
+     0.109375,
+     0.0
+    ]
+   }
+  }
+ ],
+ "strip_sequences": [
+  {
+   "name": "straight 0.4 m steps",
+   "samples": [
+    {
+     "P": [
+      0.0,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      0.4,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      0.8,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      1.2,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      1.6,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      2.0,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      2.4,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      2.8,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      3.2,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      3.6,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      4.0,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      4.4,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      4.8,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      5.2,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      5.6,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      6.0,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    }
+   ],
+   "events": [
+    "new",
+    "commit",
+    "commit",
+    "replace",
+    "replace",
+    "replace",
+    "replace",
+    "replace",
+    "replace",
+    "commit",
+    "replace",
+    "replace",
+    "replace",
+    "replace",
+    "replace",
+    "replace",
+    "commit"
+   ],
+   "strips": [
+    {
+     "surface": 1,
+     "attached": true,
+     "points": [
+      {
+       "P": [
+        0.0,
+        0,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        2.8,
+        0,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        5.6,
+        0,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        6.0,
+        0,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "arc radius 10 m, 0.5 m steps",
+   "samples": [
+    {
+     "P": [
+      0.0,
+      0.0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      0.4997917,
+      0.0124974,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      0.9983342,
+      0.0499583,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      1.4943813,
+      0.1122892,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      1.9866933,
+      0.1993342,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      2.4740396,
+      0.3108758,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      2.9552021,
+      0.4466351,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      3.4289781,
+      0.6062729,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      3.8941834,
+      0.7893901,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      4.3496553,
+      0.995529,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      4.7942554,
+      1.2241744,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      5.2268723,
+      1.4747548,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      5.6464247,
+      1.7466439,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      6.0518641,
+      2.039162,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      6.4421769,
+      2.3515781,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      6.8163876,
+      2.6831113,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      7.1735609,
+      3.0329329,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      7.5128041,
+      3.4001685,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      7.8332691,
+      3.7839003,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      8.134155,
+      4.1831691,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      8.4147098,
+      4.5969769,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      8.6742323,
+      5.0242895,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      8.9120736,
+      5.4640388,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      9.1276394,
+      5.9151256,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      9.3203909,
+      6.3764225,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      9.4898462,
+      6.8467764,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      9.6355819,
+      7.3250117,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      9.7572336,
+      7.8099331,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      9.8544973,
+      8.3003286,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      9.9271299,
+      8.7949723,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    }
+   ],
+   "events": [
+    "new",
+    "commit",
+    "commit",
+    "replace",
+    "commit",
+    "replace",
+    "commit",
+    "replace",
+    "commit",
+    "replace",
+    "commit",
+    "replace",
+    "commit",
+    "replace",
+    "commit",
+    "replace",
+    "full",
+    "new-continued",
+    "commit",
+    "commit",
+    "replace",
+    "commit",
+    "replace",
+    "commit",
+    "replace",
+    "commit",
+    "replace",
+    "commit",
+    "replace",
+    "commit",
+    "replace",
+    "commit",
+    "replace",
+    "full",
+    "new-continued",
+    "commit",
+    "commit"
+   ],
+   "strips": [
+    {
+     "surface": 1,
+     "attached": false,
+     "points": [
+      {
+       "P": [
+        0.0,
+        0.0,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        0.998334,
+        0.049958,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        1.986693,
+        0.199334,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        2.955202,
+        0.446635,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        3.894183,
+        0.78939,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        4.794255,
+        1.224174,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        5.646425,
+        1.746644,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        6.442177,
+        2.351578,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      }
+     ]
+    },
+    {
+     "surface": 1,
+     "attached": false,
+     "points": [
+      {
+       "P": [
+        6.442177,
+        2.351578,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        7.173561,
+        3.032933,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        7.833269,
+        3.7839,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        8.41471,
+        4.596977,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        8.912074,
+        5.464039,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        9.320391,
+        6.376422,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        9.635582,
+        7.325012,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        9.854497,
+        8.300329,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      }
+     ]
+    },
+    {
+     "surface": 1,
+     "attached": true,
+     "points": [
+      {
+       "P": [
+        9.854497,
+        8.300329,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        9.92713,
+        8.794972,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "90-degree corner ends strip",
+   "samples": [
+    {
+     "P": [
+      0.0,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      0.5,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      1.0,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      1.5,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      2.0,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      2.5,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      2.5,
+      0.5,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      2.5,
+      1.0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      2.5,
+      1.5,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    }
+   ],
+   "events": [
+    "new",
+    "commit",
+    "commit",
+    "replace",
+    "replace",
+    "replace",
+    "replace",
+    "end",
+    "new",
+    "commit",
+    "commit"
+   ],
+   "strips": [
+    {
+     "surface": 1,
+     "attached": false,
+     "points": [
+      {
+       "P": [
+        0.0,
+        0,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        2.5,
+        0,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      }
+     ]
+    },
+    {
+     "surface": 1,
+     "attached": true,
+     "points": [
+      {
+       "P": [
+        2.5,
+        1.0,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        2.5,
+        1.5,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "road to puddle split",
+   "samples": [
+    {
+     "P": [
+      0.0,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      1.0,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      2.0,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      3.0,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 13,
+     "intensity": 0.0
+    },
+    {
+     "P": [
+      4.0,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 13,
+     "intensity": 0.0
+    }
+   ],
+   "events": [
+    "new",
+    "commit",
+    "commit",
+    "replace",
+    "new-seeded",
+    "commit",
+    "commit",
+    "replace"
+   ],
+   "strips": [
+    {
+     "surface": 1,
+     "attached": false,
+     "points": [
+      {
+       "P": [
+        0.0,
+        0,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        2.0,
+        0,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      }
+     ]
+    },
+    {
+     "surface": 13,
+     "attached": true,
+     "points": [
+      {
+       "P": [
+        2.0,
+        0,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        4.0,
+        0,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 0
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "sample farther than 4 m from origin",
+   "samples": [
+    {
+     "P": [
+      0,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      1,
+      0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    }
+   ],
+   "events": [
+    "far",
+    "far"
+   ],
+   "strips": []
+  },
+  {
+   "name": "3.5 m steps fill strip and continue",
+   "samples": [
+    {
+     "P": [
+      0.0,
+      0.0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      3.5,
+      0.3,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      7.0,
+      0.0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      10.5,
+      0.3,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      14.0,
+      0.0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      17.5,
+      0.3,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      21.0,
+      0.0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      24.5,
+      0.3,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      28.0,
+      0.0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      31.5,
+      0.3,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      35.0,
+      0.0,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    },
+    {
+     "P": [
+      38.5,
+      0.3,
+      0
+     ],
+     "across": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "surface": 1,
+     "intensity": 1.0
+    }
+   ],
+   "events": [
+    "new",
+    "commit",
+    "commit",
+    "commit",
+    "commit",
+    "commit",
+    "commit",
+    "commit",
+    "commit",
+    "full",
+    "new-continued",
+    "commit",
+    "commit",
+    "commit",
+    "commit",
+    "commit"
+   ],
+   "strips": [
+    {
+     "surface": 1,
+     "attached": false,
+     "points": [
+      {
+       "P": [
+        0.0,
+        0.0,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        3.5,
+        0.3,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        7.0,
+        0.0,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        10.5,
+        0.3,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        14.0,
+        0.0,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        17.5,
+        0.3,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        21.0,
+        0.0,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        24.5,
+        0.3,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      }
+     ]
+    },
+    {
+     "surface": 1,
+     "attached": true,
+     "points": [
+      {
+       "P": [
+        24.5,
+        0.3,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        28.0,
+        0.0,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        31.5,
+        0.3,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        35.0,
+        0.0,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      },
+      {
+       "P": [
+        38.5,
+        0.3,
+        0
+       ],
+       "across_q": [
+        0,
+        6,
+        0
+       ],
+       "intensity_byte": 255
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "render_alpha": [
+  {
+   "intensity_byte": 255,
+   "fade": 0,
+   "vertex_alpha": 127
+  },
+  {
+   "intensity_byte": 85,
+   "fade": 0,
+   "vertex_alpha": 42
+  },
+  {
+   "intensity_byte": 76,
+   "fade": 0,
+   "vertex_alpha": 38
+  },
+  {
+   "intensity_byte": 0,
+   "fade": 0,
+   "vertex_alpha": 0
+  },
+  {
+   "intensity_byte": 255,
+   "fade": 213,
+   "vertex_alpha": 21
+  },
+  {
+   "intensity_byte": 76,
+   "fade": 128,
+   "vertex_alpha": 0
+  }
+ ],
+ "view_metric": {
+  "K_for_full_fov_71_5_deg": 355.6064327,
+  "samples": [
+   {
+    "distance": 0.0,
+    "p": 0,
+    "fade": null
+   },
+   {
+    "distance": 0.01,
+    "p": 3,
+    "fade": null
+   },
+   {
+    "distance": 0.02,
+    "p": 7,
+    "fade": 128
+   },
+   {
+    "distance": 0.03,
+    "p": 10,
+    "fade": 0
+   },
+   {
+    "distance": 0.5,
+    "p": 177,
+    "fade": 0
+   },
+   {
+    "distance": 2.0,
+    "p": 711,
+    "fade": 0
+   },
+   {
+    "distance": 50.0,
+    "p": 711,
+    "fade": 0
+   },
+   {
+    "distance": 500.0,
+    "p": 711,
+    "fade": 0
+   }
+  ]
+ },
+ "cell_keys": [
+  {
+   "x": 0,
+   "y": 0,
+   "cell": [
+    0,
+    0
+   ]
+  },
+  {
+   "x": 63.9,
+   "y": 0,
+   "cell": [
+    0,
+    0
+   ]
+  },
+  {
+   "x": 64.0,
+   "y": 0,
+   "cell": [
+    1,
+    0
+   ]
+  },
+  {
+   "x": -0.5,
+   "y": -64.0,
+   "cell": [
+    -1,
+    -1
+   ]
+  },
+  {
+   "x": -64.01,
+   "y": 130,
+   "cell": [
+    -2,
+    2
+   ]
+  }
+ ],
+ "_provenance": "Synthetic. Every expected value is an arithmetic/state consequence of tire-marks SPEC.md TM-3..TM-11 computed by an analyst-only reference calculation; none is an original runtime capture. Floats rounded to 7 decimals; compare with abs tol 1e-6 unless the README says exact."
+}

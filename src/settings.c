@@ -344,30 +344,44 @@ int st_save_cycle(StProfile *p, int dir, int autosave_ok) {
 
 /* ================================================================= file helpers */
 static int dir_iter(const char *path, int (*cb)(const char *name, void *ctx), void *ctx) {
-    /* Calls cb for every entry except "." and ".."; stops if cb returns nonzero.
-     * Returns -1 if the directory cannot be opened, else 0. */
+    /* ST_E_NOTFOUND means genuinely absent; enumeration failures stay ST_E_IO. */
 #ifdef _WIN32
+    DWORD attrs = GetFileAttributesA(path);
+    if (attrs == INVALID_FILE_ATTRIBUTES) {
+        DWORD err = GetLastError();
+        return err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND ? ST_E_NOTFOUND : ST_E_IO;
+    }
+    if (!(attrs & FILE_ATTRIBUTE_DIRECTORY) || (attrs & FILE_ATTRIBUTE_REPARSE_POINT)) return ST_E_IO;
     char pat[1024];
     WIN32_FIND_DATAA fd;
-    if (snprintf(pat, sizeof pat, "%s\\*", path) >= (int)sizeof pat) return -1;
+    if (snprintf(pat, sizeof pat, "%s\\*", path) >= (int)sizeof pat) return ST_E_IO;
     HANDLE h = FindFirstFileA(pat, &fd);
-    if (h == INVALID_HANDLE_VALUE) return -1;
-    do {
-        if (!strcmp(fd.cFileName, ".") || !strcmp(fd.cFileName, "..")) continue;
-        if (cb(fd.cFileName, ctx)) break;
-    } while (FindNextFileA(h, &fd));
+    if (h == INVALID_HANDLE_VALUE) return GetLastError() == ERROR_FILE_NOT_FOUND ? ST_OK : ST_E_IO;
+    int rc = ST_OK;
+    for (;;) {
+        if (strcmp(fd.cFileName, ".") && strcmp(fd.cFileName, "..") && cb(fd.cFileName, ctx)) break;
+        if (!FindNextFileA(h, &fd)) {
+            if (GetLastError() != ERROR_NO_MORE_FILES) rc = ST_E_IO;
+            break;
+        }
+    }
     FindClose(h);
-    return 0;
+    return rc;
 #else
-    DIR *d = opendir(path);
-    if (!d) return -1;
-    struct dirent *e;
-    while ((e = readdir(d)) != NULL) {
+    int fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    if (fd < 0) return errno == ENOENT ? ST_E_NOTFOUND : ST_E_IO;
+    DIR *d = fdopendir(fd);
+    if (!d) { close(fd); return ST_E_IO; }
+    int rc = ST_OK;
+    for (;;) {
+        errno = 0;
+        struct dirent *e = readdir(d);
+        if (!e) { if (errno) rc = ST_E_IO; break; }
         if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
         if (cb(e->d_name, ctx)) break;
     }
-    closedir(d);
-    return 0;
+    if (closedir(d) != 0) rc = ST_E_IO;
+    return rc;
 #endif
 }
 
@@ -551,9 +565,15 @@ int st_profile_load(const char *root, const char *name, StProfile *out) {
     return rc;
 }
 
-int st_profile_exists(const char *root, const char *name) {
+int st_profile_status(const char *root, const char *name) {
     char dir[1024];
-    return dir_path(root, name, dir, sizeof dir) == ST_OK && dir_nonempty(dir);
+    int rc = dir_path(root, name, dir, sizeof dir), n = 0;
+    if (rc == ST_OK) rc = dir_iter(dir, count_cb, &n);
+    return rc == ST_OK && !n ? ST_E_NOTFOUND : rc;
+}
+
+int st_profile_exists(const char *root, const char *name) {
+    return st_profile_status(root, name) == ST_OK;
 }
 
 int st_profiles_exist(const char *root) { return root && dir_nonempty(root); }
@@ -674,7 +694,7 @@ void st_reg_close(StRegStore *s) {
 }
 
 /* ---- in-memory store (also the cache of the INI store) ---- */
-typedef struct MemEntry { char *name; int is_dword; uint32_t dword; char *str; } MemEntry;
+typedef struct MemEntry { char *name; int is_dword; uint32_t dword; char *str; int dirty; } MemEntry;  /* dirty: written through this store */
 typedef struct MemStore {
     MemEntry *e; size_t n, cap;
     char *path;               /* non-NULL: INI store, flushed after every write */
@@ -736,13 +756,16 @@ static int mem_get_string(void *impl, const char *name, char *buf, size_t cap) {
     strcpy(buf, e->str);
     return 1;
 }
+static void ini_refresh(MemStore *m);
 static int mem_set_dword(void *impl, const char *name, uint32_t v) {
     MemStore *m = (MemStore *)impl;
     if (m->path && !ini_name_valid(name)) return ST_E_ARG;
+    if (m->path) ini_refresh(m);
     MemEntry *e = mem_slot(m, name);
     if (!e) return ST_E_NOMEM;
     free(e->str); e->str = NULL;
     e->is_dword = 1; e->dword = v;
+    e->dirty = 1;
     return m->path ? ini_flush(m) : ST_OK;
 }
 static int mem_set_string(void *impl, const char *name, const char *v) {
@@ -750,10 +773,12 @@ static int mem_set_string(void *impl, const char *name, const char *v) {
     if (m->path && !ini_name_valid(name)) return ST_E_ARG;
     char *copy = dup_str(v);
     if (!copy) return ST_E_NOMEM;
+    if (m->path) ini_refresh(m);
     MemEntry *e = mem_slot(m, name);
     if (!e) { free(copy); return ST_E_NOMEM; }
     free(e->str);
     e->is_dword = 0; e->str = copy;
+    e->dirty = 1;
     return m->path ? ini_flush(m) : ST_OK;
 }
 static void mem_close(void *impl) {
@@ -913,6 +938,31 @@ static int ini_read(FILE *f, MemStore *m) {
     return rc;
 }
 
+/* Another store on the same file may have written since this one was opened (the graphics store lives as long as
+ * the pause menu, the controls store is opened per save). Before a write, adopt every value of the file that
+ * this store did not write itself, so the whole-file rewrite cannot drop the other store's values. A file that
+ * is missing or unreadable leaves the cache as it is. */
+static void ini_refresh(MemStore *m) {
+    FILE *f = fopen(m->path, "rb");
+    if (!f) return;
+    MemStore *disk = (MemStore *)calloc(1, sizeof *disk);
+    if (!disk) { fclose(f); return; }
+    int rc = ini_read(f, disk);
+    fclose(f);
+    if (rc == ST_OK) {
+        for (size_t i = 0; i < disk->n; i++) {
+            MemEntry *d = &disk->e[i], *e = mem_find(m, d->name);
+            if (e && e->dirty) continue;
+            if (!e) { e = mem_slot(m, d->name); if (!e) break; }
+            char *copy = d->is_dword ? NULL : (d->str ? dup_str(d->str) : NULL);
+            if (!d->is_dword && !copy) continue;
+            free(e->str);
+            e->is_dword = d->is_dword; e->dword = d->dword; e->str = copy;
+        }
+    }
+    mem_close(disk);
+}
+
 int st_reg_open_ini(StRegStore *s, const char *path) {
     if (!path || !*path) return ST_E_ARG;
     MemStore *m = (MemStore *)calloc(1, sizeof *m);
@@ -925,6 +975,7 @@ int st_reg_open_ini(StRegStore *s, const char *path) {
         m->path = NULL;
         int rc = ini_read(f, m);
         m->path = path_keep;
+        for (size_t i = 0; i < m->n; i++) m->e[i].dirty = 0;     /* loaded, not written */
         if (fclose(f) != 0 && rc == ST_OK) rc = ST_E_IO;
         if (rc != ST_OK) { mem_close(m); return rc; }
     } else if (errno != ENOENT) { mem_close(m); return ST_E_IO; }

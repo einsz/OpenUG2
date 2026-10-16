@@ -12,6 +12,10 @@
  * optional spacer). Leaving a screen runs its exit script (gui_timing.h: 140 ms front end, 320 ms in
  * game) and the transition happens at exit-complete; input is ignored meanwhile.
  *
+ * Controls (CONTROLS_SPEC, CONTROLS_DECISIONS D1): a fifth hub entry, present only while the host reports that
+ * every original resource the screen needs is available (om_set_controls); it opens the Controls screen
+ * (controls_menu.h), whose Back returns to the hub at once.
+ *
  * Re-initialisation hook (SPEC_GUI 5.4): the menu never touches the renderer. Changes raise "apply
  * requested" / "display re-init requested" flags immediately; the host consumes them with
  * om_take_apply_request()/om_take_reinit_request() at the start of its next frame.
@@ -21,6 +25,7 @@
 
 #include <stdint.h>
 #include "settings.h"
+#include "controls_menu.h"
 #include "gui_carousel.h"
 #include "gui_dialog.h"
 #include "gui_layout.h"
@@ -55,7 +60,7 @@ float om_slider_fill(int v, int min, int max);
 
 /* ---- identifiers and data keys ------------------------------------------------------------------ */
 typedef enum { OM_CTX_FRONTEND = 0, OM_CTX_INGAME } OmContext;           /* SPEC_GUI 1.2 */
-typedef enum { OM_SCREEN_CLOSED = 0, OM_SCREEN_DISPLAY, OM_SCREEN_CUSTOMIZE, OM_SCREEN_HUB } OmScreen;
+typedef enum { OM_SCREEN_CLOSED = 0, OM_SCREEN_DISPLAY, OM_SCREEN_CUSTOMIZE, OM_SCREEN_HUB, OM_SCREEN_CONTROLS } OmScreen;
 typedef enum { OM_ROW_CHOICE = 0, OM_ROW_SLIDER, OM_ROW_BUTTON, OM_ROW_SPACER } OmRowKind;  /* 2.1 */
 typedef enum {                   /* what the row does */
     OM_ID_OPTION = 0,            /* an ordinary graphics option, `gfx` names its slot */
@@ -101,7 +106,8 @@ const char *om_dialog_package_name(void);                /* GenericDialog_SMALL.
 int om_exit_ms(OmContext ctx, OmScreen screen);          /* exit-complete time of the screen's package */
 
 typedef enum {
-    OM_IN_NONE = 0, OM_IN_UP, OM_IN_DOWN, OM_IN_LEFT, OM_IN_RIGHT, OM_IN_ACCEPT, OM_IN_BACK, OM_IN_START
+    OM_IN_NONE = 0, OM_IN_UP, OM_IN_DOWN, OM_IN_LEFT, OM_IN_RIGHT, OM_IN_ACCEPT, OM_IN_BACK, OM_IN_START,
+    OM_IN_RESET                  /* Controls: the Reset Keys To Default request (CONTROLS_SPEC 4.6) */
 } OmInput;
 
 typedef enum {                   /* exactly-once events for the host */
@@ -109,7 +115,8 @@ typedef enum {                   /* exactly-once events for the host */
     OM_EV_LEAVE_TO_HUB,          /* Display left with Back: values were written (5.1). Front end: the screens close and the
                                     host goes to the options hub. In game the hub screen of this menu becomes current. */
     OM_EV_LEAVE_TO_PAUSE,        /* in-game hub left with Back: the pause screen is next (SPEC_GUI_ART 2.5) */
-    OM_EV_RESUME_GAME            /* Start (in-game hub or Display): leave and resume, nothing written (5.2) */
+    OM_EV_RESUME_GAME,           /* Start (in-game hub or Display): leave and resume, nothing written (5.2) */
+    OM_EV_CONTROLS_CHANGED       /* Controls left with changed bindings: the host persists them (D4) */
 } OmEvent;
 
 typedef struct OmConfig {
@@ -122,15 +129,17 @@ void om_config_default(OmConfig *c, OmContext ctx);   /* modern hardware: 3000 M
 
 /* What a leaving transition does at exit-complete. */
 typedef enum { OM_EXIT_NONE = 0, OM_EXIT_TO_DISPLAY, OM_EXIT_TO_CUSTOMIZE, OM_EXIT_LEAVE_DISPLAY,
-               OM_EXIT_TO_PAUSE, OM_EXIT_RESUME } OmExit;
+               OM_EXIT_TO_PAUSE, OM_EXIT_RESUME, OM_EXIT_TO_CONTROLS } OmExit;
 
 typedef struct OmHubEntry {      /* SPEC_GUI_ART 2.5 */
     uint32_t icon_key;
     uint32_t label_key;
-    const char *label;
-    int page;                    /* page index set on activation: Audio 0, Display 1, Gameplay 2, Player 3 */
+    const char *label;           /* English text of the key; NULL for the Controls entry (language file only) */
+    int page;                    /* page index set on activation: Audio 0, Display 1, Gameplay 2, Player 3, Controls 4 */
 } OmHubEntry;
-#define OM_HUB_ENTRIES 4
+#define OM_HUB_ENTRIES 4         /* the baseline entries; Controls is a fifth one (OM_HUB_MAX) */
+#define OM_HUB_MAX 5
+#define OM_HUB_PAGE_CONTROLS 4
 
 typedef struct OptionsMenu {
     OmConfig cfg;
@@ -153,6 +162,12 @@ typedef struct OptionsMenu {
     /* hub */
     GuiCarousel hub;
     GcPointer hub_ptr;
+    int hub_count;               /* entries shown: OM_HUB_ENTRIES, +1 with Controls */
+    /* Controls (CONTROLS_SPEC); the binding set and platform names are lent by the host */
+    CbBindings *bindings;
+    CmPlatform cm_plat;
+    int controls_ok;             /* the host verified every original resource of the screen */
+    ControlsMenu cm;
     int hub_remembered;          /* 1-based remembered entry, 0 = none (SPEC_GUI_ART 2.5) */
     int page;                    /* page index chosen in the hub */
     /* presentation state polled by the view */
@@ -172,12 +187,21 @@ void om_open(OptionsMenu *m, const OmConfig *cfg, StGraphics *gfx, const StGfxCa
 void om_open_hub(OptionsMenu *m, const OmConfig *cfg, StGraphics *gfx, const StGfxCaps *caps,
                  StRegStore *store);
 void om_close(OptionsMenu *m);                    /* drops everything without writing anything */
+/* Lends the bindings and platform names and states whether the Controls screen may be offered. Without
+ * `available` (or without bindings) the hub keeps its four baseline entries (CONTROLS_SPEC R3). Survives
+ * om_open/om_open_hub. */
+void om_set_controls(OptionsMenu *m, CbBindings *b, const CmPlatform *plat, int available);
 /* A pause session begins: forgets the remembered hub entry (the pause screen builds with it reset). */
 void om_reset_session(OptionsMenu *m);
 int om_is_open(const OptionsMenu *m);
 OmScreen om_screen(const OptionsMenu *m);
 
 void om_input(OptionsMenu *m, OmInput in);
+/* Controls screen only: raw key press (not a repeat) and a joystick frame for the capture, hover. */
+void om_key_down(OptionsMenu *m, int scancode);
+void om_pad_frame(OptionsMenu *m, const CbPadSample *s);
+void om_pointer_move(OptionsMenu *m, float x, float y);
+int om_controls_capturing(const OptionsMenu *m);
 /* Primary click at centred virtual coordinates (origin at the screen centre, 640x480). */
 void om_pointer_click(OptionsMenu *m, float x, float y);
 /* Advances the exit animation and the dialog; delivers any completed transition. */
@@ -215,7 +239,9 @@ int om_dialog_focus(const OptionsMenu *m);        /* 0 = first button (Yes), 1 =
 uint32_t om_dialog_button_key(int i);
 
 /* Hub (SPEC_GUI_ART 2.5). */
-const OmHubEntry *om_hub_entry(int i);
+const OmHubEntry *om_hub_entry(int i);            /* the baseline entries 0..3; NULL beyond */
+int om_hub_count(const OptionsMenu *m);           /* entries this hub shows (4, or 5 with Controls) */
+const OmHubEntry *om_hub_entry_of(const OptionsMenu *m, int i);   /* includes Controls when shown */
 int om_hub_focus(const OptionsMenu *m);           /* 0-based focused entry */
 int om_hub_remembered(const OptionsMenu *m);      /* 1-based, 0 = none */
 
