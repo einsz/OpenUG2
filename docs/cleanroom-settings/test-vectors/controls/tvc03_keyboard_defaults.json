@@ -1,0 +1,516 @@
+{
+ "about": "Default keyboard bindings (state after Reset Keys To Default). Action ids and key codes observed in the executable (static); DirectInput key codes (DIK) are the PC set-1 scan codes, extended keys with bit 7 set (public dinput.h). SDL scancode names are the corresponding public SDL identifiers [inferred mapping]. windows_english_name is the name the retail screen is expected to show on an English Windows (OS key name after the game substitutions of spec 6.2) [inferred].",
+ "menu_rows": [
+  {
+   "label_key": "0x153E7337",
+   "english": "Steering (Left)",
+   "action": 3,
+   "primary": {
+    "dik": "0xCB",
+    "sdl_scancode": "SDL_SCANCODE_LEFT",
+    "windows_english_name": "Left"
+   },
+   "secondary": {
+    "dik": "0x1E",
+    "sdl_scancode": "SDL_SCANCODE_A",
+    "windows_english_name": "A"
+   }
+  },
+  {
+   "label_key": "0xBD7BA1AA",
+   "english": "Steering (Right)",
+   "action": 4,
+   "primary": {
+    "dik": "0xCD",
+    "sdl_scancode": "SDL_SCANCODE_RIGHT",
+    "windows_english_name": "Right"
+   },
+   "secondary": {
+    "dik": "0x20",
+    "sdl_scancode": "SDL_SCANCODE_D",
+    "windows_english_name": "D"
+   }
+  },
+  {
+   "label_key": "0x409607E2",
+   "english": "Throttle",
+   "action": 1,
+   "primary": {
+    "dik": "0xC8",
+    "sdl_scancode": "SDL_SCANCODE_UP",
+    "windows_english_name": "Up"
+   },
+   "secondary": {
+    "dik": "0x11",
+    "sdl_scancode": "SDL_SCANCODE_W",
+    "windows_english_name": "W"
+   }
+  },
+  {
+   "label_key": "0x82EBCC98",
+   "english": "Back / Reverse",
+   "action": 2,
+   "primary": {
+    "dik": "0xD0",
+    "sdl_scancode": "SDL_SCANCODE_DOWN",
+    "windows_english_name": "Down"
+   },
+   "secondary": {
+    "dik": "0x1F",
+    "sdl_scancode": "SDL_SCANCODE_S",
+    "windows_english_name": "S"
+   }
+  },
+  {
+   "label_key": "0x3EB318CE",
+   "english": "Shift Up",
+   "action": 7,
+   "primary": {
+    "dik": "0x2A",
+    "sdl_scancode": "SDL_SCANCODE_LSHIFT",
+    "windows_english_name": "Left Shift"
+   },
+   "secondary": {
+    "dik": "0x27",
+    "sdl_scancode": "SDL_SCANCODE_SEMICOLON",
+    "windows_english_name": ";"
+   }
+  },
+  {
+   "label_key": "0xB7D33921",
+   "english": "Shift Down",
+   "action": 8,
+   "primary": {
+    "dik": "0x1D",
+    "sdl_scancode": "SDL_SCANCODE_LCTRL",
+    "windows_english_name": "Left Ctrl"
+   },
+   "secondary": {
+    "dik": "0x34",
+    "sdl_scancode": "SDL_SCANCODE_PERIOD",
+    "windows_english_name": "."
+   }
+  },
+  {
+   "label_key": "0xB3D1EA35",
+   "english": "Handbrake",
+   "action": 5,
+   "primary": {
+    "dik": "0x39",
+    "sdl_scancode": "SDL_SCANCODE_SPACE",
+    "windows_english_name": "Space"
+   },
+   "secondary": {
+    "dik": "0xCF",
+    "sdl_scancode": "SDL_SCANCODE_END",
+    "windows_english_name": "End"
+   }
+  },
+  {
+   "label_key": "0xDF5AEF26",
+   "english": "Nitrous Boost",
+   "action": 6,
+   "primary": {
+    "dik": "0x38",
+    "sdl_scancode": "SDL_SCANCODE_LALT",
+    "windows_english_name": "Left Alt"
+   },
+   "secondary": {
+    "dik": "0xB8",
+    "sdl_scancode": "SDL_SCANCODE_RALT",
+    "windows_english_name": "Right Alt"
+   }
+  },
+  {
+   "label_key": "0x419CA63A",
+   "english": "Camera",
+   "action": 10,
+   "primary": {
+    "dik": "0x2E",
+    "sdl_scancode": "SDL_SCANCODE_C",
+    "windows_english_name": "C"
+   },
+   "secondary": {
+    "dik": "0xD2",
+    "sdl_scancode": "SDL_SCANCODE_INSERT",
+    "windows_english_name": "Insert"
+   }
+  },
+  {
+   "label_key": "0x35B9F571",
+   "english": "Look Back",
+   "action": 9,
+   "primary": {
+    "dik": "0x30",
+    "sdl_scancode": "SDL_SCANCODE_B",
+    "windows_english_name": "B"
+   },
+   "secondary": {
+    "dik": "0x25",
+    "sdl_scancode": "SDL_SCANCODE_K",
+    "windows_english_name": "K"
+   }
+  },
+  {
+   "label_key": "0x4A1341B3",
+   "english": "Enter Race / Shop",
+   "action": 15,
+   "primary": {
+    "dik": "0x1C",
+    "sdl_scancode": "SDL_SCANCODE_RETURN",
+    "windows_english_name": "Enter"
+   },
+   "secondary": {
+    "dik": "0x3B",
+    "sdl_scancode": "SDL_SCANCODE_F1",
+    "windows_english_name": "F1"
+   }
+  },
+  {
+   "label_key": "0x1E7E3391",
+   "english": "World Map",
+   "action": 16,
+   "primary": {
+    "dik": "0x32",
+    "sdl_scancode": "SDL_SCANCODE_M",
+    "windows_english_name": "M"
+   },
+   "secondary": {
+    "dik": "0x3C",
+    "sdl_scancode": "SDL_SCANCODE_F2",
+    "windows_english_name": "F2"
+   }
+  },
+  {
+   "label_key": "0x58BAEBBA",
+   "english": "Read SMS",
+   "action": 17,
+   "primary": {
+    "dik": "0x0F",
+    "sdl_scancode": "SDL_SCANCODE_TAB",
+    "windows_english_name": "Tab"
+   },
+   "secondary": {
+    "dik": "0x3D",
+    "sdl_scancode": "SDL_SCANCODE_F3",
+    "windows_english_name": "F3"
+   }
+  },
+  {
+   "label_key": "0x735B2E6C",
+   "english": "Career Statistics",
+   "action": 18,
+   "primary": {
+    "dik": "0x14",
+    "sdl_scancode": "SDL_SCANCODE_T",
+    "windows_english_name": "T"
+   },
+   "secondary": {
+    "dik": "0x3E",
+    "sdl_scancode": "SDL_SCANCODE_F4",
+    "windows_english_name": "F4"
+   }
+  },
+  {
+   "label_key": "0x6FC04E6F",
+   "english": "Reset Car",
+   "action": 14,
+   "primary": {
+    "dik": "0x13",
+    "sdl_scancode": "SDL_SCANCODE_R",
+    "windows_english_name": "R"
+   },
+   "secondary": {
+    "dik": "0xC7",
+    "sdl_scancode": "SDL_SCANCODE_HOME",
+    "windows_english_name": "Home"
+   }
+  },
+  {
+   "label_key": "0xA081F0CC",
+   "english": "Hydraulics Pressure",
+   "action": 22,
+   "primary": {
+    "dik": "0x23",
+    "sdl_scancode": "SDL_SCANCODE_H",
+    "windows_english_name": "H"
+   },
+   "secondary": {
+    "dik": "0x15",
+    "sdl_scancode": "SDL_SCANCODE_Y",
+    "windows_english_name": "Y"
+   }
+  },
+  {
+   "label_key": "0x64730AAC",
+   "english": "Hydraulics Bounce",
+   "action": 19,
+   "primary": {
+    "dik": "0x24",
+    "sdl_scancode": "SDL_SCANCODE_J",
+    "windows_english_name": "J"
+   },
+   "secondary": {
+    "dik": "0x16",
+    "sdl_scancode": "SDL_SCANCODE_U",
+    "windows_english_name": "U"
+   }
+  },
+  {
+   "label_key": "0x6F99F62A",
+   "english": "Pause",
+   "action": 12,
+   "primary": {
+    "dik": "0x01",
+    "sdl_scancode": "SDL_SCANCODE_ESCAPE",
+    "windows_english_name": "Esc"
+   },
+   "secondary": {
+    "dik": "0x19",
+    "sdl_scancode": "SDL_SCANCODE_P",
+    "windows_english_name": "P"
+   }
+  }
+ ],
+ "hidden_actions": [
+  {
+   "action": 11,
+   "keys": [
+    {
+     "dik": "0x10",
+     "sdl_scancode": "SDL_SCANCODE_Q",
+     "windows_english_name": "Q"
+    },
+    {
+     "dik": "0x0D",
+     "sdl_scancode": "SDL_SCANCODE_EQUALS",
+     "windows_english_name": "="
+    }
+   ]
+  },
+  {
+   "action": 25,
+   "keys": [
+    {
+     "dik": "0x06",
+     "sdl_scancode": "SDL_SCANCODE_5",
+     "windows_english_name": "5"
+    }
+   ]
+  }
+ ],
+ "full_table_order": [
+  {
+   "action": 1,
+   "dik": "0xC8"
+  },
+  {
+   "action": 1,
+   "dik": "0x11"
+  },
+  {
+   "action": 2,
+   "dik": "0xD0"
+  },
+  {
+   "action": 2,
+   "dik": "0x1F"
+  },
+  {
+   "action": 3,
+   "dik": "0xCB"
+  },
+  {
+   "action": 3,
+   "dik": "0x1E"
+  },
+  {
+   "action": 4,
+   "dik": "0xCD"
+  },
+  {
+   "action": 4,
+   "dik": "0x20"
+  },
+  {
+   "action": 7,
+   "dik": "0x2A"
+  },
+  {
+   "action": 7,
+   "dik": "0x27"
+  },
+  {
+   "action": 8,
+   "dik": "0x1D"
+  },
+  {
+   "action": 8,
+   "dik": "0x34"
+  },
+  {
+   "action": 5,
+   "dik": "0x39"
+  },
+  {
+   "action": 5,
+   "dik": "0xCF"
+  },
+  {
+   "action": 6,
+   "dik": "0x38"
+  },
+  {
+   "action": 6,
+   "dik": "0xB8"
+  },
+  {
+   "action": 11,
+   "dik": "0x10"
+  },
+  {
+   "action": 11,
+   "dik": "0x0D"
+  },
+  {
+   "action": 10,
+   "dik": "0x2E"
+  },
+  {
+   "action": 10,
+   "dik": "0xD2"
+  },
+  {
+   "action": 9,
+   "dik": "0x30"
+  },
+  {
+   "action": 9,
+   "dik": "0x25"
+  },
+  {
+   "action": 12,
+   "dik": "0x01"
+  },
+  {
+   "action": 12,
+   "dik": "0x19"
+  },
+  {
+   "action": 14,
+   "dik": "0x13"
+  },
+  {
+   "action": 14,
+   "dik": "0xC7"
+  },
+  {
+   "action": 15,
+   "dik": "0x1C"
+  },
+  {
+   "action": 15,
+   "dik": "0x3B"
+  },
+  {
+   "action": 16,
+   "dik": "0x32"
+  },
+  {
+   "action": 16,
+   "dik": "0x3C"
+  },
+  {
+   "action": 17,
+   "dik": "0x0F"
+  },
+  {
+   "action": 17,
+   "dik": "0x3D"
+  },
+  {
+   "action": 18,
+   "dik": "0x14"
+  },
+  {
+   "action": 18,
+   "dik": "0x3E"
+  },
+  {
+   "action": 19,
+   "dik": "0x24"
+  },
+  {
+   "action": 19,
+   "dik": "0x16"
+  },
+  {
+   "action": 22,
+   "dik": "0x23"
+  },
+  {
+   "action": 22,
+   "dik": "0x15"
+  },
+  {
+   "action": 25,
+   "dik": "0x06"
+  },
+  {
+   "action": 49,
+   "dik": "0x48"
+  },
+  {
+   "action": 50,
+   "dik": "0x50"
+  },
+  {
+   "action": 51,
+   "dik": "0x4B"
+  },
+  {
+   "action": 52,
+   "dik": "0x4D"
+  },
+  {
+   "action": 53,
+   "dik": "0x47"
+  },
+  {
+   "action": 61,
+   "dik": "0x49"
+  },
+  {
+   "action": 62,
+   "dik": "0x26"
+  },
+  {
+   "action": 54,
+   "dik": "0x4F"
+  },
+  {
+   "action": 55,
+   "dik": "0x51"
+  },
+  {
+   "action": 56,
+   "dik": "0x1A"
+  },
+  {
+   "action": 57,
+   "dik": "0x1B"
+  },
+  {
+   "action": 58,
+   "dik": "0xEA"
+  },
+  {
+   "action": 59,
+   "dik": "0xE5"
+  },
+  {
+   "action": 60,
+   "dik": "0x22"
+  }
+ ]
+}

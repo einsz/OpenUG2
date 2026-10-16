@@ -29,6 +29,7 @@ struct AiCar {
     PhysRideState ride;
     PhysRideSupport support;
     int ride_ready;
+    float wheel_steer[2]; /* actual player front angles for render interpolation */
     int render_visible; /* renderer's last conservative frustum test; never simulation input */
 };
 

@@ -352,9 +352,9 @@ float phys_manual_step(PhysManual *s,const N2PhysicsAttr *a,int power,int transm
     return peak>0 ? pv_clamp((lo+(hi-lo)*t)/peak*ratio/box->forward[0],0,1.5f) : 0;
 }
 
-float phys_car_step(float pos[3], float vel[2], float *heading, float *speed,
+static float chassis_step(float pos[3], float vel[2], float *heading, float *speed,
                     float throttle, float steer, int handbrake,
-                    const PhysSurface *sf, const PhysVehicle *vh) {
+                    const PhysSurface *sf, const PhysVehicle *vh,int stage1) {
     static const PhysVehicle NEUTRAL = { 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f };
     if (!sf) sf = &PHYS_SURF_ROAD;
     if (!vh) vh = &NEUTRAL;
@@ -362,6 +362,7 @@ float phys_car_step(float pos[3], float vel[2], float *heading, float *speed,
     float hf[2] = { cosf(*heading), sinf(*heading) };
     float fwd = vel[0]*hf[0] + vel[1]*hf[1];   /* signed forward speed */
     if (handbrake) throttle = 0; /* hold at rest, including W/S + Space */
+    if (!stage1) {
     if (throttle > 0) {
         /* throttle tapers as speed builds: punchy off the line, eases near top */
         float sp = *speed < 0 ? -*speed : *speed;
@@ -377,11 +378,12 @@ float phys_car_step(float pos[3], float vel[2], float *heading, float *speed,
         vel[0] *= COAST_DRAG; vel[1] *= COAST_DRAG;
     }
     vel[0] *= sf->drag; vel[1] *= sf->drag;
+    }
     float spd = sqrtf(vel[0]*vel[0]+vel[1]*vel[1]);
     float dir = (vel[0]*hf[0]+vel[1]*hf[1]) < 0 ? -1.f : 1.f;  /* fwd vs reverse */
     float sfac = spd/(PHYS_MAXSPD*TURN_RAMP_FRAC); if (sfac > 1) sfac = 1;
     float hifrac = spd/PHYS_MAXSPD; if (hifrac > 1) hifrac = 1;
-    *heading += steer * PHYS_TURN * g_phys_tune.turn * sfac
+    if(stage1!=2)*heading += steer * PHYS_TURN * g_phys_tune.turn * sfac
                 * (1.0f - TURN_HISPD_DROP*hifrac) * dir * sf->steer * vh->steer;
     /* decompose velocity in the new heading frame, clamp forward, scrub side */
     float nf[2] = { cosf(*heading), sinf(*heading) }, nr[2] = { nf[1], -nf[0] };
@@ -389,11 +391,11 @@ float phys_car_step(float pos[3], float vel[2], float *heading, float *speed,
     /* Changing surface must not instantly delete half the car's speed.
        Above its surface limit, lose speed at the normal braking rate. */
     float limit = vf < 0 ? top*REVERSE_SPD_FRAC : top;
-    if (fabsf(vf) > limit)
+    if (!stage1 && fabsf(vf) > limit)
         vf = copysignf(fmaxf(limit,fabsf(vf)-PHYS_ACCEL*BRAKE_ACCEL),vf);
     /* surface and vehicle both scale retention; keep the product a contraction
        so a slide can never be amplified. */
-    { float lat = sf->lat * vh->lat;
+    if(stage1!=2) { float lat = sf->lat * vh->lat;
       if (lat > 0.99f) lat = 0.99f; if (lat < 0.50f) lat = 0.50f;
       vl *= handbrake ? fminf(HANDBRAKE_GRIP,lat+0.07f) : lat; }
     if (handbrake) {
@@ -407,6 +409,25 @@ float phys_car_step(float pos[3], float vel[2], float *heading, float *speed,
     *speed = vf;                      /* forward speed, for HUD/collision */
     pos[0] += vel[0]; pos[1] += vel[1];
     return vl < 0 ? -vl : vl;         /* drift magnitude */
+}
+
+float phys_car_step(float pos[3],float vel[2],float *heading,float *speed,
+                    float throttle,float steer,int handbrake,
+                    const PhysSurface *surface,const PhysVehicle *vehicle) {
+    return chassis_step(pos,vel,heading,speed,throttle,steer,handbrake,surface,vehicle,0);
+}
+
+float phys_stage1_chassis_step(float pos[3],float vel[2],float *heading,float *speed,
+                    float steer,int handbrake,const PhysSurface *surface,
+                    const PhysVehicle *vehicle) {
+    return chassis_step(pos,vel,heading,speed,0,steer,handbrake,surface,vehicle,1);
+}
+
+/* Stage4 already integrates yaw and lateral forces; retain only host Space
+ * stop/hold and position publication from the existing chassis helper. */
+float phys_stage4_chassis_step(float pos[3],float vel[2],float *heading,float *speed,
+                    int handbrake,const PhysSurface *surface,const PhysVehicle *vehicle) {
+    return chassis_step(pos,vel,heading,speed,0,0,handbrake,surface,vehicle,2);
 }
 
 /* Full throttle settles where the tapered thrust equals road drag:

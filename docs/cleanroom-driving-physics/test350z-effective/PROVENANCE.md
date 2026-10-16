@@ -1,0 +1,7 @@
+# Analyst provenance
+
+2026-10-15, fresh cleanroom-analyst role. Purpose: compatibility and a reversible provisional upgraded 350Z experiment, authorized by coordinator. Original executable SHA-256 f9dd86c054878ce6276beb07c1fd61874f7a1e4bf1f241b084c65b73e24168a7. Authorized original-reference repository was consulted as static research only; no OpenUG2 implementation files, tools, binaries or design/audit notes were read. No target execution/emulation occurred.
+
+Private reproducible evidence is `cleanroom/analysis/350z-effective-config/evidence/`; capture script is the sibling `scripts/capture.py`. E350E-1: fingerprinted executable byte ranges and disassembly for composition, construction and modifiers, constants and manifests in capture.json. E350E-2: local-fractions.json validates grade-major versus level-major equality for the inspected asset; both yield 34 flags. E350E-3: FINDINGS.md provides static reference traceability and bounded assumptions. Vectors are invented mathematical examples, not runtime captures or copied retail rows. File/format facts are observed; executable behavior is inferred; temporary experiment assumptions are provisional.
+
+The exact opening caller's composition entry policy, tuning/extras and runtime family remain unknown. This companion deliberately specifies the grade-reconstruction branch and requires the reconstructed flags equal the independently parsed preset selection. No exact parity claim is made. Fresh reviewer approval is required before implementation.

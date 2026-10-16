@@ -1,0 +1,272 @@
+{
+ "_provenance": "Synthetic arithmetic consequences of SPEC.md TM-15; not runtime captures. Texture statistics in TM-15.5 are [obs] from the user's install and are restated, not copied pixels.",
+ "constants": {
+  "vertex_rgb_byte": 128,
+  "colour_scale": 2,
+  "alpha_scale": 1,
+  "blend": "src*a + dst*(1-a)",
+  "depth_write": false,
+  "depth_func": "less_or_equal",
+  "cull": "none",
+  "alpha_test": false,
+  "depth_bias": 0,
+  "z_lift_m": 0.05,
+  "address_u": "wrap",
+  "address_v": "wrap",
+  "mip_filter": "linear",
+  "mip_levels": 3
+ },
+ "effective_alpha": [
+  {
+   "name": "road full intensity, opaque texel",
+   "Ib": 255,
+   "F": 0,
+   "texel_alpha": 127,
+   "vertex_alpha": 127,
+   "effective_alpha": 0.248043
+  },
+  {
+   "name": "road full intensity, mean texel",
+   "Ib": 255,
+   "F": 0,
+   "texel_alpha": 114.16,
+   "vertex_alpha": 127,
+   "effective_alpha": 0.222965
+  },
+  {
+   "name": "road minimum laid intensity",
+   "Ib": 76,
+   "F": 0,
+   "texel_alpha": 127,
+   "vertex_alpha": 38,
+   "effective_alpha": 0.074218
+  },
+  {
+   "name": "road gripping-saturated intensity",
+   "Ib": 85,
+   "F": 0,
+   "texel_alpha": 127,
+   "vertex_alpha": 42,
+   "effective_alpha": 0.08203
+  },
+  {
+   "name": "road intensity 255 under fade 128",
+   "Ib": 255,
+   "F": 128,
+   "texel_alpha": 127,
+   "vertex_alpha": 63,
+   "effective_alpha": 0.123045
+  },
+  {
+   "name": "dirt/grass full intensity, max texel",
+   "Ib": 255,
+   "F": 0,
+   "texel_alpha": 102,
+   "vertex_alpha": 127,
+   "effective_alpha": 0.199216
+  },
+  {
+   "name": "dirt/grass full intensity, mean texel",
+   "Ib": 255,
+   "F": 0,
+   "texel_alpha": 90.22,
+   "vertex_alpha": 127,
+   "effective_alpha": 0.176208
+  },
+  {
+   "name": "puddle (Ib 0)",
+   "Ib": 0,
+   "F": 0,
+   "texel_alpha": 127,
+   "vertex_alpha": 0,
+   "effective_alpha": 0.0
+  },
+  {
+   "name": "transparent texel",
+   "Ib": 255,
+   "F": 0,
+   "texel_alpha": 0,
+   "vertex_alpha": 127,
+   "effective_alpha": 0.0
+  }
+ ],
+ "source_colour": [
+  {
+   "name": "road mean visible texel",
+   "texel_rgb": [
+    8.31,
+    8.31,
+    8.31
+   ],
+   "src_rgb": [
+    0.032716,
+    0.032716,
+    0.032716
+   ]
+  },
+  {
+   "name": "road brightest texel",
+   "texel_rgb": [
+    17,
+    17,
+    17
+   ],
+   "src_rgb": [
+    0.066928,
+    0.066928,
+    0.066928
+   ]
+  },
+  {
+   "name": "dirt mean visible texel",
+   "texel_rgb": [
+    58.87,
+    53.91,
+    38.57
+   ],
+   "src_rgb": [
+    0.231768,
+    0.212241,
+    0.151848
+   ]
+  },
+  {
+   "name": "white texel (clamp check)",
+   "texel_rgb": [
+    255,
+    255,
+    255
+   ],
+   "src_rgb": [
+    1.0,
+    1.0,
+    1.0
+   ]
+  },
+  {
+   "name": "mid texel 128",
+   "texel_rgb": [
+    128,
+    128,
+    128
+   ],
+   "src_rgb": [
+    0.503929,
+    0.503929,
+    0.503929
+   ]
+  }
+ ],
+ "composite": [
+  {
+   "name": "road full mark over grey 0.5, one layer",
+   "dst_rgb": [
+    0.5,
+    0.5,
+    0.5
+   ],
+   "texel_rgb": [
+    8.31,
+    8.31,
+    8.31
+   ],
+   "texel_alpha": 127,
+   "Ib": 255,
+   "layers": 1,
+   "effective_alpha_per_layer": 0.248043,
+   "result_rgb": [
+    0.384093,
+    0.384093,
+    0.384093
+   ]
+  },
+  {
+   "name": "road full mark over grey 0.5, two overlapping layers",
+   "dst_rgb": [
+    0.5,
+    0.5,
+    0.5
+   ],
+   "texel_rgb": [
+    8.31,
+    8.31,
+    8.31
+   ],
+   "texel_alpha": 127,
+   "Ib": 255,
+   "layers": 2,
+   "effective_alpha_per_layer": 0.248043,
+   "result_rgb": [
+    0.296937,
+    0.296937,
+    0.296937
+   ]
+  },
+  {
+   "name": "road full mark over grey 0.5, four overlapping layers",
+   "dst_rgb": [
+    0.5,
+    0.5,
+    0.5
+   ],
+   "texel_rgb": [
+    8.31,
+    8.31,
+    8.31
+   ],
+   "texel_alpha": 127,
+   "Ib": 255,
+   "layers": 4,
+   "effective_alpha_per_layer": 0.248043,
+   "result_rgb": [
+    0.182117,
+    0.182117,
+    0.182117
+   ]
+  },
+  {
+   "name": "road min mark over grey 0.5, one layer",
+   "dst_rgb": [
+    0.5,
+    0.5,
+    0.5
+   ],
+   "texel_rgb": [
+    8.31,
+    8.31,
+    8.31
+   ],
+   "texel_alpha": 127,
+   "Ib": 76,
+   "layers": 1,
+   "effective_alpha_per_layer": 0.074218,
+   "result_rgb": [
+    0.465319,
+    0.465319,
+    0.465319
+   ]
+  },
+  {
+   "name": "dirt full mark (max texel) over grey 0.5, one layer",
+   "dst_rgb": [
+    0.5,
+    0.5,
+    0.5
+   ],
+   "texel_rgb": [
+    58.87,
+    53.91,
+    38.57
+   ],
+   "texel_alpha": 102,
+   "Ib": 255,
+   "layers": 1,
+   "effective_alpha_per_layer": 0.199216,
+   "result_rgb": [
+    0.446564,
+    0.442674,
+    0.430643
+   ]
+  }
+ ]
+}

@@ -166,6 +166,8 @@ int st_profile_path(const char *root, const char *name, char *out, size_t cap);
  * links or special files. Writes reject files with multiple hard links. */
 int st_profile_save(const char *root, const StProfile *p);     /* uses p->name; not atomic (3.3) */
 int st_profile_load(const char *root, const char *name, StProfile *out);
+/* ST_OK: occupied; ST_E_NOTFOUND: absent/empty; other errors: cannot establish absence. */
+int st_profile_status(const char *root, const char *name);
 int st_profile_exists(const char *root, const char *name);     /* directory holds anything */
 int st_profile_delete(const char *root, const char *name);
 int st_profiles_exist(const char *root);                       /* root holds anything besides . .. */

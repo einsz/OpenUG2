@@ -57,6 +57,9 @@ static const OmHubEntry k_hub[OM_HUB_ENTRIES] = {
     { 0x4DF98FB2u, 0xD0CF6EE1u, "Gameplay", 2 },
     { 0xD708EFEFu, 0xF760EABEu, "Player", 3 },
 };
+/* The Controls entry (CONTROLS_SPEC 2.1 row 5): icon OPTIONS_ICON_CONTROLS, label key of "Controls". Its text
+ * comes from the language file only: no English fallback is carried. */
+static const OmHubEntry k_hub_controls = { 0xA04A7B26u, 0x04DC6DB5u, NULL, OM_HUB_PAGE_CONTROLS };
 #define HUB_PAGE_DISPLAY 1
 
 /* ---- packages (SPEC_GUI 1.2) ------------------------------------------------------------------- */
@@ -65,12 +68,14 @@ const char *om_package_name(OmContext ctx, OmScreen screen) {
     if (screen == OM_SCREEN_CUSTOMIZE) return "UI_PC_Customize_Options.fng";
     if (screen == OM_SCREEN_DISPLAY) return ctx == OM_CTX_INGAME ? "UI_PauseOptions.fng" : "UI_Options.fng";
     if (screen == OM_SCREEN_HUB && ctx == OM_CTX_INGAME) return "UI_PauseOptionsMain.fng";
+    if (screen == OM_SCREEN_CONTROLS) return "UI_Options_PC_Controller.fng";
     return NULL;
 }
 uint32_t om_package_key(OmContext ctx, OmScreen screen) {
     if (screen == OM_SCREEN_CUSTOMIZE) return 0xC4ACC9A5u;
     if (screen == OM_SCREEN_DISPLAY) return ctx == OM_CTX_INGAME ? 0xAEA9078Fu : 0x551CA351u;
     if (screen == OM_SCREEN_HUB && ctx == OM_CTX_INGAME) return 0x73F51C74u;
+    if (screen == OM_SCREEN_CONTROLS) return 0xE0EE65E6u;
     return 0;
 }
 const char *om_hub_package_name(OmContext ctx) {
@@ -199,9 +204,10 @@ static void build_customize(OptionsMenu *m) {
 }
 
 static void build_hub(OptionsMenu *m) {
-    int first = m->hub_remembered >= 1 && m->hub_remembered <= OM_HUB_ENTRIES ? m->hub_remembered - 1 : 0;
+    m->hub_count = OM_HUB_ENTRIES + (m->controls_ok && m->bindings ? 1 : 0);
+    int first = m->hub_remembered >= 1 && m->hub_remembered <= m->hub_count ? m->hub_remembered - 1 : 0;
     gc_init(&m->hub, GC_RAIL_HUB);
-    gc_set_entries(&m->hub, OM_HUB_ENTRIES, NULL);
+    gc_set_entries(&m->hub, m->hub_count, NULL);
     gc_snap_to(&m->hub, first);                             /* first build snaps (3.2) */
     m->hub_ptr.armed = 0;
 }
@@ -215,6 +221,7 @@ static void enter_screen(OptionsMenu *m, OmScreen screen) {
     if (screen == OM_SCREEN_DISPLAY) build_display(m);
     else if (screen == OM_SCREEN_CUSTOMIZE) build_customize(m);
     else if (screen == OM_SCREEN_HUB) build_hub(m);
+    else if (screen == OM_SCREEN_CONTROLS) cm_open(&m->cm, m->bindings, &m->cm_plat);   /* always on the keyboard (D5) */
     int sel[OM_MAX_ROWS];
     for (int i = 0; i < m->nrows; i++) sel[i] = m->rows[i].selectable;
     om_list_init(&m->list, m->nrows, sel, 0);
@@ -227,11 +234,20 @@ static void begin(OptionsMenu *m, const OmConfig *cfg, StGraphics *gfx, const St
     int apply = m->apply_requested, reinit = m->reinit_requested;   /* pending requests survive */
     int writes = m->registry_writes, status = m->last_write_status;
     int remembered = m->hub_remembered;
+    CbBindings *bindings = m->bindings;
+    CmPlatform plat = m->cm_plat;
+    int controls_ok = m->controls_ok;
+    ControlsMenu cm_keep;                                   /* only its serials survive */
+    memset(&cm_keep, 0, sizeof cm_keep);
+    cm_keep.build_serial = m->cm.build_serial; cm_keep.blink_serial = m->cm.blink_serial;
+    cm_keep.scroll_serial = m->cm.scroll_serial; cm_keep.capture_serial = m->cm.capture_serial;
     unsigned build = m->build_serial, blink = m->blink_serial, exit = m->exit_serial, dlg = m->dialog_serial;
     memset(m, 0, sizeof *m);
     m->apply_requested = apply; m->reinit_requested = reinit;
     m->registry_writes = writes; m->last_write_status = status;
     m->hub_remembered = remembered;
+    m->bindings = bindings; m->cm_plat = plat; m->controls_ok = controls_ok;
+    m->cm = cm_keep;
     m->build_serial = build; m->blink_serial = blink; m->exit_serial = exit; m->dialog_serial = dlg;
     m->cfg = *cfg;
     m->gfx = gfx;
@@ -252,7 +268,13 @@ void om_open_hub(OptionsMenu *m, const OmConfig *cfg, StGraphics *gfx, const StG
     m->cfg.ctx = OM_CTX_INGAME;
     enter_screen(m, OM_SCREEN_HUB);
 }
+void om_set_controls(OptionsMenu *m, CbBindings *b, const CmPlatform *plat, int available) {
+    m->bindings = b;
+    if (plat) m->cm_plat = *plat;
+    m->controls_ok = available && b != NULL;
+}
 void om_close(OptionsMenu *m) {
+    cm_close(&m->cm);
     m->screen = OM_SCREEN_CLOSED;
     m->nrows = 0;
     memset(&m->dialog, 0, sizeof m->dialog);
@@ -334,6 +356,7 @@ const char *om_header(const OmContext ctx, OmScreen screen, int which, uint32_t 
     const char *t = NULL;
     if (screen == OM_SCREEN_CUSTOMIZE && which == 0) { k = OM_KEY_TITLE_CUSTOMIZE; t = "Customize Display Settings"; }
     else if (screen == OM_SCREEN_HUB && which == 0) { k = OM_KEY_TITLE_PAUSE; t = "PAUSE OPTIONS"; }
+    else if (screen == OM_SCREEN_CONTROLS && which == 0) k = CM_KEY_HEADER;        /* text: language file only */
     else if (screen == OM_SCREEN_DISPLAY) {
         if (ctx == OM_CTX_INGAME) {
             if (which == 0) { k = OM_KEY_TITLE_PAUSE; t = "PAUSE OPTIONS"; }
@@ -347,6 +370,11 @@ int om_dialog_is_open(const OptionsMenu *m) { return m->dialog.open; }
 int om_dialog_focus(const OptionsMenu *m) { return m->dialog.focus; }
 uint32_t om_dialog_button_key(int i) { return i == 0 ? OM_KEY_YES : OM_KEY_NO; }
 const OmHubEntry *om_hub_entry(int i) { return i >= 0 && i < OM_HUB_ENTRIES ? &k_hub[i] : NULL; }
+int om_hub_count(const OptionsMenu *m) { return m->hub_count ? m->hub_count : OM_HUB_ENTRIES; }
+const OmHubEntry *om_hub_entry_of(const OptionsMenu *m, int i) {
+    if (i == OM_HUB_ENTRIES && om_hub_count(m) > OM_HUB_ENTRIES) return &k_hub_controls;
+    return om_hub_entry(i);
+}
 int om_hub_focus(const OptionsMenu *m) { return m->hub.cur; }
 int om_hub_remembered(const OptionsMenu *m) { return m->hub_remembered; }
 
@@ -383,6 +411,7 @@ static void finish_exit(OptionsMenu *m) {
     switch (kind) {
     case OM_EXIT_TO_DISPLAY: enter_screen(m, OM_SCREEN_DISPLAY); break;     /* fresh build, focus on row 1 */
     case OM_EXIT_TO_CUSTOMIZE: enter_screen(m, OM_SCREEN_CUSTOMIZE); break;
+    case OM_EXIT_TO_CONTROLS: enter_screen(m, OM_SCREEN_CONTROLS); break;
     case OM_EXIT_LEAVE_DISPLAY:                              /* SPEC_GUI 5.1: write, then the hub */
         write_registry(m);
         if (m->cfg.ctx == OM_CTX_INGAME) enter_screen(m, OM_SCREEN_HUB);   /* UI_PauseOptionsMain.fng */
@@ -463,9 +492,11 @@ static GdInput dialog_input_of(OmInput in) {
 }
 
 static void hub_activate(OptionsMenu *m) {
-    int page = k_hub[m->hub.cur].page;
+    const OmHubEntry *e = om_hub_entry_of(m, m->hub.cur);
+    int page = e ? e->page : -1;
     m->page = page;
     if (page == HUB_PAGE_DISPLAY) begin_exit(m, OM_EXIT_TO_DISPLAY);
+    else if (page == OM_HUB_PAGE_CONTROLS) begin_exit(m, OM_EXIT_TO_CONTROLS);
     /* Audio, Gameplay and Player pages are not part of this project's scope: activation does nothing. */
 }
 
@@ -484,9 +515,58 @@ static void hub_input(OptionsMenu *m, OmInput in) {
     }
 }
 
+/* ---- Controls (CONTROLS_SPEC 4.3, 4.6, 4.7) ------------------------------------------------------------ */
+
+static CmInput cm_input_of(OmInput in) {
+    switch (in) {
+    case OM_IN_UP: return CM_IN_UP;
+    case OM_IN_DOWN: return CM_IN_DOWN;
+    case OM_IN_LEFT: return CM_IN_LEFT;
+    case OM_IN_RIGHT: return CM_IN_RIGHT;
+    case OM_IN_ACCEPT: return CM_IN_ACCEPT;
+    case OM_IN_BACK: return CM_IN_BACK;
+    case OM_IN_RESET: return CM_IN_RESET;
+    default: return CM_IN_NONE;                              /* Start does nothing here */
+    }
+}
+
+/* Acts on what the screen asked for: the reset dialog, or leaving (immediately: the screen's exit script posts
+ * exit-complete at 0 ms, 3.9). Leaving with changed bindings tells the host to persist them. */
+static void controls_pump(OptionsMenu *m) {
+    if (m->screen != OM_SCREEN_CONTROLS) return;
+    if (cm_take_reset(&m->cm)) {
+        GdSpec spec;
+        gd_spec(&spec, GD_CONTROLS_RESET, NULL);
+        gd_open(&m->dialog, &spec);
+        m->dialog_serial++;
+    }
+    if (cm_take_leave(&m->cm)) {
+        int changed = cm_take_modified(&m->cm);
+        enter_screen(m, OM_SCREEN_HUB);                      /* remembered entry: Controls */
+        if (changed) push_event(m, OM_EV_CONTROLS_CHANGED);
+    }
+}
+
+void om_key_down(OptionsMenu *m, int scancode) {
+    if (!om_is_open(m) || m->screen != OM_SCREEN_CONTROLS) return;
+    cm_key_down(&m->cm, scancode);
+}
+void om_pad_frame(OptionsMenu *m, const CbPadSample *s) {
+    if (!om_is_open(m) || m->screen != OM_SCREEN_CONTROLS) return;
+    cm_pad_frame(&m->cm, s);
+}
+void om_pointer_move(OptionsMenu *m, float x, float y) {
+    if (!om_is_open(m) || m->screen != OM_SCREEN_CONTROLS || m->dialog.open) return;
+    cm_pointer_move(&m->cm, x, y);
+}
+int om_controls_capturing(const OptionsMenu *m) {
+    return om_is_open(m) && m->screen == OM_SCREEN_CONTROLS && m->cm.capturing;
+}
+
 void om_input(OptionsMenu *m, OmInput in) {
     if (!om_is_open(m) || m->exiting) return;
     if (m->dialog.open) { gd_input(&m->dialog, dialog_input_of(in)); return; }
+    if (m->screen == OM_SCREEN_CONTROLS) { cm_input(&m->cm, cm_input_of(in)); controls_pump(m); return; }
     if (m->screen == OM_SCREEN_HUB) { hub_input(m, in); return; }
     if (m->nrows == 0) return;
     switch (in) {
@@ -512,6 +592,7 @@ static int in_rect(float x, float y, float x0, float y0, float w, float h) {
 void om_pointer_click(OptionsMenu *m, float x, float y) {
     if (!om_is_open(m) || m->exiting) return;
     if (m->dialog.open) { gd_pointer_click(&m->dialog, x, y); return; }   /* the dialog is modal */
+    if (m->screen == OM_SCREEN_CONTROLS) { cm_pointer_click(&m->cm, x, y); controls_pump(m); return; }
     if (m->screen == OM_SCREEN_HUB) {
         GcPtAction a = gc_pointer_press(&m->hub, &m->hub_ptr, x, y);
         if (a == GC_PT_LEFT) hub_input(m, OM_IN_LEFT);
@@ -540,13 +621,17 @@ void om_pointer_click(OptionsMenu *m, float x, float y) {
 void om_update(OptionsMenu *m, float seconds) {
     if (!om_is_open(m)) return;
     if (m->screen == OM_SCREEN_HUB) gc_update(&m->hub, seconds);
+    if (m->screen == OM_SCREEN_CONTROLS) cm_tick(&m->cm);
     if (m->dialog.open) {
         gd_update(&m->dialog, seconds);
         GdResult res = gd_poll(&m->dialog);
         if (res != GD_RES_NONE) {
             memset(&m->dialog, 0, sizeof m->dialog);
             m->dialog_serial++;                              /* the screen undims */
-            if (res == GD_RES_FIRST) defaults_yes(m);
+            if (res == GD_RES_FIRST) {
+                if (m->screen == OM_SCREEN_CONTROLS) cm_reset_device(&m->cm);   /* the displayed device (D5) */
+                else defaults_yes(m);
+            }
         }
     }
     if (!m->exiting) return;

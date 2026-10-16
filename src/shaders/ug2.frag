@@ -15,7 +15,7 @@ uniform float uRoadReflection; uniform vec4 uReflectionParams;
 uniform sampler2D uReflectionColor,uReflectionDepth; uniform mat4 uMVP;
 uniform float uRimTint;  /* >0: recolor the rim diffuse toward uColor */
 uniform vec3 uEmissive;  /* lamp emission added on top of the lit result */
-uniform float uVista;  /* >0.5: authored backdrop pass, alpha-blended */
+uniform float uVista;  /* >0.5: authored backdrop pass, alpha-blended; >1.5: tire-mark pass */
 uniform float uAlphaTest;  /* >0.5: discard below 0.5 texture alpha */
 uniform float uTextureAlpha;  /* >0.5: output alpha = texture2D(...).a *
    uAlpha instead of plain uAlpha (M135-R: N2_DRAW_BLEND/ADD world
@@ -113,6 +113,15 @@ void main(){
    proven sources, texture alpha and source vertex-colour alpha; nothing is
    keyed off black pixels. Fully clear texels are discarded so they cannot
    write depth-adjacent artefacts or fringe. */
+/* Tire-mark pass (tire-marks SPEC TM-15.1): texture x vertex colour, colour
+   doubled, alpha NOT doubled, no lighting/tint/alpha test, world fog on the
+   colour only. Vertex bytes are RGB 128 and alpha 0..127, so out.rgb is the
+   texel colour x 256/255 and out.a = texel alpha x vertexAlpha/255. */
+  if(uVista>1.5){
+    vec4 t = texture2D(uTex, vUV);
+    gl_FragColor = vec4(mix(uFogColor, clamp(2.0*t.rgb*vColor.rgb, 0.0, 1.0), fog), t.a*vColor.a);
+    return;
+  }
   if(uVista>0.5){
     vec4 t = texture2D(uTex, vUV);
     vec3 c = uUseTex>0.5 ? t.rgb : uColor;

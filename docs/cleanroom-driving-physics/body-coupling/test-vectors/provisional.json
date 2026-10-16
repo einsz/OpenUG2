@@ -1,0 +1,964 @@
+{
+  "provenance": "synthetic, statically inferred law; no runtime execution",
+  "vectors": [
+    {
+      "id": "selected_0",
+      "input": {
+        "M": 2,
+        "Iz": 4,
+        "kI": 2,
+        "s": 0,
+        "B_columns": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ],
+        "Fprepared_world": [
+          0,
+          0,
+          0
+        ],
+        "Tprepared_world": [
+          0,
+          0,
+          0
+        ],
+        "held_Omega_world": [
+          0,
+          0,
+          0
+        ],
+        "wheels": [
+          {
+            "mount_xy": [
+              0,
+              1
+            ],
+            "heading": [
+              1,
+              0,
+              0
+            ],
+            "lateral": [
+              0,
+              1,
+              0
+            ],
+            "Fx": 4,
+            "Fy": 0,
+            "normal_load": 0
+          },
+          {
+            "mount_xy": [
+              0,
+              0
+            ],
+            "heading": [
+              1,
+              0,
+              0
+            ],
+            "lateral": [
+              0,
+              1,
+              0
+            ],
+            "Fx": 0,
+            "Fy": 0,
+            "normal_load": 0
+          },
+          {
+            "mount_xy": [
+              0,
+              0
+            ],
+            "heading": [
+              1,
+              0,
+              0
+            ],
+            "lateral": [
+              0,
+              1,
+              0
+            ],
+            "Fx": 0,
+            "Fy": 0,
+            "normal_load": 0
+          },
+          {
+            "mount_xy": [
+              0,
+              0
+            ],
+            "heading": [
+              1,
+              0,
+              0
+            ],
+            "lateral": [
+              0,
+              1,
+              0
+            ],
+            "Fx": 0,
+            "Fy": 0,
+            "normal_load": 0
+          }
+        ]
+      },
+      "derivation": "synthetic arithmetic from BC-1/2; not original execution",
+      "expected": {
+        "e_local": [
+          0,
+          0,
+          0
+        ],
+        "inverse_selected_yaw": 0.25,
+        "ax": 2.0,
+        "ay": 0.0,
+        "alpha": -1.0,
+        "Ai": [
+          3.0,
+          2.0,
+          2.0,
+          2.0
+        ]
+      }
+    },
+    {
+      "id": "selected_1",
+      "input": {
+        "M": 2,
+        "Iz": 4,
+        "kI": 2,
+        "s": 1,
+        "B_columns": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ],
+        "Fprepared_world": [
+          0,
+          0,
+          0
+        ],
+        "Tprepared_world": [
+          0,
+          0,
+          0
+        ],
+        "held_Omega_world": [
+          0,
+          0,
+          0
+        ],
+        "wheels": [
+          {
+            "mount_xy": [
+              0,
+              1
+            ],
+            "heading": [
+              1,
+              0,
+              0
+            ],
+            "lateral": [
+              0,
+              1,
+              0
+            ],
+            "Fx": 4,
+            "Fy": 0,
+            "normal_load": 0
+          },
+          {
+            "mount_xy": [
+              0,
+              0
+            ],
+            "heading": [
+              1,
+              0,
+              0
+            ],
+            "lateral": [
+              0,
+              1,
+              0
+            ],
+            "Fx": 0,
+            "Fy": 0,
+            "normal_load": 0
+          },
+          {
+            "mount_xy": [
+              0,
+              0
+            ],
+            "heading": [
+              1,
+              0,
+              0
+            ],
+            "lateral": [
+              0,
+              1,
+              0
+            ],
+            "Fx": 0,
+            "Fy": 0,
+            "normal_load": 0
+          },
+          {
+            "mount_xy": [
+              0,
+              0
+            ],
+            "heading": [
+              1,
+              0,
+              0
+            ],
+            "lateral": [
+              0,
+              1,
+              0
+            ],
+            "Fx": 0,
+            "Fy": 0,
+            "normal_load": 0
+          }
+        ]
+      },
+      "derivation": "synthetic arithmetic from BC-1/2; not original execution",
+      "expected": {
+        "e_local": [
+          0,
+          0,
+          0
+        ],
+        "inverse_selected_yaw": 0.125,
+        "ax": 2.0,
+        "ay": 0.0,
+        "alpha": -0.5,
+        "Ai": [
+          2.5,
+          2.0,
+          2.0,
+          2.0
+        ]
+      }
+    },
+    {
+      "id": "signed_lateral_projection",
+      "input": {
+        "M": 2,
+        "Iz": 4,
+        "kI": 2,
+        "s": 0,
+        "B_columns": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ],
+        "Fprepared_world": [
+          0,
+          4,
+          0
+        ],
+        "Tprepared_world": [
+          0,
+          0,
+          0
+        ],
+        "held_Omega_world": [
+          0,
+          0,
+          0
+        ],
+        "wheels": [
+          {
+            "mount_xy": [
+              0,
+              0
+            ],
+            "heading": [
+              0,
+              1,
+              0
+            ],
+            "lateral": [
+              -1,
+              0,
+              0
+            ],
+            "Fx": 0,
+            "Fy": 0,
+            "normal_load": 0
+          },
+          {
+            "mount_xy": [
+              0,
+              0
+            ],
+            "heading": [
+              1,
+              0,
+              0
+            ],
+            "lateral": [
+              0,
+              1,
+              0
+            ],
+            "Fx": 0,
+            "Fy": 0,
+            "normal_load": 0
+          },
+          {
+            "mount_xy": [
+              0,
+              0
+            ],
+            "heading": [
+              1,
+              0,
+              0
+            ],
+            "lateral": [
+              0,
+              1,
+              0
+            ],
+            "Fx": 0,
+            "Fy": 0,
+            "normal_load": 0
+          },
+          {
+            "mount_xy": [
+              0,
+              0
+            ],
+            "heading": [
+              1,
+              0,
+              0
+            ],
+            "lateral": [
+              0,
+              1,
+              0
+            ],
+            "Fx": 0,
+            "Fy": 0,
+            "normal_load": 0
+          }
+        ]
+      },
+      "derivation": "synthetic arithmetic from BC-1/2; not original execution",
+      "expected": {
+        "e_local": [
+          0,
+          4,
+          0
+        ],
+        "inverse_selected_yaw": 0.25,
+        "ax": 0.0,
+        "ay": 2.0,
+        "alpha": 0.0,
+        "Ai": [
+          -2.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "id": "external_torque_and_spin_excluded",
+      "input": {
+        "M": 2,
+        "Iz": 4,
+        "kI": 2,
+        "s": 0,
+        "B_columns": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ],
+        "Fprepared_world": [
+          0,
+          0,
+          0
+        ],
+        "Tprepared_world": [
+          2,
+          3,
+          8
+        ],
+        "held_Omega_world": [
+          1,
+          2,
+          3
+        ],
+        "wheels": [
+          {
+            "mount_xy": [
+              1,
+              2
+            ],
+            "heading": [
+              1,
+              0,
+              0
+            ],
+            "lateral": [
+              0,
+              1,
+              0
+            ],
+            "Fx": 0,
+            "Fy": 0,
+            "normal_load": 0
+          },
+          {
+            "mount_xy": [
+              0,
+              0
+            ],
+            "heading": [
+              1,
+              0,
+              0
+            ],
+            "lateral": [
+              0,
+              1,
+              0
+            ],
+            "Fx": 0,
+            "Fy": 0,
+            "normal_load": 0
+          },
+          {
+            "mount_xy": [
+              0,
+              0
+            ],
+            "heading": [
+              1,
+              0,
+              0
+            ],
+            "lateral": [
+              0,
+              1,
+              0
+            ],
+            "Fx": 0,
+            "Fy": 0,
+            "normal_load": 0
+          },
+          {
+            "mount_xy": [
+              0,
+              0
+            ],
+            "heading": [
+              1,
+              0,
+              0
+            ],
+            "lateral": [
+              0,
+              1,
+              0
+            ],
+            "Fx": 0,
+            "Fy": 0,
+            "normal_load": 0
+          }
+        ]
+      },
+      "derivation": "synthetic arithmetic from BC-1/2; not original execution",
+      "expected": {
+        "e_local": [
+          0,
+          0,
+          0
+        ],
+        "inverse_selected_yaw": 0.25,
+        "ax": 0.0,
+        "ay": 0.0,
+        "alpha": 0.0,
+        "Ai": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "id": "tilted_local_force",
+      "input": {
+        "M": 2,
+        "Iz": 4,
+        "kI": 2,
+        "s": 0,
+        "B_columns": [
+          [
+            0,
+            0,
+            1
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            -1,
+            0,
+            0
+          ]
+        ],
+        "Fprepared_world": [
+          0,
+          0,
+          6
+        ],
+        "Tprepared_world": [
+          0,
+          0,
+          0
+        ],
+        "held_Omega_world": [
+          0,
+          0,
+          0
+        ],
+        "wheels": [
+          {
+            "mount_xy": [
+              0,
+              0
+            ],
+            "heading": [
+              1,
+              0,
+              0
+            ],
+            "lateral": [
+              0,
+              1,
+              0
+            ],
+            "Fx": 0,
+            "Fy": 0,
+            "normal_load": 0
+          },
+          {
+            "mount_xy": [
+              0,
+              0
+            ],
+            "heading": [
+              1,
+              0,
+              0
+            ],
+            "lateral": [
+              0,
+              1,
+              0
+            ],
+            "Fx": 0,
+            "Fy": 0,
+            "normal_load": 0
+          },
+          {
+            "mount_xy": [
+              0,
+              0
+            ],
+            "heading": [
+              1,
+              0,
+              0
+            ],
+            "lateral": [
+              0,
+              1,
+              0
+            ],
+            "Fx": 0,
+            "Fy": 0,
+            "normal_load": 0
+          },
+          {
+            "mount_xy": [
+              0,
+              0
+            ],
+            "heading": [
+              1,
+              0,
+              0
+            ],
+            "lateral": [
+              0,
+              1,
+              0
+            ],
+            "Fx": 0,
+            "Fy": 0,
+            "normal_load": 0
+          }
+        ]
+      },
+      "derivation": "synthetic arithmetic from BC-1/2; not original execution",
+      "expected": {
+        "e_local": [
+          6,
+          0,
+          0
+        ],
+        "inverse_selected_yaw": 0.25,
+        "ax": 3.0,
+        "ay": 0.0,
+        "alpha": 0.0,
+        "Ai": [
+          3.0,
+          3.0,
+          3.0,
+          3.0
+        ]
+      }
+    },
+    {
+      "id": "normal_force_moment_excluded",
+      "input": {
+        "M": 2,
+        "Iz": 4,
+        "kI": 2,
+        "s": 0,
+        "B_columns": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ],
+        "Fprepared_world": [
+          0,
+          0,
+          0
+        ],
+        "Tprepared_world": [
+          0,
+          0,
+          0
+        ],
+        "held_Omega_world": [
+          0,
+          0,
+          0
+        ],
+        "wheels": [
+          {
+            "mount_xy": [
+              1,
+              0
+            ],
+            "heading": [
+              1,
+              0,
+              0
+            ],
+            "lateral": [
+              0,
+              1,
+              0
+            ],
+            "Fx": 0,
+            "Fy": 0,
+            "normal_load": 6
+          },
+          {
+            "mount_xy": [
+              0,
+              0
+            ],
+            "heading": [
+              1,
+              0,
+              0
+            ],
+            "lateral": [
+              0,
+              1,
+              0
+            ],
+            "Fx": 0,
+            "Fy": 0,
+            "normal_load": 0
+          },
+          {
+            "mount_xy": [
+              0,
+              0
+            ],
+            "heading": [
+              1,
+              0,
+              0
+            ],
+            "lateral": [
+              0,
+              1,
+              0
+            ],
+            "Fx": 0,
+            "Fy": 0,
+            "normal_load": 0
+          },
+          {
+            "mount_xy": [
+              0,
+              0
+            ],
+            "heading": [
+              1,
+              0,
+              0
+            ],
+            "lateral": [
+              0,
+              1,
+              0
+            ],
+            "Fx": 0,
+            "Fy": 0,
+            "normal_load": 0
+          }
+        ]
+      },
+      "derivation": "synthetic arithmetic from BC-1/2; not original execution",
+      "expected": {
+        "e_local": [
+          0,
+          0,
+          0
+        ],
+        "inverse_selected_yaw": 0.25,
+        "ax": 0.0,
+        "ay": 0.0,
+        "alpha": 0.0,
+        "Ai": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "id": "mixed_forces_candidate_basis",
+      "input": {
+        "M": 2,
+        "Iz": 4,
+        "kI": 2,
+        "s": 1,
+        "B_columns": [
+          [
+            1,
+            0.5,
+            0
+          ],
+          [
+            -0.5,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ],
+        "Fprepared_world": [
+          2,
+          -4,
+          6
+        ],
+        "Tprepared_world": [
+          0,
+          0,
+          0
+        ],
+        "held_Omega_world": [
+          0,
+          0,
+          0
+        ],
+        "wheels": [
+          {
+            "mount_xy": [
+              1,
+              2
+            ],
+            "heading": [
+              1,
+              0,
+              0
+            ],
+            "lateral": [
+              0,
+              1,
+              0
+            ],
+            "Fx": 4,
+            "Fy": 2,
+            "normal_load": 0
+          },
+          {
+            "mount_xy": [
+              -2,
+              1
+            ],
+            "heading": [
+              0,
+              1,
+              0
+            ],
+            "lateral": [
+              -1,
+              0,
+              0
+            ],
+            "Fx": 2,
+            "Fy": -4,
+            "normal_load": 0
+          },
+          {
+            "mount_xy": [
+              1,
+              -1
+            ],
+            "heading": [
+              1,
+              0,
+              0
+            ],
+            "lateral": [
+              0,
+              1,
+              0
+            ],
+            "Fx": -2,
+            "Fy": 6,
+            "normal_load": 0
+          },
+          {
+            "mount_xy": [
+              -1,
+              -2
+            ],
+            "heading": [
+              0,
+              -1,
+              0
+            ],
+            "lateral": [
+              1,
+              0,
+              0
+            ],
+            "Fx": 4,
+            "Fy": -2,
+            "normal_load": 0
+          }
+        ]
+      },
+      "derivation": "synthetic arithmetic from BC-1/2; not original execution",
+      "expected": {
+        "e_local": [
+          0.0,
+          -5.0,
+          6
+        ],
+        "inverse_selected_yaw": 0.125,
+        "ax": 2.0,
+        "ay": 0.5,
+        "alpha": -1.25,
+        "Ai": [
+          4.5,
+          -3.0,
+          0.75,
+          1.75
+        ]
+      }
+    }
+  ]
+}

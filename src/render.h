@@ -300,6 +300,15 @@ typedef struct {
                 halo;        /* lamp halos: src alpha + one, no depth write */
 } UG2CarPipelines;
 void render_car_pipelines(const RProg *r, UG2CarPipelines *p);
+
+/* Tire-mark pass (tire-marks SPEC TM-15). begin binds the glass pipeline (source-alpha
+   blend, depth test <=, no depth write, no culling, no bias) and sets the shader to the
+   mark law: out.rgb = clamp(2*texel.rgb*vertex.rgb), out.a = texel.a*vertex.a, world fog
+   on the colour, no lighting, tint or alpha test. The caller binds GpuMesh streams, the
+   texture and draws; end restores the shader state begin changed. */
+typedef struct { float unlit, use_tex, alpha, vcolor, vista; } RMarkSaved;
+void render_mark_begin(const RProg *r, RMarkSaved *saved);
+void render_mark_end(const RProg *r, const RMarkSaved *saved);
 /* Screen-space quads (GpuMesh layout, no depth test, no culling): the
    diagnostic HUD, menu overlay and text, and the HUD art / nitro overlay. */
 typedef struct {

@@ -1,0 +1,364 @@
+# Stage5 independent implementation
+
+Approved input: SPEC.md SHA-256
+`131e2c9e26091c647fb96bdb9ac0891e43c309487abe1e984b4408b711eec16e`,
+reviewed components.json (77 cases), surfaces.json (29 six-channel rows) and
+README. Stage1–4 companion hashes were checked against their approvals before
+implementation; no specification/vector was edited. Implementer inputs were
+approved shared specs/reviews/questions/vectors, this skill, and the explicitly
+permitted independent src/tools/Makefile and design/documentation baseline.
+No original executable, raw asset, analyst evidence, original source,
+PROVENANCE/HANDOFF or verification report was inspected. Only the independent
+native application's ordinary loaders used the user-authorized installation.
+
+## Design and requirement mapping
+
+- S5-0/1: `contact.h/.c` defines an independent finite-input component API.
+  `drive_contact.c:stage5_car_read` adds only approved row fields through the
+  baseline GLOBALB framing, validates them, and leaves upgrades/variants outside
+  the contract. `ct_inertia` supplies both stock diagonals; `ct_change_centre`
+  handles explicit changed-centre geometry. The host chooses the existing
+  unscaled box yaw-inertia mode. Drivetrain wheel inertia remains `.01`.
+- S5-2: `ct_frame` refreshes held mount arms/preloads; `ct_preload` uses signed
+  exported speed, previous aero enable, stock centre-enabled shares and explicit
+  ride offsets. The playable host supplies zero lift offsets. It does not add
+  Stage2 reported load to preload or spring load.
+- S5-3/4: `ct_post` queries in 0/1/2/3 order and samples each pair's currently
+  stored travel. `ct_spring` clamps geometric travel, retains rates at small/zero
+  h, distinguishes exact lower endpoint from clamped noncontact, and applies
+  progressive spring/damping/paired coupling without presentation-reference
+  subtraction. World height/normal/ID are external. Bump is sampled before
+  override/steep-normal processing. Noncontact produces zero scalar/aligned load.
+  `ct_bottom/ct_impulse` expose requested impulse and independent supplied vector
+  caps. The playable host reports requests with application suppressed, then runs
+  one zero-duration ordered sweep after any upper-limit test, without an Euler
+  update. Unknown caps/rest impulses are not guessed.
+- S5-5: `ct_apply` supports all four force selectors, retained noncontact point,
+  full world wheel heading/lateral/up transformation, contact application point
+  and full cross-product moment. Positive-load alignment is independent of a
+  component contact flag; composed noncontacts have scalar zero. All contacts
+  are aligned before coupling. Provisional five-pass coupling retains body-local
+  planar forces and r0.x/r0.y arms; it never accumulates final normal forces.
+- S5-6: separate blend, eta, grip and speed conversion helpers expose strict
+  component boundaries. `DrvEnv.supplied_frame_grip` bypasses the lower-stage
+  shorthand gamma when the complete Stage5 front/rear grip is supplied. Stage1
+  player rear-speed factor and response scale still apply once. The composed
+  brake distribution selects corrected binary32 signed-forward mph; direct S3
+  fixture entry remains unchanged. Signed reverse B is neither absolutized nor
+  clamped. Nonzero H uses existing Stage3 relief/lock/spin/direction/smoothing.
+- S5-7: the small normative numeric mapping is encoded directly in independent
+  `CtSurface` records. Peak/sliding/spin/body/bump remain independent; bump uses
+  floor cells and nonnegative modular sample indices. `sample` supplies fresh
+  wheel channels; frame refresh uses exported surfaces/contact flags for body
+  drag. No unreviewed semantic material labels are mapped.
+- S5-8: `stage5_drive_step` is the selected composition entry, separated from the
+  existing lower-stage adapter. Creation performs zero-time preparation before
+  the first changed pedal frame. Frame preload precedes mode refresh; shared
+  exclusivity/brake distribution occurs in `drv_frame_begin` once. Handbrake/
+  grip refresh once, then derivative/Euler/post/geometry/aero/coupling/final
+  accumulation proceeds. No current frame input removes preceding prepared
+  wheel forces before their first derivative. Contact/surface/load/speed snapshots
+  export only after all substeps. Reset preserves config/providers and restores
+  creation travel/rate/blend, without attempting restored-state reconstruction.
+
+## Explicit host architecture and limits
+
+The original full body/momentum/angular/world/material producer is unknown. This
+round does not invent one. The independent OpenUG2 ride supplies heave, pitch,
+roll and their rates; these are prescribed/extrapolated trajectories, with
+cosmetic body_roll excluded. The host uses XY body-centre coordinates and the
+fixed vertical bridge `P.z=carpos.z+centre.z-mean(mount.z-radius)`. During substeps
+P.z/pitch/roll extrapolate the input rates. P.xy and yaw integrate the actual
+transformed forces/moments. Its body accumulators retain full vertical forces
+and pitch/roll moments for inspection/external 3D consumers, but the prescribed
+ride owns playable vertical motion. Integrated vertical momentum is discarded
+at the explicit constraint; it does not feed another ride force/gravity pass.
+Dynamic brake/throttle pitch and full 3D load transfer therefore remain open.
+No `M*a*height/wheelbase` shortcut or cosmetic-lean contact producer was added.
+Prescribed pose tests are clearly distinguished from dynamic pedal causality.
+
+`stage5_world_query` uses the existing independent reachable-wheel query, unit
+triangle normals, upward .25 m host reach and downward max(stock droop, existing
+host swept fall reach). Missing support supplies a valid up normal and ID1.
+Every selected triangle uses the explicit ordinary numeric ID1 fixture; arbitrary
+IDs remain injectable. This is not a recovered material mapping. The host selects
+bottoming suppression because retail cap values are unknown. Query/reference,
+impulse, vertical bridge and body choices are documented fixture policies, not
+retail facts. I5-1 was added to QUESTIONS.md to target future reviewed producers.
+Other supplied choices: q=1, X/event/v0/s0=0, reduction=0, scale=1, zero damage,
+ordinary state, initial locks=0, relief enabled, zero extra angular damping,
+no nitrous/upgrades/launch. Existing steering histories remain host box filters.
+
+`--drivetrain` loads Stage5 for initial car and transactional car switch. Existing
+reset/race-mode/pause paths keep the new configuration and clear transients.
+Legacy default and drag/drift remain unchanged. Audio/HUD/wheel presentation keep
+reading the composed engine/wheel state. Main no longer calls the arcade chassis
+hold/velocity scaling on the Stage5 path. Collision-produced XY velocities enter
+the following simulation sample without resetting wheel spin or yaw.
+
+## Tests-first and coverage
+
+`tools/contact_test.c` encoded all 77 reviewed cases before contact behavior was
+written; the initial test build failed at undefined ct_* symbols as expected
+(`/tmp/stage5-red.log`). No implementation architecture came from original code.
+All component vectors and each of 29 x 6 surface parameters pass, 503 checks.
+Additional `tools/drive_stage5_test.c` covers stock inertia/centre shift,
+centre-disabled preload share, override-before-steep handling, independent impulse
+caps/suppression, four force selectors, synthetic stock field mapping/rejection,
+moving handbrake braking/release/blend, service brakes, mirrored steering,
+prescribed opposite pitch/roll consequences, ordered liftoff/recontact,
+first-derivative retained force with new HB/missing terrain, preload aero latency,
+wheel/body surface snapshot timing, bottom extra sweep, reverse, reset/switch,
+collision velocity, pause and exact 30/60/90/144/240 Hz state equality.
+Accounting compares each full force/moment to once-only gravity, freshly computed
+aero and the four final wheel contributions. Frame and blend/post counts are
+checked against actual composed operations, not only component arithmetic.
+
+Prior approved fixtures are retained byte-for-byte. Stage1–4 independent tests
+continue to exercise their supplied boundaries; the S5 opt-in flag changes only
+the composed signed brake speed and complete grip entry. No prior vector was
+silently rewritten to accommodate supersession.
+
+## Validation commands and results
+
+Validation is recorded below after the source freeze. Native bounded drives use
+normal controls/world queries and ordinary independent loaders, never original
+execution or direct asset inspection. No runtime/differential parity is claimed.
+
+Executed commands (workspace root; compiler `cc`, system C99 toolchain):
+
+```sh
+make contact-test drive-stage5-test lateral-test drive-stage4-test braking-test resistance-test drivetrain-test drive-stage1-test physics-clock-test district-collision-test > /tmp/stage5-all-tests.log 2>&1
+cc -O2 -std=c99 -Wall -Wextra -Werror -Wno-unused-function -Wno-misleading-indentation -D_DEFAULT_SOURCE -Isrc tools/contact_test.c src/contact.c src/resistance.c src/braking.c -lm -o /tmp/stage5-strict-component
+/tmp/stage5-strict-component
+cc -O2 -std=c99 -Wall -Wextra -Werror -Wno-unused-function -Wno-misleading-indentation -D_DEFAULT_SOURCE -Isrc tools/drive_stage5_test.c src/drive_contact.c src/contact.c src/drive_stage1.c src/drivetrain.c src/braking.c src/lateral.c src/resistance.c src/physics.c -lm -o /tmp/stage5-strict-adapter
+/tmp/stage5-strict-adapter
+cc -O1 -g -std=c99 -Wall -Wextra -Wno-unused-function -Wno-misleading-indentation -D_DEFAULT_SOURCE -fsanitize=address,undefined -fno-omit-frame-pointer -Isrc tools/contact_test.c src/contact.c src/resistance.c src/braking.c -lm -o /tmp/stage5-asan-component
+ASAN_OPTIONS=detect_leaks=1 /tmp/stage5-asan-component > /tmp/stage5-asan-component.log 2>&1
+cc -O1 -g -std=c99 -Wall -Wextra -Wno-unused-function -Wno-misleading-indentation -D_DEFAULT_SOURCE -fsanitize=address,undefined -fno-omit-frame-pointer -Isrc tools/drive_stage5_test.c src/drive_contact.c src/contact.c src/drive_stage1.c src/drivetrain.c src/braking.c src/lateral.c src/resistance.c src/physics.c -lm -o /tmp/stage5-asan-adapter
+ASAN_OPTIONS=detect_leaks=1 /tmp/stage5-asan-adapter > /tmp/stage5-asan-adapter.log 2>&1
+ASAN_OPTIONS=detect_leaks=0 /tmp/stage5-asan-component > /tmp/stage5-asan-component-noleaks.log 2>&1
+ASAN_OPTIONS=detect_leaks=0 /tmp/stage5-asan-adapter > /tmp/stage5-asan-adapter-noleaks.log 2>&1
+make normal > /tmp/stage5-normal.log 2>&1
+make gles > /tmp/stage5-gles.log 2>&1
+make debug > /tmp/stage5-debug.log 2>&1
+```
+
+Results: component Stage5 503 checks, Stage4 208, Stage3 479, Stage2 348,
+Stage1 3,606, all zero failures. Stage1/4/5 adapters, physics clock and district
+collision suites pass. New adapter test after the source freeze also passes its
+opposite prescribed pitch/roll and real lifecycle-count assertions. Strict new
+component/adapter executables pass. Existing baseline misleading-indentation and
+unused static-header warnings are disabled in the strict command; no new warning
+category was hidden. ASan+UBSan executes both suites successfully with leak
+detection disabled, with no memory/undefined-behavior diagnostic. Both initial
+`detect_leaks=1` runs failed at LeakSanitizer's environment/ptrace limitation;
+therefore no leak-check success is claimed. Normal and GLES builds pass with
+existing baseline warnings. Debug/native completion is recorded below.
+
+### Final lifecycle correction and repeat
+
+A self-audit before final delivery found that the upper-limit branch repeated
+only contact geometry. S5-8 requires the established full post callback sweep.
+The implementation now repeats body publication/force clearing/gravity and
+`drv_post` (wheel, engine and clutch post callbacks) before the h=0 contact
+sweep. It still performs no derivative or Euler integration. A new regression
+sets an explicit supplied OPEN clutch state with a pending target and observes
+that its target-gear transition occurs during the zero sweep. The test failed
+before this correction at `zero_sweep_gear==2`
+(`/tmp/stage5-zero-sweep-red.log`), then passed. No requirement/vector changed.
+
+The full eleven-target command above was repeated successfully against this final
+source, logged as `/tmp/stage5-all-tests-final.log`. Source/tests were re-frozen
+at that point. Strict adapter and ASan+UBSan adapter were recompiled with the
+same commands/flags above; final logs are `/tmp/stage5-strict-adapter.log` and
+`/tmp/stage5-asan-adapter-final.log`. GLES/debug were rebuilt from final source,
+with final logs `/tmp/stage5-gles-final.log` and `/tmp/stage5-debug-final.log`.
+The earlier normal build was before this narrow post-sweep correction; final
+GLES/debug compile the corrected complete application sources.
+
+The pre-correction native logs `/tmp/stage5-native.log` (420 ticks, normal build)
+and `/tmp/stage5-final.log` (900 ticks, debug build) are preliminary evidence,
+not final-source proof. The latter naturally recorded 106 wall-response frames,
+61.67 km/h peak, 80.43 m travelled, and zero NaN/Z/XY-out-of-bounds flags. Both
+used real controls and world queries; no body state was forced. A final-source
+native run and capture inspection are recorded below.
+
+### Final-source native acceptance
+
+```sh
+DISPLAY=:0 SDL_AUDIODRIVER=dummy ./nfsu2 '/home/dq/Games/Need for Speed Underground 2' --car 240SX --drivetrain --track STREAML4RA --resolution 640x360 --drive-audit /tmp/stage5-accepted --frames 900 > /tmp/stage5-accepted.log 2>&1
+```
+
+This completed with exit 0 after the final debug rebuild. The debug executable
+is left on disk. Native summary: 61.67 km/h peak, 20.16 km/h final, 80.43 m
+travelled, 106 naturally occurring wall-response frames, no rail response;
+NaN/Z/XY-out-of-bounds flags all zero. All 78 Stage5 telemetry rows are finite.
+At tick169 signed speed is 3.21296 m/s. The moving HB pulse at170 requests rear
+H=5 (front 0), blend .666667; by184 speed is 1.49768 m/s and blend .5. Release
+at185 gives H=0 and blend .516667; at195 blend .683333 and speed 1.89130 m/s,
+showing recovery. The preceding prepared force persists at release as specified.
+Loads respond to actual road/ride geometry: at169 aligned N is
+(4.66100,3.33783,3.64865,4.57950) kN; at184 it is
+(4.04868,4.06427,3.58194,3.55717). Steering/service-brake phases likewise retain
+finite variable travel and loads. These are prescribed-host geometry outcomes,
+not evidence of recovered dynamically integrated brake-pitch.
+
+Spawn and end captures `/tmp/stage5-accepted_spawn.png` and
+`/tmp/stage5-accepted_end.png` were viewed: the car, wheels and world render
+coherently; the ending car is beside the wall naturally encountered by the
+script. No body velocity/load/contact was forced to manufacture acceptance.
+Logs/captures show independent OpenUG2 output only. No original executable was
+launched, nor were original raw data files inspected directly.
+
+Final source fingerprints: `drive_contact.c`
+`4a4a3639846affff7521f5f31b62352338a68b705f362ddff80a179630788dd9`;
+`drive_stage5_test.c`
+`40a2c171b2f3e915e988a431f9c707a2ff714711adfd5ea52f4935799da4e51d`.
+Approved Stage1–5 SPEC hashes and all Stage5 vector/README hashes remain unchanged.
+The only appended shared question is I5-1; PROVENANCE/HANDOFF/report artifacts
+belong to the coordinator/verifier and were not edited or read by this role.
+No stage/commit/push was performed.
+
+## Intermittent 240SX braking investigation and manual trace — 2026-10-15
+
+The reported intermittent wheelspin/standstill or bog after service braking
+was not reproduced as an isolated implementation defect. No tyre, clutch,
+brake-lock, suspension, collision or force-lifecycle equation was changed.
+S3-4 expressly retains locks when its motion predicate is false; pedal release
+alone cannot justify an unconditional unlock. S5-0 excludes complete rest/stuck
+handling, and the existing unknowns remain open. No shared requirement or vector
+was changed and no new normative answer was inferred from these experiments.
+
+Independent diagnostic design: `src/drive_trace.h` writes only supplied const
+state to a caller-owned stream. The opt-in `--drivetrain-trace FILE` selects the
+same drivetrain as `--drivetrain` and records each actual simulation tick after
+world and vehicle collision responses. It never produces driver inputs or
+advances physics. `active` identifies legacy race modes. The CLI opens/closes
+the stream and flushes every 60 ticks. The trace does not read original assets;
+the native application's existing loaders remain the only runtime data path.
+
+The recorded distinctions follow S1-2/S3-7/S5-8: incoming prepared force,
+final next-prepared force, pre-host body velocity, final host velocity, and
+wheel/contact snapshots remain separate. S3-4/5 lock/torque/spin, S5-3/4 travel
+and aligned loads, S5-5 final wheel forces, and external collision observations
+allow classification without changing their contracts. `ride_*`/pitch/roll are
+the host's updated pose after its ride step; contact forces belong to the
+preceding drivetrain preparation. Ordinary UI and default simulation behavior
+are unchanged. Usage and units are in `docs/DRIVETRAIN.md`.
+
+Tests-first: `tools/drive_trace_test.c` initially failed to compile at the absent
+`drive_trace.h` (`/tmp/drive_trace_red.log`). Its completed test verifies matching
+CSV schemas, representative values distinguishing host/body velocity and old/new
+forces, zero-load contacting wheels, lock/spin/torque/blocker columns, and bytewise
+immutability of both input structures. `make drive-trace-test` passes. Strict
+C99 compilation passes with the baseline static parser's unused-function and
+misleading-indentation warnings disabled. ASan+UBSan passes with leak detection
+disabled. The trace test also compiles with `aarch64-linux-gnu-gcc`; no ARM64
+runtime/emulator was available, so this is a build check only.
+
+The existing component/adapter/clock/collision targets all pass in
+`/tmp/stationary-tests.log`: contact, drive-stage5, lateral, drive-stage4,
+braking, resistance, drivetrain, drive-stage1, physics-clock, district-collision,
+plus the new trace test. Approved SPEC hashes remain unchanged.
+
+Reproduction limits: a 900-case synthetic sweep of drive share, ordinary/strong
+service brakes and 1–150 braking ticks recovered. Additional supported synthetic
+ride offsets, recontact and 0–12% plane grades recovered; the grade experiment
+used approved Stage1 240SX parameters with invented suspension geometry, not a
+claim of complete stock-car tuning. Native 240SX default-heading service brake,
+coast and relaunch runs recovered. A native uphill-heading variant displayed
+800 RPM and roughly 0.8–1.3 m/s during part of full-throttle recovery, but also
+encountered repeated wall responses (100 by tick600); it does not isolate the
+reported persistent stall and is not evidence for a tyre or clutch fix.
+
+Final native trace smoke uses normal loaders and `--drive-audit` only as its
+control producer (`/tmp/stationary-trace-smoke.log/.csv`): 420 unique monotonic
+ticks, 133 columns per row, all finite, service/HB/release recorded. W still
+requests service brake for two ticks while reversing at the release transition,
+then service coefficients clear; this is the existing keyboard policy. A
+separate no-audit `--shot --perf-still` smoke checks that enabling capture does
+not inject acceleration. No successful physical keyboard injection is claimed:
+the available xdotool could not access a display. Manual-user capture remains
+necessary to classify the intermittent occurrence. No commit or push performed.
+
+## Host direction handoff accelerator hold — 2026-10-15
+
+This is independent host keyboard policy at U3-1/U5-4, where original device and
+reverse mapping are outside the approved contract. The five SPEC.md hashes were
+checked against their current REVIEW.md approvals before implementation and
+remain unchanged. No new original-behavior requirement or vector is inferred.
+
+Root cause in the Stage5 adapter: the near-rest direction latch changed before
+the actual gearbox completed its clutch transition. The adapter then supplied
+the new W/S accelerator demand through the still-opposite actual gear. An
+Engaging clutch could remain powered while its target was already the other
+direction. The independently generated pre-fix `/tmp/stationary-repeat.csv`
+contains 25 W/actual-reverse/nonzero-throttle rows; tick310 has pedal1,
+displayed gear-1, displayed target1, mode2, engagement .3875 and throttle1.
+Trace/HUD gear indices are R=-1, N=0 and first=1; these differ from the core's
+R=0, N=1 and first=2. An initial temporary diagnostic query used the core index
+for the CSV and was corrected; the baseline capture was not modified.
+
+`src/drive_contact.c` now withholds the raw accelerator when either the actual
+gear or the still-pending target opposes the latched requested direction.
+Checking the target also covers an interrupted handoff whose gear changes
+inside the tick. The conservative hold may last until the following 60 Hz tick.
+Service braking uses the existing signed-motion snapshot beyond the +/-0.3 m/s
+handoff window, including a latch left by an interrupted transition/collision.
+The selector still receives automatic-forward or direct-reverse command.
+
+S1-5 pedal exclusivity, dead zone and anti-stall shaping still run exactly once
+per frame in `drv_frame_begin`; shaped throttle stays held throughout its
+substeps. S2 frame resistance inputs, S4 steering and S5 grip/brake consumers
+therefore see coherent frame inputs. S1-4 clutch/selector equations, S1-3 engine,
+S1-7 tyre coupling, S3 lock handling and S5 contacts are unchanged. Following
+S1-2/S3-7/S5-8, previously prepared forces and stored engine/wheel energy remain;
+the policy prevents fresh opposite-direction accelerator demand, without
+promising instantaneous removal of all opposite-directed force or motion.
+Lower Stage1–4 supplied-input fixtures and default/alternate legacy models are
+unchanged.
+
+Tests were written first. `/tmp/direction-handoff-red.log` records the existing
+code failing the opposite-actual-gear throttle assertion during a substep query.
+`tools/drive_stage5_test.c` now checks both directions in all four clutch modes,
+actual/target disagreement within a tick, rapid alternating W/S followed by a
+sustained launch, ordinary neutral launch, normal partial throttle and the
+forward anti-stall floor, motion-opposing brakes with a mismatched latch, finite
+recovery and preservation of the incoming prepared-force derivative. Its final
+123,220 substep observations pass. These are invented host regression states,
+not additions to approved original-behavior vectors.
+
+Validation: contact, drive-stage5, lateral, drive-stage4, braking, resistance,
+drivetrain, drive-stage1, physics-clock, district-collision and drive-trace
+targets pass (`/tmp/direction-handoff-tests.log`, plus final Stage5 output in
+`/tmp/direction-handoff-final-test.log`). Strict C99 `-Wall -Wextra -Werror`
+passes with the baseline parser's unused-function and misleading-indentation
+warnings suppressed. Final Stage5 ASan+UBSan passes with leak detection disabled.
+ARM64 cross-compilation passes; no ARM64 runtime/emulator was available, so no
+ARM64 runtime result is claimed. GLES and debug builds pass, and the final
+debug executable is left at `nfsu2`.
+
+Final native check used normal stock loaders, existing input-only `--drive-audit`
+and observational `--drivetrain-trace`:
+
+```sh
+DISPLAY=:0 SDL_AUDIODRIVER=dummy ./nfsu2 '/home/dq/Games/Need for Speed Underground 2' --car 240SX --drivetrain --track STREAML4RA --resolution 640x360 --drive-audit /tmp/direction-handoff-native --drivetrain-trace /tmp/direction-handoff-native.csv --frames 900
+```
+
+Exit0; 900 unique ticks, 133 columns each, all finite. At ticks346–347 W is
+held with displayed actual R=-1, target first=1 and throttle0. First is selected
+at348; throttle resumes at349; signed speed becomes positive at351 and reaches
+4.8886 m/s at420 with no wall response through this recovery. No row supplies
+nonzero throttle in an actual gear opposite the latched requested direction.
+Later wall responses occur; the viewed ending capture shows the car beside a
+wall. This does not reproduce or resolve every persistent stall, or establish
+original-runtime parity. Physical keyboard injection was unavailable; the
+existing script supplies inputs only. No original runtime, raw asset analysis,
+analyst material or verification report was accessed. No shared questions or
+vectors were edited, and no commit/push was performed.
+
+Frozen implementation SHA-256: `drive_contact.c`
+`7fb35d1f09fdcab2ed00e70d021072695397a841dc08c10f0f5355a7dd3c316d`;
+`drive_stage5_test.c`
+`c64f58bd2938b969bb3930799980c18dc26f0fa981c24ddf2338f780d88bf993`.

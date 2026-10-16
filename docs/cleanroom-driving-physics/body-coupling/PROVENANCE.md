@@ -1,0 +1,5 @@
+# Coupling provenance
+
+2026-10-15, fresh cleanroom-analyst. Purpose: authorized interoperability analysis of provisional tyre/body acceleration coupling, answering BR-I1. Input executable SHA-256 f9dd86c054878ce6276beb07c1fd61874f7a1e4bf1f241b084c65b73e24168a7. Static analysis only; original never executed. Approved body-response and Stage1–5 behavioral specifications were read. An authorized analyst-only original-derived reference was used to locate executable evidence. Independent implementation, implementation design, tests, verification reports and audits were not read.
+
+Recovered requirements: inferred from static evidence. Synthetic vectors: generated from independent arithmetic using those requirements. Private reproducibility register: cleanroom/analysis/body-coupling/evidence/FINDINGS.md and manifest.json; capture script under its scripts directory. Original-derived material remains exclusively private. No public documentation or internet source was used. Reviewer approval is pending; this file grants no implementation authorization.
