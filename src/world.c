@@ -2199,6 +2199,9 @@ float world_camera_clip(const N2Scene *s,const float (*bounds)[4],
     for(int mi=0;mi<s->count;mi++) {
         const N2Mesh*m=&s->meshes[mi];
         if(m->cat==N2_SKY || m->cat==N2_GLOW || n2_world_effect_only(m))continue;
+        /* Visible structures remain camera-solid when BUN replaces body walls. */
+        int visible=m->cat!=N2_COLLISION && (m->cat==N2_ROAD || m->cat==N2_TERRAIN ||
+            m->scen==N2_SC_BUILDING || m->scen==N2_SC_WALL || m->scen==N2_SC_STRUCT);
         if(bounds && (fmaxf(anchor[0],eye[0])+radius<bounds[mi][0] ||
            fminf(anchor[0],eye[0])-radius>bounds[mi][2] ||
            fmaxf(anchor[1],eye[1])+radius<bounds[mi][1] ||
@@ -2208,16 +2211,9 @@ float world_camera_clip(const N2Scene *s,const float (*bounds)[4],
           const uint16_t *idx=pass?m->wall_idx:m->idx;
           int count=pass?m->wall_nidx:m->nidx;
           if (!verts || !idx || (pass && m->wall_policy==1) ||
-              (!pass && ((m->ground_disabled && m->wall_policy) ||
-               (m->wall_policy && m->cat!=N2_ROAD && m->cat!=N2_TERRAIN)))) continue;
+              (!pass && m->wall_policy && !visible)) continue;
           for(int ti=0;ti+2<count;ti+=3) {
             const float*a=verts+5*idx[ti],*b=verts+5*idx[ti+1],*c=verts+5*idx[ti+2];
-            if (!pass && m->wall_policy) {
-                float ux=b[0]-a[0],uy=b[1]-a[1],uz=b[2]-a[2];
-                float vx=c[0]-a[0],vy=c[1]-a[1],vz=c[2]-a[2];
-                float nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;
-                if (nz*nz<.09f*(nx*nx+ny*ny+nz*nz)) continue;
-            }
             int outside=0;
             for(int k=0;k<3;k++)
                 if(fmaxf(anchor[k],eye[k])+radius<fminf(a[k],fminf(b[k],c[k])) ||

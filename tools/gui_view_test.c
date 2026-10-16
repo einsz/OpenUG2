@@ -380,6 +380,16 @@ static void test_list_view(void) {
     CHECK(!strcmp(s.scene.nodes[v.header].text_override, "PAUSE OPTIONS") && !strcmp(s.scene.nodes[v.header2].text_override, "DISPLAY"), "in-game headers");
     CHECK(s.scene.nodes[v.arrow1].app_hidden && s.scene.nodes[v.arrow2].app_hidden && !s.scene.nodes[v.rail].app_hidden, "in-game Display: scrollbar arrows hidden");
     CHECK(v.row[1].backing < 0, "no backing objects in the in-game package: the focused row has none");
+    int mouse_look=0;x.cfg.mouse_look=&mouse_look;
+    om_open_hub(&x.m,&x.cfg,&x.g,&x.caps,&x.store);
+    om_input(&x.m,OM_IN_RIGHT);om_input(&x.m,OM_IN_RIGHT);om_input(&x.m,OM_IN_ACCEPT);om_update(&x.m,1);
+    CHECK(gv_list_bind(&v,&s,&x.m),"bind optional Gameplay list: %s",s.status);
+    gv_list_sync(&v,&x.m,0);
+    CHECK(!strcmp(s.scene.nodes[v.header2].text_override,"Gameplay"),"Gameplay title uses existing authored header");
+    CHECK(!strcmp(s.scene.nodes[v.row[1].name].text_override,"Right mouse look") &&
+          !strcmp(s.scene.nodes[v.row[1].data].text_override,"Off"),"project mouse setting label and Off value render");
+    om_input(&x.m,OM_IN_RIGHT);gv_list_sync(&v,&x.m,0);
+    CHECK(mouse_look && !strcmp(s.scene.nodes[v.row[1].data].text_override,"On!"),"project mouse setting localized On value renders");
     gv_screen_free(&s);
     st_reg_close(&x.store);
     /* binding fails closed without the arrow art: the packages leave the arrows untextured */

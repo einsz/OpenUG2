@@ -244,6 +244,18 @@ static void test_car_switch_archive(const char *root) {
         assert(fabsf(candidate.wheel.rear_axle-expected.rear_axle)<1e-6f);
         assert(fabsf(candidate.wheel.front_track-expected.front_track)<1e-6f);
         assert(fabsf(candidate.wheel.rear_track-expected.rear_track)<1e-6f);
+        N2CarShapeAttr shape;
+        if(n2_global_car_shape(global,len,cars[i],&shape))for(int k=0;k<4;k++){
+            assert(fabsf(candidate.profile.wheel_r*candidate.wheel.visual_radius_scale[k]-shape.wheel[k].radius)<1e-6f);
+            assert(fabsf(candidate.profile.wheel_w*candidate.wheel.visual_width_scale[k]-shape.wheel[k].width)<1e-6f);
+        }
+        Stage1Drive untouched=g_stage1;
+        publish_performance_source(candidate.has_physics?&candidate.physics:NULL,global,len,cars[i]);
+        assert(!memcmp(&untouched,&g_stage1,sizeof untouched));
+        if(!strcmp(cars[i],"CIVIC")||!strcmp(cars[i],"A3")){
+            assert(g_dbg.perf_stock_available&&g_dbg.perf_mass==shape.mass_tonnes);
+            assert(g_dbg.perf_radius[0]==shape.wheel[0].radius&&g_dbg.perf_width[2]==shape.wheel[2].width);
+        }
         car_switch_release(&candidate);
         assert(!live_buffers && !live_textures);
     }
@@ -290,7 +302,39 @@ static void test_vinyl_archives(const char *root) {
     clear_car_vinyl();test_real_assets=0;
 }
 
+/* Synthetic source sizes must affect only wheel geometry, never hubs/brakes. */
+static void test_source_wheel_visual_fit(void) {
+    unsigned char data[16+N2_GLOBAL_CAR_STRIDE]={0};
+    uint32_t tag=0x34600,bytes=sizeof data-8;memcpy(data,&tag,4);memcpy(data+4,&bytes,4);memset(data+8,0x11,8);
+    unsigned char *row=data+16;strcpy((char*)row,"FITCAR");strcpy((char*)row+0x40,"CARS\\FITCAR\\GEOMETRY.BIN");
+    float value;
+#define FIT_F(at,v) do{value=(v);memcpy(row+(at),&value,4);}while(0)
+    FIT_F(0x220,1);FIT_F(0x224,4);FIT_F(0x228,2);FIT_F(0x22c,1.5f);
+    FIT_F(0x230,1);FIT_F(0x244,1);FIT_F(0x258,1);
+    for(uint32_t i=0;i<4;i++){int w=0x120+0x30*i;
+        FIT_F(w,i<2?1.2f:-1.3f);FIT_F(w+4,(i&1)?-.8f:.8f);
+        FIT_F(w+0x10,i<2?.3f:.32f);FIT_F(w+0x14,i<2?.24f:.26f);memcpy(row+w+0x18,&i,4);}
+#undef FIT_F
+    N2CarProfile profile={.wheel_r=.4f,.wheel_w=.2f};int source=0;
+    VehicleWheelConfig wheel=wheel_config_for("FITCAR",&profile,data,sizeof data,&source);assert(source);
+    PhysRideState ride={0};ride.compression[0]=.02f;
+    float actual[4][16],brake[4][16];ai_wheel_matrices(&wheel,1,.3f,.2f,&ride,actual,brake);
+    for(int i=0;i<4;i++){
+        float radius=sqrtf(actual[i][0]*actual[i][0]+actual[i][1]*actual[i][1]+actual[i][2]*actual[i][2])*.4f;
+        float width=sqrtf(actual[i][4]*actual[i][4]+actual[i][5]*actual[i][5]+actual[i][6]*actual[i][6])*.2f;
+        assert(fabsf(radius-(i<2?.3f:.32f))<1e-6f);assert(fabsf(width-(i<2?.24f:.26f))<1e-6f);
+        assert(actual[i][12]==brake[i][12]&&actual[i][13]==brake[i][13]&&actual[i][14]==brake[i][14]);
+        assert(fabsf(sqrtf(brake[i][0]*brake[i][0]+brake[i][1]*brake[i][1])-1)<1e-6f);
+    }
+    assert(profile.wheel_r==.4f&&profile.wheel_w==.2f&&ride.compression[0]==.02f);
+    wheel=wheel_config_for("FITCAR",&profile,NULL,0,&source);assert(!source);
+    ai_wheel_matrices(&wheel,1,0,0,NULL,actual,brake);assert(actual[0][0]==1&&actual[0][5]==1&&actual[0][10]==1);
+    assert(g_dbg.body_drop==0);
+    publish_performance_source(NULL,NULL,0,"missing");assert(!g_dbg.perf_source_available&&!g_dbg.perf_stock_available);
+    puts("source wheel visual fit: per-wheel diameter/width, unchanged hubs/brakes/physics, missing-source fallback and zero default lowering PASS");
+}
 int main(int argc,char **argv) {
+    test_source_wheel_visual_fit();
     RhiTexture roaming_tex={new_handle(2)}, player_tex={new_handle(2)};
     RhiTexture texmap[]={roaming_tex,player_tex};
     car_texture_map_clear(texmap,2,&roaming_tex,1);

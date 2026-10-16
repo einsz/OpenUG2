@@ -44,7 +44,7 @@ int cam_drift_allowed(int drift_event, int event_id);
 
 /* Per-player stored option, persisted in a small text file (docs/CAMERA.md D3). */
 #define CAM_PLAYERS 2
-typedef struct { int opt[CAM_PLAYERS]; } CamSettings;
+typedef struct { int opt[CAM_PLAYERS]; int mouse_look; } CamSettings;
 void cam_settings_defaults(CamSettings *s);
 /* Default location: $OPENUG2_CONFIG_DIR, else $XDG_CONFIG_HOME/openug2, else
  * $HOME/.config/openug2, file camera.cfg. Returns 0 if no location is known. */
@@ -154,6 +154,12 @@ void cam_pose(const CamState *s, const CamCarFrame *car, CamPose *out);
  * Cuts and exact current-tick captures bypass interpolation. */
 void cam_render_pose(const CamState *before, const CamState *after,
                      const CamCarFrame *car, float alpha, CamPose *out);
+
+/* Optional OpenUG2 mouse look; anchors the displayed pose to the moving car. */
+typedef struct { CamPose local; float yaw, pitch; } CamMouseLook;
+void cam_mouse_look_begin(CamMouseLook *s, const CamPose *display, const CamCarFrame *car);
+void cam_mouse_look_move(CamMouseLook *s, float dx, float dy); /* radians */
+void cam_mouse_look_pose(const CamMouseLook *s, const CamCarFrame *car, CamPose *out);
 
 /* ---- projection (SPEC 7) -------------------------------------------------- */
 /* Policy (SPEC 7.1, OpenUG2 addition): ORIGINAL is SPEC 7 with the real viewport;

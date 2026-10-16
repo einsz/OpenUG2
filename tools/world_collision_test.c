@@ -56,7 +56,10 @@ static void roadside(void) {
         assert(contact(m,x+.1f,6)==(n==7) && !contact(m,x+.1f,9));
         float face[9];assert(phys_wall_debug_face(m,0,.3f,face)==wall);
         N2Scene one={m,1,1};float anchor[]={x-2,0,.5f},eye[]={x+2,0,.5f};
-        assert((world_camera_clip(&one,NULL,anchor,eye,.1f)<1)==wall);
+        int camera_wall=n!=3 && n!=4; /* visible road/terrain/buildings/barriers, not decorative props */
+        int camera_hit=world_camera_clip(&one,NULL,anchor,eye,.1f)<1;
+        if(camera_hit!=camera_wall)fprintf(stderr,"camera fixture %d %s category %d scenery %d hit %d expected %d\n",n,names[n],m->cat,m->scen,camera_hit,camera_wall);
+        assert(camera_hit==camera_wall);
         float ground=99;int expected=n<2?(n==0?WSURF_ROAD:WSURF_TERRAIN):WSURF_NONE;
         assert(world_ground_at(&one,x-1,0,1,&ground)==expected);
         WGroundHit hit;int verdict;
@@ -64,7 +67,7 @@ static void roadside(void) {
         assert(verdict==(n<2?WWS_CONTACT:WWS_NOCOVER));
         float from[]={x-1,0,1},to[]={x-1,0,-1};
         assert((world_ground_sweep(&one,from,to,NULL)<1)==(n<2));
-        assert((world_camera_clip(&one,NULL,from,to,.1f)<1)==(n<3));
+        assert((world_camera_clip(&one,NULL,from,to,.1f)<1)==camera_wall);
         if(n<2)assert(fabsf(ground)<1e-6f);
         else assert(n2_ground_z(&one,x-1,0,99)==99);
     }
@@ -290,7 +293,7 @@ static void pilot_roadside_boundary(void) {
         N2Scene one={m+n,1,1};float ground=99,anchor[]={40*n-2,0,.5f},eye[]={40*n+2,0,.5f};
         assert(!m[n].ground_disabled && !contact(m+n,40*n+.1f,0));
         assert(world_ground_at(&one,40*n-1,0,1,&ground)==WSURF_TERRAIN && fabsf(ground)<1e-6f);
-        assert(world_camera_clip(&one,NULL,anchor,eye,.1f)==1);
+        assert(world_camera_clip(&one,NULL,anchor,eye,.1f)<1); /* visible terrain still blocks the camera */
     }
     assert(wce_roadside(&city_collision_edits,&s,0));
     assert(contact(m,.1f,0) && contact(m+1,35.1f,0));
@@ -391,7 +394,7 @@ int main(void) {
     assert(world_ground_at(&terrain,-1,0,1,&ground)!=WSURF_NONE&&fabsf(ground)<1e-6f);
     float from[]={-1,0,1},to[]={-1,0,-1};assert(world_ground_sweep(&terrain,from,to,NULL)<1);
     float anchor[]={-2,0,.5f},eye[]={2,0,.5f};N2Scene one={s.meshes,1,1};
-    assert(world_camera_clip(&one,NULL,anchor,eye,.1f)==1);
+    assert(world_camera_clip(&one,NULL,anchor,eye,.1f)<1); /* visible source facade, body walls replaced by BUN */
     one.meshes=s.meshes+3;anchor[0]=14;eye[0]=18;anchor[2]=eye[2]=6;
     assert(world_camera_clip(&one,NULL,anchor,eye,.1f)<1);
     float obst[8][4],z[8][2];int src[8],count=phys_collect_walls(&s,obst,src,z,8);

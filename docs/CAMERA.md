@@ -18,7 +18,8 @@ Code: `src/camera.c/.h` (pure maths, no GL/SDL), glue in `src/main.c`
 | `C` | next view: Bumper, Hood, Close, Far (then Super Far in drift events), wrap (SPEC 2.3) |
 | `Shift+C` | previous view |
 | hold `B` | look back (SPEC 6.13); the view mirrors through the car's vertical axis |
-| `F`, hold right mouse | existing free-flight camera / bounded orbit (unchanged, they override the gameplay camera while active) |
+| hold right mouse | optional OpenUG2 mouse look: orbit from the displayed external camera, or turn the view from a mounted Bumper/Hood/Driver camera |
+| `F` | developer free-flight camera |
 
 The choice is stored per player (two slots; slot 1 is driven) and written to a
 small text file whenever it changes, so it survives restarts:
@@ -26,6 +27,20 @@ small text file whenever it changes, so it survives restarts:
 * `$OPENUG2_CONFIG_DIR/camera.cfg`, else `$XDG_CONFIG_HOME/openug2/camera.cfg`,
   else `$HOME/.config/openug2/camera.cfg`;
 * lines `camera_option_p1=3`, `camera_option_p2=3`; default is `3` (Far).
+
+Right mouse look is an OpenUG2 addition, off by default. Enable it under
+**Pause > Options > Gameplay > Right mouse look**. The choice is stored as
+`right_mouse_look=0|1` in the same camera file; older files default to off.
+Holding the button starts from the displayed eye, direction, distance and FOV.
+External views orbit their current car-relative target; mounted views keep the
+eye attached to the car and turn the look direction. Releasing the button returns
+to the normal camera. Pausing, losing focus or changing view cancels mouse look.
+Mounted mouse look is limited to 35 degrees left/right and 15 degrees upward
+from its original direction. External orbit cannot tilt below its target plane
+(or below the starting angle if it was already lower), keeping it out from under
+the car. External mouse look keeps a clear above-road sweep
+anchor and retracts against road sheets and visible building/wall/structure
+surfaces, even where original BUN polygons replace their vehicle collision.
 
 Starting a drift event selects Super Far (option 4); starting any other race
 event moves option 4 back to Far and otherwise leaves the choice alone
@@ -42,13 +57,15 @@ panel shows the active view. Build `make camera-test` (optionally
 ## What stays on the old code
 
 The menu orbit (`race_state == 3`), `--shot-yaw/--shot-pitch` captures, the
-right-mouse orbit, the `F` free camera and `--chase D,H` keep the previous
+`--perf-orbit` diagnostic, the `F` free camera and `--chase D,H` keep the previous
 spring/free-camera code (`render_camera_ease`, `render_free_camera`, the
 `chase_*` sliders). The gameplay camera takes over whenever none of those own
 the view. `phys_landing_camera` is still computed (its tests and callers are
 unchanged) but is no longer added to the gameplay camera: the spec has no
 landing bounce; vertical motion arrives through the car pose, the acceleration
-terms and shake. `world_camera_clip` is reused for the world-collision pass.
+terms and shake. Optional mouse look transforms a copy of the displayed gameplay
+pose without changing its simulation smoothers or driving state.
+`world_camera_clip` is reused for the world-collision pass.
 
 ## Spec coverage
 

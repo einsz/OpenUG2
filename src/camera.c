@@ -87,6 +87,7 @@ int cam_drift_allowed(int drift_event, int event_id) {
 /* ---- settings file ------------------------------------------------------------ */
 void cam_settings_defaults(CamSettings *s) {
     for (int i = 0; i < CAM_PLAYERS; i++) s->opt[i] = CAM_OPT_DEFAULT;
+    s->mouse_look = 0;
 }
 int cam_settings_path(char *out, size_t cap) {
     const char *d = getenv("OPENUG2_CONFIG_DIR");
@@ -107,6 +108,8 @@ int cam_settings_load(CamSettings *s, const char *path) {
         if (sscanf(line, "camera_option_p%d=%d", &slot, &v) == 2 &&
             slot >= 1 && slot <= CAM_PLAYERS && v >= 0 && v < CAM_NOPT)
             s->opt[slot-1] = v;
+        else if(sscanf(line,"right_mouse_look=%d",&v)==1 && (v==0 || v==1))
+            s->mouse_look=v;
     }
     fclose(f);
     return 1;
@@ -129,6 +132,7 @@ int cam_settings_save(const CamSettings *s, const char *path) {
     FILE *f = fopen(path, "w");
     if (!f) return 0;
     for (int i = 0; i < CAM_PLAYERS; i++) fprintf(f, "camera_option_p%d=%d\n", i + 1, s->opt[i]);
+    fprintf(f,"right_mouse_look=%d\n",s->mouse_look?1:0);
     return fclose(f) == 0;
 }
 
@@ -480,6 +484,59 @@ void cam_render_pose(const CamState *before, const CamState *after,
     }
     display.fov.p = before->fov.p + t * (after->fov.p - before->fov.p);
     cam_pose(&display, car, out);
+}
+
+void cam_mouse_look_begin(CamMouseLook *s,const CamPose *display,const CamCarFrame *car) {
+    memset(s,0,sizeof *s);s->local=*display;
+    float eye[3],look[3];
+    for(int i=0;i<3;i++){eye[i]=display->eye[i]-car->pos[i];look[i]=display->look[i]-car->pos[i];}
+    const float *axes[3]={car->fwd,car->left,car->up};
+    for(int i=0;i<3;i++){
+        s->local.eye[i]=dot3(eye,axes[i]);s->local.look[i]=dot3(look,axes[i]);
+        s->local.up[i]=dot3(display->up,axes[i]);
+    }
+}
+
+void cam_mouse_look_move(CamMouseLook *s,float dx,float dy) {
+    if(!isfinite(dx)||!isfinite(dy))return;
+    int chase=cam_is_chase(s->local.view);
+    float v[3];for(int i=0;i<3;i++)v[i]=chase?s->local.eye[i]-s->local.look[i]:s->local.look[i]-s->local.eye[i];
+    float elevation=atan2f(v[2],hypotf(v[0],v[1]));
+    if(chase){
+        s->yaw=fmodf(s->yaw-dx,6.28318530718f);
+        s->pitch=clampf(s->pitch+dy,fminf(0,elevation)-elevation,1.5f-elevation);
+    }else{
+        s->yaw=clampf(s->yaw-dx,-.610865238f,.610865238f); /* 35 degrees */
+        s->pitch=clampf(s->pitch-dy,0,.261799388f); /* 15 degrees up */
+    }
+}
+
+void cam_mouse_look_pose(const CamMouseLook *s,const CamCarFrame *car,CamPose *out) {
+    CamPose p=s->local;
+    int chase=cam_is_chase(p.view);
+    float *pivot=chase?p.look:p.eye,*end=chase?p.eye:p.look;
+    float v[3];for(int i=0;i<3;i++)v[i]=end[i]-pivot[i];
+    if(s->yaw!=0 || s->pitch!=0){
+        float c=cosf(s->yaw),sn=sinf(s->yaw);
+        float v0=v[0],u0=p.up[0];
+        v[0]=c*v0-sn*v[1];v[1]=sn*v0+c*v[1];
+        p.up[0]=c*u0-sn*p.up[1];p.up[1]=sn*u0+c*p.up[1];
+        float axis[3]={v[1],-v[0],0};
+        if(norm3(axis)>1e-8f){
+            float cross[3];c=cosf(s->pitch);sn=sinf(s->pitch);
+            cross3(axis,v,cross);float d=dot3(axis,v);
+            for(int i=0;i<3;i++)v[i]=v[i]*c+cross[i]*sn+axis[i]*d*(1-c);
+            cross3(axis,p.up,cross);d=dot3(axis,p.up);
+            for(int i=0;i<3;i++)p.up[i]=p.up[i]*c+cross[i]*sn+axis[i]*d*(1-c);
+        }
+        for(int i=0;i<3;i++)end[i]=pivot[i]+v[i];
+    }
+    *out=p;
+    for(int i=0;i<3;i++){
+        out->eye[i]=car->pos[i]+car->fwd[i]*p.eye[0]+car->left[i]*p.eye[1]+car->up[i]*p.eye[2];
+        out->look[i]=car->pos[i]+car->fwd[i]*p.look[0]+car->left[i]*p.look[1]+car->up[i]*p.look[2];
+        out->up[i]=car->fwd[i]*p.up[0]+car->left[i]*p.up[1]+car->up[i]*p.up[2];
+    }
 }
 
 /* ---- projection (SPEC 7, 7.1) --------------------------------------------------------------- */

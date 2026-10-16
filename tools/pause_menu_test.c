@@ -64,6 +64,10 @@ static void focused_checks(void) {
     assert(pause_menu_capture_replay(p, "0:open,100:Right,200:Enter,700:Right,800:Enter,1300:Down", 1400, 640, 480));
     assert(pause_menu_options_open(p) && om_screen(pause_menu_options(p)) == OM_SCREEN_DISPLAY && om_focus(pause_menu_options(p)) == 1);
     assert(p->capture_actions == 0);
+    int mouse_look=0;
+    pause_menu_set_mouse_look(p,&mouse_look);
+    assert(pause_menu_capture_replay(p,"0:open,100:Right,200:Enter,700:Right,800:Right,900:Enter,1400:Right",1500,640,480));
+    assert(om_screen(pause_menu_options(p))==OM_SCREEN_GAMEPLAY && mouse_look==1);
     assert(pause_menu_capture_replay(p, "0:open,100:Back", 1000, 640, 480) && !p->open && p->capture_last_action == FE_ACTION_RESUME);
     /* the reference path replays on the production adapter and reports availability */
     p->gl = NULL;

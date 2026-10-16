@@ -27,6 +27,7 @@ void pause_menu_set_context(PauseMenu *p, const PauseContext *ctx);
  * (UI_PauseOptionsMain.fng) -> Display (page 1) -> Customize. The lent objects must outlive the menu;
  * the store may be NULL. */
 void pause_menu_set_options(PauseMenu *p, StGraphics *gfx, const StGfxCaps *caps, StRegStore *store);
+void pause_menu_set_mouse_look(PauseMenu *p, int *enabled); /* host-owned OpenUG2 camera setting */
 /* Controls screen (CONTROLS_SPEC): lends the bindings and joysticks and verifies the original resources the
  * screen needs; the hub gets its fifth entry only when they are all present. Call after pause_menu_set_options. */
 struct CxInput;
