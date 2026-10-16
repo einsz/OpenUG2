@@ -61,6 +61,7 @@ struct PauseMenu {
     OptionsMenu options;         /* hub, Display and Customize, SPEC_GUI */
     StGraphics *opt_gfx; const StGfxCaps *opt_caps; StRegStore *opt_store;
     int options_enabled;         /* the host lent the settings: the Options entry exists */
+    int *mouse_look;
     CxInput *cx;                 /* bindings and joysticks, lent by the host (Controls screen) */
     int controls_checked;        /* the Controls resources were verified (once, at creation) */
     int capture_actions, capture_last_action;
@@ -289,6 +290,7 @@ void pause_menu_set_options(PauseMenu *p, StGraphics *gfx, const StGfxCaps *caps
     p->opt_gfx = gfx; p->opt_caps = caps; p->opt_store = store;
     p->options_enabled = gfx && caps;
 }
+void pause_menu_set_mouse_look(PauseMenu *p,int *enabled) { if(p)p->mouse_look=enabled; }
 /* Every original resource the Controls screen needs, checked once (CONTROLS_SPEC R1-R3): the package and its
  * eight textures, the hub icon, the dialog package and every language text it shows. Nothing is substituted: if
  * one is missing the hub simply has no Controls entry. */
@@ -511,6 +513,7 @@ static FeAction pause_action_of(PsEvent e) {
 static void pause_open_hub(PauseMenu *p) {
     OmConfig cfg;
     om_config_default(&cfg, OM_CTX_INGAME);
+    cfg.mouse_look=p->mouse_look;
     om_open_hub(&p->options, &cfg, p->opt_gfx, p->opt_caps, p->opt_store);
 }
 
@@ -701,6 +704,7 @@ int pause_menu_capture_replay(PauseMenu *p, const char *events, float elapsed_ms
     fprintf(stderr, "pause capture: elapsed=%.3f ui=%.3f screen=%s selected=%d open=%d dialog=%d actions=%d last_action=%d caption=%s status=%s\n",
             elapsed_ms, p->ui_ms, om_is_open(&p->options) ? (om_screen(&p->options) == OM_SCREEN_HUB ? "hub" :
             om_screen(&p->options) == OM_SCREEN_DISPLAY ? "display" :
+            om_screen(&p->options) == OM_SCREEN_GAMEPLAY ? "gameplay" :
             om_screen(&p->options) == OM_SCREEN_CONTROLS ? "controls" : "customize") : "pause",
             om_is_open(&p->options) ? (om_screen(&p->options) == OM_SCREEN_HUB ? om_hub_focus(&p->options) : om_focus(&p->options)) : ps_selected(&p->ps),
             p->open, pause_menu_dialog_open(p), p->capture_actions, p->capture_last_action, pause_menu_caption(p), p->status);

@@ -4,6 +4,8 @@
 #include "physics.h"
 #include "world.h"
 #include <assert.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include "traffic_heatmap.h"
 static TrafficHeatmap test_heat;
 static void test_heat_contact(const float a[3],const float b[3],int kind) {
@@ -304,6 +306,228 @@ static void traffic_density_test(void) {
     puts("traffic density: default/increase/zero/decrease/restore, safe visibility, racer roles and retry fairness PASS");
 }
 
+static void traffic_spawn_distribution(void) {
+    float xy[180*3*2];int next[180*3];
+    for(int r=0;r<180;r++)for(int j=0;j<3;j++) {
+        float angle=r*6.2831853f/180,co=cosf(angle),sn=sinf(angle);
+        int p=3*r+j;xy[2*p]=100*co;xy[2*p+1]=100*sn+15*j;
+        next[p]=j<2?p+1:-1;
+    }
+    AiRoadNet roads={.xy=xy,.next=next,.n=540};
+    AiTrafficWorld world={.view={1,0}};
+    AiCar cars[N_OPENWORLD_AI]={0};AiTraffic routes[N_OPENWORLD_AI]={0};
+    float selected[3][2];
+    for(int i=0;i<3;i++) {
+        int k=6*i;
+        memset(routes,0,sizeof routes);
+        assert(ai_traffic_respawn(&roads,&world,cars,routes,k,(float[3]){0},0));
+        memcpy(selected[i],cars[k].pos,sizeof selected[i]);
+        printf("traffic distribution slot%d %.2f,%.2f\n",k,selected[i][0],selected[i][1]);fflush(stdout);
+    }
+    for(int i=0;i<3;i++)for(int j=0;j<i;j++)
+        assert(hypotf(selected[i][0]-selected[j][0],selected[i][1]-selected[j][1])>25);
+    puts("traffic distribution: repeated vehicle models choose distinct offscreen areas PASS");
+}
+
+static void traffic_crossing(float angle,int reverse_order,float crossing_angle,float crossing_speed) {
+    float floor[]={-200,-200,0,0,0,200,-200,0,0,0,200,200,0,0,0,-200,200,0,0,0};
+    uint16_t idx[]={0,1,2,0,2,3};
+    N2Mesh mesh={.verts=floor,.nverts=4,.idx=idx,.nidx=6,.cat=N2_ROAD};
+    N2Scene scene={&mesh,1,1};AiTrafficWorld world={.scene=&scene};
+    float xy[]={-100,0,-50,0,0,0,50,0,100,0,0,-100,0,-50,0,0,0,50,0,100};
+    int next[]={1,2,3,4,-1,6,7,8,9,-1};
+    float co=cosf(angle),sn=sinf(angle);
+    for(int i=0;i<10;i++) {
+        float x=xy[2*i],y=xy[2*i+1];
+        if(i>=5){x=y*cosf(crossing_angle);y=y*sinf(crossing_angle);}
+        xy[2*i]=x*co-y*sn;xy[2*i+1]=x*sn+y*co;
+    }
+    AiRoadNet roads={.xy=xy,.next=next,.n=10};
+    AiCar cars[N_OPENWORLD_AI]={0};AiTraffic routes[N_OPENWORLD_AI]={0};
+    for(int k=0;k<2;k++) {
+        float x=k?1.8f:-25,y=k?-25:-1.8f;
+        if(k){x=-25*cosf(crossing_angle)+1.8f*sinf(crossing_angle);
+            y=-25*sinf(crossing_angle)-1.8f*cosf(crossing_angle);}
+        cars[k]=(AiCar){.pos={x*co-y*sn,x*sn+y*co,0},.head=angle+k*crossing_angle,
+            .spd=(k?crossing_speed:10)/60,.half_length=2,.half_width=.85f,.height=1.5f};
+        routes[k]=(AiTraffic){.prev=5*k,.from=1+5*k,.to=2+5*k,.after=3+5*k,
+            .present=1,.cruise_speed=cars[k].spd};
+    }
+    int overlaps=0;
+    for(int tick=0;tick<1200;tick++) {
+        for(int n=0;n<2;n++) {
+            int k=reverse_order?1-n:n;
+            ai_traffic_follow(cars,routes,&roads,k,2,NULL);
+            ai_traffic_step(&cars[k],&routes[k],&roads,&world);
+        }
+        overlaps+=phys_ai_overlap(&cars[0],&cars[1])!=0;
+    }
+    float heading=angle+crossing_angle;
+    float progress=cars[1].pos[0]*cosf(heading)+cars[1].pos[1]*sinf(heading);
+    printf("traffic crossing rotation%.2f relative%.2f speed%.1f order%d overlaps%d progress%.1f/%.1f\n",
+        angle,crossing_angle,crossing_speed,reverse_order,overlaps,
+        cars[0].pos[0]*co+cars[0].pos[1]*sn,progress);fflush(stdout);
+    assert(!overlaps);
+    assert(cars[0].pos[0]*co+cars[0].pos[1]*sn>60);
+    assert(progress>60);
+}
+
+static void traffic_crossing_filters(void) {
+    float xy[]={-100,0,100,0};int next[]={1,-1};
+    AiRoadNet roads={.xy=xy,.next=next,.n=2};
+    AiCar cars[N_OPENWORLD_AI]={0};AiTraffic routes[N_OPENWORLD_AI]={0};
+    cars[1]=(AiCar){.pos={-20,-1.8f,0},.spd=10.0f/60,.half_length=2,.half_width=.85f};
+    cars[0]=(AiCar){.pos={1.8f,-25,0},.head=1.5707963f,.spd=10.0f/60,
+        .half_length=2,.half_width=.85f};
+    routes[1]=(AiTraffic){.from=0,.to=1,.after=0,.present=1,.cruise_speed=10.0f/60};
+    routes[0].present=1;
+    ai_traffic_follow(cars,routes,&roads,1,2,NULL);
+    assert(cars[1].target_speed<routes[1].cruise_speed);
+    cars[0].pos[2]=6;ai_traffic_follow(cars,routes,&roads,1,2,NULL);
+    assert(cars[1].target_speed==routes[1].cruise_speed); /* another deck */
+    cars[0].pos[2]=0;cars[0].spd=-10.0f/60;
+    ai_traffic_follow(cars,routes,&roads,1,2,NULL);
+    assert(cars[1].target_speed==routes[1].cruise_speed); /* moving away */
+    cars[0].spd=1.0f/60;ai_traffic_follow(cars,routes,&roads,1,2,NULL);
+    assert(cars[1].target_speed==routes[1].cruise_speed); /* arrives much later */
+    AiCar player=cars[0];player.spd=10.0f/60;
+    cars[0]=cars[1];routes[0]=routes[1];
+    ai_traffic_follow(cars,routes,&roads,0,1,&player);
+    assert(cars[0].target_speed<routes[0].cruise_speed); /* player has priority */
+    puts("traffic crossing: height, direction, arrival-time and player-priority filters PASS");
+}
+
+static void traffic_default_footprint(void) {
+    float floor[]={-20,-1.7f,0,0,0,200,-1.7f,0,0,0,200,1.7f,0,0,0,-20,1.7f,0,0,0};
+    uint16_t idx[]={0,1,2,0,2,3};
+    N2Mesh mesh={.verts=floor,.nverts=4,.idx=idx,.nidx=6,.cat=N2_ROAD};
+    N2Scene scene={&mesh,1,1};AiTrafficWorld world={.scene=&scene};
+    float xy[]={0,0,50,0,100,0,150,0};int next[]={1,2,3,-1};
+    AiRoadNet roads={.xy=xy,.next=next,.n=4};
+    AiCar implicit={0},explicit={.half_length=2.2f,.half_width=1,.height=1.6f};
+    AiTraffic a={.prev=-1,.from=0,.to=1,.after=2,.present=1},b=a;
+    ai_traffic_step(&implicit,&a,&roads,&world);ai_traffic_step(&explicit,&b,&roads,&world);
+    assert(a.lane_offset==b.lane_offset && b.lane_offset==.45f);
+    puts("traffic default footprint: omitted dimensions use the physical body size PASS");
+}
+
+static void traffic_junction_exit(int reverse,int tail) {
+    float floor[]={-180,-10,0,0,0,180,-10,0,0,0,180,10,0,0,0,-180,10,0,0,0};
+    uint16_t idx[]={0,1,2,0,2,3};
+    N2Mesh mesh={.verts=floor,.nverts=4,.idx=idx,.nidx=6,.cat=N2_ROAD};
+    N2Scene scene={&mesh,1,1};AiTrafficWorld world={.scene=&scene};
+    float xy[]={-20,0,0,0,10,0,2,0,40,0,80,0,120,0,160,0,20,0,30,0};
+    int next[]={1,2,-1,4,5,6,7,-1,-1,-1},join[][2]={{1,3},{3,1}};
+    if(reverse){next[0]=-1;next[1]=0;next[2]=1;for(int i=3;i<8;i++)xy[2*i]=-xy[2*i];}
+    if(reverse){xy[16]=-30;xy[18]=-40;}
+    if(tail){next[reverse?0:2]=8;next[8]=9;}
+    AiRoadNet roads={.xy=xy,.next=next,.n=10,.join=join,.njoin=2,.joins_present=1};
+    int previous=reverse?2:0,terminal=reverse?0:2;
+    assert(ai_road_next(&roads,&world,NULL,1,previous,0)==3);
+    int extend=tail?9:terminal,saved=next[extend];next[extend]=reverse?5:4;
+    assert(ai_road_next(&roads,&world,NULL,1,previous,0)==terminal); /* continuing chains keep priority */
+    next[extend]=saved;
+    AiCar cars[N_OPENWORLD_AI]={0};AiTraffic routes[N_OPENWORLD_AI]={0};
+    cars[0]=(AiCar){.pos={-15,-1.8f,0},.spd=8.0f/60,.half_length=2,.half_width=.85f,.height=1.5f};
+    routes[0]=(AiTraffic){.prev=-1,.from=0,.to=1,
+        .after=ai_road_next(&roads,&world,&cars[0],1,0,0),.present=1,.cruise_speed=8.0f/60};
+    if(!reverse) {
+        int min_progress=0;
+        for(int tick=0;tick<900;tick++) {
+            ai_traffic_follow(cars,routes,&roads,0,1,NULL);ai_traffic_step(cars,routes,&roads,&world);
+            min_progress+=PHYS_KMH(cars[0].spd)<1 && cars[0].pos[0]<60;
+        }
+        assert(cars[0].pos[0]>60 && !min_progress);
+    }
+    /* With no safe exit the original terminal remains reachable. */
+    join[0][1]=7; /* Too far to be a drivable connection. */
+    assert(ai_road_next(&roads,&world,NULL,1,previous,0)==terminal);
+    join[0][1]=3;
+    float wall[]={35,-10,0,0,0,35,10,0,0,0,35,10,4,0,0,35,-10,4,0,0};
+    if(reverse)for(int i=0;i<4;i++)wall[5*i]=-45;
+    N2Mesh meshes[]={mesh,{.verts=wall,.nverts=4,.idx=idx,.nidx=6,.cat=N2_OTHER,.scen=N2_SC_WALL}};
+    scene=(N2Scene){meshes,2,2};float ob[2][4],oz[2][2];int sources[2];
+    world.obst=ob;world.obstz=oz;world.obstsrc=sources;
+    world.nobst=phys_collect_walls(&scene,ob,sources,oz,2);
+    assert(ai_road_next(&roads,&world,NULL,1,previous,0)==terminal);
+    puts(reverse?"junction exit: reverse terminal and unsafe fallback PASS":"junction exit: empty-road continuation and unsafe fallback PASS");
+}
+
+/* Authored joins must beat nearby unrelated roads; malformed IDs cannot invent a join. */
+static void traffic_source_connections(void) {
+    char root[]="/tmp/openug2-traffic-XXXXXX";assert(mkdtemp(root));
+    char directory[256],file[300];snprintf(directory,sizeof directory,"%s/ROUTESTEST",root);
+    assert(!mkdir(directory,0700));snprintf(file,sizeof file,"%s/RoutesFreeRoam.bin",directory);
+    unsigned char bytes[896]={0};uint32_t head[]={0x34121,812};memcpy(bytes,head,8);
+    const int counts[]={2,3,2},ids[]={101,205,309};
+    const float xy[]={-20,0,0,0,8,0,28,0,48,0,0,0,0,30};
+    int at=16,node=0;
+    for(int r=0;r<3;r++) {
+        uint32_t prefix[]={11,11},id=1u|((uint32_t)ids[r]<<16),count=counts[r]|(counts[r]<<16);
+        memcpy(bytes+at-8,prefix,8);memcpy(bytes+at,&id,4);
+        memcpy(bytes+at+8,"TrackRoutesTest",16);memcpy(bytes+at+44,&count,4);
+        for(int j=0;j<counts[r];j++,node++) {
+            int point=at+128+56*j;uint32_t width=1024|(1024<<16);
+            memcpy(bytes+point+4,xy+2*node,8);memcpy(bytes+point+24,&width,4);
+        }
+        at+=140+56*counts[r];
+    }
+    head[0]=0x34122;head[1]=68;memcpy(bytes+820,head,8);
+    uint16_t forward[]={1,0,101,205},back[]={0,1,205,101};
+    memcpy(bytes+836,forward,8);memcpy(bytes+868,back,8);
+    unsigned char original[896];memcpy(original,bytes,sizeof original);
+    for(int bad=0;bad<7;bad++) {
+        memcpy(bytes,original,sizeof bytes);
+        uint16_t value=bad==1?999:205;memcpy(bytes+842,&value,2);
+        value=bad==2?3:0;memcpy(bytes+838,&value,2);
+        uint32_t word=bad==3?67:68;memcpy(bytes+824,&word,4);
+        if(bad==4){word=1u|(101u<<16);memcpy(bytes+268,&word,4);}
+        if(bad==6){word=1;memcpy(bytes+852,&word,4);}
+        size_t length=sizeof bytes-(bad==5);
+        FILE *f=fopen(file,"wb");assert(f);assert(fwrite(bytes,1,length,f)==length);assert(!fclose(f));
+        AiRoadNet roads={0};int loaded=ai_roads_load(&roads,root);
+        if(bad)assert(!loaded);
+        else {
+            assert(loaded==7);
+            assert(ai_road_next(&roads,NULL,NULL,1,0,0)==2);
+            assert(ai_road_next(&roads,NULL,NULL,2,3,0)==1);
+            AiRoadNet linear=roads;linear.join_start=linear.pred_start=linear.cell_start=NULL;
+            assert(ai_road_next(&linear,NULL,NULL,1,0,0)==2);
+            assert(ai_road_next(&linear,NULL,NULL,2,3,0)==1);
+            float floor[]={-30,-10,0,0,0,60,-10,0,0,0,60,10,0,0,0,-30,10,0,0,0};
+            float wall[]={4,-10,0,0,0,4,10,0,0,0,4,10,4,0,0,4,-10,4,0,0};
+            uint16_t idx[]={0,1,2,0,2,3};
+            N2Mesh meshes[]={{.verts=floor,.nverts=4,.idx=idx,.nidx=6,.cat=N2_ROAD},
+                {.verts=wall,.nverts=4,.idx=idx,.nidx=6,.cat=N2_OTHER,.scen=N2_SC_WALL}};
+            N2Scene scene={meshes,1,2};AiTrafficWorld world={.scene=&scene};
+            assert(ai_road_next(&roads,&world,NULL,1,0,0)==2);
+            scene.count=2;
+            float ob[2][4],oz[2][2];int source[2];
+            world.obst=ob;world.obstz=oz;world.obstsrc=source;
+            world.nobst=phys_collect_walls(&scene,ob,source,oz,2);
+            assert(ai_road_next(&roads,&world,NULL,1,0,0)==-1); /* an explicit link cannot cross a wall */
+            world.nobst=0;
+            floor[5]=floor[10]=4;
+            float upper[]={4,-10,6,0,0,60,-10,6,0,0,60,10,6,0,0,4,10,6,0,0};
+            meshes[1]=(N2Mesh){.verts=upper,.nverts=4,.idx=idx,.nidx=6,.cat=N2_ROAD};
+            assert(ai_road_next(&roads,&world,NULL,1,0,0)==-1); /* a different deck is not a shortcut */
+        }
+        ai_roads_free(&roads);
+    }
+    memcpy(bytes,original,sizeof bytes);
+    FILE *f=fopen(file,"wb");assert(f);assert(fwrite(bytes,1,sizeof bytes,f)==sizeof bytes);assert(!fclose(f));
+    char legacy_dir[256],legacy_file[300];
+    snprintf(legacy_dir,sizeof legacy_dir,"%s/ROUTESLEGACY",root);assert(!mkdir(legacy_dir,0700));
+    snprintf(legacy_file,sizeof legacy_file,"%s/RoutesFreeRoam.bin",legacy_dir);
+    f=fopen(legacy_file,"wb");assert(f);assert(fwrite(bytes,1,820,f)==820);assert(!fclose(f));
+    AiRoadNet mixed={0};assert(ai_roads_load(&mixed,root)==14);
+    assert(ai_road_next(&mixed,NULL,NULL,1,0,0)==6); /* legacy geometric continuation */
+    assert(ai_road_next(&mixed,NULL,NULL,8,7,0)==9); /* explicit source continuation */
+    ai_roads_free(&mixed);assert(!unlink(legacy_file) && !rmdir(legacy_dir));
+    assert(!unlink(file) && !rmdir(directory) && !rmdir(root));
+    puts("traffic source joins: authored/reverse/linear/mixed, walls/layers, malformed/truncated data PASS");
+}
+
 static void traffic_authored_terrain(void) {
     float verts[3][20];uint16_t idx[]={0,1,2,0,2,3};
     const float ends[]={-150,-40,40,150};N2Mesh meshes[3]={0};
@@ -428,7 +652,49 @@ static void traffic_preview_cache(void) {
     puts("traffic preview cache: exact driving, resident/body invalidation PASS");
 }
 
+static void traffic_narrowing(int direction,int width_mode,int spacing) {
+    float wide[]={-20,-5,0,0,0,100,-5,0,0,0,100,5,0,0,0,-20,5,0,0,0};
+    float narrow[]={100,-1.3f,0,0,0,500,-1.3f,0,0,0,500,1.3f,0,0,0,100,1.3f,0,0,0};
+    uint16_t idx[]={0,1,2,0,2,3};
+    if(direction<0)for(int i=0;i<4;i++){wide[5*i]=-wide[5*i];narrow[5*i]=-narrow[5*i];}
+    N2Mesh meshes[]={{.verts=wide,.nverts=4,.idx=idx,.nidx=6,.cat=N2_ROAD},
+        {.verts=narrow,.nverts=4,.idx=idx,.nidx=6,.cat=N2_ROAD}};
+    N2Scene scene={meshes,2,2};WGroundGrid grid={0};
+    float bounds[2][4];for(int k=0;k<2;k++){float *v=k?narrow:wide;bounds[k][0]=bounds[k][1]=1e9f;bounds[k][2]=bounds[k][3]=-1e9f;
+        for(int i=0;i<4;i++){bounds[k][0]=fminf(bounds[k][0],v[5*i]);bounds[k][2]=fmaxf(bounds[k][2],v[5*i]);bounds[k][1]=fminf(bounds[k][1],v[5*i+1]);bounds[k][3]=fmaxf(bounds[k][3],v[5*i+1]);}}
+    assert(world_ground_grid_build(&grid,&scene,bounds));world_ground_grid_activate(&grid);phys_wall_index_build(NULL,NULL,0);
+    float xy[1002],width[501];int next[501],count=500/spacing+1;
+    for(int i=0;i<count;i++){xy[2*i]=direction*i*spacing;xy[2*i+1]=0;
+        width[i]=width_mode==1 && i*spacing>=100?1.3f:4;next[i]=i+1<count?i+1:-1;}
+    AiRoadNet roads={.xy=xy,.next=next,.half_width=width,.n=count};AiTrafficWorld world={.scene=&scene};
+    AiCar cars[N_OPENWORLD_AI]={0};AiTraffic routes[N_OPENWORLD_AI]={0};
+    cars[0]=(AiCar){.pos={0,-direction*1.8f,0},.head=direction>0?0:3.1415926536f,
+        .spd=40/3.6f/PHYS_TICKRATE,.half_length=2,.half_width=.85f,.height=1.5f};
+    routes[0]=(AiTraffic){.prev=-1,.from=0,.to=1,.after=2,.present=1,.cruise_speed=cars[0].spd};
+    int first=-1,unsupported=0,firstmask=0;float firstx=0,firsty=0,firstoffset=0;
+    for(int tick=0;tick<1800 && direction*cars[0].pos[0]<250;tick++) {
+        ai_traffic_follow(cars,routes,&roads,0,1,NULL);ai_traffic_step(cars,routes,&roads,&world);
+        int support=1;for(int w=0;w<4;w++)support &= cars[0].support.valid[w]!=0;
+        if(!support){unsupported++;if(first<0){first=tick;firstx=cars[0].pos[0];firsty=cars[0].pos[1];firstoffset=routes[0].lane_offset;
+            for(int w=0;w<4;w++)if(cars[0].support.valid[w])firstmask|=1<<w;}}
+    }
+    printf("NARROW direction%d width_mode%d spacing%d first_support_loss_tick%d position%.3f,%.3f target_offset%.3f support_mask%d unsupported_ticks%d final_pos%.3f,%.3f final_offset%.3f final_kmh%.3f stop_reason%d\n",
+        direction,width_mode,spacing,first,firstx,firsty,firstoffset,firstmask,unsupported,cars[0].pos[0],cars[0].pos[1],routes[0].lane_offset,PHYS_KMH(cars[0].spd),routes[0].stop_reason);fflush(stdout);
+    assert(!unsupported && direction*cars[0].pos[0]>=250);
+    world_ground_grid_activate(NULL);world_ground_grid_free(&grid);
+}
+
 int main(void) {
+    for(int reverse=0;reverse<2;reverse++)for(int tail=0;tail<2;tail++)traffic_junction_exit(reverse,tail);
+    traffic_default_footprint();
+    traffic_spawn_distribution();
+    const float angles[]={.35f,.7853982f,1.5707963f,2.3561945f};
+    for(int order=0;order<2;order++)for(int r=0;r<2;r++)for(int a=0;a<4;a++)
+        for(int speed=0;speed<2;speed++)traffic_crossing(r*.7f,order,angles[a],7.5f+5*speed);
+    traffic_crossing_filters();
+    for(int spacing=1;spacing<=50;spacing+=49)for(int direction=-1;direction<=1;direction+=2)
+        for(int width_mode=0;width_mode<2;width_mode++)traffic_narrowing(direction,width_mode,spacing);
+    traffic_source_connections();
     traffic_preview_cache();
     traffic_closed_road();
     traffic_authored_terrain();

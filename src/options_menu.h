@@ -60,11 +60,11 @@ float om_slider_fill(int v, int min, int max);
 
 /* ---- identifiers and data keys ------------------------------------------------------------------ */
 typedef enum { OM_CTX_FRONTEND = 0, OM_CTX_INGAME } OmContext;           /* SPEC_GUI 1.2 */
-typedef enum { OM_SCREEN_CLOSED = 0, OM_SCREEN_DISPLAY, OM_SCREEN_CUSTOMIZE, OM_SCREEN_HUB, OM_SCREEN_CONTROLS } OmScreen;
+typedef enum { OM_SCREEN_CLOSED = 0, OM_SCREEN_DISPLAY, OM_SCREEN_CUSTOMIZE, OM_SCREEN_HUB, OM_SCREEN_CONTROLS, OM_SCREEN_GAMEPLAY } OmScreen;
 typedef enum { OM_ROW_CHOICE = 0, OM_ROW_SLIDER, OM_ROW_BUTTON, OM_ROW_SPACER } OmRowKind;  /* 2.1 */
 typedef enum {                   /* what the row does */
     OM_ID_OPTION = 0,            /* an ordinary graphics option, `gfx` names its slot */
-    OM_ID_RESOLUTION, OM_ID_LEVEL, OM_ID_CUSTOMIZE, OM_ID_DEFAULTS, OM_ID_SPACER
+    OM_ID_RESOLUTION, OM_ID_LEVEL, OM_ID_CUSTOMIZE, OM_ID_DEFAULTS, OM_ID_SPACER, OM_ID_MOUSE_LOOK
 } OmRowId;
 typedef enum {                   /* how the value text is produced (SPEC_GUI 3.1, 4.1) */
     OM_VT_NONE = 0, OM_VT_RESOLUTION, OM_VT_ONOFF, OM_VT_LOWHIGH, OM_VT_VSYNC
@@ -124,12 +124,14 @@ typedef struct OmConfig {
     int row1_label_has_caret;    /* localized "Car Reflection Update Rate" contains '^' (4.1) */
     int cpu_mhz;                 /* inputs of the performance level (SPEC 4.5) */
     double gpu_score;
+    int *mouse_look;             /* optional OpenUG2 setting; host owns persistence */
 } OmConfig;
 void om_config_default(OmConfig *c, OmContext ctx);   /* modern hardware: 3000 MHz, GPU score 5 */
 
 /* What a leaving transition does at exit-complete. */
 typedef enum { OM_EXIT_NONE = 0, OM_EXIT_TO_DISPLAY, OM_EXIT_TO_CUSTOMIZE, OM_EXIT_LEAVE_DISPLAY,
-               OM_EXIT_TO_PAUSE, OM_EXIT_RESUME, OM_EXIT_TO_CONTROLS } OmExit;
+               OM_EXIT_TO_PAUSE, OM_EXIT_RESUME, OM_EXIT_TO_CONTROLS,
+               OM_EXIT_TO_GAMEPLAY, OM_EXIT_LEAVE_GAMEPLAY } OmExit;
 
 typedef struct OmHubEntry {      /* SPEC_GUI_ART 2.5 */
     uint32_t icon_key;

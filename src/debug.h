@@ -6,6 +6,7 @@
 #define OPENUG2_DEBUG_H
 #include "car_config.h"
 #include "race.h"
+#include "race_ai_source.h"
 #include "traffic_heatmap.h"
 #include "race_log.h"
 #ifdef __cplusplus
@@ -92,6 +93,7 @@ typedef struct {
     float front_track;   /* full front track width (lateral wheel-centre spacing) */
     float rear_track;    /* full rear track width */
     float ride_y;        /* hub-centre height (measured from the car's tyre mesh) */
+    float visual_radius_scale[4], visual_width_scale[4]; /* geometry only; source size / mesh size */
 } VehicleWheelConfig;
 
 typedef struct {
@@ -209,6 +211,9 @@ typedef struct {
     int perf_power_level, perf_transmission_level; /* 0 stock, 1..3 upgrades */
     float perf_peak_kw[4], perf_final_drive[4];
     int perf_gears[4];
+    int perf_stock_available, perf_stock_drivetrain;
+    float perf_mass, perf_radius[4], perf_width[4], perf_grip[2];
+    float perf_brakes[3], perf_spring[2], perf_travel[2];
 
     /* --- Mesh Inspector (passive: observes/overlays, never alters assets) --- */
     int  insp_count;        /* how many car meshes are inspectable */
@@ -256,6 +261,10 @@ typedef struct {
     int   race_start_request, race_stop_request;
     char race_error[160];
     float race_pace;
+    const RaceAiSource *race_ai_source;
+    int race_ai_enabled,race_ai_difficulty,race_ai_choice,race_ai_active;
+    int race_ai_skill[5],race_ai_catchup[5];
+    float race_ai_scale[5],race_ai_target[5];
     RaceLog *race_log;
     int race_log_auto, race_log_start, race_log_stop, race_log_mark, race_log_flush;
     char race_log_note[128];

@@ -5,6 +5,7 @@
 #include "nfsu2.h"
 #include "physics.h"
 #include "debug.h"
+#include "race_ai_source.h"
 
 #define N_AI 4
 #define N_RACE_AI 5
@@ -41,6 +42,10 @@ void ai_render_pose(AiCar *out,const AiCar *before,const AiCar *after,float alph
  * points are ordered; next[] joins consecutive points within that record. */
 typedef struct {
     float *xy; int *next, n; float *half_width;
+    /* Explicit source route-point joins; packed traffic flags remain undecoded. */
+    int (*join)[2], njoin, joins_present;
+    int *join_start;
+    unsigned char *join_known; /* per node: its source file has a join table */
     /* Optional query index built by ai_roads_index (zero = linear scans):
        predecessors per node and a uniform node grid. Never changes results. */
     int *pred_start, *pred_list, *cell_start, *cell_list, gw, gh;
@@ -63,6 +68,8 @@ typedef struct {
     float preview_body[3], preview_z[8];
     int preview_from[8], preview_to[8], preview_after[8];
     unsigned preview_valid;
+    float lane_limit;
+    int clearance_valid;
 } AiTraffic;
 typedef struct {
     N2Scene *scene;
@@ -72,6 +79,9 @@ typedef struct {
     float eye[3], view[2];
     int traffic_target; /* 0..N_TRAFFIC_MAX, roaming racers are independent */
     int ambient_only; /* road races retain traffic, without free-roam rivals */
+    const RaceAiSource *race_source;
+    int race_source_choice,race_difficulty; /* source-order variant; 0 easy, 1 medium, 2 hard */
+    const WRace *race_player; /* active player checkpoint state for catch-up */
     float race_pace; /* km/h; <0 each car's own flat-out speed, 0 conservative diagnostic pace */
     const AiCar *ambient;
     const AiTraffic *ambient_routes;
@@ -171,7 +181,16 @@ float ai_course_lateral(const N2Path *path,const float pos[3]);
 float ai_drag_lane_target(const AiTrafficWorld *world,const AiCar *car,const AiDrive *line,
         float current,const float *lanes,int count,int direction);
 /* pass_side: sign of the committed passing offset, zero when no pass is active. */
-typedef struct { WRace progress; AiDrive drive; PhysManual gearbox; float offset,finish_at,pass_side; int blocked,finishing; } AiRace;
+typedef struct {
+    WRace progress; AiDrive drive; PhysManual gearbox;
+    float offset,finish_at,pass_side; int blocked,finishing;
+    const RaceAiSource *source;
+    float source_scale;
+    int source_skill,source_catch_up;
+} AiRace;
+/* Nominal intent from source settings; shared turn/body/braking limits still apply. */
+float ai_race_pace(const AiCar *car,const AiRace *driver,int index,
+                  const AiTrafficWorld *world,const AiCar *player);
 /* Places numbered source grids as one field, with the player in its last slot.
    Returns opponent count. Solo downhill returns zero with its player course
    and a borrowed player driver in drivers[0] for the physics checker. */

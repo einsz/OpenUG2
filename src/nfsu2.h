@@ -3589,8 +3589,9 @@ static int n2_load_car_tex_from_slots(const unsigned char *d,long len,
                 }
             }
         }
-    } else
-        n2_jdlz(d + absoff, enc, raw, dec);
+    } else if (n2_jdlz(d + absoff, enc, raw, dec) != dec) {
+        free(raw); return 0;
+    }
     /* Exact format from the embedded texture header (independent RE), replacing
        the old square-dimension size guess. The info header sits header_from_end
        (slot +0x10) bytes before the payload end; P = dec - header_from_end +

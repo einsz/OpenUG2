@@ -604,7 +604,21 @@ static void test_behaviour(void) {
     CHECK(st.opt[0] == CAM_OPT_FAR && st.opt[1] == CAM_OPT_FAR, "default option is FAR for both players");
     st.opt[0] = CAM_OPT_HOOD; st.opt[1] = CAM_OPT_DRIFT;
     CHECK(cam_settings_save(&st, "build/camera_test_settings/camera.cfg"), "settings save");
+    FILE *saved=fopen("build/camera_test_settings/camera.cfg","r");
+    char saved_text[256]={0};
+    if(saved){fread(saved_text,1,sizeof saved_text-1,saved);fclose(saved);}
+    CHECK(strstr(saved_text,"right_mouse_look=0\n")!=NULL,"mouse look is explicitly off by default in saved settings");
     CHECK(cam_settings_load(&rd, "build/camera_test_settings/camera.cfg") && rd.opt[0] == CAM_OPT_HOOD && rd.opt[1] == CAM_OPT_DRIFT, "settings round trip");
+    CHECK(!rd.mouse_look,"mouse look defaults off");
+    st.mouse_look=1;
+    CHECK(cam_settings_save(&st,"build/camera_test_settings/camera.cfg") &&
+          cam_settings_load(&rd,"build/camera_test_settings/camera.cfg") && rd.mouse_look,"mouse look persists on");
+    saved=fopen("build/camera_test_settings/camera.cfg","w");
+    if(saved){fputs("camera_option_p1=1\nright_mouse_look=7\n",saved);fclose(saved);}
+    CHECK(cam_settings_load(&rd,"build/camera_test_settings/camera.cfg") && !rd.mouse_look && rd.opt[0]==CAM_OPT_HOOD,"invalid mouse setting stays off");
+    saved=fopen("build/camera_test_settings/camera.cfg","w");
+    if(saved){fputs("camera_option_p1=2\n",saved);fclose(saved);}
+    CHECK(cam_settings_load(&rd,"build/camera_test_settings/camera.cfg") && !rd.mouse_look && rd.opt[0]==CAM_OPT_CLOSE,"old configs keep camera and default mouse look off");
     CHECK(!cam_settings_load(&rd, "build/camera_test_settings/none.cfg") && rd.opt[0] == CAM_OPT_FAR, "missing settings -> defaults");
 
     /* First tick cuts: no smoothing lag on creation. */
@@ -784,6 +798,40 @@ static void test_render_cadence(void) {
     }
 }
 
+static void test_mouse_look(void) {
+    CamCarFrame car={0};cam_car_axes(.7f,(float[3]){0,0,1},&car);
+    car.pos[0]=12;car.pos[1]=-8;car.pos[2]=3;
+    CamPose p={.eye={5,-14,6},.look={12,-8,4},.up={0,0,1},.view=CAM_FAR,.fov_bau=9400,.znear=.5f};
+    CamMouseLook s;CamPose o,moved;cam_mouse_look_begin(&s,&p,&car);cam_mouse_look_pose(&s,&car,&o);
+    for(int i=0;i<3;i++){
+        CHECK(near(o.eye[i],p.eye[i],2e-6),"orbit starts at displayed eye axis %d",i);
+        CHECK(near(o.look[i],p.look[i],2e-6),"orbit starts at displayed target axis %d",i);
+    }
+    float r=0;for(int i=0;i<3;i++)r+=(p.eye[i]-p.look[i])*(p.eye[i]-p.look[i]);
+    cam_mouse_look_move(&s,.4f,.2f);cam_mouse_look_pose(&s,&car,&o);
+    float rr=0;for(int i=0;i<3;i++){rr+=(o.eye[i]-o.look[i])*(o.eye[i]-o.look[i]);CHECK(near(o.look[i],p.look[i],2e-6),"orbit target fixed %d",i);}
+    CHECK(near(rr,r,2e-5),"orbit retains actual camera distance");
+    CamMouseLook down=s;cam_mouse_look_move(&down,0,-100);cam_mouse_look_pose(&down,&car,&moved);
+    CHECK(moved.eye[2]>=moved.look[2]-1e-5f,"external orbit cannot sink below its car-facing target");
+    car.pos[0]+=5;car.pos[2]+=2;cam_mouse_look_pose(&s,&car,&moved);
+    CHECK(near(moved.eye[0]-o.eye[0],5,2e-6)&&near(moved.eye[2]-o.eye[2],2,2e-6),"orbit follows moving car");
+    for(int view=CAM_BUMPER;view<=CAM_HOOD;view++){
+        cam_car_axes(0,(float[3]){0,0,1},&car);memset(car.pos,0,sizeof car.pos);
+        p=(CamPose){.eye={1,.2f,1.3f},.look={11,.2f,1.3f},.up={0,0,1},.view=view,.hide_car=1,.fov_bau=9100,.znear=.4f};
+        cam_mouse_look_begin(&s,&p,&car);cam_mouse_look_move(&s,.4f,-.2f);cam_mouse_look_pose(&s,&car,&o);
+        for(int i=0;i<3;i++)CHECK(o.eye[i]==p.eye[i],"in-car eye fixed view %d axis %d",view,i);
+        CHECK(o.look[1]<p.look[1]&&o.look[2]>p.look[2],"in-car mouse right/up looks right/up view %d",view);
+        CHECK(o.hide_car==p.hide_car&&o.fov_bau==p.fov_bau&&o.znear==p.znear,"view rendering preserved %d",view);
+        cam_car_axes(1.570796327f,(float[3]){0,0,1},&car);cam_mouse_look_pose(&s,&car,&moved);
+        CHECK(near(moved.eye[0],-.2f,2e-6)&&near(moved.eye[1],1,2e-6),"mounted eye follows car turn %d",view);
+        cam_mouse_look_move(&s,1e5f,1e5f);cam_mouse_look_pose(&s,&car,&o);
+        for(int i=0;i<3;i++)CHECK(isfinite(o.eye[i])&&isfinite(o.look[i])&&isfinite(o.up[i]),"bounded pitch finite %d",view);
+        CHECK(near(s.yaw,-35*3.141592653589793/180,1e-6)&&near(s.pitch,0,1e-6),"mounted view stops at left limit without looking down %d",view);
+        cam_mouse_look_move(&s,-1e5f,-1e5f);
+        CHECK(near(s.yaw,35*3.141592653589793/180,1e-6)&&near(s.pitch,15*3.141592653589793/180,1e-6),"mounted view stops at right/up limits %d",view);
+    }
+}
+
 int main(int argc, char **argv) {
     const char *dir = argc > 1 && *argv[1] ? argv[1] : "docs/cleanroom-camera/test-vectors";
     const char *data = argc > 2 && *argv[2] ? argv[2] : NULL;
@@ -814,6 +862,7 @@ int main(int argc, char **argv) {
     test_behaviour();
     test_render_pose();
     test_render_cadence();
+    test_mouse_look();
     printf("camera_test: %d checks, %d failures\n", g_checks, g_fail);
     return g_fail ? 1 : 0;
 }

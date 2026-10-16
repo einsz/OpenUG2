@@ -795,6 +795,27 @@ static void test_hub(void) {
     puts("hub checks done");
 }
 
+static void test_mouse_look_setting(void) {
+    Fx f;fx_open(&f,OM_CTX_INGAME,0);
+    int enabled=0;f.cfg.mouse_look=&enabled;
+    StGraphics original=f.g;
+    om_open_hub(&f.m,&f.cfg,&f.g,&f.caps,&f.store);
+    press(&f,OM_IN_RIGHT,2);om_input(&f.m,OM_IN_ACCEPT);settle(&f);
+    CHECK(om_screen(&f.m)==OM_SCREEN_GAMEPLAY,"Gameplay opens optional mouse setting");
+    CHECK(om_row_count(&f.m)==1 && om_row_value(&f.m,0)==0,"mouse look starts Off");
+    const char *package=om_package_name(OM_CTX_INGAME,OM_SCREEN_GAMEPLAY);
+    CHECK(package && !strcmp(package,"UI_PauseOptions.fng"),"Gameplay reuses authored options list");
+    om_input(&f.m,OM_IN_RIGHT);CHECK(enabled==1 && !strcmp(om_row_value_text(&f.m,0,NULL),"On"),"Right enables mouse look");
+    om_input(&f.m,OM_IN_ACCEPT);CHECK(enabled==0,"Accept disables mouse look");
+    om_input(&f.m,OM_IN_LEFT);CHECK(enabled==1,"Left enables mouse look");
+    om_input(&f.m,OM_IN_BACK);settle(&f);
+    CHECK(om_screen(&f.m)==OM_SCREEN_HUB && om_hub_focus(&f.m)==2,"Gameplay Back returns to remembered hub entry");
+    CHECK(f.m.registry_writes==0 && !memcmp(&original,&f.g,sizeof original),"mouse setting does not write graphics or alter tuning");
+    om_input(&f.m,OM_IN_ACCEPT);settle(&f);om_input(&f.m,OM_IN_START);settle(&f);
+    CHECK(!om_is_open(&f.m) && enabled==1 && om_poll_event(&f.m)==OM_EV_RESUME_GAME,"Gameplay Start resumes with chosen value");
+    fx_close(&f);
+}
+
 int main(int argc, char **argv) {
     if (argc > 1) g_dir = argv[1];
     test_tvg01();
@@ -805,6 +826,7 @@ int main(int argc, char **argv) {
     test_tvg06();
     test_behaviour();
     test_hub();
+    test_mouse_look_setting();
     printf("options_menu_test: %d checks, %d failed -> %s\n", g_checks, g_fail, g_fail ? "FAIL" : "PASS");
     return g_fail ? 1 : 0;
 }

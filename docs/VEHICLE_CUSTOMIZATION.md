@@ -48,8 +48,16 @@ not guessed behavior in a debug menu.
 Paint/rim paint and clear-coat controls now live in Graphics; neon and trunk
 audio live in Specialties. Wheel placement, handling scalars and engine-cover
 mesh inspection live in Vehicle Diagnostics. Performance exposes the active
-car's four decoded power-curve and transmission levels; individual engine, ECU
-and turbo products stay separate until their exact mapping is proved.
+car's decoded power-curve and transmission levels in legacy driving. The latest
+stock drivetrain keeps its approved tuning and disables unsupported package
+selection. Tyres, brakes, suspension and mass show validated per-car stock data;
+nitrous and undecoded upgrade effects are explicitly unavailable. Separate
+engine/ECU/turbo/intake/fuel/exhaust products await verified package mapping.
+Stock body lowering defaults to zero. Stock wheel diameter and width fit each
+original GLOBALB wheel record at rendering only; physics tuning, mounts and brake
+geometry remain unchanged. Missing source dimensions retain the measured mesh
+size. Library rims follow the corrected diameter but retain their authored width
+proportions. Legacy/AI mounts still follow their existing mesh-based contact height.
 
 ## Vehicle switch resource contract
 

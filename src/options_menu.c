@@ -66,14 +66,14 @@ static const OmHubEntry k_hub_controls = { 0xA04A7B26u, 0x04DC6DB5u, NULL, OM_HU
 
 const char *om_package_name(OmContext ctx, OmScreen screen) {
     if (screen == OM_SCREEN_CUSTOMIZE) return "UI_PC_Customize_Options.fng";
-    if (screen == OM_SCREEN_DISPLAY) return ctx == OM_CTX_INGAME ? "UI_PauseOptions.fng" : "UI_Options.fng";
+    if (screen == OM_SCREEN_DISPLAY || screen == OM_SCREEN_GAMEPLAY) return ctx == OM_CTX_INGAME ? "UI_PauseOptions.fng" : "UI_Options.fng";
     if (screen == OM_SCREEN_HUB && ctx == OM_CTX_INGAME) return "UI_PauseOptionsMain.fng";
     if (screen == OM_SCREEN_CONTROLS) return "UI_Options_PC_Controller.fng";
     return NULL;
 }
 uint32_t om_package_key(OmContext ctx, OmScreen screen) {
     if (screen == OM_SCREEN_CUSTOMIZE) return 0xC4ACC9A5u;
-    if (screen == OM_SCREEN_DISPLAY) return ctx == OM_CTX_INGAME ? 0xAEA9078Fu : 0x551CA351u;
+    if (screen == OM_SCREEN_DISPLAY || screen == OM_SCREEN_GAMEPLAY) return ctx == OM_CTX_INGAME ? 0xAEA9078Fu : 0x551CA351u;
     if (screen == OM_SCREEN_HUB && ctx == OM_CTX_INGAME) return 0x73F51C74u;
     if (screen == OM_SCREEN_CONTROLS) return 0xE0EE65E6u;
     return 0;
@@ -219,6 +219,10 @@ static void enter_screen(OptionsMenu *m, OmScreen screen) {
     m->exiting = 0;
     m->exit_kind = OM_EXIT_NONE;
     if (screen == OM_SCREEN_DISPLAY) build_display(m);
+    else if(screen == OM_SCREEN_GAMEPLAY){
+        OmRow *r=add_row(m,OM_ROW_CHOICE,OM_ID_MOUSE_LOOK,0,"Right mouse look");
+        r->vt=OM_VT_ONOFF;
+    }
     else if (screen == OM_SCREEN_CUSTOMIZE) build_customize(m);
     else if (screen == OM_SCREEN_HUB) build_hub(m);
     else if (screen == OM_SCREEN_CONTROLS) cm_open(&m->cm, m->bindings, &m->cm_plat);   /* always on the keyboard (D5) */
@@ -322,6 +326,7 @@ int om_row_visible(const OptionsMenu *m, int i) {
 }
 int om_row_value(const OptionsMenu *m, int i) {
     const OmRow *r = om_row(m, i);
+    if(r && r->id==OM_ID_MOUSE_LOOK)return m->cfg.mouse_look && *m->cfg.mouse_look!=0;
     if (!r || r->gfx < 0) return 0;
     int v = m->gfx->v[r->gfx];
     return r->kind == OM_ROW_SLIDER ? clampi(v, r->min, r->max) : v;
@@ -357,6 +362,10 @@ const char *om_header(const OmContext ctx, OmScreen screen, int which, uint32_t 
     if (screen == OM_SCREEN_CUSTOMIZE && which == 0) { k = OM_KEY_TITLE_CUSTOMIZE; t = "Customize Display Settings"; }
     else if (screen == OM_SCREEN_HUB && which == 0) { k = OM_KEY_TITLE_PAUSE; t = "PAUSE OPTIONS"; }
     else if (screen == OM_SCREEN_CONTROLS && which == 0) k = CM_KEY_HEADER;        /* text: language file only */
+    else if(screen == OM_SCREEN_GAMEPLAY){
+        if(which==0){k=OM_KEY_TITLE_PAUSE;t="PAUSE OPTIONS";}
+        else if(which==1){k=0xD0CF6EE1u;t="Gameplay";}
+    }
     else if (screen == OM_SCREEN_DISPLAY) {
         if (ctx == OM_CTX_INGAME) {
             if (which == 0) { k = OM_KEY_TITLE_PAUSE; t = "PAUSE OPTIONS"; }
@@ -412,6 +421,8 @@ static void finish_exit(OptionsMenu *m) {
     case OM_EXIT_TO_DISPLAY: enter_screen(m, OM_SCREEN_DISPLAY); break;     /* fresh build, focus on row 1 */
     case OM_EXIT_TO_CUSTOMIZE: enter_screen(m, OM_SCREEN_CUSTOMIZE); break;
     case OM_EXIT_TO_CONTROLS: enter_screen(m, OM_SCREEN_CONTROLS); break;
+    case OM_EXIT_TO_GAMEPLAY: enter_screen(m, OM_SCREEN_GAMEPLAY); break;
+    case OM_EXIT_LEAVE_GAMEPLAY: enter_screen(m, OM_SCREEN_HUB); break;
     case OM_EXIT_LEAVE_DISPLAY:                              /* SPEC_GUI 5.1: write, then the hub */
         write_registry(m);
         if (m->cfg.ctx == OM_CTX_INGAME) enter_screen(m, OM_SCREEN_HUB);   /* UI_PauseOptionsMain.fng */
@@ -436,7 +447,9 @@ static void row_adjust(OptionsMenu *m, int dir) {
     const OmRow *r = &m->rows[m->list.focus];
     StGraphics *g = m->gfx;
     if (r->kind == OM_ROW_CHOICE || r->kind == OM_ROW_SLIDER) blink(m, dir);   /* the arrow blinks on any press */
-    if (r->kind == OM_ROW_CHOICE && r->id == OM_ID_RESOLUTION) {
+    if(r->id==OM_ID_MOUSE_LOOK){
+        if(m->cfg.mouse_look)*m->cfg.mouse_look=!*m->cfg.mouse_look;
+    }else if (r->kind == OM_ROW_CHOICE && r->id == OM_ID_RESOLUTION) {
         int res = g->v[ST_GFX_RESOLUTION];
         if (res >= 0 && res <= 5 && m->caps && st_resolution_step(g, m->caps, dir)) changed(m, r);
     } else if (r->kind == OM_ROW_CHOICE) {
@@ -460,7 +473,8 @@ static void open_defaults_dialog(OptionsMenu *m) {
 
 static void row_accept(OptionsMenu *m) {
     const OmRow *r = &m->rows[m->list.focus];
-    if (r->kind == OM_ROW_CHOICE && r->id == OM_ID_OPTION) {
+    if(r->id==OM_ID_MOUSE_LOOK)row_adjust(m,1);
+    else if (r->kind == OM_ROW_CHOICE && r->id == OM_ID_OPTION) {
         m->gfx->v[r->gfx] = m->gfx->v[r->gfx] ? 0 : 1;
         changed(m, r);
     } else if (r->id == OM_ID_CUSTOMIZE) {
@@ -496,8 +510,9 @@ static void hub_activate(OptionsMenu *m) {
     int page = e ? e->page : -1;
     m->page = page;
     if (page == HUB_PAGE_DISPLAY) begin_exit(m, OM_EXIT_TO_DISPLAY);
+    else if(page==2 && m->cfg.mouse_look)begin_exit(m,OM_EXIT_TO_GAMEPLAY);
     else if (page == OM_HUB_PAGE_CONTROLS) begin_exit(m, OM_EXIT_TO_CONTROLS);
-    /* Audio, Gameplay and Player pages are not part of this project's scope: activation does nothing. */
+    /* Audio and Player pages are not implemented. */
 }
 
 static void hub_input(OptionsMenu *m, OmInput in) {
@@ -576,10 +591,11 @@ void om_input(OptionsMenu *m, OmInput in) {
     case OM_IN_RIGHT: row_adjust(m, 1); break;
     case OM_IN_ACCEPT: row_accept(m); break;
     case OM_IN_BACK:
-        begin_exit(m, m->screen == OM_SCREEN_DISPLAY ? OM_EXIT_LEAVE_DISPLAY : OM_EXIT_TO_DISPLAY);
+        begin_exit(m,m->screen==OM_SCREEN_GAMEPLAY?OM_EXIT_LEAVE_GAMEPLAY:
+                     m->screen == OM_SCREEN_DISPLAY ? OM_EXIT_LEAVE_DISPLAY : OM_EXIT_TO_DISPLAY);
         break;
     case OM_IN_START:                                       /* SPEC_GUI 5.2: in-game Display only, no write */
-        if (m->cfg.ctx == OM_CTX_INGAME && m->screen == OM_SCREEN_DISPLAY) begin_exit(m, OM_EXIT_RESUME);
+        if (m->cfg.ctx == OM_CTX_INGAME && (m->screen == OM_SCREEN_DISPLAY || m->screen==OM_SCREEN_GAMEPLAY)) begin_exit(m, OM_EXIT_RESUME);
         break;
     default: break;
     }

@@ -70,11 +70,12 @@ DbgState g_dbg = {
     .wall_range=60, .wall_through=1, .wall_height=1,
     .chase_distance = 4.0f, .chase_height = 2.0f, .chase_stiffness = 0.22f,
     .race_maxlaps_want = 2, .race_pace=110, .race_log_auto=1,
+    .race_ai_enabled=1, .race_ai_difficulty=1, .race_ai_choice=-1, .race_ai_active=-1,
     /* .wheel (VehicleWheelConfig) is filled per car at load by wheel_config_for()
        -- an explicit table entry or a body-box fallback -- so no default here. */
     .wheel_scale = 1.0f,
     .insp_sel = -1,
-    .car_cull = 1, .body_clearcoat = 0.70f, .body_drop = 0.140f,
+    .car_cull = 1, .body_clearcoat = 0.70f, .body_drop = 0.0f,
     .light_halo = 1.0f, .light_gain = 1.0f,
     /* underglow is an OWNED customization, not a stock fitting: off until the
        player buys/enables it. The colour/strength tunables stay live. */
@@ -128,7 +129,15 @@ static int capture_frame_png(const char *path, int width, int height) {
 #define WHEEL_SEED_TRACKF 0.760f   /* fallback-only: fraction of half-width -> track */
 static VehicleWheelConfig wheel_config_for(const char *name, const N2CarProfile *p,
                                            const unsigned char *gdata, long glen, int *from_global) {
-    VehicleWheelConfig c;
+    VehicleWheelConfig c={0};
+    N2CarShapeAttr shape;
+    int have_shape=n2_global_car_shape(gdata,glen,name,&shape);
+    for(int k=0;k<4;k++){
+        float r=have_shape&&p->wheel_r>0?shape.wheel[k].radius/p->wheel_r:1;
+        float w=have_shape&&p->wheel_w>0?shape.wheel[k].width/p->wheel_w:1;
+        c.visual_radius_scale[k]=isfinite(r)&&r>0?r:1;
+        c.visual_width_scale[k]=isfinite(w)&&w>0?w:1;
+    }
     N2WheelAttr wa;
     if (n2_global_wheel_attr(gdata, glen, name, &wa)) {   /* exact, from GLOBALB car table */
         c.front_axle = wa.front_axle; c.rear_axle = wa.rear_axle;
@@ -164,6 +173,13 @@ static float light_variant_gain(int value) {
     return 1.0f + 0.025f*fminf((float)variant,8.0f);
 }
 
+/* Source fit changes mesh columns only; mounts, springs and physics stay intact. */
+static void wheel_visual_fit(const VehicleWheelConfig *wheel,int k,float m[16]) {
+    float r=wheel->visual_radius_scale[k],w=wheel->visual_width_scale[k];
+    if(!isfinite(r)||r<=0)r=1;if(!isfinite(w)||w<=0)w=1;
+    for(int i=0;i<3;i++){m[i]*=r;m[4+i]*=w;m[8+i]*=r;}
+}
+
 static void ai_wheel_matrices(const VehicleWheelConfig *wheel,float scale,
                               float angle,float steer,const PhysRideState *ride,
                               float out[4][16],float brake[4][16]) {
@@ -184,6 +200,7 @@ static void ai_wheel_matrices(const VehicleWheelConfig *wheel,float scale,
             M[8]=scale*sn*sc;M[9]=scale*sn*ss;
             B[0]=scale*sc;B[1]=scale*ss;B[4]=-sy*ss;B[5]=sy*sc;
         }
+        wheel_visual_fit(wheel,k,M);
         memcpy(out[k],M,sizeof M);memcpy(brake[k],B,sizeof B);
     }
 }
@@ -1327,7 +1344,18 @@ static float source_peak_kw(const N2PhysicsAttr *a,int level) {
     return peak;
 }
 
-static void publish_performance_source(const N2PhysicsAttr *a) {
+static void publish_performance_source(const N2PhysicsAttr *a,const unsigned char *data,long len,const char *name) {
+    DrvCar stock;BrkCar brakes;CtCar contacts;N2CarShapeAttr shape;
+    g_dbg.perf_stock_available=stage1_car_read(data,len,name,&stock) &&
+        stage3_car_read(data,len,name,&brakes) && stage5_car_read(data,len,name,&contacts) &&
+        n2_global_car_shape(data,len,name,&shape);
+    if(g_dbg.perf_stock_available){
+        g_dbg.perf_mass=stock.mass;
+        for(int i=0;i<4;i++){g_dbg.perf_radius[i]=stock.wheel_radius[i];g_dbg.perf_width[i]=shape.wheel[i].width;}
+        for(int a=0;a<2;a++){g_dbg.perf_grip[a]=stock.mu_peak[a];g_dbg.perf_spring[a]=contacts.axle[a].stiffness;
+            g_dbg.perf_travel[a]=contacts.axle[a].upper-contacts.axle[a].lower;}
+        g_dbg.perf_brakes[0]=brakes.service;g_dbg.perf_brakes[1]=brakes.handbrake;g_dbg.perf_brakes[2]=brakes.rear_share;
+    }
     g_dbg.perf_source_available=a!=NULL;
     if(!a)return;
     for(int level=0;level<4;level++) {
@@ -4728,7 +4756,7 @@ int main(int argc, char **argv) {
             }
             g_vehicle_source_valid=physics_from_global;
             if(physics_from_global)g_vehicle_source=pa;
-            publish_performance_source(physics_from_global?&g_vehicle_source:NULL);
+            publish_performance_source(physics_from_global?&g_vehicle_source:NULL,globdata,globlen,carname);
             g_vehicle = physics_from_global
                 ? phys_vehicle_from_source(&pa,0,0,bh,wb,g_dbg.wheel.front_track,carprof.wheel_w)
                 : phys_vehicle_from_geometry(bl,bw,bh,wb,g_dbg.wheel.front_track,carprof.wheel_w);
@@ -5183,6 +5211,13 @@ int main(int argc, char **argv) {
 
     N2Path aipath = {0};
     AiCar ais[N_WORLD_AI]={0}; AiTraffic traffic_routes[N_OPENWORLD_AI]={{0}}; int start_idx = 0;
+    RaceAiSource *race_ai_source=(RaceAiSource *)malloc(sizeof *race_ai_source);
+    long race_ai_bytes=0;unsigned char *race_ai_data=load_global_car_data(dataroot,&race_ai_bytes);
+    if(!race_ai_source || !race_ai_source_read(race_ai_data,race_ai_bytes,race_ai_source)){
+        free(race_ai_source);race_ai_source=NULL;
+        fprintf(stderr,"race AI: GLOBALB settings unavailable; using existing pace\n");
+    }else printf("race AI: %d GLOBALB career configurations, 10 source pace levels\n",race_ai_source->count);
+    free(race_ai_data);g_dbg.race_ai_source=race_ai_source;
     AiTrafficWorld traffic_world={.scene=&scene,.obst=(const float (*)[4])obst,
                                   .obstz=(const float (*)[2])obstz,
                                   .obstsrc=obstsrc,.nobst=nobst,.traffic_target=g_dbg.traffic_target};
@@ -6194,6 +6229,10 @@ int main(int argc, char **argv) {
     float orbit_yaw=0.0f, orbit_pitch=0.2f;
     int mlook=0, orbit_was_active=0, free_was_active=0;
     float free_yaw=0,free_pitch=0;
+    CamMouseLook mouse_look={0};
+    CamPose displayed_camera={0};CamCarFrame displayed_camera_frame={0};
+    int displayed_camera_ready=0;
+    int mouse_look_back=0;
     int p_lap = 0, p_prev = 0;   /* player lap + previous loop-progress */
     /* race flow: 0 = countdown, 1 = driving, 2 = finished.  The temporary
        synthetic frontend is opt-in (`make menu`); normal builds boot directly
@@ -6378,6 +6417,7 @@ int main(int argc, char **argv) {
     float camera_want_before[3]={0},camera_target_before[3]={0};
     GameCam gc; gamecam_init(&gc);   /* docs/CAMERA.md */
     if (arg_cam_opt >= 0) { gc.settings.opt[0] = arg_cam_opt; gamecam_apply_option(&gc); }
+    int saved_mouse_look=gc.settings.mouse_look;
     int camera_history_mode=-1;
     int heat_ticks=0,heat_running=0;
     char heat_context[160]={0};
@@ -6451,6 +6491,7 @@ int main(int argc, char **argv) {
                 pause_frame = 1;
                 if (!pause_menu) pause_menu = pause_menu_build(dataroot, &opt_gfx, &opt_caps, &opt_store, &opt_store_open);
                 if (pause_menu) {
+                    pause_menu_set_mouse_look(pause_menu,&gc.settings.mouse_look);
                     pause_menu_open(pause_menu);
                     pause_cursor = SDL_ShowCursor(SDL_QUERY);
                     SDL_ShowCursor(SDL_ENABLE);
@@ -6554,23 +6595,20 @@ int main(int argc, char **argv) {
 #ifdef DEBUG_UI
                 if(g_devui && dbgui_want_mouse())continue;
 #endif
-                g_dbg.freecam=0; /* right mouse always selects the bounded car orbit */
-                if(!orbit_was_active) {
-                    orbit_yaw=atan2f(carpos[1]-cam[1],carpos[0]-cam[0])-heading;
-                    orbit_pitch=.2f;orbit_was_active=1;
-                }
+                if(!gc.settings.mouse_look || !displayed_camera_ready || g_dbg.freecam || race_state==3)continue;
+                cam_mouse_look_begin(&mouse_look,&displayed_camera,&displayed_camera_frame);
+                mouse_look_back=gc.look_back;
                 SDL_SetRelativeMouseMode(SDL_TRUE);mlook=1;
             }
             else if (e.type == SDL_MOUSEBUTTONUP && e.button.button == SDL_BUTTON_RIGHT) {
-                SDL_SetRelativeMouseMode(SDL_FALSE);mlook=0;
+                if(mlook){SDL_SetRelativeMouseMode(SDL_FALSE);mlook=0;}
             }
             else if (e.type == SDL_MOUSEMOTION && g_dbg.freecam) {
                 free_yaw -= e.motion.xrel*.005f;
                 free_pitch=fmaxf(-1.5f,fminf(1.5f,free_pitch-e.motion.yrel*.005f));
             }
             else if (e.type == SDL_MOUSEMOTION && mlook) {
-                orbit_yaw -= e.motion.xrel*.005f;
-                orbit_pitch=fmaxf(.08f,fminf(1.2f,orbit_pitch+e.motion.yrel*.005f));
+                cam_mouse_look_move(&mouse_look,e.motion.xrel*.005f,e.motion.yrel*.005f);
             }
             else if (e.type == SDL_KEYDOWN) {
                 SDL_Keycode k = e.key.keysym.sym;
@@ -6737,6 +6775,9 @@ int main(int argc, char **argv) {
         }
 
         FeAction pause_action = pause_menu_update(pause_menu, (float)fmin(frame_seconds, .1));
+        if(gc.settings.mouse_look!=saved_mouse_look){
+            gamecam_save(&gc);saved_mouse_look=gc.settings.mouse_look;
+        }
         if (pause_menu) {
             /* Apply / re-init hook (SPEC_GUI 5.4). Changes in opt_gfx are requested immediately; the renderer
              * is meant to service them here, at the start of the frame after the change. Not wired yet. */
@@ -6841,7 +6882,7 @@ int main(int argc, char **argv) {
                         g_vehicle_source_valid=candidate.has_physics;
                         if(candidate.has_physics)g_vehicle_source=candidate.physics;
                         g_dbg.perf_power_level=g_dbg.perf_transmission_level=0;
-                        publish_performance_source(candidate.has_physics?&g_vehicle_source:NULL);
+                        publish_performance_source(candidate.has_physics?&g_vehicle_source:NULL,candidate.globaldata,candidate.globallen,next_car);
                         g_vehicle = candidate.has_physics
                             ? phys_vehicle_from_source(&candidate.physics,0,0,bh,wb,
                                   g_dbg.wheel.front_track,carprof.wheel_w)
@@ -7457,11 +7498,24 @@ int main(int argc, char **argv) {
                     player.support.ax[k]=k<2?g_dbg.wheel.front_axle:g_dbg.wheel.rear_axle;
                     player.support.ay[k]=(k&1?-.5f:.5f)*(k<2?g_dbg.wheel.front_track:g_dbg.wheel.rear_track);
                 }
+                traffic_world.race_source=g_dbg.race_ai_enabled?race_ai_source:NULL;
+                traffic_world.race_source_choice=g_dbg.race_ai_choice;
+                traffic_world.race_difficulty=g_dbg.race_ai_difficulty;
+                traffic_world.race_player=&world.city.race;
                 for(int k=0;k<N_RACE_AI;k++)ais[k]=ai_templates[ai_event_visual(k)];
                 nai=ai_race_prepare(troot,&world.city.ev[world.city.race.ev],&world.city.race,
                                     &traffic_world,&aipath,ais,race_drivers,&player);
                 const WEvent *event=&world.city.ev[world.city.race.ev];
                 int wanted=event->info.kind==N2_RACE_URL?5:3;
+                g_dbg.race_ai_active=nai && race_drivers[0].source
+                    ?race_ai_source_select(race_ai_source,event->id,wanted,g_dbg.race_ai_choice):-1;
+                for(int k=0;k<N_RACE_AI;k++){
+                    g_dbg.race_ai_skill[k]=race_drivers[k].source?race_drivers[k].source_skill:-1;
+                    g_dbg.race_ai_scale[k]=race_drivers[k].source_scale;
+                    g_dbg.race_ai_catchup[k]=race_drivers[k].source_catch_up;
+                }
+                if(g_dbg.race_ai_active>=0)printf("race AI: %s, difficulty %d, source skill/catch-up adaptation\n",
+                    race_ai_source->event[g_dbg.race_ai_active].name,g_dbg.race_ai_difficulty);
                 if(aipath.n<2 || (!event->info.downhill && nai!=wanted)) {
                     if(aipath.n<2)snprintf(g_dbg.race_error,sizeof g_dbg.race_error,"This course's route is not available yet.");
                     else snprintf(g_dbg.race_error,sizeof g_dbg.race_error,"This course needs %d opponents; only %d starting slots are usable.",wanted,nai);
@@ -7573,6 +7627,7 @@ int main(int argc, char **argv) {
         int sim_steps=pause_frame?0:deterministic_sim?1:phys_clock_steps(&sim_clock,frame_seconds);
         int stage1_active=g_stage1_requested &&
             !(world.city.race.active && (world.city.race.kind==N2_RACE_DRAG || world.city.race.kind==N2_RACE_DRIFT));
+        g_dbg.perf_stock_drivetrain=stage1_active;
         static int stage1_previous=-1;
         if(g_stage1_requested && stage1_active!=stage1_previous) {
             stage1_drive_reset(&g_stage1,vel,heading);
@@ -8495,6 +8550,7 @@ int main(int argc, char **argv) {
                     .height=carbb[5]-carbb[2]};
                 ai_race_step(ais,race_drivers,k,nai,
                     world.city.ev[world.city.race.ev].circuit,&traffic_world,&player);
+                g_dbg.race_ai_target[k]=ai_race_pace(ais+k,race_drivers+k,k,&traffic_world,&player);
             }
             else if (ai_race && aipath.n > 1)
                 ai_step(&ais[k], k, &aipath, &scene, start_idx,
@@ -8811,7 +8867,7 @@ int main(int argc, char **argv) {
             want[2] = render_player.pos[2]+g_dbg.chase_height;
         }
         int free_active=g_dbg.freecam && race_state!=3 && shotyaw>=1e8f;
-        int orbit_active=!free_active && (mlook || perf_orbit!=0.0f) && race_state!=3 && shotyaw>=1e8f;
+        int orbit_active=!free_active && perf_orbit!=0.0f && race_state!=3 && shotyaw>=1e8f;
         if(orbit_active && orbit_was_active && perf_orbit!=0.0f && !pause_frame)orbit_yaw+=perf_orbit;
         if(orbit_active) {
             if(!orbit_was_active) {
@@ -8855,10 +8911,11 @@ int main(int argc, char **argv) {
         float look[3] = { camtgt[0]-cam[0], camtgt[1]-cam[1], camtgt[2]-cam[2] };
         /* Gameplay camera (docs/CAMERA.md) replaces the chase spring whenever the
            player is driving and no capture/debug camera owns the view. The menu
-           orbit, --shot-yaw captures, the RMB orbit and the F free camera keep
+           orbit, --shot-yaw captures and the F free camera keep
            their own paths above. */
         int gcam_on=race_state!=3 && shotyaw>=1e8f && !free_active && !orbit_active;
         CamPose gcam_pose; memset(&gcam_pose,0,sizeof gcam_pose);
+        CamCarFrame camera_frame={0};
         if(gcam_on) {
             if(!gc.cam.started)
                 gamecam_tick(&gc,carpos,vel,heading,g_ride_ready?&g_ride:NULL,car_body_ride,gc_drift,NULL,1);
@@ -8868,6 +8925,7 @@ int main(int argc, char **argv) {
             CamCarFrame gframe; cam_car_axes(render_player.head,gup,&gframe);
             if(render_dynamic_body){memcpy(gframe.fwd,dynamic_render.axes.forward,sizeof gframe.fwd);memcpy(gframe.left,dynamic_render.axes.lateral,sizeof gframe.left);memcpy(gframe.up,dynamic_render.axes.up,sizeof gframe.up);}
             for(int c=0;c<3;c++)gframe.pos[c]=render_player.pos[c]+gframe.up[c]*car_body_ride;
+            camera_frame=gframe;
             cam_render_pose(&gc.render_before,&gc.cam,&gframe,render_alpha,&gcam_pose);
             for(int c=0;c<3;c++) {
                 cam[c]=gcam_pose.eye[c];camtgt[c]=gcam_pose.look[c];
@@ -8875,6 +8933,18 @@ int main(int argc, char **argv) {
             }
             g_dbg.cam_option=gc.settings.opt[0];g_dbg.cam_view=gcam_pose.view;g_dbg.cam_look_back=gc.look_back;
         }
+        if(mlook && (!gcam_on || !gc.settings.mouse_look || mouse_look.local.view!=gcam_pose.view ||
+                     mouse_look_back!=gc.look_back || pose_snap)){
+            mlook=0;SDL_SetRelativeMouseMode(SDL_FALSE);
+        }
+        if(mlook){
+            cam_mouse_look_pose(&mouse_look,&camera_frame,&gcam_pose);
+            for(int c=0;c<3;c++){
+                cam[c]=gcam_pose.eye[c];camtgt[c]=gcam_pose.look[c];
+                look[c]=gcam_pose.look[c]-gcam_pose.eye[c];
+            }
+        }
+        displayed_camera_ready=gcam_on;
         int player_hidden=follow_roam_ai || (gcam_on && gcam_pose.hide_car);
         if(free_active!=free_was_active) {
             if(free_active) {
@@ -8949,9 +9019,11 @@ int main(int argc, char **argv) {
                 /* SPEC 9: world pass, then lift the eye over cars close to it. */
                 float anchor[3]={render_player.pos[0],render_player.pos[1],
                                  render_player.pos[2]+car_body_ride+carbb[5]+.3f};
-                if(view_cam[2]<anchor[2])anchor[2]=view_cam[2];
+                if(mlook)memcpy(anchor,gcam_pose.look,sizeof anchor); /* keep the clear orbit pivot, even when the eye points below the road */
+                else if(view_cam[2]<anchor[2])anchor[2]=view_cam[2];
                 world_camera_clip(&scene,(const float (*)[4])world.neighborhood.mbb,
                                   anchor,view_cam,GAMECAM_CHASE_CLIP_RADIUS);
+                int camera_lifted=0;
                 for(int pass=0;pass<4;pass++) {
                     int moved=0;
                     for(int k=0;k<draw_nai;k++) {
@@ -8968,9 +9040,17 @@ int main(int argc, char **argv) {
                         moved|=cam_raise_over_sphere(view_cam,vc,vr,GAMECAM_CAR_MARGIN);
                     }
                     if(!moved)break;
+                    camera_lifted=1;
                 }
+                if(camera_lifted)world_camera_clip(&scene,(const float (*)[4])world.neighborhood.mbb,
+                    anchor,view_cam,GAMECAM_CHASE_CLIP_RADIUS);
                 for(int c=0;c<3;c++)cam[c]=view_cam[c];
             }
+            memcpy(cam,view_cam,sizeof view_cam);
+            memcpy(camtgt,gcam_pose.look,sizeof camtgt);
+            displayed_camera=gcam_pose;
+            memcpy(displayed_camera.eye,view_cam,sizeof view_cam);
+            displayed_camera_frame=camera_frame;
             cam_view_matrix(view_cam,gcam_pose.look,gcam_pose.up,V);
             for(int c=0;c<3;c++)look[c]=gcam_pose.look[c]-view_cam[c];
             if(!sstatic && !capture_policy.freeze_motion && GAMECAM_SHAKE) {
@@ -9630,6 +9710,7 @@ int main(int argc, char **argv) {
                                      wp[k][0], wp[k][1], wzk, 1 };
                       memcpy(M, m2, sizeof M);
                   }
+                  wheel_visual_fit(&g_dbg.wheel,k,M);
                   memcpy(wheelT[k],M,sizeof(M)); } }
             float wheelWorld[4][16],brakeWorld[4][16];
             for(int k=0;k<4;k++) {
@@ -10613,7 +10694,7 @@ int main(int argc, char **argv) {
         g_dbg.navopen = world.city.mode == MODE_RACE_EVENT ? world.city.navopen : NULL;
         g_dbg.race = &world.city.race;
         if (g_dbg.mode_request) {
-            g_dbg.mode_request = 0;
+            g_dbg.mode_request = 0;g_dbg.race_ai_choice=-1;
             world_race_stop(&world);
             world_set_mode(&world, g_dbg.want_mode, g_dbg.want_event);
             if(g_dbg.want_mode==MODE_FREEROAM){
@@ -11531,6 +11612,7 @@ int main(int argc, char **argv) {
              * over the final engine scene, before framebuffer readback. */
             if (pause_shot) {
                 if (!pause_menu) pause_menu = pause_menu_build(dataroot, &opt_gfx, &opt_caps, &opt_store, &opt_store_open);
+                pause_menu_set_mouse_look(pause_menu,&gc.settings.mouse_look);
                 pause_menu_open(pause_menu);
                 if (!pause_reference && !pause_menu_visual_available(pause_menu)) {
                     fprintf(stderr, "pause-shot: genuine UI resources unavailable\n");
@@ -11767,6 +11849,7 @@ int main(int argc, char **argv) {
     rhi_buffer_destroy(g_tm_mesh.vbo);rhi_buffer_destroy(g_tm_mesh.nbo);
     rhi_buffer_destroy(g_tm_mesh.cbo);rhi_buffer_destroy(g_tm_mesh.ibo);
     for(int t=TM_TEX_ROAD;t<TM_TEX_COUNT;t++)if(g_tm_tex[t].id)rhi_texture_destroy(g_tm_tex[t]);
+    free(race_ai_source);g_dbg.race_ai_source=NULL;
     if(opponent_wheelmesh.vbo.id) {
         rhi_buffer_destroy(opponent_wheelmesh.vbo);
         rhi_buffer_destroy(opponent_wheelmesh.nbo);

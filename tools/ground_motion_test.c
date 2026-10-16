@@ -185,6 +185,21 @@ static void camera_collision_test(void) {
     assert(fabsf(eye[2]+.25f)<.0002f);
     m.cat=N2_GLOW;eye[2]=4;close_to(world_camera_clip(&s,NULL,a,eye,.25f),1);
     m.cat=N2_SKY;close_to(world_camera_clip(&s,NULL,a,eye,.25f),1);
+    /* Body collision policy must not let the camera cross a visible building. */
+    for(int i=0;i<4;i++){v[i*5+2]=v[i*5];v[i*5]=0;}
+    m.cat=N2_OTHER;m.scen=N2_SC_BUILDING;m.wall_policy=1;m.ground_disabled=1;
+    a[0]=-2;a[1]=a[2]=0;eye[0]=4;eye[1]=eye[2]=0;
+    assert(n2_world_body_disabled(&m));
+    assert(world_camera_clip(&s,NULL,a,eye,.25f)<1 && eye[0]<-.249f);
+    m.cat=N2_COLLISION;m.scen=N2_SC_WALL;eye[0]=4;
+    close_to(world_camera_clip(&s,NULL,a,eye,.25f),1); /* removed invisible walls stay removed */
+    m.wall_policy=0;eye[0]=4;
+    assert(world_camera_clip(&s,NULL,a,eye,.25f)<1); /* active BUN walls still block */
+    /* A road sheet still protects the camera when its body walls are disabled. */
+    for(int i=0;i<4;i++){v[i*5]=v[i*5+2];v[i*5+2]=0;}
+    m.cat=N2_ROAD;m.scen=N2_SC_TERRAIN;m.ground_disabled=0;m.wall_policy=1;
+    a[0]=eye[0]=0;a[2]=2;eye[2]=-4;
+    assert(world_camera_clip(&s,NULL,a,eye,.25f)<1 && eye[2]>.249f);
     puts("camera sweep: PASS (two-sided walls, edges, clearance, floor/ceiling, long moves)");
 }
 

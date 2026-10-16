@@ -213,7 +213,7 @@ extern "C" void dbgui_frame(void) {
        consumes them on the frame thread while keeping the SDL/GL session alive. */
     g_dbg.want_car = -1; g_dbg.want_track = -1;
 
-    if (ImGui::BeginTabBar("MasterInspectorTabs")) {
+    if (ImGui::BeginTabBar("MasterInspectorTabs", ImGuiTabBarFlags_FittingPolicyScroll | ImGuiTabBarFlags_TabListPopupButton)) {
     if(ImGui::BeginTabItem("Race Log")) {
         RaceLog *log=g_dbg.race_log;
         bool automatic=g_dbg.race_log_auto!=0;
@@ -378,19 +378,58 @@ extern "C" void dbgui_frame(void) {
         }
         if (shop_tab("Performance", ImVec4(0.4f, 0.65f, 1, 1))) {
             ImGui::TextUnformatted("Blue / Performance Shop");
-            if(g_dbg.perf_source_available) {
-                const char *levels[]={"Stock","Street / L1","Pro / L2","Extreme / L3"};
-                ImGui::Combo("Power curve",&g_dbg.perf_power_level,levels,4);
-                ImGui::Text("Peak power: %.1f kW",g_dbg.perf_peak_kw[g_dbg.perf_power_level]);
-                ImGui::Combo("Transmission",&g_dbg.perf_transmission_level,levels,4);
-                int t=g_dbg.perf_transmission_level;
-                ImGui::Text("%d gears, final drive %.3f",g_dbg.perf_gears[t],
-                            g_dbg.perf_final_drive[t]);
-                ImGui::TextDisabled("Values come from this car's GLOBALB record and affect driving live.");
-            } else ImGui::TextDisabled("This vehicle has no validated GLOBALB performance record.");
-            ImGui::Separator();
-            ImGui::TextWrapped("The file proves four power curves and four transmissions. Exact ECU, engine and turbo product-to-curve mapping is still being decoded, so they are not given invented individual multipliers.");
-            ImGui::TextWrapped("Nitrous, suspension, brakes, tyres and weight reduction remain pending.");
+            const bool stock_drive=g_dbg.perf_stock_drivetrain!=0;
+            if(stock_drive)ImGui::TextWrapped("Stock drivetrain active. Latest driving setup is preserved; package upgrades are not composed in this mode.");
+            const char *levels[]={"Stock","Street / L1","Pro / L2","Extreme / L3"};
+            if(ImGui::CollapsingHeader("Engine / ECU / induction",ImGuiTreeNodeFlags_DefaultOpen)){
+                if(g_dbg.perf_source_available){
+                    int level=stock_drive?0:g_dbg.perf_power_level;
+                    ImGui::BeginDisabled(stock_drive);
+                    if(ImGui::Combo("Combined power curve",&level,levels,4))g_dbg.perf_power_level=level;
+                    ImGui::EndDisabled();
+                    ImGui::Text("Peak power: %.1f kW",g_dbg.perf_peak_kw[level]);
+                }else ImGui::TextDisabled("No validated power record for this car.");
+                ImGui::TextWrapped("Individual engine, ECU, turbo, intake, fuel and exhaust packages need verified product mapping. No separate effects are invented.");
+            }
+            if(ImGui::CollapsingHeader("Transmission",ImGuiTreeNodeFlags_DefaultOpen)){
+                if(g_dbg.perf_source_available){
+                    int t=stock_drive?0:g_dbg.perf_transmission_level;
+                    ImGui::BeginDisabled(stock_drive);
+                    if(ImGui::Combo("Gearbox package",&t,levels,4))g_dbg.perf_transmission_level=t;
+                    ImGui::EndDisabled();
+                    ImGui::Text("%d gears, final drive %.3f",g_dbg.perf_gears[t],g_dbg.perf_final_drive[t]);
+                }else ImGui::TextDisabled("No validated gearbox record for this car.");
+            }
+            if(ImGui::CollapsingHeader("Tyres")){
+                if(g_dbg.perf_stock_available){
+                    ImGui::Text("Stock front: %.0f mm diameter / %.0f mm width",2000*g_dbg.perf_radius[0],1000*g_dbg.perf_width[0]);
+                    ImGui::Text("Stock rear: %.0f mm diameter / %.0f mm width",2000*g_dbg.perf_radius[2],1000*g_dbg.perf_width[2]);
+                    ImGui::Text("Stock grip, front / rear: %.3f / %.3f",g_dbg.perf_grip[0],g_dbg.perf_grip[1]);
+                }else ImGui::TextDisabled("Stock tyre data unavailable.");
+                ImGui::TextWrapped("Compound upgrades unavailable until their effects are decoded. Visual rims are selected in Body Shop.");
+            }
+            if(ImGui::CollapsingHeader("Brakes")){
+                if(g_dbg.perf_stock_available){
+                    ImGui::Text("Stock service / handbrake: %.2f / %.2f kN",g_dbg.perf_brakes[0],g_dbg.perf_brakes[1]);
+                    ImGui::Text("Rear brake share: %.1f%%",100*g_dbg.perf_brakes[2]);
+                }else ImGui::TextDisabled("Stock brake data unavailable.");
+                ImGui::TextDisabled("Upgrade effects not yet decoded.");
+            }
+            if(ImGui::CollapsingHeader("Suspension")){
+                if(g_dbg.perf_stock_available){
+                    ImGui::Text("Stock spring rate, front / rear: %.2f / %.2f",g_dbg.perf_spring[0],g_dbg.perf_spring[1]);
+                    ImGui::Text("Stock travel, front / rear: %.0f / %.0f mm",1000*g_dbg.perf_travel[0],1000*g_dbg.perf_travel[1]);
+                }else ImGui::TextDisabled("Stock suspension data unavailable.");
+                ImGui::TextDisabled("Upgrade effects not yet decoded.");
+            }
+            if(ImGui::CollapsingHeader("Weight reduction")){
+                if(g_dbg.perf_stock_available)ImGui::Text("Stock mass: %.0f kg",1000*g_dbg.perf_mass);
+                else ImGui::TextDisabled("Stock mass unavailable.");
+                ImGui::TextDisabled("Weight reduction packages not yet decoded.");
+            }
+            if(ImGui::CollapsingHeader("Nitrous")){
+                ImGui::TextWrapped("No verified installation, capacity or upgrade mapping. Nitrous is not added to the stock drivetrain.");
+            }
             ImGui::EndTabItem();
         }
         if (shop_tab("Safe House", ImVec4(0.8f, 0.55f, 1, 1))) {
@@ -425,6 +464,8 @@ extern "C" void dbgui_frame(void) {
             ImGui::TextDisabled("Body lowering is limited by ground clearance; wheel contact stays fixed.");
             ImGui::Text("wheelbase %.3f m", g_dbg.wheel.front_axle - g_dbg.wheel.rear_axle);
             ImGui::SliderFloat("radius/scale", &g_dbg.wheel_scale, 0.3f, 2.0f);
+            ImGui::Text("Stock visual fit F/R: %.3fx / %.3fx",g_dbg.wheel.visual_radius_scale[0],g_dbg.wheel.visual_radius_scale[2]);
+            ImGui::TextDisabled("Source diameter/width fit is visual only; physics tuning is unchanged.");
             ImGui::Text("radius %.3f m   %.0f RPM   steer %+.1f deg",
                         g_dbg.wheel_radius, g_dbg.wheel_rpm, g_dbg.steer_deg);
         }
@@ -731,7 +772,7 @@ extern "C" void dbgui_frame(void) {
         ImGui::Text("heading %.2f rad   %.0f km/h", g_dbg.heading, g_dbg.kmh);
         ImGui::Separator();
         ImGui::Checkbox("Free camera (F)", (bool *)&g_dbg.freecam);
-        ImGui::TextWrapped("Right mouse: orbit the car. F: free camera, WASD move, Q/E down/up, Shift faster.");
+        ImGui::TextWrapped("Enable Right mouse look in Pause > Options > Gameplay. Hold right mouse to orbit outside, or look around from an in-car view. F: free camera, WASD move, Q/E down/up, Shift faster.");
         ImGui::EndTabItem();
     }
 
@@ -896,6 +937,38 @@ extern "C" void dbgui_frame(void) {
         if(car_pace)ImGui::TextDisabled("Each opponent drives at its own car's flat-out speed.");
         else ImGui::SliderFloat("Opponent pace",&g_dbg.race_pace,40,180,"%.0f km/h");
         ImGui::TextDisabled("Corners, braking reach, traffic and vehicle limits reduce this pace.");
+        if(g_dbg.race_ai_source){
+            bool active=g_dbg.race && g_dbg.race->active;
+            ImGui::BeginDisabled(active);
+            bool enabled=g_dbg.race_ai_enabled!=0;
+            if(ImGui::Checkbox("GLOBALB racer settings",&enabled))g_dbg.race_ai_enabled=enabled;
+            ImGui::Combo("AI difficulty",&g_dbg.race_ai_difficulty,"Easy\0Medium\0Hard\0");
+            if(g_dbg.active_ev>=0 && g_dbg.active_ev<g_dbg.ev_count){
+                const WEvent &event=g_dbg.ev[g_dbg.active_ev];int count=event.info.kind==N2_RACE_URL?5:3;
+                int chosen=race_ai_source_select(g_dbg.race_ai_source,event.id,count,g_dbg.race_ai_choice);
+                const char *name=chosen>=0?g_dbg.race_ai_source->event[chosen].name:"No matching source setup";
+                if(ImGui::BeginCombo("Opponent setup",name)){
+                    if(ImGui::Selectable("Automatic (source order)",g_dbg.race_ai_choice<0))g_dbg.race_ai_choice=-1;
+                    for(int j=0;j<g_dbg.race_ai_source->count;j++){
+                        const RaceAiSourceEvent &e=g_dbg.race_ai_source->event[j];
+                        if(!race_ai_source_matches(&e,event.id,count))continue;
+                        ImGui::PushID(j);
+                        if(ImGui::Selectable(e.name,g_dbg.race_ai_choice==j))g_dbg.race_ai_choice=j;
+                        ImGui::PopID();
+                    }
+                    ImGui::EndCombo();
+                }
+            }
+            ImGui::EndDisabled();
+            ImGui::TextDisabled("Source values adapted to OpenUG2. Setup changes apply at race start.");
+            if(active && g_dbg.race_ai_active>=0){
+                const RaceAiSourceEvent &e=g_dbg.race_ai_source->event[g_dbg.race_ai_active];
+                ImGui::Text("Active: %s",e.name);
+                for(int j=0;j<e.count;j++)ImGui::Text("%s: skill %d, pace x%.2f, catch-up %s, %.0f km/h intent",
+                    e.driver[j].name,g_dbg.race_ai_skill[j],g_dbg.race_ai_scale[j],
+                    g_dbg.race_ai_catchup[j]?"on":"off",g_dbg.race_ai_target[j]);
+            }
+        }else ImGui::TextDisabled("GLOBALB racer settings unavailable; existing pace is active.");
         int mode = g_dbg.mode;
         if (ImGui::RadioButton("Freeroam Mode", mode == MODE_FREEROAM)) {
             g_dbg.want_mode = MODE_FREEROAM; g_dbg.want_event = -1; g_dbg.mode_request = 1;
