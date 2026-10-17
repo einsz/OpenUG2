@@ -456,3 +456,96 @@ Frozen implementation SHA-256: `contact.c`
 `74a00f0a614da0d727b1a3512c4a867e4767f61b8db611a8228c38a3080e488f`;
 `Makefile`
 `cc8ed92905c883c0274af84e389c63c3d73328f534e76bb1d752a2d4cf5d1f1f`.
+
+## S5-11 lookup acceleration (performance-only) — 2026-10-17
+
+Approved input verification for this increment: SPEC.md SHA-256
+`2723c32c63f54a04ce8ffe218386ff3b0c898aff2e9f534f685d182b7af4211c` still
+matches REVIEW.md; `test-vectors/surface_mapping.json` is unchanged. No
+specification, vector, review or verification file was edited. No original
+executable, raw asset, analyst evidence, original source, PROVENANCE/HANDOFF or
+verification report was inspected. The S5-11 selector's returned byte is
+unchanged; this increment only replaces its per-query linear scan.
+
+Requirement trace and decisions:
+
+- S5-11.1/.4 (identity, no transform): `UG2TrackPolygon.attribute` is still the
+  byte read at record offset 2 and is still returned verbatim. The index stores
+  only polygon indices; no attribute copy, remap or clamp is introduced.
+- S5-11 selection rule (same rule, smaller candidate set): every polygon is
+  inserted into a uniform XY CSR grid
+  (`UG2TrackIndex` in `src/ug2_track_collision.h`) once in
+  `ug2_track_collision_index_build`, called by `ug2_track_collision_read` before
+  publication. A query visits only the cell containing `(x,y)`
+  (`ug2_tc_index_coord`, identical monotone mapping at build and query). Cell
+  size is `UG2_TC_INDEX_CELL` (32.0f), chosen well below the world grid's 64 m
+  so collision cells stay small; memory is `cells+1` ints plus one int per
+  polygon-cell reference, like `WGroundGrid`.
+- Exactness: the selector accepts a covering triangle only when all barycentric
+  coordinates are >= -0.01. Any such point lies within `2*0.01*diam` of the
+  triangle (centroid dilation), so a polygon is inserted into every cell its
+  raw XY bounds dilated by `UG2_TC_INDEX_PAD_REL*diam + UG2_TC_INDEX_PAD_ABS`
+  (0.03*diam + 0.05 m) overlap. The extra relative margin over 0.02 covers the
+  binary32 rounding of u,v,w (bounded by ~eps*|coordinate|, sub-millimetre for
+  the loaded +-4096 m range). Build and query share the same clamped coordinate
+  mapping, so a point inside a polygon's dilated range resolves to a cell that
+  contains the polygon even outside the grid extents. Per-cell lists are in
+  ascending polygon index order and both dispatch paths keep the first polygon
+  on equal keys (`key >= best_key` skips), so ties are resolved identically.
+- Fallbacks: an unindexed owner (hand-built test data) or a non-finite query
+  point keeps the original full scan, byte-identical. An index allocation
+  failure fails `ug2_track_collision_read` (which retains the previous owner),
+  matching the loader's existing allocation-failure policy instead of silently
+  regressing to per-query scans; the failed build leaves no index behind.
+- Lifecycle: `ug2_track_collision_free` frees `polygons`, `index.start` and
+  `index.list`; `ug2_track_collision_read` frees the owner it replaces
+  (including its index) as before. The shallow `World` facade copy in
+  `world_resident.c` only round-trips the neighborhood, as it already did for
+  `polygons`/`mbb`, so no ownership change.
+- Host wiring is unchanged: `stage5_world_query` still calls
+  `ug2_tc_surface_attribute` with the same arguments and the same
+  `ct_surface_id` domain step; `src/main.c`, `src/world.c` and
+  `src/contact.{c,h}` are untouched.
+
+Tests-first and validation:
+
+- Added `tools/surface_index_test.c` (`make surface-index-test`): an independent
+  brute-force reference of the same rule is compared against the indexed lookup
+  and the unindexed fallback over empty/null sets, single covers, reach-window
+  edges, points outside the bounds and within the barycentric tolerance, stacked
+  and overlapping ties, near-vertical/steep faces, cell-boundary and
+  negative-coordinate points, sliver/degenerate lattice geometry at the shipped
+  +-4096 m range, arbitrary-quad queries synthesized inside the +-0.02
+  barycentric band, and six LCG fuzz sets. Result: 34,934 checks, 0 failures
+  (7,924 reference hits, 26,987 misses). Timing on 100,000 synthetic polygons,
+  200 queries: indexed 0.0002 s vs brute force 0.299 s (~1,700x).
+- Test sensitivity was confirmed by temporarily zeroing both pads in a scratch
+  copy: the suite then fails 18 equivalence checks (sliver/tolerance-band), so
+  the dilation is load-bearing and covered.
+- `tools/ug2_track_collision_test.c` now also asserts that a successful read
+  publishes a grid (`index.start/list`, `gw/gh` > 0) and that empty/empty-bound
+  reads publish none; PASS.
+- Re-ran on the final tree: `make surface-mapping-test` 275 checks, 0 failures;
+  `make ug2-track-collision-test` PASS; `make world-collision-test` PASS;
+  `make ground-motion-test` PASS; `make district-collision-test` PASS;
+  `make contact-test` 503 checks, 0 failures; `make car-material-test` 389
+  passed, 0 failed; `make drive-stage5-test` PASS; `make debug` exit 0.
+- Sanitizer check: `tools/surface_index_test.c` and
+  `tools/ug2_track_collision_test.c` rebuilt with ASan+UBSan
+  (`-fno-sanitize-recover=all`) run clean; the loader test shows no leaks.
+
+Frozen implementation SHA-256: `ug2_track_collision.h`
+`68e34cab793e516a07ca203bef7608fff64dcf7800800009a0372eb558b98bb6`;
+`surface_index_test.c`
+`de08e7ba3a2700c4ea6917c1939f65e824d4f5a6353a5543d4cf0ca712590963`;
+`ug2_track_collision_test.c`
+`7272c7e182a2cf384b47906b5a39eec1b7ba6f65d3291d89175951a08e377da8`;
+`Makefile`
+`795a28448b99a973281b9fcb15f3cd7749ef2b24d5b14c32dd60f9c771765c8a`.
+
+Post-report verification (same tree, no source changes): the facade review is
+closed — `world_bind_textures_step` frees only `rgn[].data`/`commontpk.blk`/
+`common`, so the shallow `World` copy in `world_resident.c` cannot affect the
+collision index; `make normal` (release objects) exits 0; `make
+world-resident-test` PASS (its nfsu2-less fixture messages are the expected
+missing-data path); `make debug` still exits 0.
