@@ -96,3 +96,33 @@ device policy, not recovered original behavior. No outstanding divergence or
 new normative review cycle required. See stage5/DIRECTION_HANDOFF_VERIFICATION.md
 and private cleanroom/verification/direction-handoff/. Preserve manual trace
 workflow for the unreproduced persistent stationary wheelspin/bog symptom.
+
+## PHY-13 round — 2026-10-17 (coordinator)
+
+Registry pick: PHY-13 (`docs/PROVENANCE.md`, tier 4 "core driving", difficulty S) —
+"every world triangle gets numeric surface id 1 (no material-to-id mapping)", ref U5-2.
+Goal: resolve the **world-material/triangle → numeric surface ID** part of U5-2 so a
+world contact carries the correct S5-7 surface ID (0…28 channel table) instead of the
+single ordinary-road fixture.
+
+Subject re-verified present and equal to the recorded image: 4,800,512 bytes, SHA-256
+`f9dd86c054878ce6276beb07c1fd61874f7a1e4bf1f241b084c65b73e24168a7`. Pre-round
+`stage5/SPEC.md` sha256 `131e2c9e26091c647fb96bdb9ac0891e43c309487abe1e984b4408b711eec16e`
+(re-checked at hand-off). No isolated retail runtime is available; static analysis only.
+
+Roles run fresh as dedicated opencode subagents: `cleanroom-analyst` → `cleanroom-reviewer`
+(hash gate) → `cleanroom-implementer` → `cleanroom-verifier`. Analyst scratch is the
+git-ignored `cleanroom/analysis/stage5/`. Spec target: this directory (`SPEC.md` S5-7,
+new `test-vectors/surface_mapping.json`, `QUESTIONS.md`). Implementation target: `src/`
+(the ground/collision query site that assigns the surface ID). The coordinator wrote no
+implementation code and read no original binary or decompiled material.
+
+### PHY-13 role log (2026-10-17, fresh context per role)
+
+2026-10-17 fresh ANALYST (`cleanroom-analyst`). Same subject image (SHA-256 `f9dd86c0…68a7`, 4,800,512 bytes); static only, original not executed. Read the intact image, `.data` tables and shipped `TRACKS/STREAM*.BUN` collision geometry read-only; the user-authorized reconstruction (`nfsu2-re`) was a lead, re-verified. Finding: the driving-collision polygon carries a one-byte surface attribute (the value is returned as the surface ID with **no remap**), so the mapping is the **identity over 0…28**; fixed fallbacks are ID 1 (no pack / no polygon / forced override) and ID 0 (failed steep normal); the 29×152-byte channel table matches `surfaces.json` bit-for-bit; shipped data uses 17 of the 29 values over 417,572 polygons. Evidence E5-9…E5-12 (analyst-only). Hand-off `SPEC.md` sha256 `6832db66…`; `surface_mapping.json` `595b5379…`; README `cfff89f1…`; QUESTIONS `d4dc33e2…`. No `src/`, design, or verifier material read.
+
+2026-10-17 fresh REVIEWER (`cleanroom-reviewer`). Scrubbed one implementation-structure leak in S5-11 (removed the original vocabulary for how the attribute reaches the query — "collider's expanded face record" / "face expansion" / "face-cache reuse" — rewritten behaviorally; no numeric/mapping/domain/fallback content changed). Independently recomputed the identity table, the shipped-value membership (17 present / 12 absent, disjoint and complete), the boundary vectors and the 29×152 channel layout; cross-checked against E5-9…E5-12; all agree. Confirmed `surfaces.json` byte-unchanged (`eaff75a3…`). **APPROVED** `SPEC.md` sha256 `2723c32c63f54a04ce8ffe218386ff3b0c898aff2e9f534f685d182b7af4211c`; `surface_mapping.json` `595b5379…`; README `cfff89f1…`; QUESTIONS `d4dc33e2…`.
+
+2026-10-17 fresh IMPLEMENTER (`cleanroom-implementer`), approved hash `2723c32c…`. Lifted the per-polygon surface attribute through the track-collision loader to the ground/contact query and applied the identity mapping with the fixed fallbacks. Files: `src/ug2_track_collision.{h,c-ish}` (`attribute`, selector), `src/contact.{c,h}` (`ct_surface_id`, record decoder, fallback constants), `src/main.c` (`Stage5WorldSource` / `stage5_world_query` wiring), `tools/surface_mapping_test.c` (new), `tools/ug2_track_collision_test.c`, `Makefile` (`surface-mapping-test`), `IMPL_DESIGN.md`. `make surface-mapping-test` 275 checks/0 fail; `contact-test` 503/0; `car-material-test` 389/0; `ug2-track-collision-test`, `world-collision-test`, `ground-motion-test`, `district-collision-test`, `drive-stage5-test` pass; `make debug` links. No forbidden access reported.
+
+2026-10-17 fresh VERIFIER (`cleanroom-verifier`). Spec/vector hashes matched; re-ran all targets pass; independent oracle (verifier-owned probe + separate Python recomputation, implementation test file NOT used as oracle) 492 checks/0 failures over identity, the >28 invalid path, a full 0…255 attribute fuzz, the boundary vectors, shipped-set membership and the channel layout. No functional divergence. One candidate amendment A (the spec does not state the effective ID for a *found* polygon whose attribute is >28; the host leaves it at the fixed default 1) — left as the documented U5-2 residual rather than a new normative rule. Findings written to `cleanroom/analysis/stage5/verification-2026-10-17.md`. No retail runtime differential (original never executed); parity inferred from static spec/evidence, not demonstrated. Round result: PASS.

@@ -60,6 +60,15 @@ native application's ordinary loaders used the user-authorized installation.
   wheel forces before their first derivative. Contact/surface/load/speed snapshots
   export only after all substeps. Reset preserves config/providers and restores
   creation travel/rate/blend, without attempting restored-state reconstruction.
+- S5-11 (refines S5-7, resolves the attribute-to-ID part of U5-2):
+  `ct_surface_id` is the identity over 0…28 and returns invalid above 28
+  without indexing a row; `CT_SURFACE_ID_*`/`CT_SURFACE_RECORD_*` constants and
+  `ct_surface_record` encode the 29×152-byte channel layout. `UG2TrackPolygon.attribute`
+  exposes the loader byte at polygon-record offset 2 unchanged, and
+  `ug2_tc_surface_attribute` selects the covering polygon with the
+  reachable-wheel ground rule. `stage5_world_query` derives the contact ID from
+  it, keeping the fixed fallbacks (no pack/no polygon/override→1, steep→0).
+  No semantic material names are introduced.
 
 ## Explicit host architecture and limits
 
@@ -362,3 +371,88 @@ Frozen implementation SHA-256: `drive_contact.c`
 `7fb35d1f09fdcab2ed00e70d021072695397a841dc08c10f0f5355a7dd3c316d`;
 `drive_stage5_test.c`
 `c64f58bd2938b969bb3930799980c18dc26f0fa981c24ddf2338f780d88bf993`.
+
+## S5-11 world surface attribute to surface ID — 2026-10-17
+
+Approved input verification for this increment: SPEC.md SHA-256
+`2723c32c63f54a04ce8ffe218386ff3b0c898aff2e9f534f685d182b7af4211c` matches
+REVIEW.md (the earlier header hash records the prior revision). Companion
+hashes checked before implementation: `test-vectors/surface_mapping.json`
+`595b537920d2943f0f098c1f0fc534e906c37b8ff2853e139f2846605ece002b`,
+`test-vectors/README.md`
+`cfff89f16c0b48257592ffdcdace7a87845b420e6a11975ef7f8350437b609a4`,
+`QUESTIONS.md`
+`d4dc33e26ee54ccba02774cf0131b97988fd48b1e37b031bffcda042102f57f8`,
+`test-vectors/surfaces.json`
+`eaff75a3b963042083034016561809f5d719ed6f655d10ff1660bfc2be2b446c`.
+No specification/vector/review was edited; no original executable, raw asset,
+analyst evidence, original source, PROVENANCE/HANDOFF or verification report
+was inspected.
+
+Requirement trace and decisions:
+
+- S5-11.1/.3 (identity): `ct_surface_id` returns the attribute widened
+  unchanged for 0…28; there is no lookup, offset, clamp or name table.
+  Vector rows in `surface_mapping.json` are checked directly.
+- S5-11.2 (domain): `CT_SURFACE_ID_MIN/MAX/COUNT` are 0/28/29;
+  `ct_surface_id` returns `CT_SURFACE_ID_INVALID` (-1) above 28 so no caller
+  can index an undefined row. The host keeps its fixed default ID for that
+  residual case (U5-2) instead of guessing a row.
+- S5-11.4 (no transform at load/query): `UG2TrackPolygon` gained an explicit
+  `attribute` field loaded from byte 2 of the 32-byte record
+  (`UG2_TC_POLYGON_SIZE`/`UG2_TC_ATTRIBUTE_OFFSET`); the loader stores the byte
+  verbatim and the selector returns it verbatim. The metadata byte view is
+  unchanged. `tools/ug2_track_collision_test.c` asserts the fixture byte 0x34
+  survives loading.
+- S5-11 selection rule: `ug2_tc_surface_attribute` (header-only static beside
+  the loader) picks the polygon/triangle whose face covers the query point and
+  is nearest to the wheel base inside the same reach window used by the world
+  ground query, rejecting near-vertical faces and preferring the rising-ramp
+  candidate. This mirrors the reachable-wheel support rule already used by the
+  independent host so the ID comes from the polygon that supplies support.
+  No engine search internals are claimed; validity of the height search stays
+  U5-2 residual.
+- S5-11.5 (fallbacks): `CT_SURFACE_ID_DEFAULT` (1) is used for no collision
+  pack, no selected polygon, and the forced override
+  (`ct_ground_distance`); `CT_SURFACE_ID_STEEP` (0) is used on the failed
+  steep-normal test (`ct_distance`). These are fixed constants and do not
+  consult geometry.
+- S5-11.7 (record layout): `CT_SURFACE_RECORD_COUNT/SIZE` are 29/152 and
+  `ct_surface_record` decodes the six little-endian binary32 channels at
+  0x18/0x1C/0x24/0x28/0x2C/0x30 into `CtSurface`; the test decodes synthetic
+  records and compares against `surfaces.json` per row.
+- Host wiring: `stage5_world_query` now receives a `Stage5WorldSource`
+  (scene + collision pointer). The collision pointer addresses
+  `world.neighborhood.track_collision`, whose address is stable across
+  resident/track switches, so the ID follows the currently loaded pack. When
+  support is found the query maps the selected polygon attribute through
+  `ct_surface_id`; otherwise the result stays the fixed default 1.
+- Tests-first: `tools/surface_mapping_test.c` was added and run red before the
+  implementation, then green. It covers the identity table, domain bounds,
+  fallback behavior through `ct_ground_distance`/`ct_distance`, the
+  boundary/representative vectors (including out-of-domain null), selector
+  cases (covering/nearest/reach window/attribute 0/attribute 29/near-vertical
+  face/empty/null set), a composed contact-carries-ID check, and the 29×152
+  channel layout decode.
+- Validation (all after the change): `make surface-mapping-test` 275 checks,
+  0 failures; `make ug2-track-collision-test` PASS (with new attribute
+  assertions); `make world-collision-test`, `make ground-motion-test`,
+  `make district-collision-test` PASS; `make car-material-test` 389 passed,
+  0 failed; `make contact-test` 503 checks, 0 failures plus the direction
+  handoff and adapter stages; `make drive-stage5-test` PASS; `make debug`
+  exit 0.
+
+Frozen implementation SHA-256: `contact.c`
+`ba87a8e1fb3c89886b4b6c7b7bd5349759434f2fc080ca81908ce017cb6220ef`;
+`contact.h`
+`df69f4bac0c533e7672d00151e55352113885edd0397184acc0ebee2acaa6512`;
+`ug2_track_collision.h`
+`f3b7395f39e71cf857752888d0fe9fd9be47a3be68aa3bf350d45059c60cb7ca`;
+`main.c`
+`a50e2b0a1b45ea0a8542f3ea8bd1edd1b7ea4165836288d6882ab94902edecf3`;
+`surface_mapping_test.c`
+`24bc05d5b92b9a63e94c3829c1247a080144984aefe8a66cb96341345c6a669f`;
+`ug2_track_collision_test.c`
+`74a00f0a614da0d727b1a3512c4a867e4767f61b8db611a8228c38a3080e488f`;
+`Makefile`
+`cc8ed92905c883c0274af84e389c63c3d73328f534e76bb1d752a2d4cf5d1f1f`.

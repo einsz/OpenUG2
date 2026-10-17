@@ -66,6 +66,9 @@ int main(void) {
     assert(out.polygons[0].corners[0][0]==-2 && out.polygons[0].corners[0][1]==-1 && out.polygons[0].corners[0][2]==10.5f);
     assert(out.polygons[1].corners[2][2]==12 && out.polygons[1].section==121 && out.polygons[1].source_offset==104);
     assert(!memcmp(out.polygons[1].metadata,data+104,8));
+    /* The +2 attribute byte is exposed as stored, not translated (S5-11). */
+    assert(out.polygons[0].attribute==data[72+2] && out.polygons[1].attribute==data[104+2]);
+    assert(out.polygons[1].attribute==(unsigned char)0x34 && out.polygons[1].metadata[2]==out.polygons[1].attribute);
     float bounds[]={1.9f,-.2f,2.1f,.2f};assert(ug2_track_collision_read(data,size,&activation,bounds,&out));
     assert(out.count==1 && out.total==3 && out.polygons[0].source_offset==104);
     UG2TrackPolygon *saved=out.polygons;
