@@ -48,7 +48,7 @@ HUD presentation, fountain animation, sea quality and shop lighting still need w
 
 | Native map editor | Circuit race — 4K capture |
 | --- | --- |
-| ![Map editor overlooking Bayview, with AI paths and editing controls](docs/screenshots/map-editor.png) | ![MIATA in Circuit 4083 with prototype race HUD at 3840×2160](docs/screenshots/race-circuit-4k.png) |
+| ![Map editor overlooking Bayview, with AI paths and editing controls](docs/screenshots/map-editor.png) | ![MIATA in Circuit 4083 with the current race HUD and opponents at 3840×2160](docs/screenshots/race-circuit-4k.png) |
 
 | Rainy fountain plaza — 4K, maximum vehicle detail | Red shop vinyl selection |
 | --- | --- |
