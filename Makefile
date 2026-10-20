@@ -758,3 +758,28 @@ race-ai-source-test: tools/race_ai_source_test.c src/race_ai_source.h src/asset_
 	$(CC) $(CFLAGS) -Isrc tools/race_ai_source_test.c -o build/race_ai_source_test -lm
 	./build/race_ai_source_test
 .PHONY: race-ai-source-test
+
+# ----------------------------------------------------------------------------
+# Vulkan backend (issue #14, P11a). Offscreen v0 only. By default it builds against the system SDL2 and
+# Vulkan (sdl2-config, -lvulkan, glslangValidator on PATH). To build against a self-contained tree instead
+# (headers in $(VK_SYSROOT)/usr/include, libraries in $(VK_SYSROOT)/usr/lib/x86_64-linux-gnu, tools in
+# $(VK_SYSROOT)/usr/bin), set VK_SYSROOT=/path. VK_ICD is the Vulkan driver the smoke test runs on
+# (default: lavapipe, if its ICD file is found; the Khronos validation layer is used when installed).
+VK_SYSROOT ?=
+ifneq ($(VK_SYSROOT),)
+VK_LIBDIR  := $(VK_SYSROOT)/usr/lib/x86_64-linux-gnu
+VK_INC     := -I$(VK_SYSROOT)/usr/include/SDL2 -I$(VK_SYSROOT)/usr/include -I$(VK_SYSROOT)/usr/include/x86_64-linux-gnu
+VK_LIBS    := -L$(VK_LIBDIR) -lSDL2 -lvulkan -Wl,-rpath,$(VK_LIBDIR)
+else
+VK_INC     := $(SDL_CFLAGS)
+VK_LIBS    := $(SDL_LIBS) -lvulkan
+endif
+VK_CFLAGS  := -std=c99 -Wall -Wextra -Wno-missing-field-initializers -D_DEFAULT_SOURCE -DN2_VULKAN $(VK_INC) -Isrc
+VK_ICD     ?= $(firstword $(wildcard /usr/share/vulkan/icd.d/lvp_icd*.json /etc/vulkan/icd.d/lvp_icd*.json))
+VK_RUN_ENV := SDL_VIDEODRIVER=offscreen $(if $(VK_ICD),VK_DRIVER_FILES=$(VK_ICD)) \
+              $(if $(VK_SYSROOT),VK_ADD_LAYER_PATH=$(VK_SYSROOT)/usr/share/vulkan/explicit_layer.d LD_LIBRARY_PATH=$(VK_LIBDIR))
+rhi-vk-smoke: tools/rhi_vk_smoke.c src/rhi_vk.c src/rhi.h
+	@mkdir -p build
+	$(CC) $(VK_CFLAGS) tools/rhi_vk_smoke.c src/rhi_vk.c -o build/rhi_vk_smoke $(VK_LIBS)
+	$(VK_RUN_ENV) ./build/rhi_vk_smoke
+.PHONY: rhi-vk-smoke

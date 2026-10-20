@@ -38,7 +38,8 @@ typedef enum RhiResult {
 typedef enum RhiBackend {
     RHI_BACKEND_DEFAULT = 0, /* the backend this build was compiled for */
     RHI_BACKEND_GL,          /* desktop GL 2.1 compatibility (macOS: legacy 2.1 context) */
-    RHI_BACKEND_GLES2        /* OpenGL ES 2.0 */
+    RHI_BACKEND_GLES2,       /* OpenGL ES 2.0 */
+    RHI_BACKEND_VULKAN       /* Vulkan 1.1+ (offscreen v0; swapchain + MoltenVK later) */
 } RhiBackend;
 
 typedef enum RhiDeviceFlags {
