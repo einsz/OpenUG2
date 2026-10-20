@@ -10,7 +10,6 @@
 
 #include "render.h"
 #include "tex_override.h"
-#include "rhi_gl.h"   /* GL names behind buffer handles for the draw code */
 #include "generated_shaders.h"   /* src/shaders/: make-embedded byte arrays */
 
 /* The world and car pipelines of a shader, for helpers that only get the
@@ -839,7 +838,7 @@ RProg render_program(void) {
         GLSL_VS_HEADER, src_shaders_ug2_vert, src_shaders_ug2_vert_len,
         GLSL_FS_HEADER, src_shaders_ug2_frag, src_shaders_ug2_frag_len, attributes, 4,
         ug2_blocks, 1);
-    r.prog = rhi_gl_shader_program(r.shader);
+    r.prog = rhi_shader_native_program(r.shader);
     r.p = (UG2Params *)rhi_shader_params(r.shader, 0);
     if (!r.p) {   /* no usable shader: keep writes harmless, draws show nothing */
         static UG2Params unused;
@@ -946,9 +945,9 @@ static int bsort_cmp(const void *a, const void *b) {
     return aa->group < bb->group ? -1 : aa->group > bb->group ? 1 : 0;
 }
 static int btex_cmp(const void *a, const void *b) {   /* final texture order */
-    /* GL names, not handles: keeps the order (and so the image) unchanged. */
-    GLuint ta = rhi_gl_texture_name(((const N2Batch *)a)->tex),
-           tb = rhi_gl_texture_name(((const N2Batch *)b)->tex);
+    /* native ids, not handles: keeps the order (and so the image) unchanged. */
+    uint32_t ta = rhi_texture_native_id(((const N2Batch *)a)->tex),
+             tb = rhi_texture_native_id(((const N2Batch *)b)->tex);
     return ta < tb ? -1 : ta > tb ? 1 : 0;
 }
 
@@ -974,7 +973,7 @@ static void batch_members_report(const N2Scene *s, const BSortEnt *ent, int i0, 
     printf("MILESTONE: 79\n");
     printf("batch index   %d\n", bidx);
     printf("texkey        %08x   gl_tex %u   nmesh %d\n",
-           s->meshes[ent[i0].idx].texkey, (unsigned)rhi_gl_texture_name(tex), i1 - i0);
+           s->meshes[ent[i0].idx].texkey, (unsigned)rhi_texture_native_id(tex), i1 - i0);
     float mn[3] = {1e30f,1e30f,1e30f}, mx[3] = {-1e30f,-1e30f,-1e30f};
     for (int k = i0; k < i1; k++) {
         const N2Mesh *m = &s->meshes[ent[k].idx];
@@ -1225,7 +1224,7 @@ WorldBatchUpload *upload_world_batches_begin(const N2Scene *s,
         float cx = (mbb[i][0]+mbb[i][2])*0.5f, cy = (mbb[i][1]+mbb[i][3])*0.5f;
         uint64_t cell = (uint64_t)(uint32_t)((int)((cy-y0)/BATCH_CELL)*4096
                                            + (int)((cx-x0)/BATCH_CELL));
-        ent[m].key = cell << 32 | rhi_gl_texture_name(tex); ent[m].idx = i; ent[m].tex = tex;
+        ent[m].key = cell << 32 | rhi_texture_native_id(tex); ent[m].idx = i; ent[m].tex = tex;
         int mode = mtexmode ? mtexmode[i] : N2_DRAW_OPAQUE;
         /* Keep wettable roads separate even when walls share their texture. */
         ent[m].group = (unsigned char)n2_world_batch_material_group(
@@ -1312,7 +1311,7 @@ int upload_cat_batches(const N2Scene *s, int cat, const RhiTexture *mtex, N2Batc
     int m = 0;
     for (int i = 0; i < n; i++)
         if (s->meshes[i].cat == cat) {
-            ent[m].key = rhi_gl_texture_name(mtex[i]); ent[m].idx = i; ent[m].tex = mtex[i];
+            ent[m].key = rhi_texture_native_id(mtex[i]); ent[m].idx = i; ent[m].tex = mtex[i];
             int mode = mtexmode ? mtexmode[i] : N2_DRAW_OPAQUE;
             ent[m].group = (unsigned char)n2_world_batch_material_group(
                 &s->meshes[i], mode);

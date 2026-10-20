@@ -211,6 +211,12 @@ RhiResult  rhi_texture_generate_mips(RhiTexture tex);
 void       rhi_texture_destroy(RhiTexture tex);
 /* 1 while the handle refers to a texture that has not been destroyed. */
 int        rhi_texture_is_live(RhiTexture tex);
+/* Backend's native object id for the texture: the GL texture name under the GL
+ * backend, 0 for {0} or a destroyed handle. Backend-neutral spelling for code
+ * outside the backend that needs a stable per-texture key (batch ordering) or a
+ * diagnostic id without touching GL; a non-GL backend returns its own stable id
+ * or 0. It is an identity, not an ordering contract: compare for equality. */
+uint32_t   rhi_texture_native_id(RhiTexture tex);
 
 /* ------------------------------------------------------------------------------ */
 /* Samplers                                                                       */
@@ -302,6 +308,11 @@ void      rhi_shader_destroy(RhiShader shader);
  * creation). Its contents at each draw with the shader are what that draw
  * sees; write it any time. NULL for an invalid shader or block. */
 void     *rhi_shader_params(RhiShader shader, uint32_t block);
+/* Backend's native program object for the shader: the GL program name under the
+ * GL backend, 0 for {0} or a destroyed handle. Backend-neutral spelling so code
+ * outside the backend can hand the number to hand-drawing tools without touching
+ * GL; a non-GL backend returns its own id or 0. */
+uint32_t  rhi_shader_native_program(RhiShader shader);
 
 /* ------------------------------------------------------------------------------ */
 /* Pipelines and draws                                                            */

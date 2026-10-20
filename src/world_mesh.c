@@ -102,18 +102,18 @@ static char *wm_read_text(const char *path) {
 /* Final text for one stage. Desktop: the 1.20 source as is. GLES: the GLSL ES
    1.00 variant of the same source -- drop the "#version 120" line (ES has no
    1.20) and put the ES precision prologue in front. len < 0 = NUL-terminated. */
-static char *wm_text(GLenum type, const char *src, GLint len) {
-    if (len < 0) len = (GLint)strlen(src);
+static char *wm_text(int is_vertex, const char *src, int len) {
+    if (len < 0) len = (int)strlen(src);
     const char *header = "";
 #ifdef N2_GLES
     if (len >= 8 && !strncmp(src, "#version", 8)) {
         const char *nl = memchr(src, '\n', (size_t)len);
-        GLint skip = nl ? (GLint)(nl - src) + 1 : len;
+        int skip = nl ? (int)(nl - src) + 1 : len;
         src += skip; len -= skip;
     }
-    header = type == GL_VERTEX_SHADER ? GLSL_VS_HEADER : GLSL_FS_HEADER;
+    header = is_vertex ? GLSL_VS_HEADER : GLSL_FS_HEADER;
 #else
-    (void)type;
+    (void)is_vertex;
 #endif
     size_t n = strlen(header);
     char *t = (char *)malloc(n + (size_t)len + 1);
@@ -128,21 +128,21 @@ RhiShader world_debug_shader_load(const char *vert_path, const char *frag_path) 
        arrays -- not NUL-terminated, so pass their *_len) so the binary works
        from any working directory. */
     char *vfile = wm_read_text(vert_path), *ffile = wm_read_text(frag_path);
-    const char *vsrc; GLint vlen;
-    const char *fsrc; GLint flen;
+    const char *vsrc; int vlen;
+    const char *fsrc; int flen;
     if (vfile) { vsrc = vfile; vlen = -1; }
     else { vsrc = (const char *)src_world_debug_120_vert;
-           vlen = (GLint)src_world_debug_120_vert_len;
+           vlen = (int)src_world_debug_120_vert_len;
            fprintf(stderr, "world_debug: %s not found, using embedded vertex shader\n", vert_path); }
     if (ffile) { fsrc = ffile; flen = -1; }
     else { fsrc = (const char *)src_world_debug_120_frag;
-           flen = (GLint)src_world_debug_120_frag_len;
+           flen = (int)src_world_debug_120_frag_len;
            fprintf(stderr, "world_debug: %s not found, using embedded fragment shader\n", frag_path); }
 
     static const char *const attributes[] = { "a_Position", "a_Normal", "a_UV0", "a_Color" };
     static const RhiParamLayout *const blocks[] = { &world_debug_params_layout };
-    char *vtext = wm_text(GL_VERTEX_SHADER, vsrc, vlen);
-    char *ftext = wm_text(GL_FRAGMENT_SHADER, fsrc, flen);
+    char *vtext = wm_text(1, vsrc, vlen);
+    char *ftext = wm_text(0, fsrc, flen);
     free(vfile); free(ffile);
     RhiShader shader = {0};
     if (vtext && ftext)
