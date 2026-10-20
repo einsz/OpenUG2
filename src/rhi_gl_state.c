@@ -33,6 +33,7 @@ typedef struct {
     GLint depth_func;
     GLboolean depth_mask, color_mask[4];
     GLfloat clear_color[4], clear_depth;
+    GLfloat line_width;
     GLint viewport[4];
     GLint program, framebuffer, renderbuffer, array_buffer;
     GLint active;                   /* unit index, 0-based */
@@ -57,6 +58,7 @@ static void gls_reset(SDL_GLContext ctx) {
     S.depth_func = GL_LESS; S.depth_mask = GL_TRUE;
     for (int i = 0; i < 4; i++) S.color_mask[i] = GL_TRUE;
     S.clear_depth = 1.0f;
+    S.line_width = 1.0f;
     SDL_Window *w = SDL_GL_GetCurrentWindow();
     if (w) SDL_GL_GetDrawableSize(w, &S.viewport[2], &S.viewport[3]);
 }
@@ -128,6 +130,11 @@ void glsViewport(GLint x, GLint y, GLsizei w, GLsizei h) {
     GlsState *s = st();
     s->viewport[0] = x; s->viewport[1] = y; s->viewport[2] = w; s->viewport[3] = h;
     glViewport(x, y, w, h);
+}
+
+void glsLineWidth(GLfloat width) {
+    st()->line_width = width;   /* GL returns the set value, not the raster clamp */
+    glLineWidth(width);
 }
 void glsUseProgram(GLuint program) { st()->program = (GLint)program; glUseProgram(program); }
 void glsBindFramebuffer(GLenum target, GLuint fbo) {
@@ -358,6 +365,7 @@ void gls_get_floatv(GLenum pname, GLfloat *out) {
     int n = 0;
     if (pname == GL_COLOR_CLEAR_VALUE) { memcpy(out, s->clear_color, sizeof s->clear_color); n = 4; }
     else if (pname == GL_DEPTH_CLEAR_VALUE) { out[0] = s->clear_depth; n = 1; }
+    else if (pname == GL_LINE_WIDTH) { out[0] = s->line_width; n = 1; }
     if (!n) { g_fallback++; glGetFloatv(pname, out); return; }
 #ifdef GLS_VERIFY
     GLfloat real[4]; glGetFloatv(pname, real);

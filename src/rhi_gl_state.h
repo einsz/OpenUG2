@@ -67,6 +67,7 @@ void glsClearDepthf(GLfloat depth);
 void glsClearDepth(GLdouble depth);
 #endif
 void glsViewport(GLint x, GLint y, GLsizei w, GLsizei h);
+void glsLineWidth(GLfloat width);
 void glsUseProgram(GLuint program);
 void glsLinkProgram(GLuint program);
 void glsDeleteProgram(GLuint program);
@@ -138,6 +139,7 @@ unsigned gls_fallback_queries(void);
 #    define glClearDepth(d)               glsClearDepth(d)
 #  endif
 #  define glViewport(x,y,w,h)             glsViewport(x,y,w,h)
+#  define glLineWidth(w)                  glsLineWidth(w)
 #  define glUseProgram(p)                 glsUseProgram(p)
 #  define glLinkProgram(p)                glsLinkProgram(p)
 #  define glDeleteProgram(p)              glsDeleteProgram(p)

@@ -375,7 +375,7 @@ static int map_vertex(Hud*h,double x,double y,float*v){
 /* lines != 0: a line strip of `count` points (map route, drawn at width 2).
    Otherwise a TRIANGLE_FAN of `count` (<= 4) points (opponent markers). */
 static void map_vertices(Hud*h,const float*v,int count,int lines,float r,float g,float b){
- if(count<2||(lines&&count>HA_LIMIT))return;
+ if(count<2||(lines&&count>HA_LIMIT+1))return;   /* a closed HA_LIMIT-point route is HA_LIMIT+1 verts */
  h->hud_params->roads=2;
  h->hud_params->tint[0]=r;h->hud_params->tint[1]=g;h->hud_params->tint[2]=b;h->hud_params->tint[3]=1;
  h->hud_params->dialClip[0]=h->hud_params->dialClip[1]=h->hud_params->dialClip[2]=h->hud_params->dialClip[3]=0;
