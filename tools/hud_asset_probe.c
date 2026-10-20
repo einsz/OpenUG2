@@ -2,6 +2,7 @@
 #include "hud.h"
 #include "hud_race.h"
 #include "race.h"
+#include "rhi_gl.h"   /* this probe reads pixels with raw GL (render.h is GL-free) */
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>

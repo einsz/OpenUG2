@@ -10,10 +10,10 @@
 #define OPENUG2_WORLD_MESH_H
 
 #include <stdint.h>
-#include "render.h"   /* BatchedVertex + the GL headers (single home) */
+#include "render.h"   /* BatchedVertex + the backend-neutral renderer interface */
 
 typedef struct {
-    GLuint   vao;          /* reserved: 0 on GL 2.1 core (no VAO); attribs bound per draw */
+    uint32_t vao;          /* reserved: 0 on GL 2.1 core (no VAO); attribs bound per draw */
     RhiBuffer vbo, ibo;
     uint32_t index_count;
     uint32_t chunk_id;

@@ -8,7 +8,6 @@
  */
 #include "hud_baseline.h"
 #include "hud_asset.h"
-#include "rhi_gl.h"   /* GL names behind texture handles for the draw code */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -873,15 +872,7 @@ void hud_baseline_draw(HudBaseline *h, const RProg *rp, GpuMesh *quad,
     dc.w = width; dc.h = height; dc.policy = h->fit_policy;
 
     /* --- enter 2D: save what we change so the world pass is untouched --- */
-    GLboolean depth_on = glIsEnabled(GL_DEPTH_TEST);
-    GLboolean blend_on = glIsEnabled(GL_BLEND);
-    GLint blend_src = GL_SRC_ALPHA, blend_dst = GL_ONE_MINUS_SRC_ALPHA;
-    glGetIntegerv(GL_BLEND_SRC_ALPHA, &blend_src);
-    glGetIntegerv(GL_BLEND_DST_ALPHA, &blend_dst);
-    GLboolean cull_on = glIsEnabled(GL_CULL_FACE), stencil_on = glIsEnabled(GL_STENCIL_TEST);
-    GLboolean color_mask[4]; glGetBooleanv(GL_COLOR_WRITEMASK, color_mask);
-    GLboolean depth_mask = GL_TRUE;
-    glGetBooleanv(GL_DEPTH_WRITEMASK, &depth_mask);
+    RhiStateSnapshot hud_saved; rhi_cmd_save_state(&hud_saved);
 
     /* no depth test, no depth write, alpha blend */
     rhi_cmd_bind_pipeline(render_overlay_pipelines(rp)->screen_blend);
@@ -928,11 +919,5 @@ void hud_baseline_draw(HudBaseline *h, const RProg *rp, GpuMesh *quad,
     rp->p->uTextureAlpha = 0.0f;
     rp->p->uFogDensity = fog_density;
     ug2_vec3(rp->p->uColor, 1.0f, 1.0f, 1.0f);
-    glColorMask(color_mask[0], color_mask[1], color_mask[2], color_mask[3]);
-    if (cull_on) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
-    if (stencil_on) glEnable(GL_STENCIL_TEST); else glDisable(GL_STENCIL_TEST);
-    glDepthMask(depth_mask);
-    if (depth_on) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
-    if (blend_on) glEnable(GL_BLEND); else glDisable(GL_BLEND);
-    glBlendFunc((GLenum)blend_src, (GLenum)blend_dst);
+    rhi_cmd_restore_state(&hud_saved);
 }

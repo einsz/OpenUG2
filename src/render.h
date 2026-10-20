@@ -3,15 +3,14 @@
  * dev PNG screenshot writer. Owns every gl* call that creates GPU objects;
  * main.c only binds/draws through GpuMesh + the RProg uniform handles.
  *
- * Also the single home of the GL headers: desktop legacy GL 2.1 + GLSL 120, or
- * OpenGL ES 2.0 + GLSL 100 with -DN2_GLES — every module includes GL via here
- * (through rhi_gl_state.h, which also routes state-setting calls through the
- * CPU-side tracker so helpers can save/restore without querying GL). */
+ * Backend-neutral: it pulls in no GL headers. GPU work goes through rhi.h, and
+ * the GL headers (desktop legacy GL 2.1 + GLSL 120, or OpenGL ES 2.0 + GLSL 100
+ * with -DN2_GLES) live only in the GL backend (rhi_gl*.c). The GLSL_*_HEADER
+ * macros below are shader-source prologue strings, not GL headers. */
 #ifndef OPENUG2_RENDER_H
 #define OPENUG2_RENDER_H
 
 #include <SDL.h>
-#include "rhi_gl_state.h"   /* GL headers + CPU state tracker (no glGet* readback) */
 #include "rhi.h"
 #include "render_params.h"
 
@@ -86,7 +85,7 @@ typedef struct {
 /* the one shader program + its parameter block (render_params.h) */
 typedef struct {
     RhiShader shader;
-    GLuint prog;     /* GL program behind shader, for tools that draw by hand */
+    uint32_t prog;   /* native program id (GL name), for tools that draw by hand */
     UG2Params *p;    /* the shader's parameters; the next draw uses what is here */
 } RProg;
 

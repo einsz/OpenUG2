@@ -29,7 +29,6 @@
 #include "car_mod.h"
 #include "render.h"
 #include "rhi.h"
-#include "rhi_gl.h"   /* GL names behind texture handles for the draw code */
 #include "physics.h"
 #include "drive_stage1.h"
 #include "drive_trace.h"
@@ -4484,7 +4483,7 @@ int main(int argc, char **argv) {
     if (smaudit) { int slot = -1;
         for (int j = 0; j < ntmap; j++) if (tmapkey[j] == smkey) { slot = j; break; }
         printf("M98 target %08x -> bound slot %d, GL id %u\n\n", smkey, slot,
-               slot < 0 ? 0u : rhi_gl_texture_name(tmaptex[slot])); }
+               slot < 0 ? 0u : rhi_texture_native_id(tmaptex[slot])); }
 
 
     /* GPS self-check: route across the city so a broken graph is loud at load. */
