@@ -23,13 +23,20 @@ for f in $(find "$root" -type f \( -name '*.c' -o -name '*.h' -o -name '*.cpp' \
     for a in $allow; do [ "$base" = "$a" ] && skip=1 && break; done
     [ "$skip" = 1 ] && continue
 
-    # strip block comments, line comments and string literals, keep line numbers
-    stripped=$(perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{//[^\n]*}{}g; s{"(\\.|[^"\\\n])*"}{""}g' "$f")
+    # Comments stripped, strings kept: used for the #include check, since an
+    # include path is written in quotes and must not be stripped as a string.
+    nocomment=$(perl -0777 -pe 's{/\*.*?\*/}{ }gs; s{//[^\n]*}{}g' "$f")
+    # Comments AND string literals stripped: used for the gl*/GL* checks, so GL
+    # named inside a string (a diagnostic, an embedded shader) does not count.
+    code=$(printf '%s' "$nocomment" | perl -0777 -pe 's{"(\\.|[^"\\\n])*"}{""}g')
 
-    hits=$(printf '%s\n' "$stripped" | grep -nE \
-        '#[[:space:]]*include[[:space:]]*[<"](GL/|GLES|OpenGL/|SDL_opengl)|\bgl[A-Z][A-Za-z0-9]*[[:space:]]*\(|\b(GLuint|GLenum|GLint|GLfloat|GLboolean|GLsizei|GLvoid|GLchar|GLbitfield|GLclampf|GLubyte|GLushort|GLshort|GLdouble|GLintptr|GLsizeiptr|GLbyte|GLuint64|GLfixed)\b' \
+    inc=$(printf '%s\n' "$nocomment" | grep -nE \
+        '#[[:space:]]*include[[:space:]]*[<"](GL/|GLES|OpenGL/|SDL_opengl)' || true)
+    api=$(printf '%s\n' "$code" | grep -nE \
+        '\bgl[A-Z][A-Za-z0-9]*[[:space:]]*\(|\b(GLuint|GLenum|GLint|GLfloat|GLboolean|GLsizei|GLvoid|GLchar|GLbitfield|GLclampf|GLubyte|GLushort|GLshort|GLdouble|GLintptr|GLsizeiptr|GLbyte|GLuint64|GLfixed)\b' \
         || true)
 
+    hits=$(printf '%s\n%s' "$inc" "$api" | sed '/^$/d')
     if [ -n "$hits" ]; then
         fail=1
         echo "check-gl: GL API outside the backend in $f:"
