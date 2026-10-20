@@ -371,6 +371,10 @@ typedef struct RhiPipelineDesc {
     uint8_t         blend;
     RhiBlendFactor  src_rgb, dst_rgb, src_alpha, dst_alpha;
     uint8_t         color_write;   /* bits 0..3 = R, G, B, A */
+    float           line_width;    /* RHI_PRIMITIVE_LINES width in pixels; <= 0
+                                      means 1 (GL: glLineWidth, clamped to the
+                                      driver's aliased-line range; ignored for
+                                      triangles). */
     uint8_t         stencil_test;
     RhiCompare      stencil_compare;
     uint8_t         stencil_ref, stencil_read_mask, stencil_write_mask;

@@ -910,6 +910,7 @@ void rhi_pipeline_desc_init(RhiPipelineDesc *d) {
     d->src_rgb = d->src_alpha = RHI_BLEND_ONE;
     d->dst_rgb = d->dst_alpha = RHI_BLEND_ZERO;
     d->color_write = 0xF;
+    d->line_width = 1.0f;
     d->stencil_test = 0;
     d->stencil_compare = RHI_COMPARE_ALWAYS;
     d->stencil_ref = 0;
@@ -937,6 +938,7 @@ static int pipeline_desc_equal(const RhiPipelineDesc *a, const RhiPipelineDesc *
            a->src_rgb == b->src_rgb && a->dst_rgb == b->dst_rgb &&
            a->src_alpha == b->src_alpha && a->dst_alpha == b->dst_alpha &&
            (a->color_write & 0xF) == (b->color_write & 0xF) &&
+           (a->line_width > 0 ? a->line_width : 1.0f) == (b->line_width > 0 ? b->line_width : 1.0f) &&
            !a->stencil_test == !b->stencil_test && a->stencil_compare == b->stencil_compare &&
            a->stencil_ref == b->stencil_ref && a->stencil_read_mask == b->stencil_read_mask &&
            a->stencil_write_mask == b->stencil_write_mask && a->stencil_fail == b->stencil_fail &&
@@ -1053,6 +1055,11 @@ void rhi_cmd_bind_pipeline(RhiPipeline pipeline) {
     set_cap(GL_CULL_FACE, d->cull != RHI_CULL_NONE);
     set_cap(GL_POLYGON_OFFSET_FILL, 0);
     if (d->cull != RHI_CULL_NONE) glCullFace(d->cull == RHI_CULL_BACK ? GL_BACK : GL_FRONT);
+    {   /* line width (no effect on triangles); only sent when it changes */
+        GLfloat lw = 1.0f, want = d->line_width > 0 ? d->line_width : 1.0f;
+        gls_get_floatv(GL_LINE_WIDTH, &lw);
+        if (lw != want) glLineWidth(want);
+    }
     GLboolean cm[4];
     gls_get_booleanv(GL_COLOR_WRITEMASK, cm);
     GLboolean want_cm[4] = { (d->color_write & 1) ? GL_TRUE : GL_FALSE, (d->color_write & 2) ? GL_TRUE : GL_FALSE,

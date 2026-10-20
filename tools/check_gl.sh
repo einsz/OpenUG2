@@ -7,13 +7,13 @@
 # Allowed GL owners:
 #   rhi_gl.c / rhi_gl.h / rhi_gl_state.c / rhi_gl_state.h  the GL backend itself
 #   debugui.cpp                                            Dear ImGui's GL2 backend
-#   hud.c / ugui/ugui_gl.c / ugui/ugui_gl.h                self-contained GL
-#                                                          renderers (to migrate)
+#   ugui/ugui_gl.c / ugui/ugui_gl.h                        self-contained GL
+#                                                          renderer (to migrate)
 # Everything else reaches the GPU only through rhi.h.
 set -eu
 
 root=${1:-src}
-allow="rhi_gl.c rhi_gl.h rhi_gl_state.c rhi_gl_state.h debugui.cpp ugui_gl.c ugui_gl.h hud.c"
+allow="rhi_gl.c rhi_gl.h rhi_gl_state.c rhi_gl_state.h debugui.cpp ugui_gl.c ugui_gl.h"
 
 fail=0
 # -- find source files, skip the allowed owners by basename --

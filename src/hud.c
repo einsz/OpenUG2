@@ -5,7 +5,7 @@
 #include "hud_baseline.h"
 #include "hud_race.h"
 #include "race.h"
-#include "rhi_gl.h"   /* GL names behind texture handles for the draw code */
+#include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -23,17 +23,41 @@ typedef struct { RhiTexture id; int w,h; } Texture;
  * cell); cells[i] is glyph i's cell in it, inv_w/inv_h its texel size. With
  * cells NULL (repack failed) the original atlas and header sizes are used. */
 typedef struct { HaFont metrics; Texture atlas; HaGlyphCell *cells; float inv_w,inv_h; } Font;
+/* The HUD's own shader parameters (std140); samplers: art on unit 0, silhouette
+ * on unit 1. Field names match the uniforms in init_shader's GLSL. */
+typedef struct HudParams {
+ float tint[4];      /* @0  */
+ float dialClip[4];  /* @16 */
+ float halfSize[2];  /* @32 */
+ float roads;        /* @40 */
+ int32_t art, silhouette;   /* @44, @48 (sampler units) */
+} HudParams;
+static const RhiParamField hud_param_fields[] = {
+ {"tint",       RHI_PARAM_VEC4,  offsetof(HudParams, tint),       1},
+ {"dialClip",   RHI_PARAM_VEC4,  offsetof(HudParams, dialClip),   1},
+ {"halfSize",   RHI_PARAM_VEC2,  offsetof(HudParams, halfSize),   1},
+ {"roads",      RHI_PARAM_FLOAT, offsetof(HudParams, roads),      1},
+ {"art",        RHI_PARAM_INT,   offsetof(HudParams, art),        1},
+ {"silhouette", RHI_PARAM_INT,   offsetof(HudParams, silhouette), 1},
+};
+static const RhiParamLayout hud_param_layout = {
+ hud_param_fields, sizeof hud_param_fields / sizeof hud_param_fields[0],
+ sizeof(HudParams), "HudParams"
+};
 struct Hud {
  HudBaseline *auxiliary;
  HaPackage package; Pack packs[PACK_COUNT]; Font fonts[FONT_COUNT]; size_t font_count;
- Texture *textures; GLuint shader,vbo; GLint pos,uv,maskuv,tint,road,tex,mask;
+ Texture *textures;
+ RhiShader hud_shader; HudParams *hud_params;   /* the shader + its parameter block */
+ RhiPipeline tri_pipe, line_pipe;               /* quads/markers; map route lines (width 2) */
+ RhiBuffer vbo, ibo, line_ibo;                  /* streamed verts; quad + line-strip index sets */
  int speed,gear,needle,unit,mapnode,masknode,north,player,border,gauge_root;
  struct { int node,skin,scale; Texture texture; } skin_cache[256]; size_t skin_cache_count;
  HaMapFrame pick_frame; unsigned char *mask_alpha; int mask_width,mask_height;
  int layout_mode,layout_ready,race_nodes[HR_FIELD_COUNT];
  double origin[3]; int track_ok,preview,skin; char missing[1024]; unsigned reported,resolved,drawn;
  /* Capture-amendment targets resolved by the C3-8 key rule, and settings. */
- HudSettings settings; GLint clipu,halfu;
+ HudSettings settings;
  int bank_value,bank_label,bank_backing,bank_ok;
  int widget_backing,widget_dpad,widget_highlight,widget_centre,widget_mail,widget_ok;
  int nos_backing,nos_alpha,shift_icon,glow_node,glow_active; double glow_start; HaShiftPhase shift_phase;
@@ -152,7 +176,6 @@ static void fit_classify(Hud*h){
 
  free(lo);free(hi);free(top);
 }
-static GLuint shader(GLenum type,const char*s){GLuint id=glCreateShader(type);glShaderSource(id,1,&s,NULL);glCompileShader(id);GLint ok=0;glGetShaderiv(id,GL_COMPILE_STATUS,&ok);if(!ok){glDeleteShader(id);return 0;}return id;}
 static void init_shader(Hud*h){
 #ifdef N2_GLES
  const char*prefix="precision mediump float;\n";
@@ -163,7 +186,35 @@ static void init_shader(Hud*h){
  /* dialClip: centre (NDC), limit (radians), mode 0 off / 1 keep <= / 2 keep >=,
     with dial angle 0 straight down increasing screen-clockwise (C1-4). */
  const char*fragment="varying vec2 uv;varying vec2 muv;varying vec2 ndc;uniform sampler2D art;uniform sampler2D silhouette;uniform vec4 tint;uniform float roads;uniform vec4 dialClip;uniform vec2 halfSize;void main(){if(dialClip.w>0.5){vec2 d=(ndc-dialClip.xy)*halfSize;float a=atan(-d.x,-d.y);if(a<0.0)a+=6.28318531;if(dialClip.w<1.5){if(a>dialClip.z)discard;}else if(a<dialClip.z)discard;}if(roads>1.5&&(muv.x<0.0||muv.x>1.0||muv.y<0.0||muv.y>1.0))discard;vec4 c=roads>1.5?vec4(1.0):texture2D(art,uv);if(roads>0.5)c.a=texture2D(silhouette,muv).a;gl_FragColor=c*tint;}";
- char vs[1024],fs[2048];snprintf(vs,sizeof vs,"%s%s",prefix,vertex);snprintf(fs,sizeof fs,"%s%s",prefix,fragment);GLuint v=shader(GL_VERTEX_SHADER,vs),f=shader(GL_FRAGMENT_SHADER,fs);if(!v||!f){if(v)glDeleteShader(v);if(f)glDeleteShader(f);diagnostic(h,"HUD shader unavailable");return;}h->shader=glCreateProgram();glAttachShader(h->shader,v);glAttachShader(h->shader,f);glLinkProgram(h->shader);glDeleteShader(v);glDeleteShader(f);GLint ok;glGetProgramiv(h->shader,GL_LINK_STATUS,&ok);if(!ok){glDeleteProgram(h->shader);h->shader=0;diagnostic(h,"HUD shader link failed");return;}h->pos=glGetAttribLocation(h->shader,"position");h->uv=glGetAttribLocation(h->shader,"sampleUV");h->maskuv=glGetAttribLocation(h->shader,"clipUV");h->tint=glGetUniformLocation(h->shader,"tint");h->road=glGetUniformLocation(h->shader,"roads");h->tex=glGetUniformLocation(h->shader,"art");h->mask=glGetUniformLocation(h->shader,"silhouette");h->clipu=glGetUniformLocation(h->shader,"dialClip");h->halfu=glGetUniformLocation(h->shader,"halfSize");glGenBuffers(1,&h->vbo);}
+ char vs[1024],fs[2048];snprintf(vs,sizeof vs,"%s%s",prefix,vertex);snprintf(fs,sizeof fs,"%s%s",prefix,fragment);
+ static const char*const attributes[]={"position","sampleUV","clipUV"};
+ static const RhiParamLayout*const blocks[]={&hud_param_layout};
+ h->hud_shader=rhi_shader_create(&(RhiShaderDesc){vs,fs,attributes,3,"hud",blocks,1});
+ h->hud_params=(HudParams*)rhi_shader_params(h->hud_shader,0);
+ if(!h->hud_params){diagnostic(h,"HUD shader unavailable");return;}
+ h->hud_params->art=0;h->hud_params->silhouette=1;
+ /* Translucent 2D: no depth, source-over alpha, no culling. Lines drawn at
+    width 2 (the map route); triangles ignore line width. */
+ RhiPipelineDesc pd;rhi_pipeline_desc_init(&pd);pd.shader=h->hud_shader;
+ pd.vertex.attribs[0]=(RhiVertexAttrib){0,0,0,RHI_VERTEX_FLOAT2};
+ pd.vertex.attribs[1]=(RhiVertexAttrib){1,0,8,RHI_VERTEX_FLOAT2};
+ pd.vertex.attribs[2]=(RhiVertexAttrib){2,0,16,RHI_VERTEX_FLOAT2};
+ pd.vertex.attrib_count=3;pd.vertex.stride[0]=24;
+ pd.depth_test=0;pd.depth_write=0;pd.cull=RHI_CULL_NONE;
+ pd.blend=1;pd.src_rgb=pd.src_alpha=RHI_BLEND_SRC_ALPHA;pd.dst_rgb=pd.dst_alpha=RHI_BLEND_ONE_MINUS_SRC_ALPHA;
+ pd.primitive=RHI_PRIMITIVE_TRIANGLES;pd.line_width=1.0f;h->tri_pipe=rhi_pipeline_create(&pd);
+ pd.primitive=RHI_PRIMITIVE_LINES;pd.line_width=2.0f;h->line_pipe=rhi_pipeline_create(&pd);
+ /* Vertices are streamed per draw; index sets are constant. A quad is two
+    triangles [0,1,2,0,2,3] (TRIANGLE_FAN of 4). A line strip of n points is
+    n-1 segments [0,1,1,2,...]: one index pair per segment over the streamed
+    points, so the vertices need no duplicating. */
+ h->vbo=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX,RHI_UPDATE_STREAM,(size_t)(HA_LIMIT+1)*6*sizeof(float),NULL});
+ static const uint16_t quad_idx[6]={0,1,2,0,2,3};
+ h->ibo=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_INDEX,RHI_UPDATE_STATIC,sizeof quad_idx,quad_idx});
+ uint16_t*strip=malloc((size_t)HA_LIMIT*2*sizeof *strip);
+ if(strip){for(int i=0;i<HA_LIMIT;i++){strip[2*i]=(uint16_t)i;strip[2*i+1]=(uint16_t)(i+1);}
+  h->line_ibo=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_INDEX,RHI_UPDATE_STATIC,(size_t)HA_LIMIT*2*sizeof *strip,strip});free(strip);}
+ if(!h->tri_pipe.id||!h->line_pipe.id||!h->vbo.id||!h->ibo.id||!h->line_ibo.id)diagnostic(h,"HUD pipeline setup failed");}
 /* C3-8 lookup keys (whitelisted capture set 3 data keys). Stored name ids are
  * opaque data values; lookup names use the case-folded name hash. */
 static int amend_key(Hud*h,uint32_t name,uint32_t kind,int root,uint32_t parent,const char*alias){HaKey k={name,kind,root,parent,alias};return ha_lookup(&h->package,&k);}
@@ -260,7 +311,7 @@ void hud_free(Hud**hp){
  if(h->centre_texture.id.id)rhi_texture_destroy(h->centre_texture.id);hud_baseline_free(&h->auxiliary);
  for(size_t i=0;i<h->font_count;i++){free(h->fonts[i].metrics.glyphs);free(h->fonts[i].cells);if(h->fonts[i].atlas.id.id)rhi_texture_destroy(h->fonts[i].atlas.id);}
  for(int i=0;i<PACK_COUNT;i++){free(h->packs[i].slots);free(h->packs[i].tpk.blk);free(h->packs[i].data);}
- if(h->shader)glDeleteProgram(h->shader);if(h->vbo)glDeleteBuffers(1,&h->vbo);free(h);*hp=NULL;
+ rhi_shader_destroy(h->hud_shader);rhi_buffer_destroy(h->vbo);rhi_buffer_destroy(h->ibo);rhi_buffer_destroy(h->line_ibo);free(h);*hp=NULL;
 }
 void hud_set_preview(Hud*h,int on){if(h){h->preview=!!on;hud_baseline_set_preview(h->auxiliary,on);}}
 int hud_preview(const Hud*h){return h&&h->preview;}
@@ -279,7 +330,15 @@ static void quad(Hud*h,int i,const float rect[4],const float uv[4],Texture t,flo
  /* wide policy: translation of this node's group; a recentred indicator follows the map's group */
  double sh=fit_shift(h,recenter&&h->mapnode>=0?h->mapnode:i,width,height),shm=fit_shift(h,h->masknode,width,height);
  for(int j=0;j<4;j++){float local[3]={rect[(j==1||j==2)?2:0],rect[j>=2?3:1],0},p[3];ha_point(&h->package,(size_t)i,local,p,angle);if(recenter){p[0]+=center[0]-old[0];p[1]+=center[1]-old[1];}if(n->kind==HA_KIND_TEXT){p[0]+=h->text_offset[0];p[1]+=h->text_offset[1];}v[j*6]=(float)((p[0]+sh)*scale*2/width);v[j*6+1]=-p[1]*scale*2/height;float a=(j==1||j==2)?1:0,b=j>=2?1:0;v[j*6+2]=uv[0]+a*(uv[2]-uv[0]);v[j*6+3]=uv[1]+b*(uv[3]-uv[1]);v[j*6+4]=a;v[j*6+5]=b;if(roads){HaNode*mn=h->package.nodes+h->masknode;float origin[3],bx[3],by[3],z[3]={0},xx[3]={1,0,0},yy[3]={0,1,0};ha_point(&h->package,(size_t)h->masknode,z,origin,0);ha_point(&h->package,(size_t)h->masknode,xx,bx,0);ha_point(&h->package,(size_t)h->masknode,yy,by,0);float ax=bx[0]-origin[0],ay=bx[1]-origin[1],cx=by[0]-origin[0],cy=by[1]-origin[1],det=ax*cy-ay*cx;float dx=(float)(p[0]+sh-(origin[0]+shm)),dy=p[1]-origin[1];if(fabsf(det)>1e-8f&&mn->size[0]!=0&&mn->size[1]!=0){float mx=(cy*dx-cx*dy)/det/mn->size[0]+.5f,my=(-ay*dx+ax*dy)/det/mn->size[1]+.5f;v[j*6+4]=mn->uv[0]+mx*(mn->uv[2]-mn->uv[0]);v[j*6+5]=mn->uv[1]+my*(mn->uv[3]-mn->uv[1]);}double x=(a-.5)*mapuv[2],y=(b-.5)*mapuv[2],c=cos(heading),s=sin(heading);v[j*6+2]=(float)(mapuv[0]+c*x-s*y);v[j*6+3]=(float)(mapuv[1]+s*x+c*y);}}
- glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,rhi_gl_texture_name(t.id));glUniform1i(h->tex,0);glUniform1i(h->mask,1);glUniform1f(h->road,(float)roads);const unsigned char*c=h->tint_on?h->tint_rgba:n->color;glUniform4f(h->tint,c[0]/255.0f,c[1]/255.0f,c[2]/255.0f,c[3]/255.0f);glUniform4f(h->clipu,h->clip[0],h->clip[1],h->clip[2],h->clip[3]);glBindBuffer(GL_ARRAY_BUFFER,h->vbo);glBufferData(GL_ARRAY_BUFFER,sizeof v,v,GL_STREAM_DRAW);glVertexAttribPointer((GLuint)h->pos,2,GL_FLOAT,GL_FALSE,6*sizeof(float),(void*)0);glVertexAttribPointer((GLuint)h->uv,2,GL_FLOAT,GL_FALSE,6*sizeof(float),(void*)(2*sizeof(float)));glVertexAttribPointer((GLuint)h->maskuv,2,GL_FLOAT,GL_FALSE,6*sizeof(float),(void*)(4*sizeof(float)));glDrawArrays(GL_TRIANGLE_FAN,0,4);h->drawn|=feature(h,i);if(roads){h->resolved|=1u<<6;h->drawn|=1u<<6;}}
+ const unsigned char*c=h->tint_on?h->tint_rgba:n->color;
+ h->hud_params->roads=(float)roads;
+ h->hud_params->tint[0]=c[0]/255.0f;h->hud_params->tint[1]=c[1]/255.0f;h->hud_params->tint[2]=c[2]/255.0f;h->hud_params->tint[3]=c[3]/255.0f;
+ h->hud_params->dialClip[0]=h->clip[0];h->hud_params->dialClip[1]=h->clip[1];h->hud_params->dialClip[2]=h->clip[2];h->hud_params->dialClip[3]=h->clip[3];
+ rhi_buffer_update(h->vbo,0,sizeof v,v);
+ rhi_cmd_bind_pipeline(h->tri_pipe);rhi_cmd_bind_vertex_buffer(0,h->vbo,0);rhi_cmd_bind_index_buffer(h->ibo);
+ rhi_cmd_bind_texture(0,t.id);
+ rhi_cmd_draw_indexed(6,0);
+ h->drawn|=feature(h,i);if(roads){h->resolved|=1u<<6;h->drawn|=1u<<6;}}
 static Font *font_for(Hud*h,HaNode*n){const char*name=resource_name(h,n);if(name)for(size_t i=0;i<h->font_count;i++)if(equalfont(name,h->fonts[i].metrics.name)&&h->fonts[i].atlas.id.id)return h->fonts+i;diagnostic(h,"requested original font missing; trying original 21i");for(size_t i=0;i<h->font_count;i++)if(equalfont("conduitmditc_tt21i",h->fonts[i].metrics.name)&&h->fonts[i].atlas.id.id)return h->fonts+i;diagnostic(h,"no original font available; text omitted");return NULL;}
 static HaGlyph *glyph(Font*f,unsigned char c){HaGlyph*question=NULL;for(size_t i=0;i<f->metrics.count;i++){HaGlyph*g=f->metrics.glyphs+i;if(g->code==c)return g;if(g->code=='?')question=g;}return question;}
 static void text(Hud*h,int i,const char*s,int w,int height){if(i<0||!*s)return;HaNode*n=h->package.nodes+i;if(!n->valid||!n->appearance)return;if(n->resource>=h->package.resource_count||h->package.resources[n->resource].kind!=2||!resource_name(h,n)){diagnostic(h,"unresolved text resource; text omitted");return;}Font*f=font_for(h,n);if(!f)return;float advance=0;for(const char*q=s;*q;q++){HaGlyph*g=glyph(f,(unsigned char)*q);advance+=g?g->advance:f->metrics.line;}float x=ha_text_start(0,n->size[0],n->justification,advance);for(const char*q=s;*q;q++){HaGlyph*g=glyph(f,(unsigned char)*q);if(g){HaGlyph cell=*g;int inside;if(f->cells){const HaGlyphCell*c=f->cells+(g-f->metrics.glyphs);inside=c->ok;cell.x=c->x;cell.y=c->y;}else inside=(unsigned)g->x+g->width<=(unsigned)f->atlas.w&&(unsigned)g->y+g->height<=(unsigned)f->atlas.h;if(!inside){diagnostic(h,"glyph outside resolved atlas");}else{/* G3: whole cell, unclipped, independent of the advance; drawn in string order (provisional overlap order). G6: edge to edge, no inset unless the compatibility setting is on. */HaGlyphQuad gq;if(ha_glyph_quad(&cell,f->inv_w,f->inv_h,x,0,n->size[0],n->size[1],h->settings.glyph_half_texel_inset,&gq)){float rect[]={(float)gq.x0,(float)gq.y0,(float)gq.x1,(float)gq.y1},uv[]={(float)gq.u0,(float)gq.v0,(float)gq.u1,(float)gq.v1};quad(h,i,rect,uv,f->atlas,0,w,height,0,0,NULL,0);}}x+=g->advance*n->size[0];}else{x+=f->metrics.line*n->size[0];diagnostic(h,"missing font character; advance only");}}}
@@ -313,13 +372,17 @@ static int map_vertex(Hud*h,double x,double y,float*v){
  v[0]=(float)(p[0]*scale*2/f->width);v[1]=(float)(-p[1]*scale*2/f->height);v[2]=v[3]=0;
  v[4]=(float)(n->uv[0]+u*(n->uv[2]-n->uv[0]));v[5]=(float)(n->uv[1]+vv*(n->uv[3]-n->uv[1]));return 1;
 }
-static void map_vertices(Hud*h,const float*v,int count,GLenum mode,float r,float g,float b){
- glUniform1f(h->road,2);glUniform4f(h->tint,r,g,b,1);glUniform4f(h->clipu,0,0,0,0);
- glBindBuffer(GL_ARRAY_BUFFER,h->vbo);glBufferData(GL_ARRAY_BUFFER,(GLsizeiptr)count*6*sizeof(float),v,GL_STREAM_DRAW);
- glVertexAttribPointer(h->pos,2,GL_FLOAT,GL_FALSE,6*sizeof(float),(void*)0);
- glVertexAttribPointer(h->uv,2,GL_FLOAT,GL_FALSE,6*sizeof(float),(void*)(2*sizeof(float)));
- glVertexAttribPointer(h->maskuv,2,GL_FLOAT,GL_FALSE,6*sizeof(float),(void*)(4*sizeof(float)));
- glDrawArrays(mode,0,count);
+/* lines != 0: a line strip of `count` points (map route, drawn at width 2).
+   Otherwise a TRIANGLE_FAN of `count` (<= 4) points (opponent markers). */
+static void map_vertices(Hud*h,const float*v,int count,int lines,float r,float g,float b){
+ if(count<2||(lines&&count>HA_LIMIT))return;
+ h->hud_params->roads=2;
+ h->hud_params->tint[0]=r;h->hud_params->tint[1]=g;h->hud_params->tint[2]=b;h->hud_params->tint[3]=1;
+ h->hud_params->dialClip[0]=h->hud_params->dialClip[1]=h->hud_params->dialClip[2]=h->hud_params->dialClip[3]=0;
+ rhi_buffer_update(h->vbo,0,(size_t)count*6*sizeof(float),v);
+ rhi_cmd_bind_vertex_buffer(0,h->vbo,0);
+ if(lines){rhi_cmd_bind_pipeline(h->line_pipe);rhi_cmd_bind_index_buffer(h->line_ibo);rhi_cmd_draw_indexed((uint32_t)(count-1)*2,0);}
+ else{rhi_cmd_bind_pipeline(h->tri_pipe);rhi_cmd_bind_index_buffer(h->ibo);rhi_cmd_draw_indexed(6,0);}
 }
 static void map_overlay(Hud*h,const HudState*s){
  if(!h->pick_frame.enabled||!s->racing)return;
@@ -328,7 +391,7 @@ static void map_overlay(Hud*h,const HudState*s){
  if(s->route_xy&&s->route_n>1&&s->route_n<=HA_LIMIT){
   int ok=1;for(int i=0;i<s->route_n;i++)if(!map_vertex(h,s->route_xy[i*2],s->route_xy[i*2+1],vertices+i*6)){ok=0;break;}
   if(ok){int n=s->route_n;if(s->route_loop){memcpy(vertices+n*6,vertices,6*sizeof(float));n++;}
-   GLfloat width;glGetFloatv(GL_LINE_WIDTH,&width);glLineWidth(2);map_vertices(h,vertices,n,GL_LINE_STRIP,.2f,.8f,1);glLineWidth(width);}
+   map_vertices(h,vertices,n,1,.2f,.8f,1);}
  }
  for(int i=0;i<s->opponent_n&&i<64&&s->opponent_xy;i++){
   float center[6];if(!map_vertex(h,s->opponent_xy[i*2],s->opponent_xy[i*2+1],center))continue;
@@ -336,14 +399,11 @@ static void map_overlay(Hud*h,const HudState*s){
   double d=h->pick_frame.window*.025;
   const double offsets[4][2]={{-1,0},{0,-1},{1,0},{0,1}};int ok=1;
   for(int j=0;j<4;j++)if(!map_vertex(h,s->opponent_xy[i*2]+offsets[j][0]*d,s->opponent_xy[i*2+1]+offsets[j][1]*d,vertices+j*6))ok=0;
-  if(ok)map_vertices(h,vertices,4,GL_TRIANGLE_FAN,1,.3f,.15f);
+  if(ok)map_vertices(h,vertices,4,0,1,.3f,.15f);
  }
 }
 /* Text with its role's tint (C1-3/E1 gear colour; others authored). */
 static void role_text(Hud*h,int i,int role,int gear,int change,double speed_mps,const char*s,int w,int height){if(i<0)return;HaNode*n=h->package.nodes+i;ha_text_tint(role,gear,change,speed_mps,h->settings.gear_standstill_mps,n->color,h->settings.gear_colour,h->tint_rgba);h->tint_on=1;text(h,i,s,w,height);h->tint_on=0;}
-/* Snapshot includes complete vertex attribute descriptions because this HUD
- * streams its own vertices instead of altering the engine quad. */
-typedef struct { GLint enabled,size,stride,type,normalized,buffer; void*pointer; } Attribute;
 void hud_draw(Hud*h,const RProg*rp,GpuMesh*unused,const HudState*s,int w,int height){if(!h)return;
  h->pick_frame.enabled=0;if(!s||w<=0||height<=0)return;h->pick_frame.width=w;h->pick_frame.height=height;
  if(!load_layout(h,layout_mode(s)))return;
@@ -354,11 +414,11 @@ void hud_draw(Hud*h,const RProg*rp,GpuMesh*unused,const HudState*s,int w,int hei
    if(s->racing||!ha_inherited_message_visuals(0,shown.visible,s->message_waiting!=0))base.message_waiting=0;
    hud_baseline_set_preview(h->auxiliary,h->preview&&!s->racing);
    hud_baseline_draw(h->auxiliary,rp,unused,&base,w,height);}}
- if(!h->shader)return;
+ if(!h->hud_shader.id||!h->hud_params)return;
  h->resolved=h->drawn=0;
- GLint program,array,active,tex0,tex1,srcRGB,dstRGB,srcA,dstA,eqRGB,eqA;GLboolean depth=glIsEnabled(GL_DEPTH_TEST),blend=glIsEnabled(GL_BLEND),cull=glIsEnabled(GL_CULL_FACE),depthmask;glGetBooleanv(GL_DEPTH_WRITEMASK,&depthmask);glGetIntegerv(GL_CURRENT_PROGRAM,&program);glGetIntegerv(GL_ARRAY_BUFFER_BINDING,&array);glGetIntegerv(GL_ACTIVE_TEXTURE,&active);glActiveTexture(GL_TEXTURE0);glGetIntegerv(GL_TEXTURE_BINDING_2D,&tex0);glActiveTexture(GL_TEXTURE1);glGetIntegerv(GL_TEXTURE_BINDING_2D,&tex1);glGetIntegerv(GL_BLEND_SRC_RGB,&srcRGB);glGetIntegerv(GL_BLEND_DST_RGB,&dstRGB);glGetIntegerv(GL_BLEND_SRC_ALPHA,&srcA);glGetIntegerv(GL_BLEND_DST_ALPHA,&dstA);glGetIntegerv(GL_BLEND_EQUATION_RGB,&eqRGB);glGetIntegerv(GL_BLEND_EQUATION_ALPHA,&eqA);
- GLuint attrs[3]={(GLuint)h->pos,(GLuint)h->uv,(GLuint)h->maskuv};Attribute old[3];for(int j=0;j<3;j++){glGetVertexAttribiv(attrs[j],GL_VERTEX_ATTRIB_ARRAY_ENABLED,&old[j].enabled);glGetVertexAttribiv(attrs[j],GL_VERTEX_ATTRIB_ARRAY_SIZE,&old[j].size);glGetVertexAttribiv(attrs[j],GL_VERTEX_ATTRIB_ARRAY_STRIDE,&old[j].stride);glGetVertexAttribiv(attrs[j],GL_VERTEX_ATTRIB_ARRAY_TYPE,&old[j].type);glGetVertexAttribiv(attrs[j],GL_VERTEX_ATTRIB_ARRAY_NORMALIZED,&old[j].normalized);glGetVertexAttribiv(attrs[j],GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING,&old[j].buffer);glGetVertexAttribPointerv(attrs[j],GL_VERTEX_ATTRIB_ARRAY_POINTER,&old[j].pointer);glEnableVertexAttribArray(attrs[j]);}
- glUseProgram(h->shader);glDisable(GL_CULL_FACE);glDisable(GL_DEPTH_TEST);glDepthMask(GL_FALSE);glEnable(GL_BLEND);glBlendEquation(GL_FUNC_ADD);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+ /* Save the caller's raster state and bindings; the pipelines set everything
+    the draws need (no depth/cull, source-over alpha). Restored at the end. */
+ RhiStateSnapshot hud_saved; rhi_cmd_save_state(&hud_saved);
  double mapuv[3];int mapon=!s->hide_map&&h->track_ok&&ha_map(h->origin[0],h->origin[1],h->origin[2],s->car_x,s->car_y,s->map_heading_explicit?s->map_heading_clockwise:(M_PI*.5-s->car_heading),s->map_window_world>0?s->map_window_world:500,mapuv);double heading=s->map_heading_explicit?s->map_heading_clockwise:M_PI*.5-s->car_heading;
  if(!s->hide_map&&!mapon)diagnostic(h,"map suppressed: invalid input or metadata");
  int scale=ha_scale(s->rpm_maximum),skin=ha_skin(s->skin_index);
@@ -390,7 +450,7 @@ void hud_draw(Hud*h,const RProg*rp,GpuMesh*unused,const HudState*s,int w,int hei
  if(bank<0)diagnostic(h,h->bank_ok?"negative balance: bank suppressed":"bank targets unresolved; bank hidden");
  HaWidget wid;ha_widget(s->career_context,s->message_waiting!=0,h->widget_ok,h->centre_texture.id.id!=0,&wid);
  if(wid.diagnostic)diagnostic(h,h->widget_ok?"widget centre figure texture missing; figure omitted":"widget targets unresolved; widget hidden");
- glUniform2f(h->halfu,w*.5f,height*.5f);h->tint_on=0;h->clip[3]=0;
+ h->hud_params->halfSize[0]=w*.5f;h->hud_params->halfSize[1]=height*.5f;h->tint_on=0;h->clip[3]=0;
  /* Stable insertion sort by transformed depth. Higher z first. */
  size_t count=h->package.count;size_t order[HA_LIMIT];float depthvalues[HA_LIMIT];for(size_t i=0;i<count;i++){float zero[3]={0},p[3];ha_point(&h->package,i,zero,p,0);order[i]=i;depthvalues[i]=p[2];size_t j=i;while(j&&depthvalues[order[j-1]]<depthvalues[i]){order[j]=order[j-1];j--;}order[j]=i;}
  for(size_t k=0;k<count;k++){int i=(int)order[k];HaNode*n=h->package.nodes+i;if(!n->valid||!n->appearance||n->kind!=1)continue;const char*r=resource_name(h,n);int gauge=!s->hide_gauge&&(drag_gauge(h,i)||i==h->needle||(descendant(h,i,h->gauge_root)&&r&&(skin_resource(r)||!strcmp(r,"3rdperson_rpmdial.tga")||(redline>0&&!strcmp(r,"3rdperson_redline.tga")))));int map=mapon&&(i==h->mapnode||i==h->north||i==h->player||descendant(h,i,h->border));
@@ -408,14 +468,14 @@ void hud_draw(Hud*h,const RProg*rp,GpuMesh*unused,const HudState*s,int w,int hei
   float grect[]={(float)(-glow.width/2),(float)(-glow.height/2),(float)(glow.width/2),(float)(glow.height/2)};quad(h,i,grect,n->uv,gt,(float)(-glow.rotation_ccw_deg*M_PI/180),w,height,0,0,NULL,0);
   memcpy(n->pivot,pv,sizeof pv);if(owned_g)rhi_texture_destroy(gt.id);continue;}
  if(i==h->widget_centre){float full[4]={0,0,1,1},rect[]={-n->size[0]/2,-n->size[1]/2,n->size[0]/2,n->size[1]/2};quad(h,i,rect,full,h->centre_texture,0,w,height,0,0,NULL,0);continue;}
- int roads=i==h->mapnode,owned=0;Texture t=image_texture(h,i,skin,scale,&owned);float angle=0;if(i==h->needle)angle=h->layout_mode==2?hud_race_drag_angle(n,s->rpm):(float)(ha_rpm_angle(s->rpm,s->rpm_maximum,0)*M_PI/180);if(i==h->north)angle=(float)-heading;if(roads){Texture mask=node_texture(h,h->masknode);if(!mask.id.id){diagnostic(h,"map mask missing; roads omitted");if(owned)rhi_texture_destroy(t.id);continue;}glActiveTexture(GL_TEXTURE1);glBindTexture(GL_TEXTURE_2D,rhi_gl_texture_name(mask.id));if(t.id.id&&h->mask_alpha){HaMapFrame*f=&h->pick_frame;float zero[3]={0},bx[3]={1,0,0},by[3]={0,1,0},o[3],x[3],y[3];ha_point(&h->package,(size_t)i,zero,o,0);ha_point(&h->package,(size_t)i,bx,x,0);ha_point(&h->package,(size_t)i,by,y,0);f->center[0]=o[0]+fit_shift(h,i,w,height);f->center[1]=o[1];f->basis[0]=x[0]-o[0];f->basis[1]=x[1]-o[1];f->basis[2]=y[0]-o[0];f->basis[3]=y[1]-o[1];f->size[0]=n->size[0];f->size[1]=n->size[1];f->world[0]=s->car_x;f->world[1]=s->car_y;f->heading=heading;f->window=s->map_window_world>0?s->map_window_world:500;f->enabled=1;}}float rect[]={-n->size[0]/2,-n->size[1]/2,n->size[0]/2,n->size[1]/2};float uv[4];memcpy(uv,n->uv,sizeof uv);
+ int roads=i==h->mapnode,owned=0;Texture t=image_texture(h,i,skin,scale,&owned);float angle=0;if(i==h->needle)angle=h->layout_mode==2?hud_race_drag_angle(n,s->rpm):(float)(ha_rpm_angle(s->rpm,s->rpm_maximum,0)*M_PI/180);if(i==h->north)angle=(float)-heading;if(roads){Texture mask=node_texture(h,h->masknode);if(!mask.id.id){diagnostic(h,"map mask missing; roads omitted");if(owned)rhi_texture_destroy(t.id);continue;}rhi_cmd_bind_texture(1,mask.id);if(t.id.id&&h->mask_alpha){HaMapFrame*f=&h->pick_frame;float zero[3]={0},bx[3]={1,0,0},by[3]={0,1,0},o[3],x[3],y[3];ha_point(&h->package,(size_t)i,zero,o,0);ha_point(&h->package,(size_t)i,bx,x,0);ha_point(&h->package,(size_t)i,by,y,0);f->center[0]=o[0]+fit_shift(h,i,w,height);f->center[1]=o[1];f->basis[0]=x[0]-o[0];f->basis[1]=x[1]-o[1];f->basis[2]=y[0]-o[0];f->basis[3]=y[1]-o[1];f->size[0]=n->size[0];f->size[1]=n->size[1];f->world[0]=s->car_x;f->world[1]=s->car_y;f->heading=heading;f->window=s->map_window_world>0?s->map_window_world:500;f->enabled=1;}}float rect[]={-n->size[0]/2,-n->size[1]/2,n->size[0]/2,n->size[1]/2};float uv[4];memcpy(uv,n->uv,sizeof uv);
  if(heat||(h->layout_mode==2&&i==h->nos_alpha)){float fraction=heat?s->engine_heat:s->nitro_tank;fraction=fminf(1,fmaxf(0,fraction));rect[1]=rect[3]-(rect[3]-rect[1])*fraction;uv[1]=uv[3]-(uv[3]-uv[1])*fraction;}
  quad(h,i,rect,uv,t,angle,w,height,i==h->player,roads,mapuv,heading);if(owned)rhi_texture_destroy(t.id);if(roads)map_overlay(h,s);}
  h->tint_on=0;h->clip[3]=0;
  if(!s->hide_gauge){char buf[32];if(ha_speed(s->speed_kmh/3.6,!s->imperial_units,buf))text(h,h->speed,buf,w,height);else diagnostic(h,"speed suppressed: invalid or outside 0..INT_MAX");if(!ha_gear(s->gear,buf))diagnostic(h,"unsupported gear state");role_text(h,h->gear,HA_TEXT_GEAR,s->gear,s->gear_change_in_progress!=0,s->speed_kmh/3.6,buf,w,height);text(h,h->unit,s->imperial_units?"MPH":"KM/H",w,height);}
  if(s->racing)race_text(h,s,w,height);
  if(bank>0){role_text(h,h->bank_label,HA_TEXT_BANK_LABEL,0,0,0,ha_bank_label,w,height);role_text(h,h->bank_value,HA_TEXT_BANK_VALUE,0,0,0,bankbuf,w,height);}
- for(int j=0;j<3;j++){glBindBuffer(GL_ARRAY_BUFFER,(GLuint)old[j].buffer);glVertexAttribPointer(attrs[j],old[j].size,(GLenum)old[j].type,(GLboolean)old[j].normalized,old[j].stride,old[j].pointer);if(!old[j].enabled)glDisableVertexAttribArray(attrs[j]);}glBindBuffer(GL_ARRAY_BUFFER,(GLuint)array);glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,(GLuint)tex0);glActiveTexture(GL_TEXTURE1);glBindTexture(GL_TEXTURE_2D,(GLuint)tex1);glActiveTexture((GLenum)active);glUseProgram((GLuint)program);glDepthMask(depthmask);if(cull)glEnable(GL_CULL_FACE);else glDisable(GL_CULL_FACE);if(depth)glEnable(GL_DEPTH_TEST);else glDisable(GL_DEPTH_TEST);if(blend)glEnable(GL_BLEND);else glDisable(GL_BLEND);glBlendFuncSeparate((GLenum)srcRGB,(GLenum)dstRGB,(GLenum)srcA,(GLenum)dstA);glBlendEquationSeparate((GLenum)eqRGB,(GLenum)eqA);
+ rhi_cmd_restore_state(&hud_saved);
 }
 float hud_angle_delta(float from, float to) {
     float d = to - from;
