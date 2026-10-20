@@ -20,7 +20,8 @@ extern unsigned rhi_vk_arena_flushes;            /* mid-frame UBO-arena flushes 
 /* Test-only backend hook: recreate the per-frame UBO arena at `bytes` so the
  * multi-draw path can be forced to flush mid-frame with just a couple of draws. */
 extern void rhi_vk_test_force_arena(size_t bytes);
-extern void rhi_vk_test_force_stream_arena(size_t bytes);   /* the STREAM-version arena */
+extern void rhi_vk_test_force_stream_arena(size_t bytes);
+extern int rhi_vk_test_sync_hazard(void);                    /* two unsynchronised clears (WAW) */   /* the STREAM-version arena */
 /* Test-only backend path: reads buffer contents (STREAM mapping, or a STATIC
  * device->host staging copy). Returns 1 on success, 0 on failure. */
 extern int rhi_vk_buffer_readback(RhiBuffer buf, size_t offset, size_t size, void *dst);
@@ -1680,6 +1681,48 @@ int main(void) {
         rhi_shader_destroy(sh);
         EXPECT(rhi_vk_validation_messages == vbefore, "P11g-3 tests raised %u validation message(s)",
                rhi_vk_validation_messages - vbefore);
+    }
+
+    /* ---- gate: two clears in one recording (WAW on the colour/depth images) ----
+     * Valid use; with a barrier that does not wait for the first clear, synchronization
+     * validation (RHI_VK_SYNC_VALIDATION=1) reports a hazard. */
+    {
+        unsigned vbefore = rhi_vk_validation_messages;
+        const float red[4] = { 1, 0, 0, 1 }, blue[4] = { 0, 0, 1, 1 };
+        unsigned char *frame = (unsigned char *)malloc((size_t)W * H * 4);
+        EXPECT(frame != NULL, "double clear alloc");
+        if (frame) {
+            EXPECT(rhi_frame_begin(NULL) == RHI_OK, "double clear frame_begin");
+            EXPECT(rhi_cmd_clear_main(red, 1.0f) == RHI_OK, "first clear");
+            EXPECT(rhi_cmd_clear_main(blue, 0.5f) == RHI_OK, "second clear, same recording");
+            EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "double clear read");
+            EXPECT(is_blue(frame + ((size_t)96 * W + 128) * 4), "the second clear wins");
+            EXPECT(rhi_frame_end() == RHI_OK, "double clear frame_end");
+            printf("GATE: back-to-back clears in one recording OK\n");
+        }
+        free(frame);
+        EXPECT(rhi_vk_validation_messages == vbefore, "double clear raised %u validation message(s)",
+               rhi_vk_validation_messages - vbefore);
+    }
+
+    /* ---- gate: is synchronization validation really active? ----
+     * Only with RHI_VK_SYNC_VALIDATION=1: record a deliberate WAW hazard and require the
+     * layer to report it, so a clean run under the flag means something. The reported
+     * messages are expected and removed from the count. */
+    {
+        const char *sv = getenv("RHI_VK_SYNC_VALIDATION");
+        if (sv && *sv && *sv != '0') {
+            unsigned vbefore = rhi_vk_validation_messages;
+            EXPECT(rhi_frame_begin(NULL) == RHI_OK, "hazard frame_begin");
+            EXPECT(rhi_vk_test_sync_hazard() == 1, "record the deliberate hazard");
+            EXPECT(rhi_frame_end() == RHI_OK, "hazard frame_end");
+            unsigned got = rhi_vk_validation_messages - vbefore;
+            printf("SYNC-VALIDATION: deliberate WAW hazard produced %u message(s)\n", got);
+            EXPECT(got > 0, "synchronization validation did not report a deliberate hazard (layer inactive)");
+            rhi_vk_validation_messages = vbefore;
+        } else {
+            printf("SYNC-VALIDATION: off (set RHI_VK_SYNC_VALIDATION=1 to enable)\n");
+        }
     }
 
     rhi_device_destroy();
