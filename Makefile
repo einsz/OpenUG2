@@ -57,6 +57,14 @@ hud-race-test: tools/hud_race_test.c src/hud_race.c src/hud_race.h src/hud.h src
 
 .DEFAULT_GOAL := nfsu2   # keep `make` building the binary, not the generated header
 
+# Renderer-boundary gate (issue #14, P10): fail if any src/ file outside the GL
+# backend names a GL header, a gl* entry point or a GL* type. The allowed GL
+# owners are listed in tools/check_gl.sh (the backend, Dear ImGui's GL2 backend,
+# and the self-contained hud.c / ugui_gl.c renderers still to be migrated).
+check-gl:
+	@sh tools/check_gl.sh src
+.PHONY: check-gl
+
 # Auto-embed the F3 debug shaders so world_mesh.c has a CWD-independent fallback
 # with no hand-maintained string copy. Relative input paths give stable array
 # names src_world_debug_120_vert / _frag (+ *_len). Regenerated when either

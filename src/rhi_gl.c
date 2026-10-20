@@ -410,6 +410,10 @@ GLuint rhi_gl_texture_name(RhiTexture tex) {
     return t ? t->name : 0;
 }
 
+uint32_t rhi_texture_native_id(RhiTexture tex) {
+    return rhi_gl_texture_name(tex);   /* GL object name = native id */
+}
+
 int rhi_texture_is_live(RhiTexture tex) {
     return texture_find(tex) != NULL;
 }
@@ -742,6 +746,10 @@ static int shader_slot(RhiShader shader) {
 GLuint rhi_gl_shader_program(RhiShader shader) {
     int i = shader_slot(shader);
     return i < 0 ? 0 : g_shaders.program[i];
+}
+
+uint32_t rhi_shader_native_program(RhiShader shader) {
+    return rhi_gl_shader_program(shader);   /* GL program name = native id */
 }
 
 static GLuint shader_compile(GLenum type, const char *src, const char *label) {
