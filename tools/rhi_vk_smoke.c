@@ -20,6 +20,7 @@ extern unsigned rhi_vk_arena_flushes;            /* mid-frame UBO-arena flushes 
 /* Test-only backend hook: recreate the per-frame UBO arena at `bytes` so the
  * multi-draw path can be forced to flush mid-frame with just a couple of draws. */
 extern void rhi_vk_test_force_arena(size_t bytes);
+extern void rhi_vk_test_force_stream_arena(size_t bytes);   /* the STREAM-version arena */
 /* Test-only backend path: reads buffer contents (STREAM mapping, or a STATIC
  * device->host staging copy). Returns 1 on success, 0 on failure. */
 extern int rhi_vk_buffer_readback(RhiBuffer buf, size_t offset, size_t size, void *dst);
@@ -1385,6 +1386,300 @@ int main(void) {
         rhi_buffer_destroy(vb);
         rhi_buffer_destroy(bvb);
         rhi_shader_destroy(sh);
+    }
+
+    /* ---- P11g-1: wireframe + GPU timers ---- */
+    {
+        unsigned vbefore = rhi_vk_validation_messages;
+        static const RhiParamField fe_fields[] = {
+            { "uMVP", RHI_PARAM_MAT4, 0, 1 }, { "uColor", RHI_PARAM_VEC4, 64, 1 },
+        };
+        static const RhiParamLayout fe_layout = { fe_fields, 2, 80, "FeParams" };
+        static const char *const attrs[] = { "aPos" };
+        static const RhiParamLayout *const blocks[] = { &fe_layout };
+        RhiShaderDesc shd = { "", "", attrs, 1, "frontend", blocks, 1 };
+        RhiShader sh = rhi_shader_create(&shd);
+        EXPECT(sh.id != 0, "wire shader_create");
+        RhiPipelineDesc pd;
+        rhi_pipeline_desc_init(&pd);
+        pd.shader = sh;
+        pd.vertex.attrib_count = 1;
+        pd.vertex.attribs[0] = (RhiVertexAttrib){ 0, 0, 0, RHI_VERTEX_FLOAT2 };
+        pd.vertex.stride[0] = 8;
+        pd.depth_write = 0;
+        RhiPipeline tris = rhi_pipeline_create(&pd);
+        RhiPipelineDesc ld = pd;
+        ld.primitive = RHI_PRIMITIVE_LINES;
+        RhiPipeline lines = rhi_pipeline_create(&ld);
+        EXPECT(tris.id && lines.id && tris.id != lines.id, "wire pipelines");
+        static const float tri[6] = { -0.8f, -0.8f,   0.8f, -0.8f,   -0.8f, 0.8f };
+        static const float seg[4] = { -0.8f, 0.5f,   0.8f, 0.5f };
+        RhiBuffer vb = rhi_buffer_create(&(RhiBufferDesc){ RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, sizeof tri, tri });
+        RhiBuffer sb = rhi_buffer_create(&(RhiBufferDesc){ RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, sizeof seg, seg });
+        const float black[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+        unsigned char *frame = (unsigned char *)malloc((size_t)W * H * 4);
+        float *fp = (float *)rhi_shader_params(sh, 0);
+        EXPECT(frame && fp, "wire alloc");
+        if (frame && fp) {
+            memset(fp, 0, 80); fp[0] = fp[5] = fp[10] = fp[15] = 1.0f;
+            fp[16] = 0.0f; fp[17] = 1.0f; fp[18] = 0.0f; fp[19] = 1.0f;   /* green */
+            EXPECT(rhi_cmd_set_viewport(0, 0, W, H) == RHI_OK, "wire viewport");
+            EXPECT(rhi_caps()->wireframe, "lavapipe has fillModeNonSolid");
+            RhiTimer tm = rhi_timer_create();
+            EXPECT(rhi_caps()->gpu_timer && tm.id, "timer_create with caps.gpu_timer");
+            uint64_t ns = 123;
+            EXPECT(rhi_cmd_timer_begin(tm) == RHI_ERR_INVALID, "timer_begin outside a frame");
+            EXPECT(rhi_frame_begin(NULL) == RHI_OK, "wire frame_begin");
+            EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "wire clear");
+            EXPECT(rhi_timer_read(tm, &ns) == 0, "never-measured timer is not ready");
+            EXPECT(rhi_cmd_timer_end() == RHI_ERR_INVALID, "timer_end with none running");
+            EXPECT(rhi_cmd_timer_begin(tm) == RHI_OK, "timer_begin");
+            EXPECT(rhi_cmd_timer_begin(tm) == RHI_ERR_INVALID, "timer_begin while running");
+            EXPECT(rhi_cmd_timer_begin((RhiTimer){ 0x7fffff }) == RHI_ERR_INVALID, "timer_begin bad handle");
+            /* fill: the interior is lit */
+            rhi_cmd_bind_pipeline(tris);
+            rhi_cmd_bind_vertex_buffer(0, vb, 0);
+            rhi_cmd_draw(3, 0);
+            EXPECT(rhi_cmd_timer_end() == RHI_OK, "timer_end");
+            EXPECT(rhi_timer_read(tm, &ns) == 0, "timer not ready while its stamps are unsubmitted");
+            EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "wire fill read");
+            const unsigned char *inside = frame + ((size_t)64 * W + 64) * 4;
+            EXPECT(is_green(inside), "filled triangle interior should be green, got %u,%u,%u", inside[0], inside[1], inside[2]);
+            /* the read forced a submit: the timer has a result now */
+            EXPECT(rhi_timer_read(tm, &ns) == 1, "timer ready after the frame was submitted");
+            printf("TIMER: draw measured %llu ns\n", (unsigned long long)ns);
+            /* wireframe: interior dark, the bottom edge (y = -0.8 -> row ~172 of the top-down buffer) lit */
+            EXPECT(rhi_cmd_set_wireframe(1) == RHI_OK, "set_wireframe(1)");
+            EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "wire clear 2");
+            rhi_cmd_bind_pipeline(tris);
+            rhi_cmd_bind_vertex_buffer(0, vb, 0);
+            rhi_cmd_draw(3, 0);
+            /* a LINES pipeline is not changed by wireframe mode */
+            rhi_cmd_bind_pipeline(lines);
+            rhi_cmd_bind_vertex_buffer(0, sb, 0);
+            rhi_cmd_draw(2, 0);
+            EXPECT(rhi_cmd_set_wireframe(0) == RHI_OK, "set_wireframe(0)");
+            EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "wire read");
+            inside = frame + ((size_t)64 * W + 64) * 4;
+            EXPECT(is_black(inside), "wireframe triangle interior must stay black, got %u,%u,%u", inside[0], inside[1], inside[2]);
+            int edge_lit = 0, seg_lit = 0;
+            for (int y = 167; y <= 177; y++) edge_lit += is_green(frame + ((size_t)y * W + 128) * 4);
+            for (int y = 43; y <= 53; y++) seg_lit += is_green(frame + ((size_t)y * W + 128) * 4);
+            printf("WIREFRAME: interior=%u,%u,%u edge pixels lit=%d line-pipeline pixels lit=%d\n",
+                   inside[0], inside[1], inside[2], edge_lit, seg_lit);
+            EXPECT(edge_lit >= 1, "wireframe must draw the triangle edge");
+            EXPECT(seg_lit >= 1, "a LINES pipeline still draws in wireframe mode");
+            /* wireframe off again: filled */
+            EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "wire clear 3");
+            rhi_cmd_bind_pipeline(tris);
+            rhi_cmd_bind_vertex_buffer(0, vb, 0);
+            rhi_cmd_draw(3, 0);
+            EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "wire read 3");
+            EXPECT(is_green(frame + ((size_t)64 * W + 64) * 4), "wireframe off draws filled again");
+            /* a timer reused inside the same unsubmitted recording splits the frame */
+            EXPECT(rhi_cmd_timer_begin(tm) == RHI_OK, "timer reuse begin");
+            EXPECT(rhi_cmd_timer_end() == RHI_OK, "timer reuse end");
+            EXPECT(rhi_cmd_timer_begin(tm) == RHI_OK, "timer reuse in the same recording (frame split)");
+            EXPECT(rhi_cmd_timer_end() == RHI_OK, "timer reuse end 2");
+            /* destroy + create recycles the query pair: still pending in this recording */
+            {
+                rhi_timer_destroy(tm);
+                RhiTimer t2 = rhi_timer_create();
+                EXPECT(t2.id && t2.id != tm.id, "recycled timer slot gets a new generation");
+                EXPECT(rhi_cmd_timer_begin(t2) == RHI_OK, "begin on a recycled slot");
+                EXPECT(rhi_cmd_timer_end() == RHI_OK, "end on a recycled slot");
+                rhi_timer_destroy(t2);
+                tm = rhi_timer_create();   /* the same slot again, queries pending in the recording */
+            }
+            EXPECT(rhi_cmd_timer_begin(tm) == RHI_OK, "begin on a re-created timer (frame split)");
+            EXPECT(rhi_cmd_timer_end() == RHI_OK, "end on a re-created timer");
+            EXPECT(rhi_frame_end() == RHI_OK, "wire frame_end");
+            EXPECT(rhi_timer_read(tm, &ns) == 1, "timer ready after frame_end");
+            rhi_timer_destroy(tm);
+            EXPECT(rhi_timer_read(tm, &ns) == 0, "destroyed timer handle is stale");
+            EXPECT(rhi_cmd_timer_begin(tm) == RHI_ERR_INVALID, "begin on a stale timer");
+            printf("P11g-1: wireframe fill/edge/lines-unaffected, timers begin/end/read/reuse/stale OK\n");
+        }
+        free(frame);
+        rhi_buffer_destroy(vb);
+        rhi_buffer_destroy(sb);
+        rhi_shader_destroy(sh);
+        EXPECT(rhi_vk_validation_messages == vbefore, "P11g-1 tests raised %u validation message(s)",
+               rhi_vk_validation_messages - vbefore);
+    }
+
+    /* ---- P11g-2: world_debug shader (BatchedVertex layout, 3 debug modes) ---- */
+    {
+        unsigned vbefore = rhi_vk_validation_messages;
+        static const RhiParamField wd_fields[] = {
+            { "u_MVP", RHI_PARAM_MAT4, 0, 1 }, { "u_DebugMode", RHI_PARAM_INT, 64, 1 },
+        };
+        static const RhiParamLayout wd_layout = { wd_fields, 2, 80, "WorldDebugParams" };
+        static const char *const attrs[] = { "a_Position", "a_Normal", "a_UV0", "a_Color" };
+        static const RhiParamLayout *const blocks[] = { &wd_layout };
+        RhiShaderDesc shd = { "", "", attrs, 4, "world_debug", blocks, 1 };
+        RhiShader sh = rhi_shader_create(&shd);
+        EXPECT(sh.id != 0, "world_debug shader_create");
+        RhiPipelineDesc pd;
+        rhi_pipeline_desc_init(&pd);
+        pd.shader = sh;
+        pd.vertex.attribs[0] = (RhiVertexAttrib){ 0, 0, 0,  RHI_VERTEX_FLOAT3 };
+        pd.vertex.attribs[1] = (RhiVertexAttrib){ 1, 0, 20, RHI_VERTEX_FLOAT3 };
+        pd.vertex.attribs[2] = (RhiVertexAttrib){ 2, 0, 12, RHI_VERTEX_FLOAT2 };
+        pd.vertex.attribs[3] = (RhiVertexAttrib){ 3, 0, 32, RHI_VERTEX_UNORM8X4 };
+        pd.vertex.attrib_count = 4;
+        pd.vertex.stride[0] = 36;
+        RhiPipeline pipe = rhi_pipeline_create(&pd);
+        EXPECT(pipe.id != 0, "world_debug pipeline");
+        /* one big triangle covering the frame: pos, uv, normal (0,0,1), prelight (200,100,50) */
+        float v[3][9];
+        unsigned char col[4] = { 200, 100, 50, 255 };
+        static const float pos[3][3] = { { -1, -1, 0 }, { 3, -1, 0 }, { -1, 3, 0 } };
+        for (int i = 0; i < 3; i++) {
+            memset(v[i], 0, sizeof v[i]);
+            memcpy(&v[i][0], pos[i], 12);
+            v[i][5] = 0.0f; v[i][6] = 0.0f; v[i][7] = 1.0f;
+            memcpy(&v[i][8], col, 4);
+        }
+        RhiBuffer vb = rhi_buffer_create(&(RhiBufferDesc){ RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, sizeof v, v });
+        const float black[4] = { 0, 0, 0, 1 };
+        unsigned char *frame = (unsigned char *)malloc((size_t)W * H * 4);
+        int32_t *wp = (int32_t *)rhi_shader_params(sh, 0);
+        EXPECT(frame && wp && vb.id, "world_debug setup");
+        if (frame && wp) {
+            static const int want[3][3] = { { 200, 100, 50 }, { 128, 128, 255 }, { 217, 217, 230 } };
+            for (int mode = 0; mode < 3; mode++) {
+                memset(wp, 0, 80);
+                float *m = (float *)wp; m[0] = m[5] = m[10] = m[15] = 1.0f;
+                wp[16] = mode;
+                EXPECT(rhi_cmd_set_viewport(0, 0, W, H) == RHI_OK, "world_debug viewport");
+                EXPECT(rhi_frame_begin(NULL) == RHI_OK, "world_debug frame_begin");
+                EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "world_debug clear");
+                rhi_cmd_bind_pipeline(pipe);
+                rhi_cmd_bind_vertex_buffer(0, vb, 0);
+                rhi_cmd_draw(3, 0);
+                EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "world_debug read");
+                EXPECT(rhi_frame_end() == RHI_OK, "world_debug frame_end");
+                const unsigned char *px = frame + ((size_t)96 * W + 128) * 4;
+                printf("WORLD-DEBUG mode %d centre=%u,%u,%u\n", mode, px[0], px[1], px[2]);
+                EXPECT(near8(px[0], want[mode][0]) && near8(px[1], want[mode][1]) && near8(px[2], want[mode][2]),
+                       "world_debug mode %d wants %d,%d,%d got %u,%u,%u", mode,
+                       want[mode][0], want[mode][1], want[mode][2], px[0], px[1], px[2]);
+            }
+        }
+        free(frame);
+        rhi_buffer_destroy(vb);
+        rhi_shader_destroy(sh);
+        EXPECT(rhi_vk_validation_messages == vbefore, "P11g-2 tests raised %u validation message(s)",
+               rhi_vk_validation_messages - vbefore);
+        printf("P11g-2: world_debug prelight / normals / solid modes OK\n");
+    }
+
+    /* ---- P11g-3: STREAM buffers updated between draws (hud pattern) ---- */
+    {
+        unsigned vbefore = rhi_vk_validation_messages;
+        static const RhiParamField fe_fields[] = {
+            { "uMVP", RHI_PARAM_MAT4, 0, 1 }, { "uColor", RHI_PARAM_VEC4, 64, 1 },
+        };
+        static const RhiParamLayout fe_layout = { fe_fields, 2, 80, "FeParams" };
+        static const char *const attrs[] = { "aPos" };
+        static const RhiParamLayout *const blocks[] = { &fe_layout };
+        RhiShaderDesc shd = { "", "", attrs, 1, "frontend", blocks, 1 };
+        RhiShader sh = rhi_shader_create(&shd);
+        RhiPipelineDesc pd;
+        rhi_pipeline_desc_init(&pd);
+        pd.shader = sh;
+        pd.vertex.attrib_count = 1;
+        pd.vertex.attribs[0] = (RhiVertexAttrib){ 0, 0, 0, RHI_VERTEX_FLOAT2 };
+        pd.vertex.stride[0] = 8;
+        RhiPipeline pipe = rhi_pipeline_create(&pd);
+        EXPECT(sh.id && pipe.id, "stream test shader/pipeline");
+        /* left (x -1..0) and right (x 0..1) full-height quads, two triangles each */
+        static const float left[12]  = { -1,-1, 0,-1, -1,1,  -1,1, 0,-1, 0,1 };
+        static const float right[12] = {  0,-1, 1,-1,  0,1,   0,1, 1,-1, 1,1 };
+        static const float quads[16] = { -1,-1, 0,-1, -1,1, 0,1,   0,-1, 1,-1, 0,1, 1,1 };
+        static const uint16_t idx_left[6]  = { 0, 1, 2, 2, 1, 3 };
+        static const uint16_t idx_right[6] = { 4, 5, 6, 6, 5, 7 };
+        const float black[4] = { 0, 0, 0, 1 };
+        unsigned char *frame = (unsigned char *)malloc((size_t)W * H * 4);
+        float *fp = (float *)rhi_shader_params(sh, 0);
+        RhiBuffer vb = rhi_buffer_create(&(RhiBufferDesc){ RHI_BUFFER_VERTEX, RHI_UPDATE_STREAM, sizeof left, left });
+        RhiBuffer qb = rhi_buffer_create(&(RhiBufferDesc){ RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, sizeof quads, quads });
+        RhiBuffer ib = rhi_buffer_create(&(RhiBufferDesc){ RHI_BUFFER_INDEX, RHI_UPDATE_STREAM, sizeof idx_left, idx_left });
+        EXPECT(frame && fp && vb.id && qb.id && ib.id, "stream test setup");
+        if (frame && fp && vb.id && qb.id && ib.id) {
+            memset(fp, 0, 80); fp[0] = fp[5] = fp[10] = fp[15] = 1.0f;
+            EXPECT(rhi_cmd_set_viewport(0, 0, W, H) == RHI_OK, "stream viewport");
+            #define COLOUR(r, g, b) do { fp[16] = (r); fp[17] = (g); fp[18] = (b); fp[19] = 1.0f; } while (0)
+            #define PXAT(x, y) (frame + ((size_t)(y) * W + (x)) * 4)
+
+            /* 1. update between two draws: each draw shows the contents it was issued with */
+            EXPECT(rhi_frame_begin(NULL) == RHI_OK, "stream frame_begin");
+            EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "stream clear");
+            rhi_cmd_bind_pipeline(pipe); rhi_cmd_bind_vertex_buffer(0, vb, 0);
+            COLOUR(1, 0, 0); rhi_cmd_draw(6, 0);
+            EXPECT(rhi_buffer_update(vb, 0, sizeof right, right) == RHI_OK, "stream update between draws");
+            COLOUR(0, 1, 0); rhi_cmd_draw(6, 0);
+            EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "stream read 1");
+            printf("STREAM-1 left=%u,%u,%u right=%u,%u,%u\n", PXAT(64, 96)[0], PXAT(64, 96)[1], PXAT(64, 96)[2],
+                   PXAT(192, 96)[0], PXAT(192, 96)[1], PXAT(192, 96)[2]);
+            EXPECT(is_red(PXAT(64, 96)), "first draw keeps the contents it was issued with (left red)");
+            EXPECT(is_green(PXAT(192, 96)), "second draw sees the update (right green)");
+            float back[12];
+            EXPECT(rhi_vk_buffer_readback(vb, 0, sizeof back, back) == 1 && !memcmp(back, right, sizeof back),
+                   "readback sees the latest update");
+            EXPECT(rhi_frame_end() == RHI_OK, "stream frame_end");
+            EXPECT(rhi_vk_buffer_readback(vb, 0, sizeof back, back) == 1 && !memcmp(back, right, sizeof back),
+                   "after frame_end the buffer's own storage holds the last update");
+
+            /* 2. a full arena: the update falls back to submit-then-write-in-place */
+            rhi_vk_test_force_stream_arena(64);   /* one 48-byte version, not two */
+            EXPECT(rhi_buffer_update(vb, 0, sizeof left, left) == RHI_OK, "stream reset to left");
+            EXPECT(rhi_frame_begin(NULL) == RHI_OK, "stream2 frame_begin");
+            EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "stream2 clear");
+            rhi_cmd_bind_pipeline(pipe); rhi_cmd_bind_vertex_buffer(0, vb, 0);
+            COLOUR(1, 0, 0); rhi_cmd_draw(6, 0);                                  /* left red */
+            EXPECT(rhi_buffer_update(vb, 0, sizeof right, right) == RHI_OK, "stream2 update 1 (arena copy)");
+            COLOUR(0, 1, 0); rhi_cmd_draw(6, 0);                                  /* right green */
+            EXPECT(rhi_buffer_update(vb, 0, sizeof left, left) == RHI_OK, "stream2 update 2 (arena full)");
+            COLOUR(0, 0, 1); rhi_cmd_draw(6, 0);                                  /* left blue over red */
+            EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "stream read 2");
+            EXPECT(is_blue(PXAT(64, 96)), "third draw (after the arena-full split) drew left in blue");
+            EXPECT(is_green(PXAT(192, 96)), "the second draw survived the split");
+            EXPECT(rhi_frame_end() == RHI_OK, "stream2 frame_end");
+
+            /* 3. an index STREAM buffer updated between indexed draws */
+            EXPECT(rhi_frame_begin(NULL) == RHI_OK, "stream3 frame_begin");   /* demand grew the arena */
+            EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "stream3 clear");
+            rhi_cmd_bind_pipeline(pipe); rhi_cmd_bind_vertex_buffer(0, qb, 0); rhi_cmd_bind_index_buffer(ib);
+            COLOUR(1, 0, 0); rhi_cmd_draw_indexed(6, 0);                          /* left red */
+            EXPECT(rhi_buffer_update(ib, 0, sizeof idx_right, idx_right) == RHI_OK, "stream3 index update");
+            COLOUR(0, 1, 0); rhi_cmd_draw_indexed(6, 0);                          /* right green */
+            EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "stream read 3");
+            EXPECT(is_red(PXAT(64, 96)) && is_green(PXAT(192, 96)), "index stream update between draws");
+            EXPECT(rhi_frame_end() == RHI_OK, "stream3 frame_end");
+
+            /* 4. replace + destroy while a draw is recorded */
+            EXPECT(rhi_frame_begin(NULL) == RHI_OK, "stream4 frame_begin");
+            EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "stream4 clear");
+            rhi_cmd_bind_pipeline(pipe); rhi_cmd_bind_vertex_buffer(0, vb, 0);
+            COLOUR(1, 0, 0); rhi_cmd_draw(6, 0);
+            EXPECT(rhi_buffer_update(vb, 0, sizeof right, right) == RHI_OK, "stream4 update");
+            EXPECT(rhi_buffer_replace(vb, sizeof left, left) == RHI_OK, "stream4 replace after an arena copy");
+            COLOUR(0, 0, 1); rhi_cmd_draw(6, 0);
+            EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "stream read 4");
+            EXPECT(is_blue(PXAT(64, 96)), "draw after replace uses the new storage (left)");
+            EXPECT(is_black(PXAT(192, 96)), "the replaced contents are not the arena copy (right stays black)");
+            EXPECT(rhi_frame_end() == RHI_OK, "stream4 frame_end");
+            #undef COLOUR
+            #undef PXAT
+            printf("P11g-3: STREAM vertex/index updates between draws, arena-full split, replace after copy OK\n");
+        }
+        free(frame);
+        rhi_buffer_destroy(vb); rhi_buffer_destroy(qb); rhi_buffer_destroy(ib);
+        rhi_shader_destroy(sh);
+        EXPECT(rhi_vk_validation_messages == vbefore, "P11g-3 tests raised %u validation message(s)",
+               rhi_vk_validation_messages - vbefore);
     }
 
     rhi_device_destroy();
