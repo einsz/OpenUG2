@@ -797,3 +797,19 @@ rhi-vk-smoke: tools/rhi_vk_smoke.c src/rhi_vk.c src/rhi.h src/generated_shaders_
 	$(CC) $(VK_CFLAGS) tools/rhi_vk_smoke.c src/rhi_vk.c -o build/rhi_vk_smoke $(VK_LIBS)
 	$(VK_RUN_ENV) ./build/rhi_vk_smoke
 .PHONY: rhi-vk-smoke
+
+# Full game linked against the Vulkan backend (issue #14, P11 screenshot
+# comparison). Same game sources as `nfsu2`, but the GL backend + GL-only UI
+# renderers are dropped and src/rhi_vk.c + src/vk_ui_stubs.c take their place.
+# Offscreen `--shot` only (no swapchain, no UI renderers). Built with the Vulkan
+# flags above (VK_CFLAGS/VK_LIBS), NOT -lGL; run it with $(VK_RUN_ENV) (offscreen SDL, lavapipe).
+VK_GAME_SRC  := $(filter-out src/rhi_gl.c src/rhi_gl_state.c src/ugui/ugui_gl.c,$(SRC)) \
+                src/rhi_vk.c src/vk_ui_stubs.c src/vk_offscreen_window_shim.c
+# VK_CFLAGS already carries -DN2_VULKAN, the SDL2 includes and -Isrc; add the game's -O2 and the
+# nfsu2.h unused-static silence. The game also links libpng, libcrypto and zlib (system, or $(VK_SYSROOT)).
+VK_GAME_CFLAGS := $(VK_CFLAGS) -O2 -Wno-unused-function
+VK_GAME_LIBS   := $(VK_LIBS) -lpng16 -lcrypto -lz -lm -ldl
+
+nfsu2-vk: $(VK_GAME_SRC) $(HDRS) $(GEN) src/generated_shaders_vk.h
+	$(CC) $(VK_GAME_CFLAGS) $(VK_GAME_SRC) -o nfsu2-vk $(VK_GAME_LIBS)
+.PHONY: nfsu2-vk
