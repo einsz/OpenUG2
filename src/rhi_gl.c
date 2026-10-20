@@ -72,8 +72,21 @@ RhiResult rhi_prepare_window(RhiBackend backend) {
 #ifdef N2_GLES
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+#elif !defined(__APPLE__)
+    /* Desktop Linux/Windows: request a GL 3.3 *compatibility* context so SDL
+       creates it through (wgl/glX)CreateContextAttribs, which frame-capture
+       tools such as RenderDoc require ("Context not created via
+       CreateContextAttribs" otherwise, issue #90). Compatibility keeps the
+       legacy GL 2.1 feature set this engine draws with, so output is unchanged;
+       rhi_device_create falls back to an implicit context if a driver refuses.
+       macOS is left implicit on purpose: it offers no compatibility profile
+       above 2.1, and core would need caps/VAO/ImGui changes. */
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
+#else
+    /* macOS: no profile requested -> the legacy 2.1 context. */
 #endif
-    /* No core profile is requested: macOS then gives the legacy 2.1 context. */
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
@@ -140,6 +153,17 @@ RhiResult rhi_device_create(const RhiDeviceDesc *desc) {
     if (resolve(desc->backend) != RHI_GL_BUILD_BACKEND) return RHI_ERR_UNSUPPORTED;
     SDL_Window *win = (SDL_Window *)desc->window;
     SDL_GLContext ctx = SDL_GL_CreateContext(win);
+#if !defined(N2_GLES) && !defined(__APPLE__)
+    if (!ctx) {
+        /* A driver refused the requested 3.3 compatibility context; retry with
+           an implicit one (legacy GL, no frame-capture attributes). */
+        fprintf(stderr, "GL ctx (3.3 compat): %s -- retrying implicit\n", SDL_GetError());
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 0);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, 0);
+        ctx = SDL_GL_CreateContext(win);
+    }
+#endif
     if (!ctx) { fprintf(stderr, "GL ctx: %s\n", SDL_GetError()); return RHI_ERR_UNSUPPORTED; }
     g_rhi.window = win;
     g_rhi.context = ctx;
