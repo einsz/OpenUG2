@@ -4,12 +4,13 @@
 # header, a gl* entry point, or a GL* type. Comments and string literals are
 # stripped first, so GL mentioned in prose or diagnostics does not count.
 #
-# Allowed GL owners:
+# Allowed GL owners (the GL backend, plus the self-contained immediate-mode UI
+# renderers that preserve the full GL context state themselves and have their
+# own tests for it, like Dear ImGui -- they are not rhi.h clients):
 #   rhi_gl.c / rhi_gl.h / rhi_gl_state.c / rhi_gl_state.h  the GL backend itself
 #   debugui.cpp                                            Dear ImGui's GL2 backend
-#   ugui/ugui_gl.c / ugui/ugui_gl.h                        self-contained GL
-#                                                          renderer (to migrate)
-# Everything else reaches the GPU only through rhi.h.
+#   ugui/ugui_gl.c / ugui/ugui_gl.h                        the ugui library's GL backend
+# Everything else -- the whole game renderer -- reaches the GPU only through rhi.h.
 set -eu
 
 root=${1:-src}
