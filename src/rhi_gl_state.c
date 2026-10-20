@@ -30,6 +30,7 @@ typedef struct {
     int live;
     GLboolean enabled[GLS_NCAPS];
     GLint blend[4];                 /* src_rgb, dst_rgb, src_alpha, dst_alpha */
+    GLint blend_eq[2];              /* rgb, alpha */
     GLint depth_func;
     GLboolean depth_mask, color_mask[4];
     GLfloat clear_color[4], clear_depth;
@@ -55,6 +56,7 @@ static void gls_reset(SDL_GLContext ctx) {
     S.ctx = ctx; S.live = 1;
     for (int i = 0; i < GLS_NCAPS; i++) S.enabled[i] = caps[i] == GL_DITHER;
     S.blend[0] = S.blend[2] = GL_ONE; S.blend[1] = S.blend[3] = GL_ZERO;
+    S.blend_eq[0] = S.blend_eq[1] = GL_FUNC_ADD;
     S.depth_func = GL_LESS; S.depth_mask = GL_TRUE;
     for (int i = 0; i < 4; i++) S.color_mask[i] = GL_TRUE;
     S.clear_depth = 1.0f;
@@ -104,6 +106,16 @@ void glsBlendFuncSeparate(GLenum src_rgb, GLenum dst_rgb, GLenum src_a, GLenum d
     s->blend[0] = (GLint)src_rgb; s->blend[1] = (GLint)dst_rgb;
     s->blend[2] = (GLint)src_a;   s->blend[3] = (GLint)dst_a;
     glBlendFuncSeparate(src_rgb, dst_rgb, src_a, dst_a);
+}
+void glsBlendEquation(GLenum mode) {
+    GlsState *s = st();
+    s->blend_eq[0] = s->blend_eq[1] = (GLint)mode;
+    glBlendEquation(mode);
+}
+void glsBlendEquationSeparate(GLenum rgb, GLenum alpha) {
+    GlsState *s = st();
+    s->blend_eq[0] = (GLint)rgb; s->blend_eq[1] = (GLint)alpha;
+    glBlendEquationSeparate(rgb, alpha);
 }
 void glsDepthFunc(GLenum func) { st()->depth_func = (GLint)func; glDepthFunc(func); }
 void glsDepthMask(GLboolean mask) { st()->depth_mask = mask ? GL_TRUE : GL_FALSE; glDepthMask(mask); }
@@ -325,6 +337,8 @@ static int tracked_integerv(GLenum pname, GLint *out) {
     case GL_BLEND_DST_RGB: out[0] = s->blend[1]; return 1;
     case GL_BLEND_SRC_ALPHA: out[0] = s->blend[2]; return 1;
     case GL_BLEND_DST_ALPHA: out[0] = s->blend[3]; return 1;
+    case GL_BLEND_EQUATION_RGB: out[0] = s->blend_eq[0]; return 1;
+    case GL_BLEND_EQUATION_ALPHA: out[0] = s->blend_eq[1]; return 1;
     case GL_DEPTH_FUNC: out[0] = s->depth_func; return 1;
     case GL_VIEWPORT: memcpy(out, s->viewport, sizeof s->viewport); return 4;
     case GL_CURRENT_PROGRAM: out[0] = s->program; return 1;

@@ -368,7 +368,7 @@ typedef struct RhiPipelineDesc {
     RhiCullMode     cull;          /* counter-clockwise faces are front faces */
     uint8_t         depth_test, depth_write;
     RhiCompare      depth_compare;
-    uint8_t         blend;
+    uint8_t         blend;         /* the blend equation is always ADD */
     RhiBlendFactor  src_rgb, dst_rgb, src_alpha, dst_alpha;
     uint8_t         color_write;   /* bits 0..3 = R, G, B, A */
     float           line_width;    /* RHI_PRIMITIVE_LINES width in pixels; <= 0
@@ -461,12 +461,14 @@ void rhi_viewport(int32_t viewport[4]);
 
 /* The state the next draw uses when no pipeline or texture is bound in
  * between: the bound pipeline and its raster state, the texture on sampler
- * slots 0..RHI_STATE_TEXTURE_SLOTS-1, the viewport and the target. Helpers
+ * slots 0..RHI_STATE_TEXTURE_SLOTS-1, the viewport, the target, the blend
+ * equation, the array-buffer binding and which vertex attribute arrays are
+ * enabled (not their pointers: every rhi draw sets its own). Helpers
  * that bind their own pipelines save it on entry and restore it on exit, so
  * callers that still draw with ambient state (HUD, frontend, debug UI) get
  * theirs back. Restore sends only what differs. Not included: stencil
  * functions and the cull face (set by every pipeline that uses them), the
- * scissor rectangle, wireframe mode, vertex/index buffers, or cube textures.
+ * scissor rectangle, wireframe mode, index buffers, or cube textures.
  * Current helpers do not change the scissor rectangle or wireframe mode;
  * a helper that does must preserve those explicitly. */
 #define RHI_STATE_TEXTURE_SLOTS 8
