@@ -1,6 +1,7 @@
 #include "rhi_gl.h"
 #include <assert.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <string.h>
 /* Raises GL_INVALID_ENUM through a call the state tracker does not model, as
  * an earlier unrelated call would. */
@@ -136,6 +137,52 @@ int main(void) {
         rhi_texture_destroy(t0);rhi_texture_destroy(t1);
         glDisable(GL_CULL_FACE);glDisable(GL_STENCIL_TEST);glDisable(GL_BLEND);glDepthMask(GL_TRUE);
         glColorMask(1,1,1,1);glActiveTexture(GL_TEXTURE0);
+        assert(glGetError()==GL_NO_ERROR);
+    }
+
+    /* Vertex-array state: attribute descriptions and the element-buffer binding come back too (hud_draw's contract). */
+    {
+        GLuint ab[2],eb[2];glGenBuffers(2,ab);glGenBuffers(2,eb);
+        glBindBuffer(GL_ARRAY_BUFFER,ab[0]);glBufferData(GL_ARRAY_BUFFER,256,NULL,GL_STATIC_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER,ab[1]);glBufferData(GL_ARRAY_BUFFER,256,NULL,GL_STATIC_DRAW);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,eb[0]);glBufferData(GL_ELEMENT_ARRAY_BUFFER,64,NULL,GL_STATIC_DRAW);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,eb[1]);glBufferData(GL_ELEMENT_ARRAY_BUFFER,64,NULL,GL_STATIC_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER,ab[0]);glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,eb[0]);
+        glEnableVertexAttribArray(0);glEnableVertexAttribArray(3);glDisableVertexAttribArray(5);
+        glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,12,(const void*)12);
+        glBindBuffer(GL_ARRAY_BUFFER,ab[1]);
+        glVertexAttribPointer(3,4,GL_UNSIGNED_BYTE,GL_TRUE,16,(const void*)4);
+        glBindBuffer(GL_ARRAY_BUFFER,ab[0]);
+        RhiStateSnapshot sv;rhi_cmd_save_state(&sv);
+        /* disturb: other buffers, other descriptions, other enable bits, other element buffer */
+        glBindBuffer(GL_ARRAY_BUFFER,ab[1]);glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,eb[1]);
+        glVertexAttribPointer(0,2,GL_FLOAT,GL_FALSE,24,(const void*)0);
+        glVertexAttribPointer(3,2,GL_FLOAT,GL_FALSE,8,(const void*)8);
+        glDisableVertexAttribArray(3);glEnableVertexAttribArray(5);
+        rhi_cmd_restore_state(&sv);
+        GLint iv;void *pv;
+        /* tracker */
+        gls_get_integerv(GL_ARRAY_BUFFER_BINDING,&iv);assert(iv==(GLint)ab[0]);
+        gls_get_integerv(GL_ELEMENT_ARRAY_BUFFER_BINDING,&iv);assert(iv==(GLint)eb[0]);
+        assert(gls_attrib_enabled(0) && gls_attrib_enabled(3) && !gls_attrib_enabled(5));
+        GlsAttribPointer ap;gls_attrib_pointer(0,&ap);
+        assert(ap.size==3 && ap.type==(GLint)GL_FLOAT && !ap.normalized && ap.stride==12 && ap.buffer==(GLint)ab[0] && (uintptr_t)ap.pointer==12);
+        gls_attrib_pointer(3,&ap);
+        assert(ap.size==4 && ap.type==(GLint)GL_UNSIGNED_BYTE && ap.normalized && ap.stride==16 && ap.buffer==(GLint)ab[1] && (uintptr_t)ap.pointer==4);
+        /* real GL agrees */
+        glGetIntegerv(GL_ARRAY_BUFFER_BINDING,&iv);assert(iv==(GLint)ab[0]);
+        glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING,&iv);assert(iv==(GLint)eb[0]);
+        glGetVertexAttribiv(0,GL_VERTEX_ATTRIB_ARRAY_SIZE,&iv);assert(iv==3);
+        glGetVertexAttribiv(0,GL_VERTEX_ATTRIB_ARRAY_STRIDE,&iv);assert(iv==12);
+        glGetVertexAttribiv(0,GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING,&iv);assert(iv==(GLint)ab[0]);
+        glGetVertexAttribPointerv(0,GL_VERTEX_ATTRIB_ARRAY_POINTER,&pv);assert((uintptr_t)pv==12);
+        glGetVertexAttribiv(3,GL_VERTEX_ATTRIB_ARRAY_TYPE,&iv);assert(iv==(GLint)GL_UNSIGNED_BYTE);
+        glGetVertexAttribiv(3,GL_VERTEX_ATTRIB_ARRAY_NORMALIZED,&iv);assert(iv);
+        glGetVertexAttribiv(3,GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING,&iv);assert(iv==(GLint)ab[1]);
+        glGetVertexAttribiv(3,GL_VERTEX_ATTRIB_ARRAY_ENABLED,&iv);assert(iv);
+        glGetVertexAttribiv(5,GL_VERTEX_ATTRIB_ARRAY_ENABLED,&iv);assert(!iv);
+        glDisableVertexAttribArray(0);glDisableVertexAttribArray(3);glBindBuffer(GL_ARRAY_BUFFER,0);glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,0);
+        glDeleteBuffers(2,ab);glDeleteBuffers(2,eb);
         assert(glGetError()==GL_NO_ERROR);
     }
 

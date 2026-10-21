@@ -83,6 +83,7 @@ void glsDeleteTextures(GLsizei n, const GLuint *ids);
 void glsBindBuffer(GLenum target, GLuint buffer);
 void glsDeleteBuffers(GLsizei n, const GLuint *ids);
 void glsEnableVertexAttribArray(GLuint index);
+void glsVertexAttribPointer(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void *pointer);
 void glsDisableVertexAttribArray(GLuint index);
 void glsUniform1f(GLint loc, GLfloat x);
 void glsUniform2f(GLint loc, GLfloat x, GLfloat y);
@@ -100,13 +101,18 @@ void glsUniformMatrix4fv(GLint loc, GLsizei count, GLboolean transpose, const GL
  * POLYGON_OFFSET_FILL. Modelled pnames: BLEND_{SRC,DST}[_RGB|_ALPHA],
  * BLEND_EQUATION_{RGB,ALPHA}, DEPTH_FUNC, VIEWPORT, CURRENT_PROGRAM, FRAMEBUFFER_BINDING,
  * RENDERBUFFER_BINDING, ACTIVE_TEXTURE, TEXTURE_BINDING_2D (active unit),
- * ARRAY_BUFFER_BINDING, DEPTH_WRITEMASK, COLOR_WRITEMASK, COLOR_CLEAR_VALUE,
+ * ARRAY_BUFFER_BINDING, ELEMENT_ARRAY_BUFFER_BINDING, DEPTH_WRITEMASK, COLOR_WRITEMASK, COLOR_CLEAR_VALUE,
  * DEPTH_CLEAR_VALUE. */
 GLboolean gls_is_enabled(GLenum cap);
 void gls_get_integerv(GLenum pname, GLint *out);
 void gls_get_booleanv(GLenum pname, GLboolean *out);
 void gls_get_floatv(GLenum pname, GLfloat *out);
 GLint gls_attrib_enabled(GLuint index);  /* GL_VERTEX_ATTRIB_ARRAY_ENABLED */
+
+/* glVertexAttribPointer state of attribute `index`. Until set it has the GL initial values (size 4, GL_FLOAT, not normalized,
+ * stride 0, NULL pointer, buffer 0). `buffer` is the ARRAY_BUFFER that was bound when the pointer was set, as GL records it. */
+typedef struct GlsAttribPointer { GLint size, type, stride, buffer, normalized; const void *pointer; } GlsAttribPointer;
+void gls_attrib_pointer(GLuint index, GlsAttribPointer *out);
 GLint gls_texture_2d(int unit);          /* GL_TEXTURE_BINDING_2D on `unit`, any active unit */
 
 /* ---- uniform mirror (replaces glGetUniformfv) ----
@@ -157,6 +163,7 @@ unsigned gls_fallback_queries(void);
 #  define glBindBuffer(t,b)               glsBindBuffer(t,b)
 #  define glDeleteBuffers(n,p)            glsDeleteBuffers(n,p)
 #  define glEnableVertexAttribArray(i)    glsEnableVertexAttribArray(i)
+#  define glVertexAttribPointer(i,s,t,n,st,p) glsVertexAttribPointer(i,s,t,n,st,p)
 #  define glDisableVertexAttribArray(i)   glsDisableVertexAttribArray(i)
 #  define glUniform1f(l,x)                glsUniform1f(l,x)
 #  define glUniform2f(l,x,y)              glsUniform2f(l,x,y)

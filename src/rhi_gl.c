@@ -1345,6 +1345,8 @@ typedef struct {
     GLint     texture[RHI_STATE_TEXTURE_SLOTS];
     GLfloat   clear_color[4], clear_depth, line_width;
     uint32_t  attrib_mask;   /* bit i: vertex attribute array i enabled */
+    GLint     element_buffer;
+    GlsAttribPointer attrib[RHI_MAX_VERTEX_ATTRIBS];   /* glVertexAttribPointer state of attributes 0.. */
     GLboolean caps[RHI_GL_SNAPSHOT_CAPS], depth_mask, color_mask[4];
 } RhiGlSnapshot;
 typedef char rhi_gl_snapshot_fits[sizeof(RhiGlSnapshot) <= sizeof(RhiStateSnapshot) ? 1 : -1];
@@ -1358,7 +1360,11 @@ void rhi_cmd_save_state(RhiStateSnapshot *out) {
     gls_get_integerv(GL_BLEND_SRC_ALPHA, &g.blend[2]); gls_get_integerv(GL_BLEND_DST_ALPHA, &g.blend[3]);
     gls_get_integerv(GL_BLEND_EQUATION_RGB, &g.blend_eq[0]); gls_get_integerv(GL_BLEND_EQUATION_ALPHA, &g.blend_eq[1]);
     gls_get_integerv(GL_ARRAY_BUFFER_BINDING, &g.array_buffer);
-    for (GLuint i = 0; i < RHI_MAX_VERTEX_ATTRIBS; i++) if (gls_attrib_enabled(i)) g.attrib_mask |= 1u << i;
+    gls_get_integerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &g.element_buffer);
+    for (GLuint i = 0; i < RHI_MAX_VERTEX_ATTRIBS; i++) {
+        if (gls_attrib_enabled(i)) g.attrib_mask |= 1u << i;
+        gls_attrib_pointer(i, &g.attrib[i]);
+    }
     gls_get_integerv(GL_DEPTH_FUNC, &g.depth_func);
     gls_get_integerv(GL_VIEWPORT, g.viewport);
     gls_get_integerv(GL_CURRENT_PROGRAM, &g.program);
@@ -1416,11 +1422,21 @@ void rhi_cmd_restore_state(const RhiStateSnapshot *state) {
         glBlendFuncSeparate((GLenum)g.blend[0], (GLenum)g.blend[1], (GLenum)g.blend[2], (GLenum)g.blend[3]);
     if (memcmp(now.blend_eq, g.blend_eq, sizeof g.blend_eq))
         glBlendEquationSeparate((GLenum)g.blend_eq[0], (GLenum)g.blend_eq[1]);
-    if (now.array_buffer != g.array_buffer) glBindBuffer(GL_ARRAY_BUFFER, (GLuint)g.array_buffer);
+    /* Vertex attributes: GL records the ARRAY_BUFFER bound when a pointer is set, so bind each saved buffer around its glVertexAttribPointer
+     * and put the saved ARRAY_BUFFER binding back afterwards; only attributes whose description differs are re-pointed. */
+    GLint bound = now.array_buffer;
     for (GLuint i = 0; i < RHI_MAX_VERTEX_ATTRIBS; i++) {
+        const GlsAttribPointer *a = &g.attrib[i], *c = &now.attrib[i];
+        if (a->size != c->size || a->type != c->type || a->stride != c->stride || a->buffer != c->buffer ||
+            a->normalized != c->normalized || a->pointer != c->pointer) {
+            if (bound != a->buffer) { glBindBuffer(GL_ARRAY_BUFFER, (GLuint)a->buffer); bound = a->buffer; }
+            glVertexAttribPointer(i, a->size, (GLenum)a->type, a->normalized ? GL_TRUE : GL_FALSE, a->stride, a->pointer);
+        }
         if (((now.attrib_mask ^ g.attrib_mask) >> i & 1u) == 0) continue;
         if (g.attrib_mask >> i & 1u) glEnableVertexAttribArray(i); else glDisableVertexAttribArray(i);
     }
+    if (bound != g.array_buffer) glBindBuffer(GL_ARRAY_BUFFER, (GLuint)g.array_buffer);
+    if (now.element_buffer != g.element_buffer) glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, (GLuint)g.element_buffer);
     for (size_t i = 0; i < RHI_GL_SNAPSHOT_CAPS; i++) set_cap(k_snapshot_caps[i], g.caps[i]);
     GLint active = now.active;
     for (int i = 0; i < RHI_STATE_TEXTURE_SLOTS; i++) {
