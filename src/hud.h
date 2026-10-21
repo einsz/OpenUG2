@@ -128,6 +128,10 @@ typedef struct Hud Hud;
  * and named by hud_missing(). */
 Hud *hud_init(const char *dataroot);
 void hud_free(Hud **h);
+#ifdef HUD_TEST_HOOKS
+/* Test only: a HUD with one white image node shown as the career widget backing; needs a GL context, no game data. */
+Hud *hud_test_white_widget(void);
+#endif
 
 /* One frame. Restores every GL state and uniform it touches. */
 void hud_draw(Hud *h, const RProg *rp, GpuMesh *quad,
