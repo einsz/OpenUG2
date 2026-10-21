@@ -116,8 +116,11 @@ enum { VK_PV_MAIN = 0,        /* main target: colour RGBA8 + depth_fmt (depth AN
        VK_PV_PASS_NODEPTH,    /* offscreen pass: RGBA8 only */
        VK_PV_COUNT };
 
+/* A pipeline is built per (declared-but-unbound vertex streams, polygon mode, target format): index = ((absent * 2 + wire) * VK_PV_COUNT + v). */
+#define VK_VARIANTS ((1u << RHI_MAX_VERTEX_STREAMS) * 2u * VK_PV_COUNT)
+
 typedef struct {
-    VkPipeline      variant[2 * VK_PV_COUNT]; /* per target format, [wire * VK_PV_COUNT + v]; MAIN fill eager, others lazy */
+    VkPipeline      variant[VK_VARIANTS];   /* MAIN fill with every stream bound is built eagerly, the rest on first use */
     RhiShader       shader;         /* the desc's shader, re-checked at bind/draw */
     RhiPipelineDesc desc;
 } RhiVkPipeline;
@@ -190,6 +193,8 @@ static struct {
      * shader reads zeros from this instead). */
     VkBuffer       dummy_vbuf;
     VkDeviceMemory dummy_vbuf_mem;
+    uint32_t       last_stride[RHI_MAX_VERTEX_STREAMS];   /* test hook: binding stride per stream of the last draw */
+    uint32_t       draw_absent;                           /* streams the current draw leaves without a usable vertex buffer */
     /* One vec4 (0,0,0,1): the value a shader reads for an attribute its pipeline
      * layout does not name (GL's default generic attribute value). Bound on the
      * extra binding index RHI_MAX_VERTEX_STREAMS with stride 0. */
@@ -828,6 +833,9 @@ size_t rhi_vk_test_arena_size(void) { return (size_t)g_vk.arena.size; }
 /* Test-only: the next n growths of the deferred-free list fail, as if realloc returned NULL. */
 void rhi_vk_test_fail_pending_alloc(unsigned n) { g_test_fail_pending_alloc = n; }
 
+/* Test-only: the vertex-binding stride the last draw's pipeline used for `stream` (0xFFFFFFFF if the stream was not used). */
+uint32_t rhi_vk_test_last_stride(uint32_t stream) { return stream < RHI_MAX_VERTEX_STREAMS ? g_vk.last_stride[stream] : 0xFFFFFFFFu; }
+
 void rhi_vk_test_force_stream_arena(size_t bytes) {
     stream_arena_free();
     stream_arena_alloc((VkDeviceSize)bytes);
@@ -1255,7 +1263,7 @@ void rhi_device_destroy(void) {
     free(g_vk.shaders.free_list);
     /* Every created VkPipeline, then its table, then the shared layouts. */
     for (uint32_t i = 0; i < g_vk.pipelines.count; i++)
-        for (int v = 0; v < 2 * VK_PV_COUNT; v++)
+        for (unsigned v = 0; v < VK_VARIANTS; v++)
             if (g_vk.pipelines.slots[i].variant[v])
                 vkDestroyPipeline(g_vk.device, g_vk.pipelines.slots[i].variant[v], NULL);
     free(g_vk.pipelines.slots);
@@ -2532,7 +2540,24 @@ static VkBlendFactor vk_blend(RhiBlendFactor f) {
 }
 
 /* Build one VkPipeline of `desc` for a render-target variant (VK_PV_*). */
-static VkPipeline build_pipeline(const RhiPipelineDesc *desc, int variant, int wire) {
+/* The binding stride build_pipeline gives `stream`: the declared stride, else the packed size of its attributes. */
+static uint32_t stream_stride(const RhiPipelineDesc *desc, uint32_t stream) {
+    const RhiVkShader *sh = shader_find(desc->shader);
+    uint32_t shader_attribs = sh ? sh->attrib_count : 0, stride = 0;
+    for (uint32_t i = 0; i < desc->vertex.attrib_count; i++) {
+        const RhiVertexAttrib *a = &desc->vertex.attribs[i];
+        if (a->location >= shader_attribs || a->stream != stream) continue;
+        uint32_t end = a->offset + vertex_format_bytes(a->format);
+        if (desc->vertex.stride[stream]) stride = desc->vertex.stride[stream];
+        else if (end > stride) stride = end;
+    }
+    return stride;
+}
+
+/* Build one VkPipeline of `desc` for a render-target variant (VK_PV_*). Streams in `absent` (declared by the layout but with no usable
+ * vertex buffer at draw time) get a stride-0 binding: they read the first element of the small zero dummy buffer for every vertex, whereas
+ * the declared stride would walk off its end. */
+static VkPipeline build_pipeline(const RhiPipelineDesc *desc, int variant, int wire, uint32_t absent) {
     /* ---- vertex input: one binding per stream an attribute references ---- */
     VkVertexInputBindingDescription vbind[RHI_MAX_VERTEX_STREAMS + 1];
     uint32_t stride[RHI_MAX_VERTEX_STREAMS] = {0};
@@ -2557,6 +2582,8 @@ static VkPipeline build_pipeline(const RhiPipelineDesc *desc, int variant, int w
         vattr[n_attr].offset   = a->offset;
         n_attr++;
     }
+    for (uint32_t s = 0; s < RHI_MAX_VERTEX_STREAMS; s++)
+        if (absent >> s & 1u) stride[s] = 0;
     uint32_t n_bind = 0;
     for (uint32_t s = 0; s < RHI_MAX_VERTEX_STREAMS; s++)
         if (used_stream[s]) {
@@ -2691,7 +2718,7 @@ RhiPipeline rhi_pipeline_create(const RhiPipelineDesc *desc) {
     for (uint32_t i = 0; i < g_vk.pipelines.count; i++)
         if (pipeline_desc_equal(&g_vk.pipelines.slots[i].desc, desc)) { out.id = i + 1; return out; }
 
-    VkPipeline pipe = build_pipeline(desc, VK_PV_MAIN, 0);   /* eager: create failures return {0} */
+    VkPipeline pipe = build_pipeline(desc, VK_PV_MAIN, 0, 0);   /* eager: create failures return {0} */
     if (!pipe) return out;
     if (g_vk.pipelines.count == g_vk.pipelines.capacity) {
         uint32_t cap = g_vk.pipelines.capacity ? g_vk.pipelines.capacity * 2u : 64u;
@@ -2752,6 +2779,18 @@ void rhi_cmd_bind_texture(uint32_t slot, RhiTexture texture) {
 
 /* Dynamic viewport (positive height, VkViewport.y = GL y) + full-target scissor,
  * then bind the pipeline. Returns the pipeline entry, NULL to skip on any problem. */
+/* The streams `e`'s layout declares that this draw has no usable vertex buffer for (see build_pipeline). */
+static uint32_t absent_streams(const RhiVkPipeline *e) {
+    uint32_t used = 0, absent = 0;
+    for (uint32_t i = 0; i < e->desc.vertex.attrib_count; i++) used |= 1u << e->desc.vertex.attribs[i].stream;
+    for (uint32_t s = 0; s < RHI_MAX_VERTEX_STREAMS; s++) {
+        if (!(used >> s & 1u)) continue;
+        RhiVkBuffer *b = g_vk.bound_vertex[s].id ? buffer_lookup(g_vk.bound_vertex[s], "draw") : NULL;
+        if (!(b && b->buf && (b->usage & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT))) absent |= 1u << s;
+    }
+    return absent;
+}
+
 static RhiVkPipeline *draw_begin(const char *what) {
     if (g_vk.bound_pipeline < 0) {
         fprintf(stderr, "rhi: %s: no pipeline bound\n", what);
@@ -2783,10 +2822,12 @@ static RhiVkPipeline *draw_begin(const char *what) {
     /* The pipeline variant for the current target's attachment formats; the
      * non-main ones are built on first use. */
     int wire = g_vk.wireframe && e->desc.primitive == RHI_PRIMITIVE_TRIANGLES;   /* line topology has no polygon mode */
-    int v = g_vk.target_variant, vi = wire * VK_PV_COUNT + v;
+    uint32_t absent = absent_streams(e);
+    g_vk.draw_absent = absent;   /* draw_bind_resources binds the dummy buffer for exactly these streams */
+    unsigned v = (unsigned)g_vk.target_variant, vi = (absent * 2u + (unsigned)wire) * VK_PV_COUNT + v;
     if (!e->variant[vi]) {
-        e->variant[vi] = build_pipeline(&e->desc, v, wire);
-        if (!e->variant[vi]) { fprintf(stderr, "rhi: %s: pipeline variant %d failed\n", what, vi); return NULL; }
+        e->variant[vi] = build_pipeline(&e->desc, (int)v, wire, absent);
+        if (!e->variant[vi]) { fprintf(stderr, "rhi: %s: pipeline variant %u failed\n", what, vi); return NULL; }
     }
     vkCmdBindPipeline(g_vk.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, e->variant[vi]);
     return e;
@@ -2800,9 +2841,12 @@ static void draw_bind_resources(RhiVkPipeline *e, VkDeviceSize ubo_off) {
     VkBuffer vbufs[RHI_MAX_VERTEX_STREAMS];
     VkDeviceSize voffs[RHI_MAX_VERTEX_STREAMS];
     for (uint32_t i = 0; i < vl->attrib_count; i++) used_stream[vl->attribs[i].stream] = 1;
+    for (uint32_t s = 0; s < RHI_MAX_VERTEX_STREAMS; s++) g_vk.last_stride[s] = 0xFFFFFFFFu;
     for (uint32_t s = 0; s < RHI_MAX_VERTEX_STREAMS; s++) {
         if (!used_stream[s]) continue;
-        RhiVkBuffer *b = g_vk.bound_vertex[s].id ? buffer_lookup(g_vk.bound_vertex[s], "draw") : NULL;
+        const int absent = g_vk.draw_absent >> s & 1u;
+        g_vk.last_stride[s] = absent ? 0 : stream_stride(&e->desc, s);
+        RhiVkBuffer *b = absent ? NULL : buffer_lookup(g_vk.bound_vertex[s], "draw");
         if (b && b->buf && (b->usage & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)) {
             b->in_use = 1;   /* a recorded draw now reads it */
             vbufs[s] = buf_cur(b); voffs[s] = g_vk.bound_vertex_offset[s] + buf_cur_off(b);
