@@ -23,6 +23,7 @@ extern unsigned rhi_vk_arena_flushes;            /* mid-frame UBO-arena flushes 
  * multi-draw path can be forced to flush mid-frame with just a couple of draws. */
 extern void rhi_vk_test_force_arena(size_t bytes);
 extern void rhi_vk_test_force_stream_arena(size_t bytes);
+extern size_t rhi_vk_test_arena_size(void);                   /* size of the per-frame parameter arena */
 extern void rhi_vk_test_fail_pending_alloc(unsigned n);       /* the next n deferred-free list growths fail */
 extern int rhi_vk_test_sync_hazard(void);                    /* two unsynchronised clears (WAW) */   /* the STREAM-version arena */
 /* Test-only backend path: reads buffer contents (STREAM mapping, or a STATIC
@@ -1776,6 +1777,34 @@ int main(void) {
                 EXPECT(rhi_vk_validation_messages == v4, "F4: replacing a buffer with a failing free list raised %u validation message(s)",
                        rhi_vk_validation_messages - v4);
                 rhi_buffer_destroy(vb);
+            }
+            /* F2a: a parameter block far beyond any uniform-buffer range is rejected at shader creation. */
+            {
+                static const RhiParamField big_fields[] = { { "uBig", RHI_PARAM_FLOAT, 0, 1 } };
+                static const RhiParamLayout big_layout = { big_fields, 1, 4u * 1024u * 1024u + 16u, "BigParams" };
+                static const RhiParamLayout *const big_blocks[] = { &big_layout };
+                RhiShaderDesc bd = { "", "", attrs, 1, "frontend", big_blocks, 1 };
+                RhiShader big = rhi_shader_create(&bd);
+                printf("F2a oversized parameter block (4 MiB + 16): shader_create %s\n", big.id ? "ACCEPTED" : "rejected");
+                EXPECT(big.id == 0, "F2a: a 4 MiB + 16 byte parameter block must be rejected");
+                if (big.id) rhi_shader_destroy(big);
+            }
+            /* F2b: a block larger than the whole arena (forced tiny) must not be copied past its end: the arena grows first. */
+            {
+                rhi_vk_test_force_arena(64);                                                 /* smaller than the 80-byte block */
+                EXPECT(rhi_frame_begin(NULL) == RHI_OK, "F2b frame_begin");
+                EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "F2b clear");
+                RhiBuffer vb = rhi_buffer_create(&(RhiBufferDesc){ RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, sizeof left, left });
+                rhi_cmd_bind_pipeline(pipe); rhi_cmd_bind_vertex_buffer(0, vb, 0);
+                COLOUR(1, 0, 0); rhi_cmd_draw(6, 0);
+                EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "F2b read");
+                printf("F2b block larger than the arena: arena %zu bytes after the draw (block 80), left=%u,%u,%u\n", rhi_vk_test_arena_size(),
+                       PXAT(64, 96)[0], PXAT(64, 96)[1], PXAT(64, 96)[2]);
+                EXPECT(rhi_vk_test_arena_size() >= 80, "F2b: the arena must grow to hold the block (is %zu bytes)", rhi_vk_test_arena_size());
+                EXPECT(is_red(PXAT(64, 96)), "F2b: the draw still renders");
+                EXPECT(rhi_frame_end() == RHI_OK, "F2b frame_end");
+                rhi_buffer_destroy(vb);
+                rhi_vk_test_force_arena(1u << 20);
             }
             #undef COLOUR
             #undef PXAT

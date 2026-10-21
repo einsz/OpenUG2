@@ -87,6 +87,7 @@ typedef struct {
  * (g_vk.arena) at draw time (P11-review Fix 1). The mirror's layout equals the
  * RhiParamLayout, which rhi_param_layout_check enforces. */
 #define VK_MAX_PARAM_BLOCKS 4u
+#define VK_PARAM_BLOCK_MAX (64u * 1024u)   /* largest parameter block accepted (the device's uniform-buffer range may be lower) */
 typedef struct {
     void          *mirror;   /* calloc'd, size = layout->size; freed on shader destroy */
     uint32_t       size;
@@ -264,6 +265,7 @@ static struct {
         VkDeviceSize   demand;   /* total aligned demand this frame (flush-agnostic) */
     } arena;
     VkDeviceSize min_ubo_align;  /* minUniformBufferOffsetAlignment */
+    uint32_t     max_ubo_range;  /* maxUniformBufferRange */
 
     /* Stream arena: versions of STREAM buffers updated while a recorded draw still
      * reads the old contents. Everything is recorded and submitted at frame_end (or
@@ -730,6 +732,14 @@ static int arena_place(const void *src, VkDeviceSize sz, VkDeviceSize *out_off) 
         g_vk.arena.offset = 0;
         aligned = 0;
         rhi_vk_arena_flushes++;
+        if (sz > g_vk.arena.size) {
+            /* One block larger than the whole arena. The split submitted and waited, so nothing recorded refers to the
+             * arena any more: grow it now, before anything is copied. */
+            VkDeviceSize ns = g_vk.arena.size ? g_vk.arena.size : VK_ARENA_INITIAL;
+            while (ns < sz) ns *= 2u;
+            arena_free();
+            if (!arena_alloc(ns)) return 0;
+        }
     }
     memcpy((unsigned char *)g_vk.arena.mapped + aligned, src, (size_t)sz);
     g_vk.arena.offset = aligned + sz;
@@ -812,6 +822,9 @@ int rhi_vk_test_sync_hazard(void) {
 }
 
 /* Test-only: recreate the stream arena at `bytes` (same rules as the UBO hook). */
+/* Test-only: size of the per-frame parameter arena. */
+size_t rhi_vk_test_arena_size(void) { return (size_t)g_vk.arena.size; }
+
 /* Test-only: the next n growths of the deferred-free list fail, as if realloc returned NULL. */
 void rhi_vk_test_fail_pending_alloc(unsigned n) { g_test_fail_pending_alloc = n; }
 
@@ -1172,6 +1185,7 @@ RhiResult rhi_device_create(const RhiDeviceDesc *desc) {
     {
         VkPhysicalDeviceProperties pdp; vkGetPhysicalDeviceProperties(g_vk.phys, &pdp);
         g_vk.min_ubo_align = pdp.limits.minUniformBufferOffsetAlignment;
+        g_vk.max_ubo_range = pdp.limits.maxUniformBufferRange;
     }
     if (!arena_alloc(VK_ARENA_INITIAL)) goto fail;
     if (!stream_arena_alloc(VK_STREAM_ARENA_INITIAL)) goto fail;
@@ -2372,8 +2386,16 @@ RhiShader rhi_shader_create(const RhiShaderDesc *desc) {
         (desc->param_block_count && !desc->param_blocks)) {
         fprintf(stderr, "rhi: shader_create: invalid description\n"); return out;
     }
-    for (uint32_t i = 0; i < desc->param_block_count; i++)
+    for (uint32_t i = 0; i < desc->param_block_count; i++) {
         if (rhi_param_layout_check(desc->param_blocks[i]) != RHI_OK) return out;
+        /* A block is one uniform-buffer descriptor and is copied whole into the per-frame arena at every draw. */
+        uint32_t cap = g_vk.max_ubo_range && g_vk.max_ubo_range < VK_PARAM_BLOCK_MAX ? g_vk.max_ubo_range : VK_PARAM_BLOCK_MAX;
+        if (desc->param_blocks[i]->size > cap) {
+            fprintf(stderr, "rhi_vk: shader_create: parameter block '%s' is %u bytes; at most %u are supported\n",
+                    desc->param_blocks[i]->name ? desc->param_blocks[i]->name : "?", (unsigned)desc->param_blocks[i]->size, cap);
+            return out;
+        }
+    }
     size_t vb = 0, fb = 0;
     const uint32_t *vspv = vk_shader_spirv(desc->label, 0, &vb);
     const uint32_t *fspv = vk_shader_spirv(desc->label, 1, &fb);
