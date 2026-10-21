@@ -345,9 +345,16 @@ static VkFormat pick_depth_format(void) {
     const VkFormatFeatureFlags need = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT |
         VK_FORMAT_FEATURE_TRANSFER_SRC_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT |
         VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
-    for (int i = 0; i < 2; i++) {
+    /* RHI_VK_DEPTH_FORMAT=d32s8 (debug): skip D24S8 so the fallback path can be exercised
+     * on drivers that support both. */
+    const char *force = getenv("RHI_VK_DEPTH_FORMAT");
+    int first = force && !strcmp(force, "d32s8") ? 1 : 0;
+    for (int i = first; i < 2; i++) {
         VkFormatProperties fp; vkGetPhysicalDeviceFormatProperties(g_vk.phys, cands[i], &fp);
-        if ((fp.optimalTilingFeatures & need) == need) return cands[i];
+        if ((fp.optimalTilingFeatures & need) == need) {
+            if (force) fprintf(stderr, "rhi_vk: main depth format %s\n", i ? "D32_SFLOAT_S8_UINT" : "D24_UNORM_S8_UINT");
+            return cands[i];
+        }
     }
     return VK_FORMAT_UNDEFINED;
 }
@@ -780,6 +787,24 @@ void rhi_vk_test_force_arena(size_t bytes) {
     g_vk.arena.demand = 0;
 }
 
+/* Test-only: record two transfer clears of the colour image with NO barrier between
+ * them (a write-after-write hazard). Synchronization validation must flag it; the
+ * smoke uses this to prove the layer is really active before trusting a clean run. */
+int rhi_vk_test_sync_hazard(void) {
+    if (!g_vk.in_frame || g_vk.pass.active || !ensure_recording()) return 0;
+    end_rendering_if_active();
+    image_barrier(g_vk.color, VK_IMAGE_ASPECT_COLOR_BIT, g_vk.color_layout,
+                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                  VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                  VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+    g_vk.color_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    VkClearColorValue a = {{ 1, 0, 0, 1 }}, b = {{ 0, 0, 1, 1 }};
+    VkImageSubresourceRange r = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+    vkCmdClearColorImage(g_vk.cmd, g_vk.color, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &a, 1, &r);
+    vkCmdClearColorImage(g_vk.cmd, g_vk.color, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &b, 1, &r);   /* no barrier */
+    return 1;
+}
+
 /* Test-only: recreate the stream arena at `bytes` (same rules as the UBO hook). */
 void rhi_vk_test_force_stream_arena(size_t bytes) {
     stream_arena_free();
@@ -854,8 +879,8 @@ RhiResult rhi_device_create(const RhiDeviceDesc *desc) {
 
     /* ---- instance: validation layer + debug messenger when present ---- */
     const char *layers[1]; uint32_t n_layers = 0;
-    const char *exts[1]; uint32_t n_exts = 0;
-    int have_debug = 0;
+    const char *exts[2]; uint32_t n_exts = 0;
+    int have_debug = 0, have_features = 0;
     {
         uint32_t lc = 0; vkEnumerateInstanceLayerProperties(&lc, NULL);
         VkLayerProperties *lp = calloc(lc ? lc : 1, sizeof *lp);
@@ -871,17 +896,39 @@ RhiResult rhi_device_create(const RhiDeviceDesc *desc) {
                 if (!strcmp(ep[i].extensionName, VK_EXT_DEBUG_UTILS_EXTENSION_NAME)) have_debug = 1;
             free(ep);
             if (have_debug) exts[n_exts++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
+            /* Synchronization validation is opt-in (RHI_VK_SYNC_VALIDATION=1, a debug aid:
+             * the layer's env/settings route did not enable it under lavapipe). The layer
+             * offers VK_EXT_validation_features, through which the app asks for it. */
+            const char *sv = getenv("RHI_VK_SYNC_VALIDATION");
+            if (sv && *sv && *sv != '0') {
+                uint32_t lec = 0; vkEnumerateInstanceExtensionProperties("VK_LAYER_KHRONOS_validation", &lec, NULL);
+                VkExtensionProperties *lep = calloc(lec ? lec : 1, sizeof *lep);
+                vkEnumerateInstanceExtensionProperties("VK_LAYER_KHRONOS_validation", &lec, lep);
+                for (uint32_t i = 0; i < lec; i++)
+                    if (!strcmp(lep[i].extensionName, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME)) have_features = 1;
+                free(lep);
+                if (have_features) { exts[n_exts++] = VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME;
+                                     fprintf(stderr, "rhi_vk: synchronization validation requested\n"); }
+                else fprintf(stderr, "rhi_vk: VK_EXT_validation_features unavailable; no sync validation\n");
+            }
         } else {
             fprintf(stderr, "rhi_vk: VK_LAYER_KHRONOS_validation not found (set VK_ADD_LAYER_PATH)\n");
         }
     }
     VkApplicationInfo app = { VK_STRUCTURE_TYPE_APPLICATION_INFO, NULL, "OpenUG2", 1, "OpenUG2", 1,
                               VK_API_VERSION_1_3 };   /* core dynamic rendering */
+    static const VkValidationFeatureEnableEXT sync_on[] = { VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT };
+    VkValidationFeaturesEXT vfe = { VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT, NULL, 1, sync_on, 0, NULL };
     VkDebugUtilsMessengerCreateInfoEXT dci = { VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT, NULL, 0,
         VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
         VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
             VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT, dbg_cb, NULL };
-    VkInstanceCreateInfo ici = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, have_debug ? &dci : NULL, 0, &app,
+    /* The instance's pNext chain: messenger for instance-creation messages, then the
+     * validation features; vkCreateDebugUtilsMessengerEXT below gets dci alone. */
+    VkDebugUtilsMessengerCreateInfoEXT dci_ici = dci;
+    dci_ici.pNext = have_features ? &vfe : NULL;
+    VkInstanceCreateInfo ici = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+                                 have_debug ? (const void *)&dci_ici : have_features ? (const void *)&vfe : NULL, 0, &app,
                                  n_layers, layers, n_exts, exts };
     if (!vk_ok(vkCreateInstance(&ici, NULL, &g_vk.instance), "vkCreateInstance")) goto fail;
     if (have_debug) {
