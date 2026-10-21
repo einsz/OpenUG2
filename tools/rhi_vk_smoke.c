@@ -16,6 +16,10 @@
 
 /* Non-static globals in rhi_vk.c (no rhi.h surface for them). */
 extern unsigned rhi_vk_validation_messages;
+extern unsigned rhi_vk_arena_flushes;            /* mid-frame UBO-arena flushes so far */
+/* Test-only backend hook: recreate the per-frame UBO arena at `bytes` so the
+ * multi-draw path can be forced to flush mid-frame with just a couple of draws. */
+extern void rhi_vk_test_force_arena(size_t bytes);
 /* Test-only backend path: reads buffer contents (STREAM mapping, or a STATIC
  * device->host staging copy). Returns 1 on success, 0 on failure. */
 extern int rhi_vk_buffer_readback(RhiBuffer buf, size_t offset, size_t size, void *dst);
@@ -32,6 +36,10 @@ static int fails;
 /* Expected 8-bit value for a 0..1 clear channel (round to nearest). */
 static int chan(float f) { int v = (int)(f * 255.0f + 0.5f); return v < 0 ? 0 : v > 255 ? 255 : v; }
 static int near8(int got, int want) { int d = got - want; return (d < 0 ? -d : d) <= 1; }
+static int is_red(const unsigned char *p)   { return p[0] == 255 && p[1] == 0 && p[2] == 0 && p[3] == 255; }
+static int is_green(const unsigned char *p) { return p[0] == 0 && p[1] == 255 && p[2] == 0 && p[3] == 255; }
+static int is_blue(const unsigned char *p)  { return p[0] == 0 && p[1] == 0 && p[2] == 255 && p[3] == 255; }
+static int is_black(const unsigned char *p) { return p[0] == 0 && p[1] == 0 && p[2] == 0 && p[3] == 255; }
 
 int main(void) {
     if (SDL_Init(SDL_INIT_VIDEO) != 0) { fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError()); return 2; }
@@ -303,6 +311,245 @@ int main(void) {
 
     rhi_texture_destroy(rgba_tex);
     rhi_texture_destroy(rgb_tex);
+
+    /* ---- P11e: render the first real triangle (shader -> pipeline -> draw) ----
+     * A red triangle covering the TOP-LEFT quadrant in GL-convention NDC (y up).
+     * After read_pixels (which returns top-down rows, row 0 = top), the red must
+     * land in the top-left of the image: that proves the negative-height viewport
+     * reproduces GL's y-up orientation end to end. */
+    {
+        static const RhiParamField fe_fields[] = {
+            { "uMVP", RHI_PARAM_MAT4, 0, 1 }, { "uColor", RHI_PARAM_VEC4, 64, 1 },
+        };
+        static const RhiParamLayout fe_layout = { fe_fields, 2, 80, "FeParams" };
+        static const char *const attrs[] = { "aPos" };
+        static const RhiParamLayout *const blocks[] = { &fe_layout };
+        RhiShaderDesc shd = { "", "", attrs, 1, "frontend", blocks, 1 };
+        RhiShader sh = rhi_shader_create(&shd);
+        EXPECT(sh.id != 0, "P11e frontend shader_create");
+
+        /* uMVP = identity (column-major), uColor = red. */
+        float *fp = (float *)rhi_shader_params(sh, 0);
+        EXPECT(fp != NULL, "P11e shader_params");
+        if (fp) {
+            memset(fp, 0, 80);
+            fp[0] = fp[5] = fp[10] = fp[15] = 1.0f;     /* identity mat4 */
+            fp[16] = 1.0f; fp[17] = 0.0f; fp[18] = 0.0f; fp[19] = 1.0f;   /* uColor = (1,0,0,1) */
+        }
+
+        RhiPipelineDesc pd;
+        rhi_pipeline_desc_init(&pd);
+        pd.shader = sh;
+        pd.vertex.attrib_count = 1;
+        pd.vertex.attribs[0] = (RhiVertexAttrib){ 0, 0, 0, RHI_VERTEX_FLOAT2 };
+        pd.vertex.stride[0] = 8;
+        pd.primitive = RHI_PRIMITIVE_TRIANGLES;
+        pd.depth_test = 0; pd.depth_write = 0;
+        pd.blend = 0; pd.cull = RHI_CULL_NONE;
+        RhiPipeline pipe = rhi_pipeline_create(&pd);
+        EXPECT(pipe.id != 0, "P11e pipeline_create");
+        /* Dedup: an identical desc must return the same handle. */
+        EXPECT(rhi_pipeline_create(&pd).id == pipe.id, "P11e pipeline dedup by value");
+
+        /* Top-left triangle in GL NDC (y up): corner (-1,1), (0,1), (-1,0). */
+        static const float tri[6] = { -1.0f, 1.0f,   0.0f, 1.0f,   -1.0f, 0.0f };
+        RhiBufferDesc vbd = { RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, sizeof tri, tri };
+        RhiBuffer vb = rhi_buffer_create(&vbd);
+        EXPECT(vb.id != 0, "P11e vertex buffer_create");
+
+        const float black[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+        EXPECT(rhi_frame_begin(NULL) == RHI_OK, "P11e frame_begin");
+        EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "P11e clear black");
+        rhi_cmd_bind_pipeline(pipe);
+        rhi_cmd_bind_vertex_buffer(0, vb, 0);
+        rhi_cmd_draw(3, 0);
+
+        unsigned char *frame = (unsigned char *)malloc((size_t)W * H * 4);
+        EXPECT(frame != NULL, "P11e frame alloc");
+        EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "P11e read_pixels");
+        EXPECT(rhi_frame_end() == RHI_OK, "P11e frame_end");
+
+        if (frame) {
+            /* Sample the four corners (x, row), row 0 = top of the readback. */
+            #define PX(x, row) (frame + ((size_t)(row) * W + (x)) * 4)
+            const unsigned char *tl = PX(10, 10);          /* top-left */
+            const unsigned char *tr = PX(W - 10, 10);      /* top-right */
+            const unsigned char *bl = PX(10, H - 10);      /* bottom-left */
+            const unsigned char *br = PX(W - 10, H - 10);  /* bottom-right */
+            printf("P11e corners RGBA  top-left=%u,%u,%u,%u  top-right=%u,%u,%u,%u\n",
+                   tl[0], tl[1], tl[2], tl[3], tr[0], tr[1], tr[2], tr[3]);
+            printf("                   bottom-left=%u,%u,%u,%u  bottom-right=%u,%u,%u,%u\n",
+                   bl[0], bl[1], bl[2], bl[3], br[0], br[1], br[2], br[3]);
+            EXPECT(is_red(tl), "top-left must be red (triangle), got %u,%u,%u,%u", tl[0], tl[1], tl[2], tl[3]);
+            EXPECT(is_black(br), "bottom-right (opposite corner) must be black, got %u,%u,%u,%u",
+                   br[0], br[1], br[2], br[3]);
+            /* Orientation: red at top, black at bottom (a Y-flip would swap these). */
+            EXPECT(is_black(bl), "bottom-left must be black (Y-orientation), got %u,%u,%u,%u",
+                   bl[0], bl[1], bl[2], bl[3]);
+            EXPECT(is_black(tr), "top-right must be black (triangle is left-only), got %u,%u,%u,%u",
+                   tr[0], tr[1], tr[2], tr[3]);
+            printf("P11e triangle: red in TOP-LEFT, opposite corner black -> Y-orientation matches GL\n");
+            #undef PX
+        }
+        free(frame);
+        rhi_buffer_destroy(vb);
+        rhi_shader_destroy(sh);
+    }
+
+    /* ---- P11 review: per-draw param snapshot, mid-frame flush, partial viewport ----
+     * One shared frontend shader + triangle pipeline, driven immediate-mode: write
+     * params -> draw -> write DIFFERENT params -> draw. Before Fix 1 both draws saw
+     * the LAST params (single mapped UBO); after it each draw snapshots its own. */
+    {
+        static const RhiParamField fe_fields[] = {
+            { "uMVP", RHI_PARAM_MAT4, 0, 1 }, { "uColor", RHI_PARAM_VEC4, 64, 1 },
+        };
+        static const RhiParamLayout fe_layout = { fe_fields, 2, 80, "FeParams" };
+        static const char *const attrs[] = { "aPos" };
+        static const RhiParamLayout *const blocks[] = { &fe_layout };
+        RhiShaderDesc shd = { "", "", attrs, 1, "frontend", blocks, 1 };
+        RhiShader sh = rhi_shader_create(&shd);
+        EXPECT(sh.id != 0, "review frontend shader_create");
+
+        RhiPipelineDesc pd;
+        rhi_pipeline_desc_init(&pd);
+        pd.shader = sh;
+        pd.vertex.attrib_count = 1;
+        pd.vertex.attribs[0] = (RhiVertexAttrib){ 0, 0, 0, RHI_VERTEX_FLOAT2 };
+        pd.vertex.stride[0] = 8;
+        pd.primitive = RHI_PRIMITIVE_TRIANGLES;
+        pd.depth_test = 0; pd.depth_write = 0; pd.blend = 0; pd.cull = RHI_CULL_NONE;
+        RhiPipeline pipe = rhi_pipeline_create(&pd);
+        EXPECT(pipe.id != 0, "review pipeline_create");
+
+        /* A quadrant-sized triangle in the top-left of GL NDC; a translate in uMVP
+         * moves the second draw's copy to the bottom-right quadrant. */
+        static const float tri[6] = { -1.0f, 1.0f,   0.0f, 1.0f,   -1.0f, 0.0f };
+        RhiBufferDesc vbd = { RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, sizeof tri, tri };
+        RhiBuffer vb = rhi_buffer_create(&vbd);
+        EXPECT(vb.id != 0, "review vertex buffer_create");
+        /* A full-NDC triangle (covers the whole viewport) for the partial-viewport test. */
+        static const float big[6] = { -1.0f, -1.0f,   3.0f, -1.0f,   -1.0f, 3.0f };
+        RhiBufferDesc bbd = { RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, sizeof big, big };
+        RhiBuffer bvb = rhi_buffer_create(&bbd);
+        EXPECT(bvb.id != 0, "review big-triangle buffer_create");
+
+        const float black[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+        unsigned char *frame = (unsigned char *)malloc((size_t)W * H * 4);
+        EXPECT(frame != NULL, "review frame alloc");
+        #define PX(x, row) (frame + ((size_t)(row) * W + (x)) * 4)
+
+        /* Fill FeParams: identity+translate (column-major col 3) and a uColor. */
+        #define SET_PARAMS(tx, ty, r, g, b) do { \
+            float *fp = (float *)rhi_shader_params(sh, 0); \
+            memset(fp, 0, 80); fp[0]=fp[5]=fp[10]=fp[15]=1.0f; fp[12]=(tx); fp[13]=(ty); \
+            fp[16]=(r); fp[17]=(g); fp[18]=(b); fp[19]=1.0f; } while (0)
+
+        /* (1) MULTI-DRAW different params: red TL (identity) + green BR (translate). */
+        if (frame) {
+            EXPECT(rhi_frame_begin(NULL) == RHI_OK, "multi-draw frame_begin");
+            EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "multi-draw clear");
+            rhi_cmd_bind_pipeline(pipe);
+            rhi_cmd_bind_vertex_buffer(0, vb, 0);
+            SET_PARAMS(0.0f, 0.0f, 1.0f, 0.0f, 0.0f);   /* red, top-left */
+            rhi_cmd_draw(3, 0);
+            SET_PARAMS(1.0f, -1.0f, 0.0f, 1.0f, 0.0f);  /* green, bottom-right */
+            rhi_cmd_draw(3, 0);
+            EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "multi-draw read");
+            EXPECT(rhi_frame_end() == RHI_OK, "multi-draw frame_end");
+            const unsigned char *red = PX(43, 32), *grn = PX(171, 128);
+            printf("MULTI-DRAW  red-quadrant(43,32)=%u,%u,%u,%u  green-quadrant(171,128)=%u,%u,%u,%u\n",
+                   red[0], red[1], red[2], red[3], grn[0], grn[1], grn[2], grn[3]);
+            EXPECT(is_red(red), "top-left quadrant must be RED (per-draw snapshot), got %u,%u,%u,%u",
+                   red[0], red[1], red[2], red[3]);
+            EXPECT(is_green(grn), "bottom-right quadrant must be GREEN, got %u,%u,%u,%u",
+                   grn[0], grn[1], grn[2], grn[3]);
+            printf("MULTI-DRAW: two DIFFERENT params -> RED + GREEN quadrants (not both last colour)\n");
+        }
+
+        /* (2) PARTIAL VIEWPORT: bottom half in GL convention; full-NDC blue triangle
+         * must land in the BOTTOM half of the returned image, top half untouched. */
+        if (frame) {
+            EXPECT(rhi_frame_begin(NULL) == RHI_OK, "partial-vp frame_begin");
+            EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "partial-vp clear");
+            EXPECT(rhi_cmd_set_viewport(0, 0, W, H / 2) == RHI_OK, "set bottom-half viewport");
+            rhi_cmd_bind_pipeline(pipe);
+            rhi_cmd_bind_vertex_buffer(0, bvb, 0);
+            SET_PARAMS(0.0f, 0.0f, 0.0f, 0.0f, 1.0f);   /* blue */
+            rhi_cmd_draw(3, 0);
+            EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "partial-vp read");
+            /* PARTIAL READBACK: x, y is the rectangle's TOP-left corner (rhi.h), like the
+               GL backend. The bottom-half GL viewport is blue, so a read near the top of
+               the target is black and one near the bottom is blue; and any sub-rectangle
+               must equal the same crop of the full-frame read. */
+            unsigned char pr_top[4], pr_bot[4];
+            EXPECT(rhi_read_pixels(W / 2, H / 4, 1, 1, RHI_READ_RGBA8, pr_top, 0) == RHI_OK, "partial read top");
+            EXPECT(rhi_read_pixels(W / 2, 3 * H / 4, 1, 1, RHI_READ_RGBA8, pr_bot, 0) == RHI_OK, "partial read bottom");
+            printf("PARTIAL-READ  y=%d (top-down)=%u,%u,%u,%u  y=%d=%u,%u,%u,%u\n",
+                   H / 4, pr_top[0], pr_top[1], pr_top[2], pr_top[3],
+                   3 * H / 4, pr_bot[0], pr_bot[1], pr_bot[2], pr_bot[3]);
+            EXPECT(is_black(pr_top), "sub-read in the top half must be black, got %u,%u,%u,%u",
+                   pr_top[0], pr_top[1], pr_top[2], pr_top[3]);
+            EXPECT(is_blue(pr_bot), "sub-read in the bottom half must be blue, got %u,%u,%u,%u",
+                   pr_bot[0], pr_bot[1], pr_bot[2], pr_bot[3]);
+            {   /* rectangles at the top edge, the bottom edge and straddling the viewport boundary */
+                static const int32_t rects[4][4] = { { 0, 0, W, 2 }, { 5, H - 3, 40, 3 },
+                                                     { 10, H / 2 - 8, 60, 16 }, { 17, 23, 31, 29 } };
+                for (int i = 0; i < 4; i++) {
+                    int32_t rx = rects[i][0], ry = rects[i][1], rw = rects[i][2], rh = rects[i][3];
+                    unsigned char *sub = (unsigned char *)malloc((size_t)rw * rh * 4);
+                    int same = sub && rhi_read_pixels(rx, ry, rw, rh, RHI_READ_RGBA8, sub, 0) == RHI_OK;
+                    for (int32_t r = 0; same && r < rh; r++)
+                        same = !memcmp(sub + (size_t)r * rw * 4, frame + ((size_t)(ry + r) * W + rx) * 4, (size_t)rw * 4);
+                    EXPECT(same, "sub-rect read %d (%d,%d %dx%d) differs from the full-frame crop", i, rx, ry, rw, rh);
+                    free(sub);
+                }
+            }
+            EXPECT(rhi_frame_end() == RHI_OK, "partial-vp frame_end");
+            EXPECT(rhi_cmd_set_viewport(0, 0, W, H) == RHI_OK, "restore full viewport");
+            const unsigned char *bot = PX(W / 2, 3 * H / 4), *top = PX(W / 2, H / 4);
+            printf("PARTIAL-VP  bottom(128,%d)=%u,%u,%u,%u  top(128,%d)=%u,%u,%u,%u\n",
+                   3 * H / 4, bot[0], bot[1], bot[2], bot[3], H / 4, top[0], top[1], top[2], top[3]);
+            EXPECT(is_blue(bot), "GL bottom-half viewport must colour the BOTTOM of the image, got %u,%u,%u,%u",
+                   bot[0], bot[1], bot[2], bot[3]);
+            EXPECT(is_black(top), "top half must be untouched (black), got %u,%u,%u,%u",
+                   top[0], top[1], top[2], top[3]);
+            printf("PARTIAL-VP: bottom-half GL viewport lands in image bottom half (matches GL)\n");
+        }
+
+        /* (3) MID-FRAME FLUSH: shrink the arena so the 2nd draw overflows it and
+         * forces a submit+flush; the first draw's RED must still survive. */
+        if (frame) {
+            unsigned before = rhi_vk_arena_flushes;
+            EXPECT(rhi_frame_begin(NULL) == RHI_OK, "flush-test frame_begin");
+            EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "flush-test clear");
+            rhi_vk_test_force_arena(128);   /* holds one 80-byte block, not two */
+            rhi_cmd_bind_pipeline(pipe);
+            rhi_cmd_bind_vertex_buffer(0, vb, 0);
+            SET_PARAMS(0.0f, 0.0f, 1.0f, 0.0f, 0.0f);   /* red, top-left */
+            rhi_cmd_draw(3, 0);
+            SET_PARAMS(1.0f, -1.0f, 0.0f, 1.0f, 0.0f);  /* green, bottom-right (forces flush) */
+            rhi_cmd_draw(3, 0);
+            EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "flush-test read");
+            EXPECT(rhi_frame_end() == RHI_OK, "flush-test frame_end");
+            unsigned did = rhi_vk_arena_flushes - before;
+            const unsigned char *red = PX(43, 32), *grn = PX(171, 128);
+            printf("MID-FLUSH   flushes=%u  red(43,32)=%u,%u,%u,%u  green(171,128)=%u,%u,%u,%u\n",
+                   did, red[0], red[1], red[2], red[3], grn[0], grn[1], grn[2], grn[3]);
+            EXPECT(did > 0, "a mid-frame arena flush must have occurred");
+            EXPECT(is_red(red), "earlier draw's RED must survive the mid-frame flush, got %u,%u,%u,%u",
+                   red[0], red[1], red[2], red[3]);
+            EXPECT(is_green(grn), "post-flush GREEN present, got %u,%u,%u,%u",
+                   grn[0], grn[1], grn[2], grn[3]);
+            printf("MID-FLUSH: arena overflow flushed mid-frame; earlier draw preserved (loadOp=LOAD)\n");
+        }
+        #undef SET_PARAMS
+        #undef PX
+        free(frame);
+        rhi_buffer_destroy(vb);
+        rhi_buffer_destroy(bvb);
+        rhi_shader_destroy(sh);
+    }
 
     rhi_device_destroy();
     SDL_DestroyWindow(win);

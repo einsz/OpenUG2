@@ -18,10 +18,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 /* Validation-message counter, like the spike. Non-static so the smoke test can
  * read it (no rhi.h surface for it); WARNING and above count as a failure. */
 unsigned rhi_vk_validation_messages;
+
+/* Mid-frame UBO-arena flushes so far (no rhi.h surface; the smoke reads it to
+ * confirm the arena-overflow path actually fired). */
+unsigned rhi_vk_arena_flushes;
 
 #define VK_DEFAULT_W 1280
 #define VK_DEFAULT_H 720
@@ -62,15 +67,16 @@ typedef struct {
     uint8_t            generation;
 } RhiVkTexture;
 
-/* One parameter block = a host-visible, persistently-mapped UBO. The game writes
- * params through the mapping (rhi_shader_params), so the UBO is always current
- * for the next draw (host-coherent; no GL-style flush needed). Its std140 layout
- * equals the RhiParamLayout, which rhi_param_layout_check enforces. */
+/* One parameter block = PLAIN host memory (the std140 "mirror") the game writes
+ * params into via rhi_shader_params. The engine is immediate-mode (write params,
+ * draw, write different params, draw, reusing one shader), and the backend defers
+ * the whole frame into one command buffer, so each draw must snapshot the params
+ * it was issued with -- the mirror is copied into the per-frame UBO arena
+ * (g_vk.arena) at draw time (P11-review Fix 1). The mirror's layout equals the
+ * RhiParamLayout, which rhi_param_layout_check enforces. */
 #define VK_MAX_PARAM_BLOCKS 4u
 typedef struct {
-    VkBuffer       ubo;
-    VkDeviceMemory ubo_mem;
-    void          *mapped;
+    void          *mirror;   /* calloc'd, size = layout->size; freed on shader destroy */
     uint32_t       size;
     const RhiParamLayout *layout;
 } RhiVkParamBlock;
@@ -82,6 +88,18 @@ typedef struct {
     uint8_t         live;
     uint8_t         generation;
 } RhiVkShader;
+
+/* One created VkGraphicsPipeline. Deduped by value like the GL backend: equal
+ * RhiPipelineDesc -> same handle (index + 1). The desc is kept for dedup and so
+ * a draw can walk the vertex layout to bind its streams; every pipeline shares
+ * g_vk.pipe_layout / g_vk.set_layout (push descriptors), so only the VkPipeline
+ * object is per-entry. Pipelines are never destroyed individually (the GL
+ * backend never retires them either). */
+typedef struct {
+    VkPipeline      pipeline;
+    RhiShader       shader;         /* the desc's shader, re-checked at bind/draw */
+    RhiPipelineDesc desc;
+} RhiVkPipeline;
 
 static struct {
     SDL_Window              *window;
@@ -97,12 +115,49 @@ static struct {
 
     VkImage        color;                /* offscreen RGBA8 main target */
     VkDeviceMemory color_mem;
+    VkImageView    color_view;           /* colour attachment view for dynamic rendering */
     VkImageLayout  color_layout;         /* tracked so barriers are minimal/clean */
     VkImage        depth;                /* D16 depth target */
     VkDeviceMemory depth_mem;
+    VkImageView    depth_view;           /* depth attachment view */
+    VkImageLayout  depth_layout;         /* tracked across clear/render */
+
+    int            rendering;            /* inside a vkCmdBeginRendering scope */
 
     VkBuffer       readback;             /* host-visible, full-frame sized */
     VkDeviceMemory readback_mem;
+
+    /* 1x1 white dummy texture: written to every sampler binding a draw does not
+     * bind, so no push-descriptor image slot is left undefined. */
+    VkImage        dummy_img;
+    VkDeviceMemory dummy_mem;
+    VkImageView    dummy_view;
+    VkSampler      dummy_sampler;
+    /* Zero-filled vertex buffer bound to a pipeline stream a draw leaves unbound
+     * (the GL backend disables the attribute; Vulkan has no such concept, so the
+     * shader reads zeros from this instead). */
+    VkBuffer       dummy_vbuf;
+    VkDeviceMemory dummy_vbuf_mem;
+
+    /* Shared push-descriptor set layout + pipeline layout (identical for every
+     * pipeline: no push constants, one set). */
+    VkDescriptorSetLayout         set_layout;
+    VkPipelineLayout              pipe_layout;
+    PFN_vkCmdPushDescriptorSetKHR push_desc;
+    int                           wide_lines;   /* wideLines feature enabled */
+
+    struct {                             /* pipeline table, deduped by value */
+        RhiVkPipeline *slots;
+        uint32_t       count, capacity;
+    } pipelines;
+
+    /* Draw-time bind state, the shape of the GL backend's g_cmd. */
+    int        bound_pipeline;           /* index into pipelines, -1 = none */
+    RhiBuffer  bound_vertex[RHI_MAX_VERTEX_STREAMS];
+    uint32_t   bound_vertex_offset[RHI_MAX_VERTEX_STREAMS];
+    RhiBuffer  bound_index;
+    RhiTexture bound_texture[RHI_TEXTURE_SLOTS];
+    int32_t    viewport[4];              /* GL-convention x, y, w, h (origin bottom-left) */
 
     RhiCaps  caps;
     int32_t  width, height;              /* offscreen target size (pixels) */
@@ -136,6 +191,28 @@ static struct {
         uint32_t     free_count;
         unsigned     stale_logged;
     } shaders;
+
+    /* Per-frame UBO arena (P11-review Fix 1): one host-visible+coherent buffer,
+     * persistently mapped. Each draw aligns `offset` up to min_ubo_align, copies
+     * its shader block-0 mirror in and push-binds {buf, offset, size}. `demand`
+     * accumulates the frame's total aligned byte demand ignoring mid-frame
+     * flushes, so frame_begin can grow the arena if a frame overflowed it. */
+    struct {
+        VkBuffer       buf;
+        VkDeviceMemory mem;
+        void          *mapped;
+        VkDeviceSize   size;     /* current capacity */
+        VkDeviceSize   offset;   /* bump pointer within the current segment */
+        VkDeviceSize   demand;   /* total aligned demand this frame (flush-agnostic) */
+    } arena;
+    VkDeviceSize min_ubo_align;  /* minUniformBufferOffsetAlignment */
+
+    /* Buffers whose storage a recorded-but-unsubmitted draw may still reference;
+     * freed at frame_end after the submit+fence wait (P11-review Fix 2). */
+    struct {
+        struct { VkBuffer buf; VkDeviceMemory mem; } *items;
+        uint32_t count, capacity;
+    } pending_free;
 } g_vk;
 
 /* -------------------------------------------------------------------------- */
@@ -191,6 +268,15 @@ static void image_barrier(VkImage img, VkImageAspectFlags aspect, VkImageLayout 
     vkCmdPipelineBarrier(g_vk.cmd, src_stage, dst_stage, 0, 0, NULL, 0, NULL, 1, &b);
 }
 
+/* One-shot command helpers + a multi-subresource barrier, all defined with the
+ * texture code further down but used already by device_create's dummy texture. */
+static VkCommandBuffer oneshot_begin(void);
+static int oneshot_end(VkCommandBuffer cb);
+static void img_barrier(VkCommandBuffer cb, VkImage img, VkImageAspectFlags aspect,
+                        uint32_t base_lvl, uint32_t n_lvl, uint32_t base_layer, uint32_t n_layer,
+                        VkImageLayout old, VkImageLayout neu, VkAccessFlags srcA, VkAccessFlags dstA,
+                        VkPipelineStageFlags srcS, VkPipelineStageFlags dstS);
+
 /* Fresh recording on the frame command buffer if not already open. */
 static int ensure_recording(void) {
     if (g_vk.recording) return 1;
@@ -211,6 +297,79 @@ static int flush(void) {
     if (!vk_ok(vkQueueSubmit(g_vk.queue, 1, &si, g_vk.fence), "vkQueueSubmit")) return 0;
     if (!vk_ok(vkWaitForFences(g_vk.device, 1, &g_vk.fence, VK_TRUE, UINT64_MAX), "vkWaitForFences")) return 0;
     return vk_ok(vkResetFences(g_vk.device, 1, &g_vk.fence), "vkResetFences");
+}
+
+/* Orientation: the engine's shaders are authored for GL clip space (+y up) and
+ * rhi_read_pixels (P11a) flips image rows to match GL's bottom-left glReadPixels.
+ * Vulkan NDC is +y down, so a plain POSITIVE-height viewport sends a GL "+y"
+ * vertex to the bottom of image memory; read_pixels' flip then returns it at the
+ * top -- i.e. identical to the GL backend. (A negative-height viewport would
+ * double-flip with that readback.) So draws use a positive-height viewport whose
+ * VkViewport.y is the GL y directly (NOT H-(y+h)): the full target is unchanged
+ * (gl_y = 0 either way), and a partial GL viewport lands where GL puts it once
+ * read_pixels flips rows. Front face stays CCW, and the readback is as committed.
+ *
+ * Open a dynamic-rendering scope on the frame command buffer if not already in
+ * one. Draws need it; transfers (clear, readback, copies) must not be inside it.
+ * loadOp = LOAD keeps whatever a prior clear or draw left in the attachments, so
+ * the colour image transitions from its current layout (TRANSFER_SRC after a
+ * clear) to COLOR_ATTACHMENT_OPTIMAL, the depth from its current to
+ * DEPTH_ATTACHMENT_OPTIMAL. 1 on success. */
+static int ensure_rendering(void) {
+    if (g_vk.rendering) return 1;
+    if (!ensure_recording()) return 0;
+    image_barrier(g_vk.color, VK_IMAGE_ASPECT_COLOR_BIT, g_vk.color_layout,
+                  VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                  VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT,
+                  VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT,
+                  VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+    g_vk.color_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    /* Depth: carry the depth stages/access on BOTH sides so a scope resuming
+     * after a transfer (e.g. read_pixels mid-frame) synchronises the previous
+     * scope's depth writes to this scope's depth tests, not just a prior clear's
+     * transfer write (P11-review Fix 3). */
+    image_barrier(g_vk.depth, VK_IMAGE_ASPECT_DEPTH_BIT, g_vk.depth_layout,
+                  VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+                  VK_ACCESS_TRANSFER_WRITE_BIT |
+                      VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                  VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                  VK_PIPELINE_STAGE_TRANSFER_BIT |
+                      VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                  VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT);
+    g_vk.depth_layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+
+    VkRenderingAttachmentInfo ca = { VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO, NULL, g_vk.color_view,
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_RESOLVE_MODE_NONE, VK_NULL_HANDLE,
+        VK_IMAGE_LAYOUT_UNDEFINED, VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_STORE, {{{0}}} };
+    VkRenderingAttachmentInfo da = { VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO, NULL, g_vk.depth_view,
+        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, VK_RESOLVE_MODE_NONE, VK_NULL_HANDLE,
+        VK_IMAGE_LAYOUT_UNDEFINED, VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_STORE, {{{0}}} };
+    VkRenderingInfo ri = { VK_STRUCTURE_TYPE_RENDERING_INFO, NULL, 0,
+        { { 0, 0 }, { (uint32_t)g_vk.width, (uint32_t)g_vk.height } }, 1, 0, 1, &ca, &da, NULL };
+    vkCmdBeginRendering(g_vk.cmd, &ri);
+    g_vk.rendering = 1;
+    return 1;
+}
+
+/* Close any open rendering scope and leave the colour image in TRANSFER_SRC so a
+ * following readback/transfer needs no extra barrier. No-op when not rendering. */
+static void end_rendering_if_active(void) {
+    if (!g_vk.rendering) return;
+    vkCmdEndRendering(g_vk.cmd);
+    g_vk.rendering = 0;
+    image_barrier(g_vk.color, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                  VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                  VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+    g_vk.color_layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    /* Make this scope's depth writes available to whatever resumes depth next (a
+     * following clear or the next rendering scope). Layout is unchanged -- only a
+     * memory/execution dependency on the depth stages/access (P11-review Fix 3). */
+    image_barrier(g_vk.depth, VK_IMAGE_ASPECT_DEPTH_BIT, g_vk.depth_layout, g_vk.depth_layout,
+                  VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                  VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                  VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                  VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT);
 }
 
 /* Create a VkBuffer of `size` bytes with `usage`, back it with memory having
@@ -287,6 +446,105 @@ static int stage_to_device(VkBuffer dst, VkDeviceSize dst_off, const void *data,
     vkDestroyBuffer(g_vk.device, staging, NULL);
     vkFreeMemory(g_vk.device, smem, NULL);
     return ok;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Per-frame UBO arena + deferred buffer frees (P11-review fixes 1 & 2)       */
+/* -------------------------------------------------------------------------- */
+#define VK_ARENA_INITIAL (4u * 1024u * 1024u)   /* a few MB; grows if a frame overflows */
+
+/* (Re)allocate the arena buffer at `size` bytes, host-visible+coherent and
+ * persistently mapped. Resets the bump pointer. 1 on success. */
+static int arena_alloc(VkDeviceSize size) {
+    if (!make_buffer(size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                     &g_vk.arena.buf, &g_vk.arena.mem)) return 0;
+    if (!vk_ok(vkMapMemory(g_vk.device, g_vk.arena.mem, 0, VK_WHOLE_SIZE, 0, &g_vk.arena.mapped),
+               "vkMapMemory(arena)")) {
+        vkDestroyBuffer(g_vk.device, g_vk.arena.buf, NULL);
+        vkFreeMemory(g_vk.device, g_vk.arena.mem, NULL);
+        g_vk.arena.buf = VK_NULL_HANDLE; g_vk.arena.mem = VK_NULL_HANDLE;
+        return 0;
+    }
+    g_vk.arena.size = size;
+    g_vk.arena.offset = 0;
+    return 1;
+}
+
+static void arena_free(void) {
+    if (g_vk.arena.mapped) { vkUnmapMemory(g_vk.device, g_vk.arena.mem); g_vk.arena.mapped = NULL; }
+    if (g_vk.arena.buf) vkDestroyBuffer(g_vk.device, g_vk.arena.buf, NULL);
+    if (g_vk.arena.mem) vkFreeMemory(g_vk.device, g_vk.arena.mem, NULL);
+    g_vk.arena.buf = VK_NULL_HANDLE; g_vk.arena.mem = VK_NULL_HANDLE; g_vk.arena.size = 0;
+}
+
+/* Snapshot `sz` bytes of `src` into the arena at an aligned offset for one draw
+ * and write the offset to *out_off. If the current segment would overflow, do a
+ * MID-FRAME FLUSH: close any render scope, submit + fence-wait the current
+ * command buffer, begin a fresh recording and restart the arena at 0 -- the next
+ * draw's ensure_rendering re-opens the scope with loadOp=LOAD, so earlier draws'
+ * output survives. 1 on success, 0 on a submit failure. */
+static int arena_place(const void *src, VkDeviceSize sz, VkDeviceSize *out_off) {
+    VkDeviceSize align = g_vk.min_ubo_align ? g_vk.min_ubo_align : 1u;
+    VkDeviceSize aligned = (g_vk.arena.offset + align - 1u) & ~(align - 1u);
+    /* Virtual demand ignores flushes, so frame_begin can grow the arena to fit. */
+    VkDeviceSize vdem = (g_vk.arena.demand + align - 1u) & ~(align - 1u);
+    g_vk.arena.demand = vdem + sz;
+    if (aligned + sz > g_vk.arena.size) {
+        end_rendering_if_active();
+        if (!flush()) return 0;
+        if (!ensure_recording()) return 0;
+        g_vk.arena.offset = 0;
+        aligned = 0;
+        rhi_vk_arena_flushes++;
+    }
+    memcpy((unsigned char *)g_vk.arena.mapped + aligned, src, (size_t)sz);
+    g_vk.arena.offset = aligned + sz;
+    *out_off = aligned;
+    return 1;
+}
+
+/* Free a buffer+memory pair now, or defer it to frame_end when a frame is open
+ * (a recorded-but-unsubmitted draw may reference it). */
+static void defer_or_free_buffer(VkBuffer buf, VkDeviceMemory mem) {
+    if (!buf && !mem) return;
+    if (!g_vk.in_frame) {
+        if (buf) vkDestroyBuffer(g_vk.device, buf, NULL);
+        if (mem) vkFreeMemory(g_vk.device, mem, NULL);
+        return;
+    }
+    if (g_vk.pending_free.count == g_vk.pending_free.capacity) {
+        uint32_t cap = g_vk.pending_free.capacity ? g_vk.pending_free.capacity * 2u : 16u;
+        void *n = realloc(g_vk.pending_free.items, (size_t)cap * sizeof *g_vk.pending_free.items);
+        if (!n) {   /* out of memory: free now (correctness over the rare early free) */
+            if (buf) vkDestroyBuffer(g_vk.device, buf, NULL);
+            if (mem) vkFreeMemory(g_vk.device, mem, NULL);
+            return;
+        }
+        g_vk.pending_free.items = n;
+        g_vk.pending_free.capacity = cap;
+    }
+    g_vk.pending_free.items[g_vk.pending_free.count].buf = buf;
+    g_vk.pending_free.items[g_vk.pending_free.count].mem = mem;
+    g_vk.pending_free.count++;
+}
+
+/* Destroy every deferred buffer+memory pair. Call only after a submit+fence wait. */
+static void drain_pending_frees(void) {
+    for (uint32_t i = 0; i < g_vk.pending_free.count; i++) {
+        if (g_vk.pending_free.items[i].buf) vkDestroyBuffer(g_vk.device, g_vk.pending_free.items[i].buf, NULL);
+        if (g_vk.pending_free.items[i].mem) vkFreeMemory(g_vk.device, g_vk.pending_free.items[i].mem, NULL);
+    }
+    g_vk.pending_free.count = 0;
+}
+
+/* Test-only (not in rhi.h): recreate the UBO arena at `bytes` so the smoke can
+ * force a mid-frame flush with just a couple of draws. Safe only at the start of
+ * a frame, before any draw has referenced the arena this frame. */
+void rhi_vk_test_force_arena(size_t bytes) {
+    arena_free();
+    arena_alloc((VkDeviceSize)bytes);
+    g_vk.arena.demand = 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -378,7 +636,7 @@ RhiResult rhi_device_create(const RhiDeviceDesc *desc) {
         }
     }
     VkApplicationInfo app = { VK_STRUCTURE_TYPE_APPLICATION_INFO, NULL, "OpenUG2", 1, "OpenUG2", 1,
-                              VK_API_VERSION_1_1 };
+                              VK_API_VERSION_1_3 };   /* core dynamic rendering */
     VkDebugUtilsMessengerCreateInfoEXT dci = { VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT, NULL, 0,
         VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
         VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
@@ -416,11 +674,26 @@ RhiResult rhi_device_create(const RhiDeviceDesc *desc) {
     enable.textureCompressionBC = sup.textureCompressionBC;
     enable.samplerAnisotropy    = sup.samplerAnisotropy;
     enable.fillModeNonSolid     = sup.fillModeNonSolid;
+    enable.wideLines            = sup.wideLines;   /* line_width > 1 for LINES pipelines */
+    g_vk.wide_lines             = sup.wideLines;
+    /* Dynamic rendering (core in 1.3): draws use vkCmdBeginRendering with the
+     * offscreen views instead of a VkRenderPass/VkFramebuffer. Chained via the
+     * feature struct alongside pEnabledFeatures (no VkPhysicalDeviceFeatures2). */
+    VkPhysicalDeviceDynamicRenderingFeatures dyn = {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES, NULL, VK_TRUE };
+    /* Push descriptors (set 0 written per draw, no descriptor pool). Not core
+     * before 1.4, so enable the extension and fetch its entry point by name. */
+    const char *dev_exts[1]; uint32_t n_dev_exts = 0;
+    dev_exts[n_dev_exts++] = VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME;
     float prio = 1.0f;
     VkDeviceQueueCreateInfo qci = { VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, NULL, 0, g_vk.queue_family, 1, &prio };
-    VkDeviceCreateInfo dc = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, NULL, 0, 1, &qci, 0, NULL, 0, NULL, &enable };
+    VkDeviceCreateInfo dc = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, &dyn, 0, 1, &qci, 0, NULL,
+                              n_dev_exts, dev_exts, &enable };
     if (!vk_ok(vkCreateDevice(g_vk.phys, &dc, NULL, &g_vk.device), "vkCreateDevice")) goto fail;
     vkGetDeviceQueue(g_vk.device, g_vk.queue_family, 0, &g_vk.queue);
+    g_vk.push_desc = (PFN_vkCmdPushDescriptorSetKHR)
+        vkGetDeviceProcAddr(g_vk.device, "vkCmdPushDescriptorSetKHR");
+    if (!g_vk.push_desc) { fprintf(stderr, "rhi_vk: vkCmdPushDescriptorSetKHR unavailable\n"); goto fail; }
 
     /* ---- command pool + one primary buffer + a frame fence ---- */
     VkCommandPoolCreateInfo cpci = { VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO, NULL,
@@ -444,6 +717,21 @@ RhiResult rhi_device_create(const RhiDeviceDesc *desc) {
     if (!make_image(VK_FORMAT_D16_UNORM,
                     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
                     &g_vk.depth, &g_vk.depth_mem)) goto fail;
+    g_vk.depth_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    /* Attachment views for dynamic rendering (P11a made the images, not views). */
+    {
+        VkImageViewCreateInfo cv = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, NULL, 0, g_vk.color,
+            VK_IMAGE_VIEW_TYPE_2D, VK_FORMAT_R8G8B8A8_UNORM,
+            { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY,
+              VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY },
+            { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 } };
+        if (!vk_ok(vkCreateImageView(g_vk.device, &cv, NULL, &g_vk.color_view), "vkCreateImageView(color)")) goto fail;
+        VkImageViewCreateInfo dv = cv;
+        dv.image = g_vk.depth; dv.format = VK_FORMAT_D16_UNORM;
+        dv.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        if (!vk_ok(vkCreateImageView(g_vk.device, &dv, NULL, &g_vk.depth_view), "vkCreateImageView(depth)")) goto fail;
+    }
 
     /* ---- host-visible readback buffer, full-frame sized (reused each read) ---- */
     VkDeviceSize bsize = (VkDeviceSize)g_vk.width * g_vk.height * 4;
@@ -458,6 +746,95 @@ RhiResult rhi_device_create(const RhiDeviceDesc *desc) {
     if (!vk_ok(vkAllocateMemory(g_vk.device, &bmai, NULL, &g_vk.readback_mem), "vkAllocateMemory(buffer)")) goto fail;
     if (!vk_ok(vkBindBufferMemory(g_vk.device, g_vk.readback, g_vk.readback_mem, 0), "vkBindBufferMemory")) goto fail;
 
+    /* ---- 1x1 white dummy texture (for unbound sampler slots) ---- */
+    if (!make_image(VK_FORMAT_R8G8B8A8_UNORM,
+                    VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                    &g_vk.dummy_img, &g_vk.dummy_mem)) goto fail;
+    {   /* stage one opaque-white texel and settle to SHADER_READ_ONLY */
+        VkBuffer staging; VkDeviceMemory smem;
+        const unsigned char white[4] = { 255, 255, 255, 255 };
+        if (!make_buffer(4, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                         &staging, &smem)) goto fail;
+        void *map = NULL;
+        int ok = vk_ok(vkMapMemory(g_vk.device, smem, 0, VK_WHOLE_SIZE, 0, &map), "vkMapMemory(dummy)");
+        if (ok) { memcpy(map, white, 4); vkUnmapMemory(g_vk.device, smem); }
+        VkCommandBuffer cb = ok ? oneshot_begin() : VK_NULL_HANDLE;
+        if (cb) {
+            img_barrier(cb, g_vk.dummy_img, VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1,
+                        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        0, VK_ACCESS_TRANSFER_WRITE_BIT,
+                        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+            VkBufferImageCopy reg = { 0, 0, 0, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 }, { 0, 0, 0 }, { 1, 1, 1 } };
+            vkCmdCopyBufferToImage(cb, staging, g_vk.dummy_img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &reg);
+            img_barrier(cb, g_vk.dummy_img, VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1,
+                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                        VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+            ok = oneshot_end(cb);
+        } else ok = 0;
+        vkDestroyBuffer(g_vk.device, staging, NULL);
+        vkFreeMemory(g_vk.device, smem, NULL);
+        if (!ok) goto fail;
+    }
+    {
+        VkImageViewCreateInfo vi = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, NULL, 0, g_vk.dummy_img,
+            VK_IMAGE_VIEW_TYPE_2D, VK_FORMAT_R8G8B8A8_UNORM,
+            { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY,
+              VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY },
+            { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 } };
+        if (!vk_ok(vkCreateImageView(g_vk.device, &vi, NULL, &g_vk.dummy_view), "vkCreateImageView(dummy)")) goto fail;
+        VkSamplerCreateInfo si = { VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO, NULL, 0,
+            VK_FILTER_NEAREST, VK_FILTER_NEAREST, VK_SAMPLER_MIPMAP_MODE_NEAREST,
+            VK_SAMPLER_ADDRESS_MODE_REPEAT, VK_SAMPLER_ADDRESS_MODE_REPEAT, VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            0.0f, VK_FALSE, 1.0f, VK_FALSE, VK_COMPARE_OP_ALWAYS, 0.0f, 0.0f,
+            VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK, VK_FALSE };
+        if (!vk_ok(vkCreateSampler(g_vk.device, &si, NULL, &g_vk.dummy_sampler), "vkCreateSampler(dummy)")) goto fail;
+    }
+
+    /* ---- zero-filled dummy vertex buffer for streams a draw leaves unbound ---- */
+    if (!make_buffer(256, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &g_vk.dummy_vbuf, &g_vk.dummy_vbuf_mem)) goto fail;
+    {
+        VkCommandBuffer cb = oneshot_begin();
+        if (!cb) goto fail;
+        vkCmdFillBuffer(cb, g_vk.dummy_vbuf, 0, 256, 0);
+        if (!oneshot_end(cb)) goto fail;
+    }
+
+    /* ---- shared push-descriptor set + pipeline layout ----
+     * set 0: binding 0 = uniform buffer (vertex+fragment), bindings 1..SLOTS =
+     * combined image samplers (fragment). The Vulkan shaders use binding 0 for
+     * the FeParams UBO and binding (slot+1) for texture slot `slot`. */
+    {
+        VkDescriptorSetLayoutBinding binds[1 + RHI_TEXTURE_SLOTS];
+        binds[0] = (VkDescriptorSetLayoutBinding){ 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
+            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, NULL };
+        for (uint32_t i = 0; i < RHI_TEXTURE_SLOTS; i++)
+            binds[1 + i] = (VkDescriptorSetLayoutBinding){ 1 + i,
+                VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, NULL };
+        VkDescriptorSetLayoutCreateInfo dli = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, NULL,
+            VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR, 1 + RHI_TEXTURE_SLOTS, binds };
+        if (!vk_ok(vkCreateDescriptorSetLayout(g_vk.device, &dli, NULL, &g_vk.set_layout),
+                   "vkCreateDescriptorSetLayout")) goto fail;
+        VkPipelineLayoutCreateInfo pli = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, NULL, 0,
+            1, &g_vk.set_layout, 0, NULL };
+        if (!vk_ok(vkCreatePipelineLayout(g_vk.device, &pli, NULL, &g_vk.pipe_layout),
+                   "vkCreatePipelineLayout")) goto fail;
+    }
+
+    /* ---- per-frame UBO arena (P11-review Fix 1) ---- */
+    {
+        VkPhysicalDeviceProperties pdp; vkGetPhysicalDeviceProperties(g_vk.phys, &pdp);
+        g_vk.min_ubo_align = pdp.limits.minUniformBufferOffsetAlignment;
+    }
+    if (!arena_alloc(VK_ARENA_INITIAL)) goto fail;
+
+    /* Default viewport = whole target in GL convention (origin bottom-left). */
+    g_vk.viewport[0] = 0; g_vk.viewport[1] = 0;
+    g_vk.viewport[2] = g_vk.width; g_vk.viewport[3] = g_vk.height;
+    g_vk.bound_pipeline = -1;
+
     g_vk.frame_index = 0;
     query_caps(&g_vk.caps);
     return RHI_OK;
@@ -469,6 +846,10 @@ fail:
 
 void rhi_device_destroy(void) {
     if (g_vk.device) vkDeviceWaitIdle(g_vk.device);
+    /* Drain deferred buffer frees and release the per-frame UBO arena (Fixes 1 & 2). */
+    drain_pending_frees();
+    free(g_vk.pending_free.items);
+    arena_free();
     /* Free every live buffer, then the handle table's own heap arrays. */
     for (uint32_t i = 0; i < g_vk.buffers.count; i++) {
         RhiVkBuffer *b = &g_vk.buffers.slots[i];
@@ -492,19 +873,30 @@ void rhi_device_destroy(void) {
         if (g_vk.samplers.handles[i]) vkDestroySampler(g_vk.device, g_vk.samplers.handles[i], NULL);
     free(g_vk.samplers.descs);
     free(g_vk.samplers.handles);
-    /* Free every live shader (modules + param UBOs), then its table arrays. */
+    /* Free every live shader (modules + param mirrors), then its table arrays. */
     for (uint32_t i = 0; i < g_vk.shaders.count; i++) {
         RhiVkShader *s = &g_vk.shaders.slots[i];
-        for (uint32_t b = 0; b < s->block_count; b++) {
-            if (s->blocks[b].mapped)  vkUnmapMemory(g_vk.device, s->blocks[b].ubo_mem);
-            if (s->blocks[b].ubo)     vkDestroyBuffer(g_vk.device, s->blocks[b].ubo, NULL);
-            if (s->blocks[b].ubo_mem) vkFreeMemory(g_vk.device, s->blocks[b].ubo_mem, NULL);
-        }
+        for (uint32_t b = 0; b < s->block_count; b++) free(s->blocks[b].mirror);
         if (s->vert) vkDestroyShaderModule(g_vk.device, s->vert, NULL);
         if (s->frag) vkDestroyShaderModule(g_vk.device, s->frag, NULL);
     }
     free(g_vk.shaders.slots);
     free(g_vk.shaders.free_list);
+    /* Every created VkPipeline, then its table, then the shared layouts. */
+    for (uint32_t i = 0; i < g_vk.pipelines.count; i++)
+        if (g_vk.pipelines.slots[i].pipeline)
+            vkDestroyPipeline(g_vk.device, g_vk.pipelines.slots[i].pipeline, NULL);
+    free(g_vk.pipelines.slots);
+    if (g_vk.pipe_layout) vkDestroyPipelineLayout(g_vk.device, g_vk.pipe_layout, NULL);
+    if (g_vk.set_layout)  vkDestroyDescriptorSetLayout(g_vk.device, g_vk.set_layout, NULL);
+    if (g_vk.dummy_sampler) vkDestroySampler(g_vk.device, g_vk.dummy_sampler, NULL);
+    if (g_vk.dummy_view)    vkDestroyImageView(g_vk.device, g_vk.dummy_view, NULL);
+    if (g_vk.dummy_img)     vkDestroyImage(g_vk.device, g_vk.dummy_img, NULL);
+    if (g_vk.dummy_mem)     vkFreeMemory(g_vk.device, g_vk.dummy_mem, NULL);
+    if (g_vk.dummy_vbuf)     vkDestroyBuffer(g_vk.device, g_vk.dummy_vbuf, NULL);
+    if (g_vk.dummy_vbuf_mem) vkFreeMemory(g_vk.device, g_vk.dummy_vbuf_mem, NULL);
+    if (g_vk.color_view)   vkDestroyImageView(g_vk.device, g_vk.color_view, NULL);
+    if (g_vk.depth_view)   vkDestroyImageView(g_vk.device, g_vk.depth_view, NULL);
     if (g_vk.readback)     vkDestroyBuffer(g_vk.device, g_vk.readback, NULL);
     if (g_vk.readback_mem) vkFreeMemory(g_vk.device, g_vk.readback_mem, NULL);
     if (g_vk.depth)        vkDestroyImage(g_vk.device, g_vk.depth, NULL);
@@ -533,6 +925,17 @@ void rhi_drawable_size(int32_t *width, int32_t *height) {
 /* -------------------------------------------------------------------------- */
 RhiResult rhi_frame_begin(RhiFrameInfo *out) {
     if (!g_vk.device) return RHI_ERR_INVALID;
+    /* Grow the arena if last frame's demand overflowed it (safe here: the prior
+     * frame was already submitted + waited at frame_end), then restart the bump
+     * allocator for this frame (P11-review Fix 1). */
+    if (g_vk.arena.demand > g_vk.arena.size) {
+        VkDeviceSize ns = g_vk.arena.size ? g_vk.arena.size : VK_ARENA_INITIAL;
+        while (ns < g_vk.arena.demand) ns *= 2u;
+        arena_free();
+        if (!arena_alloc(ns)) return RHI_ERR_DEVICE_LOST;
+    }
+    g_vk.arena.offset = 0;
+    g_vk.arena.demand = 0;
     if (!ensure_recording()) return RHI_ERR_DEVICE_LOST;
     g_vk.in_frame = 1;
     if (out) {
@@ -545,7 +948,9 @@ RhiResult rhi_frame_begin(RhiFrameInfo *out) {
 
 RhiResult rhi_frame_end(void) {
     if (!g_vk.device || !g_vk.in_frame) return RHI_ERR_INVALID;
+    if (g_vk.rendering) end_rendering_if_active();   /* never submit an open render scope */
     if (!flush()) return RHI_ERR_DEVICE_LOST;   /* submit + fence wait (no present) */
+    drain_pending_frees();   /* safe now: every recorded draw has completed (Fix 2) */
     g_vk.in_frame = 0;
     g_vk.frame_index++;
     return RHI_OK;
@@ -560,6 +965,7 @@ RhiResult rhi_frame_end(void) {
 RhiResult rhi_cmd_clear_main(const float color[4], float depth) {
     if (!color || !g_vk.in_frame) return RHI_ERR_INVALID;
     if (!ensure_recording()) return RHI_ERR_DEVICE_LOST;
+    end_rendering_if_active();   /* a clear is a transfer: not inside a render scope */
     VkImageSubresourceRange crange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
     VkImageSubresourceRange drange = { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
 
@@ -579,12 +985,20 @@ RhiResult rhi_cmd_clear_main(const float color[4], float depth) {
                   VK_ACCESS_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
     g_vk.color_layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 
+    /* Wait on a prior clear's transfer AND any prior rendering scope's depth
+     * writes (early/late fragment tests) before this clear overwrites depth
+     * (P11-review Fix 3); oldLayout UNDEFINED since the clear discards contents. */
     image_barrier(g_vk.depth, VK_IMAGE_ASPECT_DEPTH_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                  VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-                  VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+                  VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT |
+                      VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                  VK_ACCESS_TRANSFER_WRITE_BIT,
+                  VK_PIPELINE_STAGE_TRANSFER_BIT |
+                      VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                  VK_PIPELINE_STAGE_TRANSFER_BIT);
     VkClearDepthStencilValue cd = { depth, 0 };
     vkCmdClearDepthStencilImage(g_vk.cmd, g_vk.depth, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &cd, 1, &drange);
+    g_vk.depth_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;   /* left for ensure_rendering */
     return RHI_OK;
 }
 
@@ -592,11 +1006,12 @@ RhiResult rhi_cmd_clear_main(const float color[4], float depth) {
 /* Readback                                                                   */
 /* -------------------------------------------------------------------------- */
 /* Copies a w x h rectangle of the offscreen colour image into the host buffer
- * and converts it into `dst`, rows top-down. The image is treated as having a
- * GL-style bottom-left origin (the renderer's draws will target it that way in
- * P11e), so, exactly like rhi_gl.c's glReadPixels path, the sampled image rows
- * run y = frame_h - y - h upward and are flipped into dst to give top-down rows.
- * Blocks until the copy has finished (submit + fence wait). */
+ * and converts it into `dst`, rows top-down, matching rhi_gl.c's glReadPixels
+ * output. (x, y) is the rectangle's top-left corner, as in rhi.h. Draws use a
+ * positive-height viewport with VkViewport.y = gl_y (see the orientation note at
+ * ensure_rendering), so image memory row r is GL window row r (bottom-up): the
+ * copy starts at row frame_h - y - h and the rows are flipped into dst to give
+ * top-down order. Blocks until the copy has finished (submit + fence wait). */
 RhiResult rhi_read_pixels(int32_t x, int32_t y, int32_t w, int32_t h,
                           RhiReadFormat format, void *dst, size_t stride) {
     size_t bpp = format == RHI_READ_RGB8 ? 3 : format == RHI_READ_RGBA8 ? 4 : 0;
@@ -608,6 +1023,7 @@ RhiResult rhi_read_pixels(int32_t x, int32_t y, int32_t w, int32_t h,
     if (!stride) stride = row_bytes;
     if (stride < row_bytes || (size_t)(h - 1) > (limit - row_bytes) / stride) return RHI_ERR_INVALID;
     if (!ensure_recording()) return RHI_ERR_DEVICE_LOST;
+    end_rendering_if_active();   /* readback is a transfer: close any draw scope first */
 
     /* The colour image is in TRANSFER_SRC after a clear; guard in case it is not. */
     if (g_vk.color_layout != VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
@@ -616,7 +1032,10 @@ RhiResult rhi_read_pixels(int32_t x, int32_t y, int32_t w, int32_t h,
                       VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
         g_vk.color_layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
     }
-    /* Copy RGBA8 rows tightly packed into the readback buffer; bottom-left origin. */
+    /* rhi.h: x, y is the rectangle's TOP-left corner. Image memory row r is GL window
+       row r (bottom-up, see the orientation note at ensure_rendering), so the
+       rectangle starts at row frame_h - y - h -- the same conversion rhi_gl.c hands
+       glReadPixels -- and the per-row flip below yields top-down output. */
     VkBufferImageCopy reg = { 0, 0, 0, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
         { x, g_vk.height - y - h, 0 }, { (uint32_t)w, (uint32_t)h, 1 } };
     vkCmdCopyImageToBuffer(g_vk.cmd, g_vk.color, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, g_vk.readback, 1, &reg);
@@ -751,6 +1170,9 @@ RhiResult rhi_buffer_update(RhiBuffer buf, size_t offset, size_t size, const voi
     if (!b || !data || offset > b->size || size > b->size - offset) return RHI_ERR_INVALID;
     if (!size) return RHI_OK;
     if (b->update == RHI_UPDATE_STREAM) {
+        /* NOTE: a STREAM buffer updated in place between draws in one frame (the
+         * hud-style pattern) would have earlier recorded draws see this new data
+         * at submit -- out of scope for this slice; left as a direct memcpy. */
         memcpy((unsigned char *)b->mapped + offset, data, size);
         return RHI_OK;
     }
@@ -760,11 +1182,12 @@ RhiResult rhi_buffer_update(RhiBuffer buf, size_t offset, size_t size, const voi
 RhiResult rhi_buffer_replace(RhiBuffer buf, size_t size, const void *data) {
     RhiVkBuffer *b = buffer_lookup(buf, "buffer_replace");
     if (!b || !buffer_size_ok(size)) return RHI_ERR_INVALID;
-    /* Fresh storage (orphan/realloc). No draws reference it yet (pre-P11e) and
-     * every copy above blocks, so releasing the old storage now is safe. */
+    /* Fresh storage (orphan/realloc). A recorded-but-unsubmitted draw this frame
+     * may still reference the old VkBuffer, so defer its free to frame_end (after
+     * submit + fence wait) while in a frame; free immediately otherwise (Fix 2). */
     if (b->mapped) { vkUnmapMemory(g_vk.device, b->mem); b->mapped = NULL; }
-    if (b->buf) vkDestroyBuffer(g_vk.device, b->buf, NULL);
-    if (b->mem) vkFreeMemory(g_vk.device, b->mem, NULL);
+    defer_or_free_buffer(b->buf, b->mem);
+    b->buf = VK_NULL_HANDLE; b->mem = VK_NULL_HANDLE;
     return buffer_alloc_storage(b, size, data);
 }
 
@@ -772,8 +1195,9 @@ void rhi_buffer_destroy(RhiBuffer buf) {
     RhiVkBuffer *b = buffer_lookup(buf, "buffer_destroy");
     if (!b) return;
     if (b->mapped) { vkUnmapMemory(g_vk.device, b->mem); b->mapped = NULL; }
-    if (b->buf) vkDestroyBuffer(g_vk.device, b->buf, NULL);
-    if (b->mem) vkFreeMemory(g_vk.device, b->mem, NULL);
+    /* A recorded-but-unsubmitted draw may reference this buffer: defer its free to
+     * frame_end while in a frame, free immediately otherwise (P11-review Fix 2). */
+    defer_or_free_buffer(b->buf, b->mem);
     b->buf = VK_NULL_HANDLE; b->mem = VK_NULL_HANDLE; b->size = 0; b->live = 0;
     /* Retire the slot before its generation wraps and revives stale handles. */
     if (b->generation == UINT8_MAX) return;
@@ -1345,6 +1769,15 @@ static const uint32_t *vk_shader_spirv(const char *label, int frag, size_t *byte
     return NULL;   /* TODO P11e: ug2, headlight shadow, world_debug, hud */
 }
 
+static RhiVkShader *shader_find(RhiShader sh) {
+    uint32_t slot = sh.id & VK_SLOT_MASK;
+    if (!sh.id) return NULL;
+    if (slot && slot <= g_vk.shaders.count) {
+        RhiVkShader *s = &g_vk.shaders.slots[slot - 1];
+        if (s->live && s->generation == (uint8_t)(sh.id >> VK_SLOT_BITS)) return s;
+    }
+    return NULL;
+}
 static RhiVkShader *shader_lookup(RhiShader sh, const char *what) {
     uint32_t slot = sh.id & VK_SLOT_MASK;
     if (!sh.id) return NULL;
@@ -1384,15 +1817,10 @@ static VkShaderModule make_module(const uint32_t *spv, size_t bytes) {
 
 /* Tear down a shader slot's resources and retire it (bump generation, return the
  * slot to the free list). Used by the create-failure path and rhi_shader_destroy.
- * Unmap is guarded by `mapped` so a slot whose vkMapMemory failed is freed
- * without unmapping memory that was never mapped. */
+ * free(NULL) is a no-op, so a slot whose mirror calloc failed is freed safely. */
 static void shader_slot_free(uint32_t slot) {
     RhiVkShader *s = &g_vk.shaders.slots[slot - 1];
-    for (uint32_t i = 0; i < s->block_count; i++) {
-        if (s->blocks[i].mapped)  vkUnmapMemory(g_vk.device, s->blocks[i].ubo_mem);
-        if (s->blocks[i].ubo)     vkDestroyBuffer(g_vk.device, s->blocks[i].ubo, NULL);
-        if (s->blocks[i].ubo_mem) vkFreeMemory(g_vk.device, s->blocks[i].ubo_mem, NULL);
-    }
+    for (uint32_t i = 0; i < s->block_count; i++) free(s->blocks[i].mirror);
     if (s->vert) vkDestroyShaderModule(g_vk.device, s->vert, NULL);
     if (s->frag) vkDestroyShaderModule(g_vk.device, s->frag, NULL);
     uint8_t gen = s->generation;
@@ -1434,12 +1862,8 @@ RhiShader rhi_shader_create(const RhiShaderDesc *desc) {
         RhiVkParamBlock *pb = &s->blocks[i];
         pb->layout = l;
         pb->size = (uint32_t)l->size;
-        if (!make_buffer(l->size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                         &pb->ubo, &pb->ubo_mem)) goto fail;
-        if (!vk_ok(vkMapMemory(g_vk.device, pb->ubo_mem, 0, VK_WHOLE_SIZE, 0, &pb->mapped), "vkMapMemory(ubo)"))
-            goto fail;
-        memset(pb->mapped, 0, l->size);   /* params start zeroed, like the GL mirror */
+        pb->mirror = calloc(1, l->size);   /* plain host memory, zeroed like the GL mirror */
+        if (!pb->mirror) goto fail;
     }
     s->live = 1;
     out.id = ((uint32_t)s->generation << VK_SLOT_BITS) | slot;
@@ -1452,7 +1876,7 @@ fail:
 void *rhi_shader_params(RhiShader shader, uint32_t block) {
     RhiVkShader *s = shader_lookup(shader, "shader_params");
     if (!s || block >= s->block_count) return NULL;
-    return s->blocks[block].mapped;   /* mapped UBO == the std140 mirror (host-coherent) */
+    return s->blocks[block].mirror;   /* plain host mirror; snapshotted into the arena per draw */
 }
 
 void rhi_shader_destroy(RhiShader shader) {
@@ -1487,17 +1911,389 @@ void rhi_pipeline_desc_init(RhiPipelineDesc *d) {
     d->stencil_read_mask = d->stencil_write_mask = 0xFF;
     d->stencil_fail = d->stencil_depth_fail = d->stencil_pass = RHI_STENCIL_KEEP;
 }
-RhiPipeline rhi_pipeline_create(const RhiPipelineDesc *desc) { (void)desc; RhiPipeline p = {0}; return p; }
-
-/* --- Draws (TODO P11e) --- */
-void rhi_cmd_bind_pipeline(RhiPipeline pipeline) { (void)pipeline; }
-void rhi_cmd_bind_vertex_buffer(uint32_t stream, RhiBuffer buffer, uint32_t offset) {
-    (void)stream; (void)buffer; (void)offset;
+static int vertex_layout_equal(const RhiVertexLayout *a, const RhiVertexLayout *b) {
+    if (a->attrib_count != b->attrib_count) return 0;
+    for (uint32_t i = 0; i < RHI_MAX_VERTEX_STREAMS; i++)
+        if (a->stride[i] != b->stride[i]) return 0;
+    for (uint32_t i = 0; i < a->attrib_count; i++) {
+        const RhiVertexAttrib *x = &a->attribs[i], *y = &b->attribs[i];
+        if (x->location != y->location || x->stream != y->stream || x->offset != y->offset ||
+            x->format != y->format) return 0;
+    }
+    return 1;
 }
-void rhi_cmd_bind_index_buffer(RhiBuffer buffer) { (void)buffer; }
-void rhi_cmd_bind_texture(uint32_t slot, RhiTexture texture) { (void)slot; (void)texture; }
-void rhi_cmd_draw_indexed(uint32_t index_count, uint32_t first_index) { (void)index_count; (void)first_index; }
-void rhi_cmd_draw(uint32_t vertex_count, uint32_t first_vertex) { (void)vertex_count; (void)first_vertex; }
+
+/* Value equality for dedup, matching the GL backend's pipeline_desc_equal:
+ * blend/stencil/depth flags compared as booleans, line_width <=0 folded to 1. */
+static int pipeline_desc_equal(const RhiPipelineDesc *a, const RhiPipelineDesc *b) {
+    return a->shader.id == b->shader.id && vertex_layout_equal(&a->vertex, &b->vertex) &&
+           a->primitive == b->primitive && a->cull == b->cull &&
+           !a->depth_test == !b->depth_test && !a->depth_write == !b->depth_write &&
+           a->depth_compare == b->depth_compare && !a->blend == !b->blend &&
+           a->src_rgb == b->src_rgb && a->dst_rgb == b->dst_rgb &&
+           a->src_alpha == b->src_alpha && a->dst_alpha == b->dst_alpha &&
+           (a->color_write & 0xF) == (b->color_write & 0xF) &&
+           (a->line_width > 0 ? a->line_width : 1.0f) == (b->line_width > 0 ? b->line_width : 1.0f) &&
+           !a->stencil_test == !b->stencil_test && a->stencil_compare == b->stencil_compare &&
+           a->stencil_ref == b->stencil_ref && a->stencil_read_mask == b->stencil_read_mask &&
+           a->stencil_write_mask == b->stencil_write_mask && a->stencil_fail == b->stencil_fail &&
+           a->stencil_depth_fail == b->stencil_depth_fail && a->stencil_pass == b->stencil_pass;
+}
+
+static uint32_t vertex_format_bytes(RhiVertexFormat format) {
+    static const uint32_t bytes[] = { 0, 8, 12, 16, 4, 4 };
+    return format >= RHI_VERTEX_FLOAT2 && format <= RHI_VERTEX_FLOAT1 ? bytes[format] : 0;
+}
+static VkFormat vk_vertex_format(RhiVertexFormat f) {
+    switch (f) {
+    case RHI_VERTEX_FLOAT1:   return VK_FORMAT_R32_SFLOAT;
+    case RHI_VERTEX_FLOAT2:   return VK_FORMAT_R32G32_SFLOAT;
+    case RHI_VERTEX_FLOAT3:   return VK_FORMAT_R32G32B32_SFLOAT;
+    case RHI_VERTEX_FLOAT4:   return VK_FORMAT_R32G32B32A32_SFLOAT;
+    case RHI_VERTEX_UNORM8X4: return VK_FORMAT_R8G8B8A8_UNORM;
+    default:                  return VK_FORMAT_UNDEFINED;
+    }
+}
+static VkCompareOp vk_compare(RhiCompare c) {
+    static const VkCompareOp t[] = { VK_COMPARE_OP_NEVER, VK_COMPARE_OP_LESS, VK_COMPARE_OP_EQUAL,
+        VK_COMPARE_OP_LESS_OR_EQUAL, VK_COMPARE_OP_GREATER, VK_COMPARE_OP_NOT_EQUAL,
+        VK_COMPARE_OP_GREATER_OR_EQUAL, VK_COMPARE_OP_ALWAYS };
+    return t[c];
+}
+static VkStencilOp vk_stencil_op(RhiStencilOp op) {
+    static const VkStencilOp t[] = { VK_STENCIL_OP_KEEP, VK_STENCIL_OP_ZERO, VK_STENCIL_OP_REPLACE,
+        VK_STENCIL_OP_INCREMENT_AND_CLAMP, VK_STENCIL_OP_DECREMENT_AND_CLAMP, VK_STENCIL_OP_INVERT };
+    return t[op];
+}
+static VkBlendFactor vk_blend(RhiBlendFactor f) {
+    static const VkBlendFactor t[] = { VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_ONE,
+        VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, VK_BLEND_FACTOR_DST_ALPHA,
+        VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA, VK_BLEND_FACTOR_SRC_COLOR, VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR,
+        VK_BLEND_FACTOR_DST_COLOR, VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR };
+    return t[f];
+}
+
+RhiPipeline rhi_pipeline_create(const RhiPipelineDesc *desc) {
+    RhiPipeline out = {0};
+    /* Same validation and messages as the GL backend. */
+    if (!desc || !shader_find(desc->shader) ||
+        desc->vertex.attrib_count > RHI_MAX_VERTEX_ATTRIBS ||
+        desc->primitive > RHI_PRIMITIVE_LINES || desc->cull > RHI_CULL_FRONT ||
+        desc->depth_compare > RHI_COMPARE_ALWAYS || desc->stencil_compare > RHI_COMPARE_ALWAYS ||
+        desc->stencil_fail > RHI_STENCIL_INVERT || desc->stencil_depth_fail > RHI_STENCIL_INVERT ||
+        desc->stencil_pass > RHI_STENCIL_INVERT ||
+        desc->src_rgb > RHI_BLEND_ONE_MINUS_DST_COLOR || desc->dst_rgb > RHI_BLEND_ONE_MINUS_DST_COLOR ||
+        desc->src_alpha > RHI_BLEND_ONE_MINUS_DST_COLOR || desc->dst_alpha > RHI_BLEND_ONE_MINUS_DST_COLOR) {
+        fprintf(stderr, "rhi: pipeline_create: invalid description\n");
+        return out;
+    }
+    uint32_t locations = 0;
+    for (uint32_t i = 0; i < desc->vertex.attrib_count; i++) {
+        const RhiVertexAttrib *a = &desc->vertex.attribs[i];
+        uint32_t bytes = vertex_format_bytes(a->format);
+        if (a->stream >= RHI_MAX_VERTEX_STREAMS || !bytes ||
+            a->location >= RHI_MAX_VERTEX_ATTRIBS || (locations & (1u << a->location)) ||
+            desc->vertex.stride[a->stream] > INT_MAX ||
+            (uint64_t)a->offset + bytes > (desc->vertex.stride[a->stream] ? desc->vertex.stride[a->stream] : bytes)) {
+            fprintf(stderr, "rhi: pipeline_create: invalid vertex attribute %u\n", (unsigned)i);
+            return out;
+        }
+        locations |= 1u << a->location;
+    }
+    for (uint32_t i = 0; i < g_vk.pipelines.count; i++)
+        if (pipeline_desc_equal(&g_vk.pipelines.slots[i].desc, desc)) { out.id = i + 1; return out; }
+
+    /* ---- vertex input: one binding per stream an attribute references ---- */
+    VkVertexInputBindingDescription vbind[RHI_MAX_VERTEX_STREAMS];
+    uint32_t stride[RHI_MAX_VERTEX_STREAMS] = {0};
+    uint8_t  used_stream[RHI_MAX_VERTEX_STREAMS] = {0};
+    VkVertexInputAttributeDescription vattr[RHI_MAX_VERTEX_ATTRIBS];
+    for (uint32_t i = 0; i < desc->vertex.attrib_count; i++) {
+        const RhiVertexAttrib *a = &desc->vertex.attribs[i];
+        uint32_t s = a->stream, bytes = vertex_format_bytes(a->format);
+        used_stream[s] = 1;
+        uint32_t end = a->offset + bytes;   /* packed stride if stride[] is 0 */
+        if (desc->vertex.stride[s]) stride[s] = desc->vertex.stride[s];
+        else if (end > stride[s])   stride[s] = end;
+        vattr[i].location = a->location;
+        vattr[i].binding  = s;
+        vattr[i].format   = vk_vertex_format(a->format);
+        vattr[i].offset   = a->offset;
+    }
+    uint32_t n_bind = 0;
+    for (uint32_t s = 0; s < RHI_MAX_VERTEX_STREAMS; s++)
+        if (used_stream[s]) {
+            vbind[n_bind].binding   = s;
+            vbind[n_bind].stride    = stride[s];
+            vbind[n_bind].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+            n_bind++;
+        }
+    VkPipelineVertexInputStateCreateInfo vis = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+        NULL, 0, n_bind, vbind, desc->vertex.attrib_count, vattr };
+
+    VkPipelineInputAssemblyStateCreateInfo ias = { VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+        NULL, 0, desc->primitive == RHI_PRIMITIVE_LINES ? VK_PRIMITIVE_TOPOLOGY_LINE_LIST
+                                                        : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, VK_FALSE };
+
+    VkPipelineViewportStateCreateInfo vps = { VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+        NULL, 0, 1, NULL, 1, NULL };   /* dynamic viewport + scissor */
+
+    /* lineWidth must be 1.0 unless the wideLines feature is on (validation checks
+     * this for any topology); enabled in device_create when the device supports it. */
+    float lw = desc->line_width > 0 ? desc->line_width : 1.0f;
+    if (!g_vk.wide_lines) lw = 1.0f;
+    VkPipelineRasterizationStateCreateInfo rs = { VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+        NULL, 0, VK_FALSE, VK_FALSE, VK_POLYGON_MODE_FILL,
+        desc->cull == RHI_CULL_BACK ? VK_CULL_MODE_BACK_BIT
+            : desc->cull == RHI_CULL_FRONT ? VK_CULL_MODE_FRONT_BIT : VK_CULL_MODE_NONE,
+        /* GL front faces are CCW in NDC. The positive-height viewport preserves
+         * winding (no y reflection NDC->framebuffer), so GL-CCW stays CCW here. */
+        VK_FRONT_FACE_COUNTER_CLOCKWISE, VK_FALSE, 0.0f, 0.0f, 0.0f, lw };
+
+    VkPipelineMultisampleStateCreateInfo ms = { VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+        NULL, 0, VK_SAMPLE_COUNT_1_BIT, VK_FALSE, 1.0f, NULL, VK_FALSE, VK_FALSE };
+
+    VkStencilOpState sop = { vk_stencil_op(desc->stencil_fail), vk_stencil_op(desc->stencil_pass),
+        vk_stencil_op(desc->stencil_depth_fail), vk_compare(desc->stencil_compare),
+        desc->stencil_read_mask, desc->stencil_write_mask, desc->stencil_ref };
+    VkPipelineDepthStencilStateCreateInfo dss = { VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+        NULL, 0, desc->depth_test ? VK_TRUE : VK_FALSE, desc->depth_write ? VK_TRUE : VK_FALSE,
+        vk_compare(desc->depth_compare), VK_FALSE, desc->stencil_test ? VK_TRUE : VK_FALSE,
+        sop, sop, 0.0f, 1.0f };
+
+    VkColorComponentFlags mask =
+        ((desc->color_write & 1) ? VK_COLOR_COMPONENT_R_BIT : 0) |
+        ((desc->color_write & 2) ? VK_COLOR_COMPONENT_G_BIT : 0) |
+        ((desc->color_write & 4) ? VK_COLOR_COMPONENT_B_BIT : 0) |
+        ((desc->color_write & 8) ? VK_COLOR_COMPONENT_A_BIT : 0);
+    VkPipelineColorBlendAttachmentState cba = { desc->blend ? VK_TRUE : VK_FALSE,
+        vk_blend(desc->src_rgb), vk_blend(desc->dst_rgb), VK_BLEND_OP_ADD,
+        vk_blend(desc->src_alpha), vk_blend(desc->dst_alpha), VK_BLEND_OP_ADD, mask };
+    VkPipelineColorBlendStateCreateInfo cbs = { VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+        NULL, 0, VK_FALSE, VK_LOGIC_OP_COPY, 1, &cba, { 0, 0, 0, 0 } };
+
+    VkDynamicState dyn_states[2] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+    VkPipelineDynamicStateCreateInfo dyns = { VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+        NULL, 0, 2, dyn_states };
+
+    RhiVkShader *sh = shader_find(desc->shader);
+    VkPipelineShaderStageCreateInfo stages[2] = {
+        { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0, VK_SHADER_STAGE_VERTEX_BIT,
+          sh->vert, "main", NULL },
+        { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0, VK_SHADER_STAGE_FRAGMENT_BIT,
+          sh->frag, "main", NULL } };
+
+    VkFormat color_fmt = VK_FORMAT_R8G8B8A8_UNORM;
+    VkPipelineRenderingCreateInfo prc = { VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO, NULL,
+        0, 1, &color_fmt, VK_FORMAT_D16_UNORM, VK_FORMAT_UNDEFINED };
+    VkGraphicsPipelineCreateInfo gpci = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO, &prc, 0,
+        2, stages, &vis, &ias, NULL, &vps, &rs, &ms, &dss, &cbs, &dyns, g_vk.pipe_layout,
+        VK_NULL_HANDLE, 0, VK_NULL_HANDLE, -1 };
+
+    VkPipeline pipe = VK_NULL_HANDLE;
+    if (!vk_ok(vkCreateGraphicsPipelines(g_vk.device, VK_NULL_HANDLE, 1, &gpci, NULL, &pipe),
+               "vkCreateGraphicsPipelines")) {
+        fprintf(stderr, "rhi: pipeline_create: GPU pipeline creation failed\n");
+        return out;
+    }
+    if (g_vk.pipelines.count == g_vk.pipelines.capacity) {
+        uint32_t cap = g_vk.pipelines.capacity ? g_vk.pipelines.capacity * 2u : 64u;
+        RhiVkPipeline *next = (RhiVkPipeline *)realloc(g_vk.pipelines.slots, (size_t)cap * sizeof *next);
+        if (!next) {
+            fprintf(stderr, "rhi: pipeline_create: out of memory\n");
+            vkDestroyPipeline(g_vk.device, pipe, NULL);
+            return out;
+        }
+        g_vk.pipelines.slots = next;
+        g_vk.pipelines.capacity = cap;
+    }
+    RhiVkPipeline *e = &g_vk.pipelines.slots[g_vk.pipelines.count];
+    e->pipeline = pipe;
+    e->shader = desc->shader;
+    e->desc = *desc;
+    out.id = ++g_vk.pipelines.count;
+    return out;
+}
+
+/* --- Draws --- */
+void rhi_cmd_bind_pipeline(RhiPipeline pipeline) {
+    if (!pipeline.id || pipeline.id > g_vk.pipelines.count) {
+        fprintf(stderr, "rhi: bind_pipeline: invalid handle %u\n", (unsigned)pipeline.id);
+        g_vk.bound_pipeline = -1;
+        return;
+    }
+    RhiVkPipeline *e = &g_vk.pipelines.slots[pipeline.id - 1];
+    if (!shader_find(e->shader)) {
+        fprintf(stderr, "rhi: bind_pipeline: destroyed shader\n");
+        g_vk.bound_pipeline = -1;
+        return;
+    }
+    g_vk.bound_pipeline = (int)pipeline.id - 1;
+}
+
+void rhi_cmd_bind_vertex_buffer(uint32_t stream, RhiBuffer buffer, uint32_t offset) {
+    if (stream >= RHI_MAX_VERTEX_STREAMS) return;
+    g_vk.bound_vertex[stream] = buffer;
+    g_vk.bound_vertex_offset[stream] = offset;
+}
+
+void rhi_cmd_bind_index_buffer(RhiBuffer buffer) { g_vk.bound_index = buffer; }
+
+void rhi_cmd_bind_texture(uint32_t slot, RhiTexture texture) {
+    if (slot >= RHI_TEXTURE_SLOTS) {
+        fprintf(stderr, "rhi: bind_texture: slot %u out of range\n", (unsigned)slot);
+        return;
+    }
+    g_vk.bound_texture[slot] = texture;
+}
+
+/* Dynamic viewport (positive height, VkViewport.y = GL y) + full-target scissor,
+ * then bind the pipeline. Returns the pipeline entry, NULL to skip on any problem. */
+static RhiVkPipeline *draw_begin(const char *what) {
+    if (g_vk.bound_pipeline < 0) {
+        fprintf(stderr, "rhi: %s: no pipeline bound\n", what);
+        return NULL;
+    }
+    RhiVkPipeline *e = &g_vk.pipelines.slots[g_vk.bound_pipeline];
+    if (!shader_find(e->shader)) {
+        fprintf(stderr, "rhi: %s: destroyed shader\n", what);
+        g_vk.bound_pipeline = -1;
+        return NULL;
+    }
+    if (!g_vk.in_frame) { fprintf(stderr, "rhi: %s: no frame\n", what); return NULL; }
+    if (!ensure_rendering()) return NULL;
+
+    int32_t vx = g_vk.viewport[0], vy = g_vk.viewport[1], vw = g_vk.viewport[2], vh = g_vk.viewport[3];
+    /* GL (x,y,w,h) is bottom-left origin. The committed P11a read_pixels mimics
+     * GL's glReadPixels: it flips image rows so output row 0 (top) == image-memory
+     * bottom. For that flip to reproduce GL, a GL +y vertex must land at the
+     * BOTTOM of image memory -- which a standard (positive-height) Vulkan viewport
+     * already does (clip +y -> framebuffer bottom). So VkViewport.y is the GL y
+     * DIRECTLY, not H-(y+h): the full target is identical (gl_y 0 -> 0 either way),
+     * and a partial GL viewport lands where GL puts it once read_pixels flips rows
+     * (P11-review Fix 4). The viewport RECT is { gl_x, gl_y, gl_w, gl_h }. */
+    VkViewport vp = { (float)vx, (float)vy, (float)vw, (float)vh, 0.0f, 1.0f };
+    vkCmdSetViewport(g_vk.cmd, 0, 1, &vp);
+    /* Scissor never clips beyond the viewport (rhi.h models no scissor state). */
+    VkRect2D sc = { { 0, 0 }, { (uint32_t)g_vk.width, (uint32_t)g_vk.height } };
+    vkCmdSetScissor(g_vk.cmd, 0, 1, &sc);
+    vkCmdBindPipeline(g_vk.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, e->pipeline);
+    return e;
+}
+
+/* Bind the pipeline's vertex streams and push set 0 (UBO + textures/dummies).
+ * `ubo_off` is this draw's snapshot offset in the per-frame arena (block 0). */
+static void draw_bind_resources(RhiVkPipeline *e, VkDeviceSize ubo_off) {
+    const RhiVertexLayout *vl = &e->desc.vertex;
+    uint8_t used_stream[RHI_MAX_VERTEX_STREAMS] = {0};
+    VkBuffer vbufs[RHI_MAX_VERTEX_STREAMS];
+    VkDeviceSize voffs[RHI_MAX_VERTEX_STREAMS];
+    for (uint32_t i = 0; i < vl->attrib_count; i++) used_stream[vl->attribs[i].stream] = 1;
+    for (uint32_t s = 0; s < RHI_MAX_VERTEX_STREAMS; s++) {
+        if (!used_stream[s]) continue;
+        RhiVkBuffer *b = g_vk.bound_vertex[s].id ? buffer_lookup(g_vk.bound_vertex[s], "draw") : NULL;
+        if (b && b->buf && (b->usage & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)) {
+            vbufs[s] = b->buf; voffs[s] = g_vk.bound_vertex_offset[s];
+        } else {
+            vbufs[s] = g_vk.dummy_vbuf; voffs[s] = 0;   /* GL disables the attribute */
+        }
+        vkCmdBindVertexBuffers(g_vk.cmd, s, 1, &vbufs[s], &voffs[s]);
+    }
+
+    RhiVkShader *sh = shader_find(e->shader);
+    VkWriteDescriptorSet writes[1 + RHI_TEXTURE_SLOTS];
+    VkDescriptorBufferInfo bi;
+    VkDescriptorImageInfo ii[RHI_TEXTURE_SLOTS];
+    uint32_t n = 0;
+    if (sh && sh->block_count > 0) {
+        /* Block 0 = the snapshot this draw placed in the per-frame arena. The
+         * engine's shaders use a single param block; TODO: bind blocks 1.. here
+         * (from their own arena snapshots) if a shader ever declares more. */
+        bi = (VkDescriptorBufferInfo){ g_vk.arena.buf, ubo_off, sh->blocks[0].size };
+        writes[n] = (VkWriteDescriptorSet){ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL,
+            VK_NULL_HANDLE, 0, 0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, NULL, &bi, NULL };
+        n++;
+    }
+    for (uint32_t slot = 0; slot < RHI_TEXTURE_SLOTS; slot++) {
+        RhiVkTexture *t = g_vk.bound_texture[slot].id ? texture_find(g_vk.bound_texture[slot]) : NULL;
+        if (t && (!(t->usage & RHI_TEXTURE_SAMPLED) || !t->view)) t = NULL;   /* not sampleable */
+        VkImageView view = t ? t->view : g_vk.dummy_view;
+        VkSampler smp = g_vk.dummy_sampler;
+        if (t && t->sampler.id && t->sampler.id <= g_vk.samplers.count)
+            smp = g_vk.samplers.handles[t->sampler.id - 1];
+        ii[slot] = (VkDescriptorImageInfo){ smp, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+        writes[n] = (VkWriteDescriptorSet){ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL,
+            VK_NULL_HANDLE, 1 + slot, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            &ii[slot], NULL, NULL };
+        n++;
+    }
+    g_vk.push_desc(g_vk.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, g_vk.pipe_layout, 0, n, writes);
+}
+
+/* Validate a vertex stream's range the way the GL backend does (per attribute). */
+static int draw_vertex_ranges_ok(const RhiVkPipeline *e, uint32_t vertex_count, uint32_t first_vertex) {
+    const RhiVertexLayout *vl = &e->desc.vertex;
+    for (uint32_t i = 0; i < vl->attrib_count; i++) {
+        const RhiVertexAttrib *a = &vl->attribs[i];
+        if (!g_vk.bound_vertex[a->stream].id) continue;   /* disabled -> dummy buffer */
+        RhiVkBuffer *b = buffer_lookup(g_vk.bound_vertex[a->stream], "draw");
+        uint32_t bytes = vertex_format_bytes(a->format);
+        uint32_t stride = vl->stride[a->stream] ? vl->stride[a->stream] : bytes;
+        uint64_t last = vertex_count ? (uint64_t)first_vertex + vertex_count - 1u : 0;
+        uint64_t end = (uint64_t)g_vk.bound_vertex_offset[a->stream] + a->offset + last * stride + bytes;
+        if (!b || !(b->usage & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT) || end > PTRDIFF_MAX || end > b->size) {
+            fprintf(stderr, "rhi: draw: invalid vertex buffer or range\n");
+            return 0;
+        }
+    }
+    return 1;
+}
+
+void rhi_cmd_draw(uint32_t vertex_count, uint32_t first_vertex) {
+    if (!vertex_count) return;
+    if (vertex_count > INT_MAX || first_vertex > INT_MAX) {
+        fprintf(stderr, "rhi: draw: invalid vertex count or first vertex\n");
+        return;
+    }
+    if (g_vk.bound_pipeline < 0) { fprintf(stderr, "rhi: draw: no pipeline bound\n"); return; }
+    if (!draw_vertex_ranges_ok(&g_vk.pipelines.slots[g_vk.bound_pipeline], vertex_count, first_vertex)) return;
+    /* Snapshot this draw's params into the arena BEFORE opening the render scope
+     * (a mid-frame flush must close/submit any prior scope first) (Fix 1). */
+    RhiVkShader *sh = shader_find(g_vk.pipelines.slots[g_vk.bound_pipeline].shader);
+    VkDeviceSize ubo_off = 0;
+    if (sh && sh->block_count > 0 && !arena_place(sh->blocks[0].mirror, sh->blocks[0].size, &ubo_off)) {
+        fprintf(stderr, "rhi: draw: param arena flush failed\n"); return;
+    }
+    RhiVkPipeline *e = draw_begin("draw");
+    if (!e) return;
+    draw_bind_resources(e, ubo_off);
+    vkCmdDraw(g_vk.cmd, vertex_count, 1, first_vertex, 0);
+}
+
+void rhi_cmd_draw_indexed(uint32_t index_count, uint32_t first_index) {
+    if (!index_count) return;
+    RhiVkBuffer *index = g_vk.bound_index.id ? buffer_lookup(g_vk.bound_index, "draw_indexed") : NULL;
+    if (!index || !index->buf || !(index->usage & VK_BUFFER_USAGE_INDEX_BUFFER_BIT) ||
+        index_count > INT_MAX || (uint64_t)first_index * 2u > PTRDIFF_MAX ||
+        first_index > index->size / 2u || index_count > index->size / 2u - first_index) {
+        fprintf(stderr, "rhi: draw_indexed: invalid index buffer or range\n");
+        return;
+    }
+    if (g_vk.bound_pipeline < 0) { fprintf(stderr, "rhi: draw_indexed: no pipeline bound\n"); return; }
+    /* The max index value is not scanned (like the GL backend); vertex ranges are
+     * validated against the index count's worst case only loosely, so skip here. */
+    /* Snapshot this draw's params into the arena before opening the scope (Fix 1). */
+    RhiVkShader *sh = shader_find(g_vk.pipelines.slots[g_vk.bound_pipeline].shader);
+    VkDeviceSize ubo_off = 0;
+    if (sh && sh->block_count > 0 && !arena_place(sh->blocks[0].mirror, sh->blocks[0].size, &ubo_off)) {
+        fprintf(stderr, "rhi: draw_indexed: param arena flush failed\n"); return;
+    }
+    RhiVkPipeline *e = draw_begin("draw_indexed");
+    if (!e) return;
+    draw_bind_resources(e, ubo_off);
+    vkCmdBindIndexBuffer(g_vk.cmd, index->buf, 0, VK_INDEX_TYPE_UINT16);
+    vkCmdDrawIndexed(g_vk.cmd, index_count, 1, first_index, 0, 0);
+}
 
 /* --- Passes / copies (TODO P11f) --- */
 RhiResult rhi_cmd_begin_pass(const RhiPassDesc *desc) { (void)desc; return RHI_ERR_UNSUPPORTED; }
@@ -1506,17 +2302,26 @@ RhiResult rhi_cmd_copy_main_to_texture(RhiTexture texture, int32_t x, int32_t y,
     (void)texture; (void)x; (void)y; (void)w; (void)h; return RHI_ERR_UNSUPPORTED;
 }
 
-/* --- Viewport / state snapshot / wireframe (TODO P11e/P11g) --- */
+/* --- Viewport / state snapshot / wireframe (state snapshot TODO P11g) --- */
+/* Returns the stored GL-convention viewport (x, y, w, h, origin bottom-left). */
 void rhi_viewport(int32_t viewport[4]) {
-    viewport[0] = 0; viewport[1] = 0; viewport[2] = g_vk.width; viewport[3] = g_vk.height;
+    viewport[0] = g_vk.viewport[0]; viewport[1] = g_vk.viewport[1];
+    viewport[2] = g_vk.viewport[2]; viewport[3] = g_vk.viewport[3];
 }
 void rhi_cmd_save_state(RhiStateSnapshot *out) { if (out) memset(out, 0, sizeof *out); }
 void rhi_cmd_restore_state(const RhiStateSnapshot *state) { (void)state; }
 void rhi_state_set_texture(RhiStateSnapshot *state, uint32_t slot, RhiTexture texture) {
     (void)state; (void)slot; (void)texture;
 }
+/* Stores the GL-convention rect (origin bottom-left); each draw uses it as a
+ * VkViewport with y = gl_y (positive height). See the orientation note at
+ * ensure_rendering: that plus the row-flip in rhi_read_pixels reproduces the GL
+ * backend's output exactly. Nothing is recorded until the next draw. */
 RhiResult rhi_cmd_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height) {
-    (void)x; (void)y; (void)width; (void)height; return RHI_ERR_UNSUPPORTED;
+    if (width < 0 || height < 0) return RHI_ERR_INVALID;
+    g_vk.viewport[0] = x; g_vk.viewport[1] = y;
+    g_vk.viewport[2] = width; g_vk.viewport[3] = height;
+    return RHI_OK;
 }
 RhiResult rhi_cmd_set_wireframe(int on) { (void)on; return RHI_ERR_UNSUPPORTED; }
 
