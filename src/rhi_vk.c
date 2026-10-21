@@ -27,6 +27,7 @@ unsigned rhi_vk_validation_messages;
 /* Mid-frame UBO-arena flushes so far (no rhi.h surface; the smoke reads it to
  * confirm the arena-overflow path actually fired). */
 unsigned rhi_vk_arena_flushes;
+static unsigned g_test_fail_pending_alloc;   /* test hook: make the next n growths of the deferred-free list fail */
 
 #define VK_DEFAULT_W 1280
 #define VK_DEFAULT_H 720
@@ -750,10 +751,14 @@ static void destroy_free_entry(VkBuffer buf, VkDeviceMemory mem, VkImage img, Vk
 static void defer_or_free(VkBuffer buf, VkDeviceMemory mem, VkImage img, VkImageView view) {
     if (!buf && !mem && !img && !view) return;
     if (!g_vk.in_frame) { destroy_free_entry(buf, mem, img, view); return; }
-    if (g_vk.pending_free.count == g_vk.pending_free.capacity) {
+    if (g_vk.pending_free.count == g_vk.pending_free.capacity || g_test_fail_pending_alloc) {
         uint32_t cap = g_vk.pending_free.capacity ? g_vk.pending_free.capacity * 2u : 16u;
-        void *n = realloc(g_vk.pending_free.items, (size_t)cap * sizeof *g_vk.pending_free.items);
-        if (!n) {   /* out of memory: free now (correctness over the rare early free) */
+        void *n = g_test_fail_pending_alloc ? (g_test_fail_pending_alloc--, NULL)
+                                            : realloc(g_vk.pending_free.items, (size_t)cap * sizeof *g_vk.pending_free.items);
+        if (!n) {
+            /* Cannot remember the resource: finish the recorded work first, so nothing pending can still use it, then free it now.
+             * If the submit itself fails the device is lost; leak the resource rather than free it while it may be in use. */
+            if (g_vk.recording && !frame_split()) return;
             destroy_free_entry(buf, mem, img, view);
             return;
         }
@@ -807,6 +812,9 @@ int rhi_vk_test_sync_hazard(void) {
 }
 
 /* Test-only: recreate the stream arena at `bytes` (same rules as the UBO hook). */
+/* Test-only: the next n growths of the deferred-free list fail, as if realloc returned NULL. */
+void rhi_vk_test_fail_pending_alloc(unsigned n) { g_test_fail_pending_alloc = n; }
+
 void rhi_vk_test_force_stream_arena(size_t bytes) {
     stream_arena_free();
     stream_arena_alloc((VkDeviceSize)bytes);

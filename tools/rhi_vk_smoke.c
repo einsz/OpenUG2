@@ -23,6 +23,7 @@ extern unsigned rhi_vk_arena_flushes;            /* mid-frame UBO-arena flushes 
  * multi-draw path can be forced to flush mid-frame with just a couple of draws. */
 extern void rhi_vk_test_force_arena(size_t bytes);
 extern void rhi_vk_test_force_stream_arena(size_t bytes);
+extern void rhi_vk_test_fail_pending_alloc(unsigned n);       /* the next n deferred-free list growths fail */
 extern int rhi_vk_test_sync_hazard(void);                    /* two unsynchronised clears (WAW) */   /* the STREAM-version arena */
 /* Test-only backend path: reads buffer contents (STREAM mapping, or a STATIC
  * device->host staging copy). Returns 1 on success, 0 on failure. */
@@ -1754,6 +1755,27 @@ int main(void) {
                 EXPECT(is_red(PXAT(64, 96)) && is_green(PXAT(192, 96)), "F3b: index update between draws");
                 EXPECT(rhi_frame_end() == RHI_OK, "F3b frame_end");
                 rhi_buffer_destroy(qb); rhi_buffer_destroy(ib);
+            }
+            /* F4: the deferred-free list cannot grow while a recorded draw still uses the buffer being replaced. */
+            {
+                RhiBuffer vb = rhi_buffer_create(&(RhiBufferDesc){ RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, sizeof left, left });
+                EXPECT(vb.id, "F4 buffer");
+                unsigned v4 = rhi_vk_validation_messages;
+                EXPECT(rhi_frame_begin(NULL) == RHI_OK, "F4 frame_begin");
+                EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "F4 clear");
+                rhi_cmd_bind_pipeline(pipe); rhi_cmd_bind_vertex_buffer(0, vb, 0);
+                COLOUR(1, 0, 0); rhi_cmd_draw(6, 0);                                       /* records a draw that reads the old storage */
+                rhi_vk_test_fail_pending_alloc(1);                                         /* the pending-free list cannot grow */
+                EXPECT(rhi_buffer_replace(vb, sizeof right, right) == RHI_OK, "F4 replace");
+                COLOUR(0, 1, 0); rhi_cmd_draw(6, 0);                                       /* new storage */
+                EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "F4 read");
+                EXPECT(rhi_frame_end() == RHI_OK, "F4 frame_end");
+                printf("F4 deferred-free failure: left=%u,%u,%u right=%u,%u,%u validation messages %u\n", PXAT(64, 96)[0], PXAT(64, 96)[1],
+                       PXAT(64, 96)[2], PXAT(192, 96)[0], PXAT(192, 96)[1], PXAT(192, 96)[2], rhi_vk_validation_messages - v4);
+                EXPECT(is_red(PXAT(64, 96)) && is_green(PXAT(192, 96)), "F4: both draws render with the storage they were issued with");
+                EXPECT(rhi_vk_validation_messages == v4, "F4: replacing a buffer with a failing free list raised %u validation message(s)",
+                       rhi_vk_validation_messages - v4);
+                rhi_buffer_destroy(vb);
             }
             #undef COLOUR
             #undef PXAT
