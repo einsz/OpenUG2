@@ -54,8 +54,14 @@ typedef struct {
     VkImage            img;         /* VK_NULL_HANDLE = free slot */
     VkDeviceMemory     mem;
     VkImageView        view;        /* default 2D/CUBE sampling (or depth) view */
+    VkImageView        att_view[6]; /* lazy single-level, single-face 2D views for pass attachments */
+    VkImageUsageFlags  vku;         /* image usage, kept to recreate the storage (copy resize) */
     VkFormat           vkfmt;
-    VkImageAspectFlags aspect;      /* COLOR, or DEPTH for D16/DEPTH */
+    VkImageAspectFlags aspect;      /* COLOR, or DEPTH for D16/DEPTH (view aspect) */
+    VkImageAspectFlags bar_aspect;  /* aspect for barriers/clears: DEPTH|STENCIL for the
+                                       combined main-precision RHI_FORMAT_DEPTH format */
+    uint64_t           touched;     /* g_vk.submits + 1 when last referenced by the
+                                       still-unsubmitted frame (see texture_touch) */
     VkImageLayout      layout;      /* current layout of all subresources */
     RhiFormat          format;
     uint32_t           usage;
@@ -85,6 +91,8 @@ typedef struct {
     VkShaderModule  vert, frag;     /* VK_NULL_HANDLE = free slot */
     RhiVkParamBlock blocks[VK_MAX_PARAM_BLOCKS];
     uint32_t        block_count;
+    uint32_t        attrib_count;   /* RhiShaderDesc.attribute_count: locations 0..n-1 exist */
+    uint32_t        cube_mask;      /* bit n: sampler slot n is a samplerCube */
     uint8_t         live;
     uint8_t         generation;
 } RhiVkShader;
@@ -95,8 +103,14 @@ typedef struct {
  * g_vk.pipe_layout / g_vk.set_layout (push descriptors), so only the VkPipeline
  * object is per-entry. Pipelines are never destroyed individually (the GL
  * backend never retires them either). */
+/* Pipeline variants, one per render-target format combination. */
+enum { VK_PV_MAIN = 0,        /* main target: colour RGBA8 + depth_fmt (depth AND stencil) */
+       VK_PV_PASS_D16,        /* offscreen pass: RGBA8 + D16 depth, no stencil */
+       VK_PV_PASS_NODEPTH,    /* offscreen pass: RGBA8 only */
+       VK_PV_COUNT };
+
 typedef struct {
-    VkPipeline      pipeline;
+    VkPipeline      variant[VK_PV_COUNT];   /* per target format; MAIN eager, others lazy */
     RhiShader       shader;         /* the desc's shader, re-checked at bind/draw */
     RhiPipelineDesc desc;
 } RhiVkPipeline;
@@ -121,8 +135,25 @@ static struct {
     VkDeviceMemory depth_mem;
     VkImageView    depth_view;           /* depth attachment view */
     VkImageLayout  depth_layout;         /* tracked across clear/render */
+    VkFormat       depth_fmt;            /* D24_UNORM_S8_UINT, else D32_SFLOAT_S8_UINT */
+    int            target_variant;       /* pipeline variant for the current target (P11f-2 switches it) */
+    uint64_t       submits;              /* frame command-buffer submits so far */
 
     int            rendering;            /* inside a vkCmdBeginRendering scope */
+
+    /* Render target. Main unless a pass is open (rhi_cmd_begin_pass). The first
+     * scope of a pass uses the desc's load ops; scopes reopened after a
+     * frame_split use LOAD (`opened`). */
+    struct {
+        int        active;
+        RhiTexture color, depth;     /* depth.id == 0: no depth attachment */
+        int32_t    face;
+        int32_t    w, h;
+        int        clear_color, clear_depth;
+        float      clear_value[4];
+        float      clear_z;
+        int        opened;
+    } pass;
 
     VkBuffer       readback;             /* host-visible, full-frame sized */
     VkDeviceMemory readback_mem;
@@ -133,11 +164,21 @@ static struct {
     VkDeviceMemory dummy_mem;
     VkImageView    dummy_view;
     VkSampler      dummy_sampler;
+    /* 1x1x6 cube dummy (opaque black, like an incomplete GL cube) for samplerCube
+     * bindings a draw leaves unbound. */
+    VkImage        dummy_cube_img;
+    VkDeviceMemory dummy_cube_mem;
+    VkImageView    dummy_cube_view;
     /* Zero-filled vertex buffer bound to a pipeline stream a draw leaves unbound
      * (the GL backend disables the attribute; Vulkan has no such concept, so the
      * shader reads zeros from this instead). */
     VkBuffer       dummy_vbuf;
     VkDeviceMemory dummy_vbuf_mem;
+    /* One vec4 (0,0,0,1): the value a shader reads for an attribute its pipeline
+     * layout does not name (GL's default generic attribute value). Bound on the
+     * extra binding index RHI_MAX_VERTEX_STREAMS with stride 0. */
+    VkBuffer       dummy_attr_buf;
+    VkDeviceMemory dummy_attr_mem;
 
     /* Shared push-descriptor set layout + pipeline layout (identical for every
      * pipeline: no push constants, one set). */
@@ -156,7 +197,9 @@ static struct {
     RhiBuffer  bound_vertex[RHI_MAX_VERTEX_STREAMS];
     uint32_t   bound_vertex_offset[RHI_MAX_VERTEX_STREAMS];
     RhiBuffer  bound_index;
-    RhiTexture bound_texture[RHI_TEXTURE_SLOTS];
+    /* Like GL, a unit has separate 2D and CUBE bindings. */
+    RhiTexture bound_2d[RHI_TEXTURE_SLOTS];
+    RhiTexture bound_cube[RHI_TEXTURE_SLOTS];
     int32_t    viewport[4];              /* GL-convention x, y, w, h (origin bottom-left) */
 
     RhiCaps  caps;
@@ -210,7 +253,7 @@ static struct {
     /* Buffers whose storage a recorded-but-unsubmitted draw may still reference;
      * freed at frame_end after the submit+fence wait (P11-review Fix 2). */
     struct {
-        struct { VkBuffer buf; VkDeviceMemory mem; } *items;
+        struct { VkBuffer buf; VkDeviceMemory mem; VkImage img; VkImageView view; } *items;
         uint32_t count, capacity;
     } pending_free;
 } g_vk;
@@ -246,9 +289,10 @@ static uint32_t find_mem(uint32_t bits, VkMemoryPropertyFlags want) {
 }
 
 /* Create an image + device-local memory, binding them. 1 on success. */
-static int make_image(VkFormat fmt, VkImageUsageFlags usage, VkImage *img, VkDeviceMemory *mem) {
-    VkImageCreateInfo ci = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, NULL, 0, VK_IMAGE_TYPE_2D, fmt,
-        { (uint32_t)g_vk.width, (uint32_t)g_vk.height, 1 }, 1, 1, VK_SAMPLE_COUNT_1_BIT,
+static int make_image_ex(VkFormat fmt, uint32_t w, uint32_t h, uint32_t layers, VkImageCreateFlags flags,
+                         VkImageUsageFlags usage, VkImage *img, VkDeviceMemory *mem) {
+    VkImageCreateInfo ci = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, NULL, flags, VK_IMAGE_TYPE_2D, fmt,
+        { w, h, 1 }, 1, layers, VK_SAMPLE_COUNT_1_BIT,
         VK_IMAGE_TILING_OPTIMAL, usage, VK_SHARING_MODE_EXCLUSIVE, 0, NULL, VK_IMAGE_LAYOUT_UNDEFINED };
     if (!vk_ok(vkCreateImage(g_vk.device, &ci, NULL, img), "vkCreateImage")) return 0;
     VkMemoryRequirements mr; vkGetImageMemoryRequirements(g_vk.device, *img, &mr);
@@ -257,6 +301,28 @@ static int make_image(VkFormat fmt, VkImageUsageFlags usage, VkImage *img, VkDev
     VkMemoryAllocateInfo ai = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, NULL, mr.size, mt };
     if (!vk_ok(vkAllocateMemory(g_vk.device, &ai, NULL, mem), "vkAllocateMemory(image)")) return 0;
     return vk_ok(vkBindImageMemory(g_vk.device, *img, *mem, 0), "vkBindImageMemory");
+}
+
+static int make_image(VkFormat fmt, VkImageUsageFlags usage, VkImage *img, VkDeviceMemory *mem) {
+    return make_image_ex(fmt, (uint32_t)g_vk.width, (uint32_t)g_vk.height, 1, 0, usage, img, mem);
+}
+
+/* The main depth image carries stencil too, and a barrier/clear on an image with
+ * both aspects must name both. */
+#define VK_DS_ASPECT (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)
+
+/* D24S8 if the device can use it as the main depth-stencil target (attachment,
+ * copy source/destination, sampled), else D32S8; UNDEFINED if neither. */
+static VkFormat pick_depth_format(void) {
+    static const VkFormat cands[2] = { VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D32_SFLOAT_S8_UINT };
+    const VkFormatFeatureFlags need = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT |
+        VK_FORMAT_FEATURE_TRANSFER_SRC_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT |
+        VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+    for (int i = 0; i < 2; i++) {
+        VkFormatProperties fp; vkGetPhysicalDeviceFormatProperties(g_vk.phys, cands[i], &fp);
+        if ((fp.optimalTilingFeatures & need) == need) return cands[i];
+    }
+    return VK_FORMAT_UNDEFINED;
 }
 
 /* Record an image layout transition covering a single colour or depth level. */
@@ -270,6 +336,7 @@ static void image_barrier(VkImage img, VkImageAspectFlags aspect, VkImageLayout 
 
 /* One-shot command helpers + a multi-subresource barrier, all defined with the
  * texture code further down but used already by device_create's dummy texture. */
+static void drain_pending_frees(void);
 static VkCommandBuffer oneshot_begin(void);
 static int oneshot_end(VkCommandBuffer cb);
 static void img_barrier(VkCommandBuffer cb, VkImage img, VkImageAspectFlags aspect,
@@ -295,7 +362,9 @@ static int flush(void) {
     g_vk.recording = 0;
     VkSubmitInfo si = { VK_STRUCTURE_TYPE_SUBMIT_INFO, NULL, 0, NULL, NULL, 1, &g_vk.cmd, 0, NULL };
     if (!vk_ok(vkQueueSubmit(g_vk.queue, 1, &si, g_vk.fence), "vkQueueSubmit")) return 0;
+    g_vk.submits++;
     if (!vk_ok(vkWaitForFences(g_vk.device, 1, &g_vk.fence, VK_TRUE, UINT64_MAX), "vkWaitForFences")) return 0;
+    drain_pending_frees();   /* everything recorded so far has completed */
     return vk_ok(vkResetFences(g_vk.device, 1, &g_vk.fence), "vkResetFences");
 }
 
@@ -304,10 +373,11 @@ static int flush(void) {
  * Vulkan NDC is +y down, so a plain POSITIVE-height viewport sends a GL "+y"
  * vertex to the bottom of image memory; read_pixels' flip then returns it at the
  * top -- i.e. identical to the GL backend. (A negative-height viewport would
- * double-flip with that readback.) So draws use a positive-height viewport whose
+ * double-flip with that readback.) This reflects y, so winding flips and the
+ * pipeline uses VK_FRONT_FACE_CLOCKWISE. So draws use a positive-height viewport whose
  * VkViewport.y is the GL y directly (NOT H-(y+h)): the full target is unchanged
  * (gl_y = 0 either way), and a partial GL viewport lands where GL puts it once
- * read_pixels flips rows. Front face stays CCW, and the readback is as committed.
+ * read_pixels flips rows. The readback is as committed.
  *
  * Open a dynamic-rendering scope on the frame command buffer if not already in
  * one. Draws need it; transfers (clear, readback, copies) must not be inside it.
@@ -315,48 +385,117 @@ static int flush(void) {
  * the colour image transitions from its current layout (TRANSFER_SRC after a
  * clear) to COLOR_ATTACHMENT_OPTIMAL, the depth from its current to
  * DEPTH_ATTACHMENT_OPTIMAL. 1 on success. */
+static RhiVkTexture *texture_find(RhiTexture tex);
+static VkImageView texture_att_view(RhiVkTexture *t, int face);
+static void texture_touch(RhiVkTexture *t);
+
+/* Size of the current render target (main frame or the open pass's colour). */
+static int32_t target_width(void)  { return g_vk.pass.active ? g_vk.pass.w : g_vk.width; }
+static int32_t target_height(void) { return g_vk.pass.active ? g_vk.pass.h : g_vk.height; }
+
 static int ensure_rendering(void) {
     if (g_vk.rendering) return 1;
     if (!ensure_recording()) return 0;
-    image_barrier(g_vk.color, VK_IMAGE_ASPECT_COLOR_BIT, g_vk.color_layout,
-                  VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                  VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT,
-                  VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT,
-                  VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
-    g_vk.color_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    /* Depth: carry the depth stages/access on BOTH sides so a scope resuming
-     * after a transfer (e.g. read_pixels mid-frame) synchronises the previous
-     * scope's depth writes to this scope's depth tests, not just a prior clear's
-     * transfer write (P11-review Fix 3). */
-    image_barrier(g_vk.depth, VK_IMAGE_ASPECT_DEPTH_BIT, g_vk.depth_layout,
-                  VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-                  VK_ACCESS_TRANSFER_WRITE_BIT |
+    VkRenderingAttachmentInfo ca, da, sa;
+    const VkRenderingAttachmentInfo *pda = NULL, *psa = NULL;
+    if (!g_vk.pass.active) {
+        image_barrier(g_vk.color, VK_IMAGE_ASPECT_COLOR_BIT, g_vk.color_layout,
+                      VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                      VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT,
+                      VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT,
+                      VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+        g_vk.color_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        /* Depth: carry the depth stages/access on BOTH sides so a scope resuming
+         * after a transfer (e.g. read_pixels mid-frame) synchronises the previous
+         * scope's depth writes to this scope's depth tests, not just a prior clear's
+         * transfer write (P11-review Fix 3). */
+        image_barrier(g_vk.depth, VK_DS_ASPECT, g_vk.depth_layout,
+                      VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                      VK_ACCESS_TRANSFER_WRITE_BIT |
+                          VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
                       VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-                  VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-                  VK_PIPELINE_STAGE_TRANSFER_BIT |
-                      VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-                  VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT);
-    g_vk.depth_layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+                      VK_PIPELINE_STAGE_TRANSFER_BIT |
+                          VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                      VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT);
+        g_vk.depth_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-    VkRenderingAttachmentInfo ca = { VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO, NULL, g_vk.color_view,
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_RESOLVE_MODE_NONE, VK_NULL_HANDLE,
-        VK_IMAGE_LAYOUT_UNDEFINED, VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_STORE, {{{0}}} };
-    VkRenderingAttachmentInfo da = { VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO, NULL, g_vk.depth_view,
-        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, VK_RESOLVE_MODE_NONE, VK_NULL_HANDLE,
-        VK_IMAGE_LAYOUT_UNDEFINED, VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_STORE, {{{0}}} };
+        ca = (VkRenderingAttachmentInfo){ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO, NULL, g_vk.color_view,
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_RESOLVE_MODE_NONE, VK_NULL_HANDLE,
+            VK_IMAGE_LAYOUT_UNDEFINED, VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_STORE, {{{0}}} };
+        da = (VkRenderingAttachmentInfo){ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO, NULL, g_vk.depth_view,
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_RESOLVE_MODE_NONE, VK_NULL_HANDLE,
+            VK_IMAGE_LAYOUT_UNDEFINED, VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_STORE, {{{0}}} };
+        sa = da;   /* same combined view feeds the stencil attachment */
+        pda = &da; psa = &sa;
+    } else {
+        /* Offscreen pass: attachments are single-face views of the pass textures,
+         * transitioned from their tracked layouts (the whole image, so the other
+         * faces of a cube keep their contents). The FIRST scope of the pass honours
+         * the desc's load ops; scopes reopened after a frame_split resume with LOAD. */
+        RhiVkTexture *c = texture_find(g_vk.pass.color);
+        RhiVkTexture *d = g_vk.pass.depth.id ? texture_find(g_vk.pass.depth) : NULL;
+        if (!c || (g_vk.pass.depth.id && !d)) return 0;
+        /* Every (re)opened scope references the attachments in the CURRENT recording
+         * (the stamp from begin_pass goes stale across a frame_split). */
+        texture_touch(c);
+        if (d) texture_touch(d);
+        VkImageView cv = texture_att_view(c, g_vk.pass.face);
+        VkImageView dv = d ? texture_att_view(d, 0) : VK_NULL_HANDLE;
+        if (!cv || (d && !dv)) return 0;
+        img_barrier(g_vk.cmd, c->img, VK_IMAGE_ASPECT_COLOR_BIT, 0, c->mip_levels, 0, c->layers,
+                    c->layout, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT,
+                    VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT,
+                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+                        VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+        c->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        if (d) {
+            img_barrier(g_vk.cmd, d->img, d->bar_aspect, 0, 1, 0, 1,
+                        d->layout, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                        VK_ACCESS_TRANSFER_WRITE_BIT |
+                            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT |
+                            VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                        VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT);
+            d->layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        }
+        int first = !g_vk.pass.opened;
+        int clear_c = first && g_vk.pass.clear_color, clear_d = first && g_vk.pass.clear_depth;
+        VkClearValue cc, cd;
+        memset(&cc, 0, sizeof cc); memset(&cd, 0, sizeof cd);
+        memcpy(cc.color.float32, g_vk.pass.clear_value, sizeof cc.color.float32);
+        cd.depthStencil.depth = g_vk.pass.clear_z;
+        ca = (VkRenderingAttachmentInfo){ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO, NULL, cv,
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_RESOLVE_MODE_NONE, VK_NULL_HANDLE,
+            VK_IMAGE_LAYOUT_UNDEFINED, clear_c ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD,
+            VK_ATTACHMENT_STORE_OP_STORE, cc };
+        if (d) {
+            da = (VkRenderingAttachmentInfo){ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO, NULL, dv,
+                VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_RESOLVE_MODE_NONE, VK_NULL_HANDLE,
+                VK_IMAGE_LAYOUT_UNDEFINED, clear_d ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD,
+                VK_ATTACHMENT_STORE_OP_STORE, cd };
+            pda = &da;
+        }
+        g_vk.pass.opened = 1;
+    }
     VkRenderingInfo ri = { VK_STRUCTURE_TYPE_RENDERING_INFO, NULL, 0,
-        { { 0, 0 }, { (uint32_t)g_vk.width, (uint32_t)g_vk.height } }, 1, 0, 1, &ca, &da, NULL };
+        { { 0, 0 }, { (uint32_t)target_width(), (uint32_t)target_height() } }, 1, 0, 1, &ca, pda, psa };
     vkCmdBeginRendering(g_vk.cmd, &ri);
     g_vk.rendering = 1;
     return 1;
 }
 
-/* Close any open rendering scope and leave the colour image in TRANSFER_SRC so a
- * following readback/transfer needs no extra barrier. No-op when not rendering. */
+/* Close any open rendering scope. For the main target the colour image is left in
+ * TRANSFER_SRC so a following readback/transfer needs no extra barrier; a pass
+ * scope just ends (rhi_cmd_end_pass does the transitions, and a frame_split
+ * resumes the same scope later). No-op when not rendering. */
 static void end_rendering_if_active(void) {
     if (!g_vk.rendering) return;
     vkCmdEndRendering(g_vk.cmd);
     g_vk.rendering = 0;
+    if (g_vk.pass.active) return;
     image_barrier(g_vk.color, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                   VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
@@ -365,7 +504,7 @@ static void end_rendering_if_active(void) {
     /* Make this scope's depth writes available to whatever resumes depth next (a
      * following clear or the next rendering scope). Layout is unchanged -- only a
      * memory/execution dependency on the depth stages/access (P11-review Fix 3). */
-    image_barrier(g_vk.depth, VK_IMAGE_ASPECT_DEPTH_BIT, g_vk.depth_layout, g_vk.depth_layout,
+    image_barrier(g_vk.depth, VK_DS_ASPECT, g_vk.depth_layout, g_vk.depth_layout,
                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
                   VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
                   VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
@@ -478,6 +617,18 @@ static void arena_free(void) {
     g_vk.arena.buf = VK_NULL_HANDLE; g_vk.arena.mem = VK_NULL_HANDLE; g_vk.arena.size = 0;
 }
 
+/* Mid-frame split: close the render scope, submit + wait the recorded commands
+ * (which also drains deferred frees) and start a fresh recording. Image layouts
+ * are tracked, and every draw re-binds its pipeline/viewport/resources, and the
+ * next ensure_rendering resumes the target with loadOp LOAD, so nothing drawn so
+ * far is lost. Used when a CPU-side operation must observe (or precede) work the
+ * unsubmitted frame already holds. 1 on success. */
+static int frame_split(void) {
+    end_rendering_if_active();
+    if (!flush()) return 0;
+    return g_vk.in_frame ? ensure_recording() : 1;
+}
+
 /* Snapshot `sz` bytes of `src` into the arena at an aligned offset for one draw
  * and write the offset to *out_off. If the current segment would overflow, do a
  * MID-FRAME FLUSH: close any render scope, submit + fence-wait the current
@@ -491,9 +642,7 @@ static int arena_place(const void *src, VkDeviceSize sz, VkDeviceSize *out_off) 
     VkDeviceSize vdem = (g_vk.arena.demand + align - 1u) & ~(align - 1u);
     g_vk.arena.demand = vdem + sz;
     if (aligned + sz > g_vk.arena.size) {
-        end_rendering_if_active();
-        if (!flush()) return 0;
-        if (!ensure_recording()) return 0;
+        if (!frame_split()) return 0;
         g_vk.arena.offset = 0;
         aligned = 0;
         rhi_vk_arena_flushes++;
@@ -504,21 +653,25 @@ static int arena_place(const void *src, VkDeviceSize sz, VkDeviceSize *out_off) 
     return 1;
 }
 
-/* Free a buffer+memory pair now, or defer it to frame_end when a frame is open
- * (a recorded-but-unsubmitted draw may reference it). */
-static void defer_or_free_buffer(VkBuffer buf, VkDeviceMemory mem) {
-    if (!buf && !mem) return;
-    if (!g_vk.in_frame) {
-        if (buf) vkDestroyBuffer(g_vk.device, buf, NULL);
-        if (mem) vkFreeMemory(g_vk.device, mem, NULL);
-        return;
-    }
+/* Destroy a deferred-free entry's objects (views first, memory last). */
+static void destroy_free_entry(VkBuffer buf, VkDeviceMemory mem, VkImage img, VkImageView view) {
+    if (view) vkDestroyImageView(g_vk.device, view, NULL);
+    if (buf)  vkDestroyBuffer(g_vk.device, buf, NULL);
+    if (img)  vkDestroyImage(g_vk.device, img, NULL);
+    if (mem)  vkFreeMemory(g_vk.device, mem, NULL);
+}
+
+/* Free these objects now, or defer them until the frame command buffer has been
+ * submitted and waited on when a frame is open (a recorded-but-unsubmitted draw
+ * may reference them). */
+static void defer_or_free(VkBuffer buf, VkDeviceMemory mem, VkImage img, VkImageView view) {
+    if (!buf && !mem && !img && !view) return;
+    if (!g_vk.in_frame) { destroy_free_entry(buf, mem, img, view); return; }
     if (g_vk.pending_free.count == g_vk.pending_free.capacity) {
         uint32_t cap = g_vk.pending_free.capacity ? g_vk.pending_free.capacity * 2u : 16u;
         void *n = realloc(g_vk.pending_free.items, (size_t)cap * sizeof *g_vk.pending_free.items);
         if (!n) {   /* out of memory: free now (correctness over the rare early free) */
-            if (buf) vkDestroyBuffer(g_vk.device, buf, NULL);
-            if (mem) vkFreeMemory(g_vk.device, mem, NULL);
+            destroy_free_entry(buf, mem, img, view);
             return;
         }
         g_vk.pending_free.items = n;
@@ -526,15 +679,20 @@ static void defer_or_free_buffer(VkBuffer buf, VkDeviceMemory mem) {
     }
     g_vk.pending_free.items[g_vk.pending_free.count].buf = buf;
     g_vk.pending_free.items[g_vk.pending_free.count].mem = mem;
+    g_vk.pending_free.items[g_vk.pending_free.count].img = img;
+    g_vk.pending_free.items[g_vk.pending_free.count].view = view;
     g_vk.pending_free.count++;
 }
 
-/* Destroy every deferred buffer+memory pair. Call only after a submit+fence wait. */
+static void defer_or_free_buffer(VkBuffer buf, VkDeviceMemory mem) {
+    defer_or_free(buf, mem, VK_NULL_HANDLE, VK_NULL_HANDLE);
+}
+
+/* Destroy every deferred entry. Call only after a submit+fence wait. */
 static void drain_pending_frees(void) {
-    for (uint32_t i = 0; i < g_vk.pending_free.count; i++) {
-        if (g_vk.pending_free.items[i].buf) vkDestroyBuffer(g_vk.device, g_vk.pending_free.items[i].buf, NULL);
-        if (g_vk.pending_free.items[i].mem) vkFreeMemory(g_vk.device, g_vk.pending_free.items[i].mem, NULL);
-    }
+    for (uint32_t i = 0; i < g_vk.pending_free.count; i++)
+        destroy_free_entry(g_vk.pending_free.items[i].buf, g_vk.pending_free.items[i].mem,
+                           g_vk.pending_free.items[i].img, g_vk.pending_free.items[i].view);
     g_vk.pending_free.count = 0;
 }
 
@@ -705,17 +863,23 @@ RhiResult rhi_device_create(const RhiDeviceDesc *desc) {
     VkFenceCreateInfo fci = { VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, NULL, 0 };
     if (!vk_ok(vkCreateFence(g_vk.device, &fci, NULL, &g_vk.fence), "vkCreateFence")) goto fail;
 
-    /* ---- offscreen main target: RGBA8 colour + D16 depth ----
+    /* ---- offscreen main target: RGBA8 colour + depth-stencil (GL asks for 24+8) ----
      * The colour image needs TRANSFER_DST for vkCmdClearColorImage and
      * TRANSFER_SRC for the readback copy, besides COLOR_ATTACHMENT for draws
-     * (P11e). The depth image needs TRANSFER_DST for vkCmdClearDepthStencilImage. */
+     * (P11e). The depth image needs TRANSFER_DST for vkCmdClearDepthStencilImage
+     * and TRANSFER_SRC so P11f can copy it into a RHI_FORMAT_DEPTH texture. */
     if (!make_image(VK_FORMAT_R8G8B8A8_UNORM,
                     VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
                         VK_IMAGE_USAGE_TRANSFER_DST_BIT,
                     &g_vk.color, &g_vk.color_mem)) goto fail;
     g_vk.color_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-    if (!make_image(VK_FORMAT_D16_UNORM,
-                    VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+    g_vk.depth_fmt = pick_depth_format();
+    if (g_vk.depth_fmt == VK_FORMAT_UNDEFINED) {
+        fprintf(stderr, "rhi_vk: no usable depth-stencil format (D24S8/D32S8)\n"); goto fail;
+    }
+    if (!make_image(g_vk.depth_fmt,
+                    VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                        VK_IMAGE_USAGE_TRANSFER_DST_BIT,
                     &g_vk.depth, &g_vk.depth_mem)) goto fail;
     g_vk.depth_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 
@@ -728,8 +892,8 @@ RhiResult rhi_device_create(const RhiDeviceDesc *desc) {
             { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 } };
         if (!vk_ok(vkCreateImageView(g_vk.device, &cv, NULL, &g_vk.color_view), "vkCreateImageView(color)")) goto fail;
         VkImageViewCreateInfo dv = cv;
-        dv.image = g_vk.depth; dv.format = VK_FORMAT_D16_UNORM;
-        dv.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        dv.image = g_vk.depth; dv.format = g_vk.depth_fmt;
+        dv.subresourceRange.aspectMask = VK_DS_ASPECT;
         if (!vk_ok(vkCreateImageView(g_vk.device, &dv, NULL, &g_vk.depth_view), "vkCreateImageView(depth)")) goto fail;
     }
 
@@ -792,6 +956,33 @@ RhiResult rhi_device_create(const RhiDeviceDesc *desc) {
         if (!vk_ok(vkCreateSampler(g_vk.device, &si, NULL, &g_vk.dummy_sampler), "vkCreateSampler(dummy)")) goto fail;
     }
 
+    /* ---- 1x1x6 cube dummy (opaque black) for samplerCube slots a draw leaves unbound ---- */
+    if (!make_image_ex(VK_FORMAT_R8G8B8A8_UNORM, 1, 1, 6, VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT,
+                       VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                       &g_vk.dummy_cube_img, &g_vk.dummy_cube_mem)) goto fail;
+    {
+        VkCommandBuffer cb = oneshot_begin();
+        if (!cb) goto fail;
+        img_barrier(cb, g_vk.dummy_cube_img, VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 6,
+                    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    0, VK_ACCESS_TRANSFER_WRITE_BIT,
+                    VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+        VkClearColorValue black = {{ 0.0f, 0.0f, 0.0f, 1.0f }};
+        VkImageSubresourceRange rng = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 6 };
+        vkCmdClearColorImage(cb, g_vk.dummy_cube_img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &black, 1, &rng);
+        img_barrier(cb, g_vk.dummy_cube_img, VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 6,
+                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                    VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        if (!oneshot_end(cb)) goto fail;
+        VkImageViewCreateInfo cvi = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, NULL, 0, g_vk.dummy_cube_img,
+            VK_IMAGE_VIEW_TYPE_CUBE, VK_FORMAT_R8G8B8A8_UNORM,
+            { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY,
+              VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY },
+            { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 6 } };
+        if (!vk_ok(vkCreateImageView(g_vk.device, &cvi, NULL, &g_vk.dummy_cube_view), "vkCreateImageView(cube dummy)")) goto fail;
+    }
+
     /* ---- zero-filled dummy vertex buffer for streams a draw leaves unbound ---- */
     if (!make_buffer(256, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &g_vk.dummy_vbuf, &g_vk.dummy_vbuf_mem)) goto fail;
@@ -799,6 +990,15 @@ RhiResult rhi_device_create(const RhiDeviceDesc *desc) {
         VkCommandBuffer cb = oneshot_begin();
         if (!cb) goto fail;
         vkCmdFillBuffer(cb, g_vk.dummy_vbuf, 0, 256, 0);
+        if (!oneshot_end(cb)) goto fail;
+    }
+    if (!make_buffer(16, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &g_vk.dummy_attr_buf, &g_vk.dummy_attr_mem)) goto fail;
+    {
+        static const float def[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+        VkCommandBuffer cb = oneshot_begin();
+        if (!cb) goto fail;
+        vkCmdUpdateBuffer(cb, g_vk.dummy_attr_buf, 0, sizeof def, def);
         if (!oneshot_end(cb)) goto fail;
     }
 
@@ -862,6 +1062,8 @@ void rhi_device_destroy(void) {
     /* Free every live texture (view/image/memory), then its table arrays. */
     for (uint32_t i = 0; i < g_vk.textures.count; i++) {
         RhiVkTexture *t = &g_vk.textures.slots[i];
+        for (int f = 0; f < 6; f++)
+            if (t->att_view[f]) vkDestroyImageView(g_vk.device, t->att_view[f], NULL);
         if (t->view) vkDestroyImageView(g_vk.device, t->view, NULL);
         if (t->img)  vkDestroyImage(g_vk.device, t->img, NULL);
         if (t->mem)  vkFreeMemory(g_vk.device, t->mem, NULL);
@@ -884,8 +1086,9 @@ void rhi_device_destroy(void) {
     free(g_vk.shaders.free_list);
     /* Every created VkPipeline, then its table, then the shared layouts. */
     for (uint32_t i = 0; i < g_vk.pipelines.count; i++)
-        if (g_vk.pipelines.slots[i].pipeline)
-            vkDestroyPipeline(g_vk.device, g_vk.pipelines.slots[i].pipeline, NULL);
+        for (int v = 0; v < VK_PV_COUNT; v++)
+            if (g_vk.pipelines.slots[i].variant[v])
+                vkDestroyPipeline(g_vk.device, g_vk.pipelines.slots[i].variant[v], NULL);
     free(g_vk.pipelines.slots);
     if (g_vk.pipe_layout) vkDestroyPipelineLayout(g_vk.device, g_vk.pipe_layout, NULL);
     if (g_vk.set_layout)  vkDestroyDescriptorSetLayout(g_vk.device, g_vk.set_layout, NULL);
@@ -893,6 +1096,11 @@ void rhi_device_destroy(void) {
     if (g_vk.dummy_view)    vkDestroyImageView(g_vk.device, g_vk.dummy_view, NULL);
     if (g_vk.dummy_img)     vkDestroyImage(g_vk.device, g_vk.dummy_img, NULL);
     if (g_vk.dummy_mem)     vkFreeMemory(g_vk.device, g_vk.dummy_mem, NULL);
+    if (g_vk.dummy_cube_view) vkDestroyImageView(g_vk.device, g_vk.dummy_cube_view, NULL);
+    if (g_vk.dummy_cube_img)  vkDestroyImage(g_vk.device, g_vk.dummy_cube_img, NULL);
+    if (g_vk.dummy_cube_mem)  vkFreeMemory(g_vk.device, g_vk.dummy_cube_mem, NULL);
+    if (g_vk.dummy_attr_buf) vkDestroyBuffer(g_vk.device, g_vk.dummy_attr_buf, NULL);
+    if (g_vk.dummy_attr_mem) vkFreeMemory(g_vk.device, g_vk.dummy_attr_mem, NULL);
     if (g_vk.dummy_vbuf)     vkDestroyBuffer(g_vk.device, g_vk.dummy_vbuf, NULL);
     if (g_vk.dummy_vbuf_mem) vkFreeMemory(g_vk.device, g_vk.dummy_vbuf_mem, NULL);
     if (g_vk.color_view)   vkDestroyImageView(g_vk.device, g_vk.color_view, NULL);
@@ -948,9 +1156,10 @@ RhiResult rhi_frame_begin(RhiFrameInfo *out) {
 
 RhiResult rhi_frame_end(void) {
     if (!g_vk.device || !g_vk.in_frame) return RHI_ERR_INVALID;
+    if (g_vk.pass.active) rhi_cmd_end_pass();         /* a pass does not outlive its frame */
     if (g_vk.rendering) end_rendering_if_active();   /* never submit an open render scope */
     if (!flush()) return RHI_ERR_DEVICE_LOST;   /* submit + fence wait (no present) */
-    drain_pending_frees();   /* safe now: every recorded draw has completed (Fix 2) */
+    /* flush() drained the deferred frees: every recorded draw has completed (Fix 2) */
     g_vk.in_frame = 0;
     g_vk.frame_index++;
     return RHI_OK;
@@ -963,11 +1172,15 @@ RhiResult rhi_frame_end(void) {
  * (oldLayout UNDEFINED), matching rhi_cmd_clear_main's "clears the whole target"
  * contract. The colour image is left in TRANSFER_SRC_OPTIMAL ready for readback. */
 RhiResult rhi_cmd_clear_main(const float color[4], float depth) {
-    if (!color || !g_vk.in_frame) return RHI_ERR_INVALID;
+    if (!color || !g_vk.in_frame || g_vk.pass.active) return RHI_ERR_INVALID;
     if (!ensure_recording()) return RHI_ERR_DEVICE_LOST;
     end_rendering_if_active();   /* a clear is a transfer: not inside a render scope */
+    /* rhi.h: the viewport stays until rhi_cmd_clear_main, which (like GL) resets it
+     * to the whole target. */
+    g_vk.viewport[0] = 0; g_vk.viewport[1] = 0;
+    g_vk.viewport[2] = g_vk.width; g_vk.viewport[3] = g_vk.height;
     VkImageSubresourceRange crange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
-    VkImageSubresourceRange drange = { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
+    VkImageSubresourceRange drange = { VK_DS_ASPECT, 0, 1, 0, 1 };
 
     /* Wait on any prior transfer to these images this frame (an earlier clear,
        a read_pixels or a copy_main_to_texture): source stage TRANSFER with
@@ -988,7 +1201,7 @@ RhiResult rhi_cmd_clear_main(const float color[4], float depth) {
     /* Wait on a prior clear's transfer AND any prior rendering scope's depth
      * writes (early/late fragment tests) before this clear overwrites depth
      * (P11-review Fix 3); oldLayout UNDEFINED since the clear discards contents. */
-    image_barrier(g_vk.depth, VK_IMAGE_ASPECT_DEPTH_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
+    image_barrier(g_vk.depth, VK_DS_ASPECT, VK_IMAGE_LAYOUT_UNDEFINED,
                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                   VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT |
                       VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
@@ -996,7 +1209,7 @@ RhiResult rhi_cmd_clear_main(const float color[4], float depth) {
                   VK_PIPELINE_STAGE_TRANSFER_BIT |
                       VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
                   VK_PIPELINE_STAGE_TRANSFER_BIT);
-    VkClearDepthStencilValue cd = { depth, 0 };
+    VkClearDepthStencilValue cd = { depth, 0 };   /* stencil clears to 0 like GL's clear_main */
     vkCmdClearDepthStencilImage(g_vk.cmd, g_vk.depth, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &cd, 1, &drange);
     g_vk.depth_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;   /* left for ensure_rendering */
     return RHI_OK;
@@ -1015,7 +1228,7 @@ RhiResult rhi_cmd_clear_main(const float color[4], float depth) {
 RhiResult rhi_read_pixels(int32_t x, int32_t y, int32_t w, int32_t h,
                           RhiReadFormat format, void *dst, size_t stride) {
     size_t bpp = format == RHI_READ_RGB8 ? 3 : format == RHI_READ_RGBA8 ? 4 : 0;
-    if (!g_vk.in_frame || !dst || !bpp || w <= 0 || h <= 0 || x < 0 || y < 0 ||
+    if (!g_vk.in_frame || g_vk.pass.active || !dst || !bpp || w <= 0 || h <= 0 || x < 0 || y < 0 ||
         w > g_vk.width - x || h > g_vk.height - y) return RHI_ERR_INVALID;
     size_t limit = (size_t)PTRDIFF_MAX;
     if ((size_t)w > limit / 4 / (size_t)h) return RHI_ERR_INVALID;
@@ -1314,6 +1527,45 @@ static int oneshot_end(VkCommandBuffer cb) {
     return ok;
 }
 
+/* Mark `t` as referenced by the frame being recorded (not yet submitted). */
+static void texture_touch(RhiVkTexture *t) {
+    t->touched = g_vk.submits + 1u;
+}
+
+/* The immediate-mode contract (GL) says a CPU-side change to a texture happens
+ * AFTER the draws already issued. Draws are only recorded here, so if the
+ * unsubmitted frame references `t`, submit it first (a mid-frame split). */
+static int texture_sync_for_write(const RhiVkTexture *t) {
+    if (g_vk.in_frame && g_vk.recording && t->touched == g_vk.submits + 1u) return frame_split();
+    return 1;
+}
+
+/* One-shot zero clear of every level/layer, then SHADER_READ_ONLY, so a render
+ * target (or depth copy destination) is defined before its first render. */
+static int texture_init_clear(RhiVkTexture *t) {
+    VkCommandBuffer cb = oneshot_begin();
+    if (!cb) return 0;
+    img_barrier(cb, t->img, t->bar_aspect, 0, t->mip_levels, 0, t->layers,
+                VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                0, VK_ACCESS_TRANSFER_WRITE_BIT,
+                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+    VkImageSubresourceRange rng = { t->bar_aspect, 0, t->mip_levels, 0, t->layers };
+    if (t->aspect == VK_IMAGE_ASPECT_COLOR_BIT) {
+        VkClearColorValue zero = {{ 0.0f, 0.0f, 0.0f, 0.0f }};
+        vkCmdClearColorImage(cb, t->img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &zero, 1, &rng);
+    } else {
+        VkClearDepthStencilValue zero = { 0.0f, 0 };
+        vkCmdClearDepthStencilImage(cb, t->img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &zero, 1, &rng);
+    }
+    img_barrier(cb, t->img, t->bar_aspect, 0, t->mip_levels, 0, t->layers,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+    if (!oneshot_end(cb)) return 0;
+    t->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    return 1;
+}
+
 static VkFormat texture_vkformat(RhiFormat f) {
     switch (f) {
     case RHI_FORMAT_RGB8:
@@ -1321,8 +1573,8 @@ static VkFormat texture_vkformat(RhiFormat f) {
     case RHI_FORMAT_BC1:   return VK_FORMAT_BC1_RGBA_UNORM_BLOCK;
     case RHI_FORMAT_BC2:   return VK_FORMAT_BC2_UNORM_BLOCK;
     case RHI_FORMAT_BC3:   return VK_FORMAT_BC3_UNORM_BLOCK;
-    case RHI_FORMAT_D16:
-    case RHI_FORMAT_DEPTH: return VK_FORMAT_D16_UNORM;        /* main depth precision */
+    case RHI_FORMAT_D16:   return VK_FORMAT_D16_UNORM;
+    case RHI_FORMAT_DEPTH: return g_vk.depth_fmt;             /* the main target's precision */
     default:               return VK_FORMAT_UNDEFINED;
     }
 }
@@ -1363,6 +1615,69 @@ static uint32_t texture_slot_alloc(void) {
     return ++g_vk.textures.count;
 }
 
+/* Create the image + memory + default view for `t` (format/usage/layers already
+ * set) at w x h with `levels` mips. All three out values or none (partial objects
+ * are cleaned up). */
+static int texture_make_storage(const RhiVkTexture *t, int32_t w, int32_t h, uint32_t levels,
+                                VkImage *img, VkDeviceMemory *mem, VkImageView *view) {
+    *img = VK_NULL_HANDLE; *mem = VK_NULL_HANDLE; *view = VK_NULL_HANDLE;
+    int cube = t->layers == 6;
+    VkImageCreateInfo ici = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, NULL,
+        cube ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0u,
+        VK_IMAGE_TYPE_2D, t->vkfmt, { (uint32_t)w, (uint32_t)h, 1 }, levels, t->layers,
+        VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, t->vku, VK_SHARING_MODE_EXCLUSIVE, 0, NULL,
+        VK_IMAGE_LAYOUT_UNDEFINED };
+    if (!vk_ok(vkCreateImage(g_vk.device, &ici, NULL, img), "vkCreateImage(texture)")) goto fail;
+    VkMemoryRequirements mr; vkGetImageMemoryRequirements(g_vk.device, *img, &mr);
+    uint32_t mt = find_mem(mr.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    if (mt == UINT32_MAX) { fprintf(stderr, "rhi_vk: no device-local memory type\n"); goto fail; }
+    VkMemoryAllocateInfo ai = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, NULL, mr.size, mt };
+    if (!vk_ok(vkAllocateMemory(g_vk.device, &ai, NULL, mem), "vkAllocateMemory(texture)")) goto fail;
+    if (!vk_ok(vkBindImageMemory(g_vk.device, *img, *mem, 0), "vkBindImageMemory(texture)")) goto fail;
+    /* A view needs a view-compatible usage (sampled / attachment). A transfer-
+     * only COPY_DST texture has none, so it gets no view (nor is it ever sampled). */
+    if (t->usage & (RHI_TEXTURE_SAMPLED | RHI_TEXTURE_COLOR_TARGET | RHI_TEXTURE_DEPTH_TARGET)) {
+        VkImageViewCreateInfo vci = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, NULL, 0, *img,
+            cube ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D, t->vkfmt,
+            { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY,
+              VK_COMPONENT_SWIZZLE_IDENTITY }, { t->aspect, 0, levels, 0, t->layers } };
+        if (!vk_ok(vkCreateImageView(g_vk.device, &vci, NULL, view), "vkCreateImageView(texture)")) goto fail;
+    }
+    return 1;
+fail:
+    if (*view) vkDestroyImageView(g_vk.device, *view, NULL);
+    if (*img)  vkDestroyImage(g_vk.device, *img, NULL);
+    if (*mem)  vkFreeMemory(g_vk.device, *mem, NULL);
+    *img = VK_NULL_HANDLE; *mem = VK_NULL_HANDLE; *view = VK_NULL_HANDLE;
+    return 0;
+}
+
+/* Single-level, single-layer 2D view of `face` for use as a pass attachment
+ * (the default view covers every mip / the cube). Made lazily. */
+static VkImageView texture_att_view(RhiVkTexture *t, int face) {
+    if (face < 0 || face >= 6 || (uint32_t)face >= t->layers) return VK_NULL_HANDLE;
+    if (!t->att_view[face]) {
+        VkImageViewCreateInfo vci = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, NULL, 0, t->img,
+            VK_IMAGE_VIEW_TYPE_2D, t->vkfmt,
+            { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY,
+              VK_COMPONENT_SWIZZLE_IDENTITY }, { t->aspect, 0, 1, (uint32_t)face, 1 } };
+        if (!vk_ok(vkCreateImageView(g_vk.device, &vci, NULL, &t->att_view[face]), "vkCreateImageView(attachment)"))
+            t->att_view[face] = VK_NULL_HANDLE;
+    }
+    return t->att_view[face];
+}
+
+/* Hand the texture's image, memory and views to the deferred-free list (the
+ * unsubmitted frame may still reference them). Clears the slot's fields. */
+static void texture_release_storage(RhiVkTexture *t) {
+    for (int i = 0; i < 6; i++) {
+        if (t->att_view[i]) defer_or_free(VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, t->att_view[i]);
+        t->att_view[i] = VK_NULL_HANDLE;
+    }
+    defer_or_free(VK_NULL_HANDLE, t->mem, t->img, t->view);
+    t->view = VK_NULL_HANDLE; t->img = VK_NULL_HANDLE; t->mem = VK_NULL_HANDLE;
+}
+
 RhiTexture rhi_texture_create(const RhiTextureDesc *desc) {
     RhiTexture out = {0};
     int depth16 = desc && desc->format == RHI_FORMAT_D16;
@@ -1397,13 +1712,19 @@ RhiTexture rhi_texture_create(const RhiTextureDesc *desc) {
     /* Colour textures are uploadable and blittable (mips) and readable by the
      * test path, so they always carry both transfer bits. */
     if (!is_depth) vku |= VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    /* Main-precision depth copies are readable by the test path too. */
+    if (desc->format == RHI_FORMAT_DEPTH) vku |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 
     uint32_t slot = texture_slot_alloc();
     if (!slot) { fprintf(stderr, "rhi: texture_create: out of handles\n"); return out; }
     RhiVkTexture *t = &g_vk.textures.slots[slot - 1];
     t->img = VK_NULL_HANDLE; t->mem = VK_NULL_HANDLE; t->view = VK_NULL_HANDLE;
+    memset(t->att_view, 0, sizeof t->att_view);
+    t->touched = 0;
+    t->vku = vku;
     t->vkfmt = vkfmt;
     t->aspect = is_depth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+    t->bar_aspect = desc->format == RHI_FORMAT_DEPTH ? VK_DS_ASPECT : t->aspect;   /* D24S8 has stencil too */
     t->layout = VK_IMAGE_LAYOUT_UNDEFINED;
     t->format = desc->format;
     t->usage = desc->usage;
@@ -1414,32 +1735,18 @@ RhiTexture rhi_texture_create(const RhiTextureDesc *desc) {
     t->live = 1;
     out.id = ((uint32_t)t->generation << VK_SLOT_BITS) | slot;
 
-    VkImageCreateInfo ici = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, NULL,
-        desc->type == RHI_TEXTURE_CUBE ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0u,
-        VK_IMAGE_TYPE_2D, vkfmt, { (uint32_t)desc->width, (uint32_t)desc->height, 1 }, levels, layers,
-        VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, vku, VK_SHARING_MODE_EXCLUSIVE, 0, NULL,
-        VK_IMAGE_LAYOUT_UNDEFINED };
-    if (!vk_ok(vkCreateImage(g_vk.device, &ici, NULL, &t->img), "vkCreateImage(texture)")) goto fail;
-    VkMemoryRequirements mr; vkGetImageMemoryRequirements(g_vk.device, t->img, &mr);
-    uint32_t mt = find_mem(mr.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    if (mt == UINT32_MAX) { fprintf(stderr, "rhi_vk: no device-local memory type\n"); goto fail; }
-    VkMemoryAllocateInfo ai = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, NULL, mr.size, mt };
-    if (!vk_ok(vkAllocateMemory(g_vk.device, &ai, NULL, &t->mem), "vkAllocateMemory(texture)")) goto fail;
-    if (!vk_ok(vkBindImageMemory(g_vk.device, t->img, t->mem, 0), "vkBindImageMemory(texture)")) goto fail;
-
-    /* A view needs a view-compatible usage (sampled / attachment). A transfer-
-     * only COPY_DST texture has none, so it gets no view (nor is it ever sampled). */
-    if (desc->usage & (RHI_TEXTURE_SAMPLED | RHI_TEXTURE_COLOR_TARGET | RHI_TEXTURE_DEPTH_TARGET)) {
-        VkImageViewCreateInfo vci = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, NULL, 0, t->img,
-            desc->type == RHI_TEXTURE_CUBE ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D, vkfmt,
-            { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY,
-              VK_COMPONENT_SWIZZLE_IDENTITY }, { t->aspect, 0, levels, 0, layers } };
-        if (!vk_ok(vkCreateImageView(g_vk.device, &vci, NULL, &t->view), "vkCreateImageView(texture)")) goto fail;
-    }
+    if (!texture_make_storage(t, desc->width, desc->height, levels, &t->img, &t->mem, &t->view)) goto fail;
 
     /* A fresh texture starts with the documented default sampler. */
     t->sampler = rhi_sampler_create(&k_default_sampler);
     if (!t->sampler.id) goto fail;
+
+    /* Render targets and depth-copy destinations start defined (zero) in
+     * SHADER_READ_ONLY, so sampling one before it is first rendered/copied is valid. */
+    if (((desc->usage & RHI_TEXTURE_SAMPLED) && (desc->usage & RHI_TEXTURE_COLOR_TARGET)) ||
+        desc->format == RHI_FORMAT_DEPTH) {
+        if (!texture_init_clear(t)) goto fail;
+    }
     return out;
 
 fail:
@@ -1468,6 +1775,9 @@ RhiResult rhi_texture_upload(RhiTexture tex, int32_t face, int32_t level, const 
         uint32_t blocks = (uint32_t)((w + 3) / 4) * (uint32_t)((h + 3) / 4);
         if (size < (size_t)blocks * format_block_bytes(t->format)) return RHI_ERR_INVALID;
     }
+
+    /* Draws already issued this frame must see the OLD contents (GL semantics). */
+    if (!texture_sync_for_write(t)) return RHI_ERR_DEVICE_LOST;
 
     /* Build the staging contents: BC blocks verbatim, RGBA8 verbatim, RGB8
      * expanded to RGBA8 with A = 255. */
@@ -1524,6 +1834,7 @@ RhiResult rhi_texture_generate_mips(RhiTexture tex) {
     if (!t || t->layers != 1 || (t->format != RHI_FORMAT_RGB8 && t->format != RHI_FORMAT_RGBA8))
         return RHI_ERR_INVALID;
     if (t->mip_levels < 2) return RHI_OK;   /* nothing to generate */
+    if (!texture_sync_for_write(t)) return RHI_ERR_DEVICE_LOST;
     VkCommandBuffer cb = oneshot_begin();
     if (!cb) return RHI_ERR_DEVICE_LOST;
     /* Level 0 -> TRANSFER_SRC, then blit each level from the one above with a
@@ -1566,10 +1877,11 @@ RhiResult rhi_texture_generate_mips(RhiTexture tex) {
 void rhi_texture_destroy(RhiTexture tex) {
     RhiVkTexture *t = texture_lookup(tex, "texture_destroy");
     if (!t) return;
-    if (t->view) vkDestroyImageView(g_vk.device, t->view, NULL);
-    if (t->img)  vkDestroyImage(g_vk.device, t->img, NULL);
-    if (t->mem)  vkFreeMemory(g_vk.device, t->mem, NULL);
-    t->view = VK_NULL_HANDLE; t->img = VK_NULL_HANDLE; t->mem = VK_NULL_HANDLE; t->live = 0;
+    /* Destroying an attachment of the open pass ends the pass first. */
+    if (g_vk.pass.active && (tex.id == g_vk.pass.color.id || tex.id == g_vk.pass.depth.id)) rhi_cmd_end_pass();
+    /* The unsubmitted frame may still sample it: defer the free past the next submit. */
+    texture_release_storage(t);
+    t->live = 0;
     /* Retire the slot before its generation wraps and revives stale handles. */
     if (t->generation == UINT8_MAX) return;
     t->generation++;
@@ -1588,17 +1900,20 @@ uint32_t rhi_texture_native_id(RhiTexture tex) {
 
 /* Test-only (not in rhi.h): read one uncompressed-colour mip level/face back
  * into `dst` as tightly packed RGBA8 (R at byte 0), via an image->host-buffer
- * copy like rhi_read_pixels. The smoke declares it extern to verify uploaded
+ * copy like rhi_read_pixels. An RHI_FORMAT_DEPTH texture reads back as w*h
+ * float32 depth values (0..1) instead. The smoke declares it extern to verify uploaded
  * pixels, since rhi.h exposes no texture readback. 1 ok, 0 on failure. */
 int rhi_vk_texture_readback(RhiTexture tex, int32_t face, int32_t level, void *dst) {
     RhiVkTexture *t = texture_lookup(tex, "texture_readback");
     int faces = t && t->layers == 6 ? 6 : 1;
-    if (!t || !dst || format_compressed(t->format) || t->aspect != VK_IMAGE_ASPECT_COLOR_BIT ||
+    int depth = t && t->format == RHI_FORMAT_DEPTH;   /* readable depth: the main-precision copy */
+    if (!t || !dst || format_compressed(t->format) || (t->aspect != VK_IMAGE_ASPECT_COLOR_BIT && !depth) ||
         face < 0 || face >= faces || level < 0 || (uint32_t)level >= t->mip_levels) return 0;
     int32_t w = t->width >> level, h = t->height >> level;
     if (w < 1) w = 1;
     if (h < 1) h = 1;
     VkDeviceSize size = (VkDeviceSize)w * h * 4;
+    if (!texture_sync_for_write(t)) return 0;   /* see what the frame drew into it so far */
     VkBuffer staging; VkDeviceMemory smem;
     if (!make_buffer(size, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
@@ -1606,14 +1921,14 @@ int rhi_vk_texture_readback(RhiTexture tex, int32_t face, int32_t level, void *d
     VkCommandBuffer cb = oneshot_begin();
     int ok = cb != VK_NULL_HANDLE;
     if (ok) {
-        img_barrier(cb, t->img, VK_IMAGE_ASPECT_COLOR_BIT, (uint32_t)level, 1, (uint32_t)face, 1,
+        img_barrier(cb, t->img, t->bar_aspect, (uint32_t)level, 1, (uint32_t)face, 1,
                     t->layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 0, VK_ACCESS_TRANSFER_READ_BIT,
                     VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
-        VkBufferImageCopy reg = { 0, 0, 0, { VK_IMAGE_ASPECT_COLOR_BIT, (uint32_t)level, (uint32_t)face, 1 },
+        VkBufferImageCopy reg = { 0, 0, 0, { t->aspect, (uint32_t)level, (uint32_t)face, 1 },
             { 0, 0, 0 }, { (uint32_t)w, (uint32_t)h, 1 } };
         vkCmdCopyImageToBuffer(cb, t->img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, staging, 1, &reg);
         /* Restore the subresource to the tracked whole-image layout. */
-        img_barrier(cb, t->img, VK_IMAGE_ASPECT_COLOR_BIT, (uint32_t)level, 1, (uint32_t)face, 1,
+        img_barrier(cb, t->img, t->bar_aspect, (uint32_t)level, 1, (uint32_t)face, 1,
                     VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, t->layout, VK_ACCESS_TRANSFER_READ_BIT, 0,
                     VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
         ok = oneshot_end(cb);
@@ -1621,7 +1936,16 @@ int rhi_vk_texture_readback(RhiTexture tex, int32_t face, int32_t level, void *d
     if (ok) {
         void *map = NULL;
         ok = vk_ok(vkMapMemory(g_vk.device, smem, 0, VK_WHOLE_SIZE, 0, &map), "vkMapMemory(tex readback)");
-        if (ok) { memcpy(dst, map, (size_t)size); vkUnmapMemory(g_vk.device, smem); }
+        if (ok) {
+            if (depth) {   /* D24: low 24 bits of each 32-bit word; D32: float */
+                const uint32_t *src = (const uint32_t *)map; float *o = (float *)dst;
+                for (int32_t i = 0; i < w * h; i++) {
+                    if (g_vk.depth_fmt == VK_FORMAT_D24_UNORM_S8_UINT) o[i] = (float)(src[i] & 0xFFFFFFu) / 16777215.0f;
+                    else memcpy(&o[i], &src[i], sizeof o[i]);
+                }
+            } else memcpy(dst, map, (size_t)size);
+            vkUnmapMemory(g_vk.device, smem);
+        }
     }
     vkDestroyBuffer(g_vk.device, staging, NULL);
     vkFreeMemory(g_vk.device, smem, NULL);
@@ -1766,7 +2090,22 @@ static const uint32_t *vk_shader_spirv(const char *label, int frag, size_t *byte
         if (frag) { *bytes = sizeof vk_frontend_frag; return vk_frontend_frag; }
         *bytes = sizeof vk_frontend_vert; return vk_frontend_vert;
     }
-    return NULL;   /* TODO P11e: ug2, headlight shadow, world_debug, hud */
+    if (label && !strcmp(label, "ug2")) {
+        if (frag) { *bytes = sizeof vk_ug2_frag; return vk_ug2_frag; }
+        *bytes = sizeof vk_ug2_vert; return vk_ug2_vert;
+    }
+    if (label && !strcmp(label, "headlight shadow")) {
+        if (frag) { *bytes = sizeof vk_headlight_shadow_frag; return vk_headlight_shadow_frag; }
+        *bytes = sizeof vk_headlight_shadow_vert; return vk_headlight_shadow_vert;
+    }
+    return NULL;   /* TODO: world_debug, hud */
+}
+
+/* Per-label samplerCube slots (bit n = texture slot n, binding n + 1). In ug2
+ * slot 5 is uEnvCube (binding 6); every other slot is a sampler2D. */
+static uint32_t vk_shader_cube_mask(const char *label) {
+    if (label && !strcmp(label, "ug2")) return 1u << 5;
+    return 0u;
 }
 
 static RhiVkShader *shader_find(RhiShader sh) {
@@ -1857,6 +2196,9 @@ RhiShader rhi_shader_create(const RhiShaderDesc *desc) {
     s->frag = make_module(fspv, fb);
     if (!s->vert || !s->frag) goto fail;
     s->block_count = desc->param_block_count;
+    s->cube_mask = vk_shader_cube_mask(desc->label);
+    s->attrib_count = desc->attribute_count < RHI_MAX_VERTEX_ATTRIBS ? desc->attribute_count
+                                                                      : RHI_MAX_VERTEX_ATTRIBS;
     for (uint32_t i = 0; i < s->block_count; i++) {
         const RhiParamLayout *l = desc->param_blocks[i];
         RhiVkParamBlock *pb = &s->blocks[i];
@@ -1973,6 +2315,136 @@ static VkBlendFactor vk_blend(RhiBlendFactor f) {
     return t[f];
 }
 
+/* Build one VkPipeline of `desc` for a render-target variant (VK_PV_*). */
+static VkPipeline build_pipeline(const RhiPipelineDesc *desc, int variant) {
+    /* ---- vertex input: one binding per stream an attribute references ---- */
+    VkVertexInputBindingDescription vbind[RHI_MAX_VERTEX_STREAMS + 1];
+    uint32_t stride[RHI_MAX_VERTEX_STREAMS] = {0};
+    uint8_t  used_stream[RHI_MAX_VERTEX_STREAMS] = {0};
+    VkVertexInputAttributeDescription vattr[2 * RHI_MAX_VERTEX_ATTRIBS];
+    /* The layout may name attributes the shader does not declare (GL ignores them,
+     * Vulkan validation warns): only attributes below the shader's attribute_count
+     * are passed on. */
+    const RhiVkShader *shv = shader_find(desc->shader);
+    uint32_t shader_attribs = shv ? shv->attrib_count : 0, n_attr = 0;
+    for (uint32_t i = 0; i < desc->vertex.attrib_count; i++) {
+        const RhiVertexAttrib *a = &desc->vertex.attribs[i];
+        if (a->location >= shader_attribs) continue;
+        uint32_t s = a->stream, bytes = vertex_format_bytes(a->format);
+        used_stream[s] = 1;
+        uint32_t end = a->offset + bytes;   /* packed stride if stride[] is 0 */
+        if (desc->vertex.stride[s]) stride[s] = desc->vertex.stride[s];
+        else if (end > stride[s])   stride[s] = end;
+        vattr[n_attr].location = a->location;
+        vattr[n_attr].binding  = s;
+        vattr[n_attr].format   = vk_vertex_format(a->format);
+        vattr[n_attr].offset   = a->offset;
+        n_attr++;
+    }
+    uint32_t n_bind = 0;
+    for (uint32_t s = 0; s < RHI_MAX_VERTEX_STREAMS; s++)
+        if (used_stream[s]) {
+            vbind[n_bind].binding   = s;
+            vbind[n_bind].stride    = stride[s];
+            vbind[n_bind].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+            n_bind++;
+        }
+    /* Locations the shader declares (0..attribute_count-1) but the layout does not
+     * name read the GL default (0,0,0,1) from a stride-0 dummy binding. */
+    uint32_t named = 0;
+    for (uint32_t i = 0; i < n_attr; i++) named |= 1u << vattr[i].location;
+    {
+        const RhiVkShader *sh0 = shader_find(desc->shader);
+        uint32_t want = sh0 ? sh0->attrib_count : 0, extra = 0;
+        for (uint32_t loc = 0; loc < want; loc++) {
+            if (named & (1u << loc)) continue;
+            vattr[n_attr++] = (VkVertexInputAttributeDescription){ loc, RHI_MAX_VERTEX_STREAMS,
+                VK_FORMAT_R32G32B32A32_SFLOAT, 0 };
+            extra = 1;
+        }
+        if (extra) vbind[n_bind++] = (VkVertexInputBindingDescription){ RHI_MAX_VERTEX_STREAMS, 0,
+            VK_VERTEX_INPUT_RATE_VERTEX };
+    }
+    VkPipelineVertexInputStateCreateInfo vis = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+        NULL, 0, n_bind, vbind, n_attr, vattr };
+
+    VkPipelineInputAssemblyStateCreateInfo ias = { VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+        NULL, 0, desc->primitive == RHI_PRIMITIVE_LINES ? VK_PRIMITIVE_TOPOLOGY_LINE_LIST
+                                                        : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, VK_FALSE };
+
+    VkPipelineViewportStateCreateInfo vps = { VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+        NULL, 0, 1, NULL, 1, NULL };   /* dynamic viewport + scissor */
+
+    /* lineWidth must be 1.0 unless the wideLines feature is on (validation checks
+     * this for any topology); enabled in device_create when the device supports it. */
+    float lw = desc->line_width > 0 ? desc->line_width : 1.0f;
+    if (!g_vk.wide_lines) lw = 1.0f;
+    VkPipelineRasterizationStateCreateInfo rs = { VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+        NULL, 0, VK_FALSE, VK_FALSE, VK_POLYGON_MODE_FILL,
+        desc->cull == RHI_CULL_BACK ? VK_CULL_MODE_BACK_BIT
+            : desc->cull == RHI_CULL_FRONT ? VK_CULL_MODE_FRONT_BIT : VK_CULL_MODE_NONE,
+        /* GL front faces are CCW in NDC (y up). Vulkan evaluates winding in
+         * framebuffer space (y down), and the positive-height viewport still maps
+         * NDC +y to the image bottom, i.e. it reflects y: a GL-CCW triangle is CW
+         * here, so GL's front face is VK_FRONT_FACE_CLOCKWISE (P11f-3). */
+        VK_FRONT_FACE_CLOCKWISE, VK_FALSE, 0.0f, 0.0f, 0.0f, lw };
+
+    VkPipelineMultisampleStateCreateInfo ms = { VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+        NULL, 0, VK_SAMPLE_COUNT_1_BIT, VK_FALSE, 1.0f, NULL, VK_FALSE, VK_FALSE };
+
+    VkStencilOpState sop = { vk_stencil_op(desc->stencil_fail), vk_stencil_op(desc->stencil_pass),
+        vk_stencil_op(desc->stencil_depth_fail), vk_compare(desc->stencil_compare),
+        desc->stencil_read_mask, desc->stencil_write_mask, desc->stencil_ref };
+    VkPipelineDepthStencilStateCreateInfo dss = { VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+        NULL, 0, desc->depth_test ? VK_TRUE : VK_FALSE, desc->depth_write ? VK_TRUE : VK_FALSE,
+        vk_compare(desc->depth_compare), VK_FALSE, desc->stencil_test ? VK_TRUE : VK_FALSE,
+        sop, sop, 0.0f, 1.0f };
+
+    VkColorComponentFlags mask =
+        ((desc->color_write & 1) ? VK_COLOR_COMPONENT_R_BIT : 0) |
+        ((desc->color_write & 2) ? VK_COLOR_COMPONENT_G_BIT : 0) |
+        ((desc->color_write & 4) ? VK_COLOR_COMPONENT_B_BIT : 0) |
+        ((desc->color_write & 8) ? VK_COLOR_COMPONENT_A_BIT : 0);
+    VkPipelineColorBlendAttachmentState cba = { desc->blend ? VK_TRUE : VK_FALSE,
+        vk_blend(desc->src_rgb), vk_blend(desc->dst_rgb), VK_BLEND_OP_ADD,
+        vk_blend(desc->src_alpha), vk_blend(desc->dst_alpha), VK_BLEND_OP_ADD, mask };
+    VkPipelineColorBlendStateCreateInfo cbs = { VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+        NULL, 0, VK_FALSE, VK_LOGIC_OP_COPY, 1, &cba, { 0, 0, 0, 0 } };
+
+    VkDynamicState dyn_states[2] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+    VkPipelineDynamicStateCreateInfo dyns = { VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+        NULL, 0, 2, dyn_states };
+
+    RhiVkShader *sh = shader_find(desc->shader);
+    if (!sh) return VK_NULL_HANDLE;
+    VkPipelineShaderStageCreateInfo stages[2] = {
+        { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0, VK_SHADER_STAGE_VERTEX_BIT,
+          sh->vert, "main", NULL },
+        { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0, VK_SHADER_STAGE_FRAGMENT_BIT,
+          sh->frag, "main", NULL } };
+
+    /* Attachment formats of the target this variant draws into. MAIN has the
+     * combined depth-stencil image (depth AND stencil format); the offscreen
+     * pass variants have D16 depth without stencil, or no depth at all. */
+    VkFormat color_fmt = VK_FORMAT_R8G8B8A8_UNORM;
+    VkFormat depth_f = variant == VK_PV_MAIN ? g_vk.depth_fmt
+                     : variant == VK_PV_PASS_D16 ? VK_FORMAT_D16_UNORM : VK_FORMAT_UNDEFINED;
+    VkFormat stencil_f = variant == VK_PV_MAIN ? g_vk.depth_fmt : VK_FORMAT_UNDEFINED;
+    VkPipelineRenderingCreateInfo prc = { VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO, NULL,
+        0, 1, &color_fmt, depth_f, stencil_f };
+    VkGraphicsPipelineCreateInfo gpci = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO, &prc, 0,
+        2, stages, &vis, &ias, NULL, &vps, &rs, &ms, &dss, &cbs, &dyns, g_vk.pipe_layout,
+        VK_NULL_HANDLE, 0, VK_NULL_HANDLE, -1 };
+
+    VkPipeline pipe = VK_NULL_HANDLE;
+    if (!vk_ok(vkCreateGraphicsPipelines(g_vk.device, VK_NULL_HANDLE, 1, &gpci, NULL, &pipe),
+               "vkCreateGraphicsPipelines")) {
+        fprintf(stderr, "rhi: pipeline_create: GPU pipeline creation failed\n");
+        return VK_NULL_HANDLE;
+    }
+    return pipe;
+}
+
 RhiPipeline rhi_pipeline_create(const RhiPipelineDesc *desc) {
     RhiPipeline out = {0};
     /* Same validation and messages as the GL backend. */
@@ -2003,99 +2475,8 @@ RhiPipeline rhi_pipeline_create(const RhiPipelineDesc *desc) {
     for (uint32_t i = 0; i < g_vk.pipelines.count; i++)
         if (pipeline_desc_equal(&g_vk.pipelines.slots[i].desc, desc)) { out.id = i + 1; return out; }
 
-    /* ---- vertex input: one binding per stream an attribute references ---- */
-    VkVertexInputBindingDescription vbind[RHI_MAX_VERTEX_STREAMS];
-    uint32_t stride[RHI_MAX_VERTEX_STREAMS] = {0};
-    uint8_t  used_stream[RHI_MAX_VERTEX_STREAMS] = {0};
-    VkVertexInputAttributeDescription vattr[RHI_MAX_VERTEX_ATTRIBS];
-    for (uint32_t i = 0; i < desc->vertex.attrib_count; i++) {
-        const RhiVertexAttrib *a = &desc->vertex.attribs[i];
-        uint32_t s = a->stream, bytes = vertex_format_bytes(a->format);
-        used_stream[s] = 1;
-        uint32_t end = a->offset + bytes;   /* packed stride if stride[] is 0 */
-        if (desc->vertex.stride[s]) stride[s] = desc->vertex.stride[s];
-        else if (end > stride[s])   stride[s] = end;
-        vattr[i].location = a->location;
-        vattr[i].binding  = s;
-        vattr[i].format   = vk_vertex_format(a->format);
-        vattr[i].offset   = a->offset;
-    }
-    uint32_t n_bind = 0;
-    for (uint32_t s = 0; s < RHI_MAX_VERTEX_STREAMS; s++)
-        if (used_stream[s]) {
-            vbind[n_bind].binding   = s;
-            vbind[n_bind].stride    = stride[s];
-            vbind[n_bind].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-            n_bind++;
-        }
-    VkPipelineVertexInputStateCreateInfo vis = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-        NULL, 0, n_bind, vbind, desc->vertex.attrib_count, vattr };
-
-    VkPipelineInputAssemblyStateCreateInfo ias = { VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-        NULL, 0, desc->primitive == RHI_PRIMITIVE_LINES ? VK_PRIMITIVE_TOPOLOGY_LINE_LIST
-                                                        : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, VK_FALSE };
-
-    VkPipelineViewportStateCreateInfo vps = { VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-        NULL, 0, 1, NULL, 1, NULL };   /* dynamic viewport + scissor */
-
-    /* lineWidth must be 1.0 unless the wideLines feature is on (validation checks
-     * this for any topology); enabled in device_create when the device supports it. */
-    float lw = desc->line_width > 0 ? desc->line_width : 1.0f;
-    if (!g_vk.wide_lines) lw = 1.0f;
-    VkPipelineRasterizationStateCreateInfo rs = { VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-        NULL, 0, VK_FALSE, VK_FALSE, VK_POLYGON_MODE_FILL,
-        desc->cull == RHI_CULL_BACK ? VK_CULL_MODE_BACK_BIT
-            : desc->cull == RHI_CULL_FRONT ? VK_CULL_MODE_FRONT_BIT : VK_CULL_MODE_NONE,
-        /* GL front faces are CCW in NDC. The positive-height viewport preserves
-         * winding (no y reflection NDC->framebuffer), so GL-CCW stays CCW here. */
-        VK_FRONT_FACE_COUNTER_CLOCKWISE, VK_FALSE, 0.0f, 0.0f, 0.0f, lw };
-
-    VkPipelineMultisampleStateCreateInfo ms = { VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-        NULL, 0, VK_SAMPLE_COUNT_1_BIT, VK_FALSE, 1.0f, NULL, VK_FALSE, VK_FALSE };
-
-    VkStencilOpState sop = { vk_stencil_op(desc->stencil_fail), vk_stencil_op(desc->stencil_pass),
-        vk_stencil_op(desc->stencil_depth_fail), vk_compare(desc->stencil_compare),
-        desc->stencil_read_mask, desc->stencil_write_mask, desc->stencil_ref };
-    VkPipelineDepthStencilStateCreateInfo dss = { VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-        NULL, 0, desc->depth_test ? VK_TRUE : VK_FALSE, desc->depth_write ? VK_TRUE : VK_FALSE,
-        vk_compare(desc->depth_compare), VK_FALSE, desc->stencil_test ? VK_TRUE : VK_FALSE,
-        sop, sop, 0.0f, 1.0f };
-
-    VkColorComponentFlags mask =
-        ((desc->color_write & 1) ? VK_COLOR_COMPONENT_R_BIT : 0) |
-        ((desc->color_write & 2) ? VK_COLOR_COMPONENT_G_BIT : 0) |
-        ((desc->color_write & 4) ? VK_COLOR_COMPONENT_B_BIT : 0) |
-        ((desc->color_write & 8) ? VK_COLOR_COMPONENT_A_BIT : 0);
-    VkPipelineColorBlendAttachmentState cba = { desc->blend ? VK_TRUE : VK_FALSE,
-        vk_blend(desc->src_rgb), vk_blend(desc->dst_rgb), VK_BLEND_OP_ADD,
-        vk_blend(desc->src_alpha), vk_blend(desc->dst_alpha), VK_BLEND_OP_ADD, mask };
-    VkPipelineColorBlendStateCreateInfo cbs = { VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-        NULL, 0, VK_FALSE, VK_LOGIC_OP_COPY, 1, &cba, { 0, 0, 0, 0 } };
-
-    VkDynamicState dyn_states[2] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
-    VkPipelineDynamicStateCreateInfo dyns = { VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-        NULL, 0, 2, dyn_states };
-
-    RhiVkShader *sh = shader_find(desc->shader);
-    VkPipelineShaderStageCreateInfo stages[2] = {
-        { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0, VK_SHADER_STAGE_VERTEX_BIT,
-          sh->vert, "main", NULL },
-        { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0, VK_SHADER_STAGE_FRAGMENT_BIT,
-          sh->frag, "main", NULL } };
-
-    VkFormat color_fmt = VK_FORMAT_R8G8B8A8_UNORM;
-    VkPipelineRenderingCreateInfo prc = { VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO, NULL,
-        0, 1, &color_fmt, VK_FORMAT_D16_UNORM, VK_FORMAT_UNDEFINED };
-    VkGraphicsPipelineCreateInfo gpci = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO, &prc, 0,
-        2, stages, &vis, &ias, NULL, &vps, &rs, &ms, &dss, &cbs, &dyns, g_vk.pipe_layout,
-        VK_NULL_HANDLE, 0, VK_NULL_HANDLE, -1 };
-
-    VkPipeline pipe = VK_NULL_HANDLE;
-    if (!vk_ok(vkCreateGraphicsPipelines(g_vk.device, VK_NULL_HANDLE, 1, &gpci, NULL, &pipe),
-               "vkCreateGraphicsPipelines")) {
-        fprintf(stderr, "rhi: pipeline_create: GPU pipeline creation failed\n");
-        return out;
-    }
+    VkPipeline pipe = build_pipeline(desc, VK_PV_MAIN);   /* eager: create failures return {0} */
+    if (!pipe) return out;
     if (g_vk.pipelines.count == g_vk.pipelines.capacity) {
         uint32_t cap = g_vk.pipelines.capacity ? g_vk.pipelines.capacity * 2u : 64u;
         RhiVkPipeline *next = (RhiVkPipeline *)realloc(g_vk.pipelines.slots, (size_t)cap * sizeof *next);
@@ -2108,7 +2489,8 @@ RhiPipeline rhi_pipeline_create(const RhiPipelineDesc *desc) {
         g_vk.pipelines.capacity = cap;
     }
     RhiVkPipeline *e = &g_vk.pipelines.slots[g_vk.pipelines.count];
-    e->pipeline = pipe;
+    memset(e->variant, 0, sizeof e->variant);
+    e->variant[VK_PV_MAIN] = pipe;
     e->shader = desc->shader;
     e->desc = *desc;
     out.id = ++g_vk.pipelines.count;
@@ -2144,7 +2526,12 @@ void rhi_cmd_bind_texture(uint32_t slot, RhiTexture texture) {
         fprintf(stderr, "rhi: bind_texture: slot %u out of range\n", (unsigned)slot);
         return;
     }
-    g_vk.bound_texture[slot] = texture;
+    /* Like GL: the texture goes to the unit's binding for its own type; {0} (or an
+     * invalid / non-sampleable handle) clears the 2D binding only. */
+    RhiVkTexture *t = texture_lookup(texture, "bind_texture");
+    if (t && !(t->usage & RHI_TEXTURE_SAMPLED)) t = NULL;   /* not sampleable */
+    if (t && t->layers == 6) g_vk.bound_cube[slot] = texture;
+    else g_vk.bound_2d[slot] = t ? texture : (RhiTexture){0};
 }
 
 /* Dynamic viewport (positive height, VkViewport.y = GL y) + full-target scissor,
@@ -2175,9 +2562,16 @@ static RhiVkPipeline *draw_begin(const char *what) {
     VkViewport vp = { (float)vx, (float)vy, (float)vw, (float)vh, 0.0f, 1.0f };
     vkCmdSetViewport(g_vk.cmd, 0, 1, &vp);
     /* Scissor never clips beyond the viewport (rhi.h models no scissor state). */
-    VkRect2D sc = { { 0, 0 }, { (uint32_t)g_vk.width, (uint32_t)g_vk.height } };
+    VkRect2D sc = { { 0, 0 }, { (uint32_t)target_width(), (uint32_t)target_height() } };
     vkCmdSetScissor(g_vk.cmd, 0, 1, &sc);
-    vkCmdBindPipeline(g_vk.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, e->pipeline);
+    /* The pipeline variant for the current target's attachment formats; the
+     * non-main ones are built on first use. */
+    int v = g_vk.target_variant;
+    if (!e->variant[v]) {
+        e->variant[v] = build_pipeline(&e->desc, v);
+        if (!e->variant[v]) { fprintf(stderr, "rhi: %s: pipeline variant %d failed\n", what, v); return NULL; }
+    }
+    vkCmdBindPipeline(g_vk.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, e->variant[v]);
     return e;
 }
 
@@ -2195,11 +2589,18 @@ static void draw_bind_resources(RhiVkPipeline *e, VkDeviceSize ubo_off) {
         if (b && b->buf && (b->usage & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)) {
             vbufs[s] = b->buf; voffs[s] = g_vk.bound_vertex_offset[s];
         } else {
-            vbufs[s] = g_vk.dummy_vbuf; voffs[s] = 0;   /* GL disables the attribute */
+            /* GL disables the attribute (it then reads the current generic value; the
+             * engine supplies its own constants there), so this stays zeros, unlike
+             * the (0,0,0,1) default of attributes absent from the layout. */
+            vbufs[s] = g_vk.dummy_vbuf; voffs[s] = 0;
         }
         vkCmdBindVertexBuffers(g_vk.cmd, s, 1, &vbufs[s], &voffs[s]);
     }
 
+    {   /* default-valued binding for layout-absent attributes (harmless if unused) */
+        VkDeviceSize zero = 0;
+        vkCmdBindVertexBuffers(g_vk.cmd, RHI_MAX_VERTEX_STREAMS, 1, &g_vk.dummy_attr_buf, &zero);
+    }
     RhiVkShader *sh = shader_find(e->shader);
     VkWriteDescriptorSet writes[1 + RHI_TEXTURE_SLOTS];
     VkDescriptorBufferInfo bi;
@@ -2215,12 +2616,23 @@ static void draw_bind_resources(RhiVkPipeline *e, VkDeviceSize ubo_off) {
         n++;
     }
     for (uint32_t slot = 0; slot < RHI_TEXTURE_SLOTS; slot++) {
-        RhiVkTexture *t = g_vk.bound_texture[slot].id ? texture_find(g_vk.bound_texture[slot]) : NULL;
-        if (t && (!(t->usage & RHI_TEXTURE_SAMPLED) || !t->view)) t = NULL;   /* not sampleable */
-        VkImageView view = t ? t->view : g_vk.dummy_view;
+        /* samplerCube slots take the cube binding, the rest the 2D one. A bound
+         * texture that is not in a sampleable state (never rendered/uploaded, or
+         * mid-pass) reads the dummy instead of an undefined/feedback layout. */
+        int cube = sh && ((sh->cube_mask >> slot) & 1u);
+        RhiTexture h = cube ? g_vk.bound_cube[slot] : g_vk.bound_2d[slot];
+        RhiVkTexture *t = h.id ? texture_find(h) : NULL;
+        if (t && (!(t->usage & RHI_TEXTURE_SAMPLED) || !t->view ||
+                  t->layout != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL ||
+                  (t->layers == 6) != (cube != 0)))
+            t = NULL;
+        VkImageView view = t ? t->view : cube ? g_vk.dummy_cube_view : g_vk.dummy_view;
         VkSampler smp = g_vk.dummy_sampler;
-        if (t && t->sampler.id && t->sampler.id <= g_vk.samplers.count)
-            smp = g_vk.samplers.handles[t->sampler.id - 1];
+        if (t) {
+            texture_touch(t);
+            if (t->sampler.id && t->sampler.id <= g_vk.samplers.count)
+                smp = g_vk.samplers.handles[t->sampler.id - 1];
+        }
         ii[slot] = (VkDescriptorImageInfo){ smp, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
         writes[n] = (VkWriteDescriptorSet){ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL,
             VK_NULL_HANDLE, 1 + slot, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -2295,23 +2707,198 @@ void rhi_cmd_draw_indexed(uint32_t index_count, uint32_t first_index) {
     vkCmdDrawIndexed(g_vk.cmd, index_count, 1, first_index, 0, 0);
 }
 
-/* --- Passes / copies (TODO P11f) --- */
-RhiResult rhi_cmd_begin_pass(const RhiPassDesc *desc) { (void)desc; return RHI_ERR_UNSUPPORTED; }
-void rhi_cmd_end_pass(void) { }
-RhiResult rhi_cmd_copy_main_to_texture(RhiTexture texture, int32_t x, int32_t y, int32_t w, int32_t h) {
-    (void)texture; (void)x; (void)y; (void)w; (void)h; return RHI_ERR_UNSUPPORTED;
+/* --- Passes / copies --- */
+RhiResult rhi_cmd_begin_pass(const RhiPassDesc *desc) {
+    if (!desc || g_vk.pass.active || !g_vk.in_frame) return RHI_ERR_INVALID;
+    /* Same validation as the GL backend (rhi_gl.c), with D16 as the only depth. */
+    RhiVkTexture *c = texture_lookup(desc->color.texture, "begin_pass");
+    RhiVkTexture *d = texture_lookup(desc->depth.texture, "begin_pass");
+    if (!c || c->format != RHI_FORMAT_RGBA8 || !(c->usage & RHI_TEXTURE_COLOR_TARGET) ||
+        (desc->depth.texture.id && (!d || d->format != RHI_FORMAT_D16 || !(d->usage & RHI_TEXTURE_DEPTH_TARGET))))
+        return RHI_ERR_INVALID;
+    int faces = c->layers == 6 ? 6 : 1;
+    if (desc->color.face < 0 || desc->color.face >= faces ||
+        (d && desc->depth.face != 0) ||
+        (desc->color_load != RHI_LOAD_KEEP && desc->color_load != RHI_LOAD_CLEAR) ||
+        (desc->depth_load != RHI_LOAD_KEEP && desc->depth_load != RHI_LOAD_CLEAR)) return RHI_ERR_INVALID;
+    /* An attachment must cover the render area. */
+    if (d && (d->width < c->width || d->height < c->height)) return RHI_ERR_UNSUPPORTED;
+    if (!ensure_recording()) return RHI_ERR_DEVICE_LOST;
+    end_rendering_if_active();   /* close the main scope (it re-opens from the tracked layouts later) */
+
+    g_vk.pass.active = 1;
+    g_vk.pass.color = desc->color.texture;
+    g_vk.pass.depth = d ? desc->depth.texture : (RhiTexture){0};
+    g_vk.pass.face = desc->color.face;
+    g_vk.pass.w = c->width; g_vk.pass.h = c->height;
+    g_vk.pass.clear_color = desc->color_load == RHI_LOAD_CLEAR;
+    g_vk.pass.clear_depth = d && desc->depth_load == RHI_LOAD_CLEAR;
+    memcpy(g_vk.pass.clear_value, desc->clear_color, sizeof g_vk.pass.clear_value);
+    g_vk.pass.clear_z = desc->clear_depth;
+    g_vk.pass.opened = 0;
+    g_vk.target_variant = d ? VK_PV_PASS_D16 : VK_PV_PASS_NODEPTH;
+    g_vk.viewport[0] = 0; g_vk.viewport[1] = 0; g_vk.viewport[2] = c->width; g_vk.viewport[3] = c->height;
+    /* Open the scope now so a pass without draws still performs its clears. */
+    if (!ensure_rendering()) {
+        g_vk.pass.active = 0;
+        g_vk.target_variant = VK_PV_MAIN;
+        return RHI_ERR_DEVICE_LOST;
+    }
+    return RHI_OK;
 }
 
-/* --- Viewport / state snapshot / wireframe (state snapshot TODO P11g) --- */
+void rhi_cmd_end_pass(void) {
+    if (!g_vk.pass.active) return;
+    RhiVkTexture *c = texture_find(g_vk.pass.color);
+    RhiVkTexture *d = g_vk.pass.depth.id ? texture_find(g_vk.pass.depth) : NULL;
+    if (ensure_recording()) {
+        end_rendering_if_active();   /* pass scope: just ends it */
+        if (c) {
+            int sampled = (c->usage & RHI_TEXTURE_SAMPLED) != 0;
+            VkImageLayout rl = rest_layout(c->usage);
+            img_barrier(g_vk.cmd, c->img, VK_IMAGE_ASPECT_COLOR_BIT, 0, c->mip_levels, 0, c->layers,
+                        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, rl,
+                        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                        VK_ACCESS_TRANSFER_READ_BIT | (sampled ? VK_ACCESS_SHADER_READ_BIT : 0),
+                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                        VK_PIPELINE_STAGE_TRANSFER_BIT | (sampled ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT : 0));
+            c->layout = rl;
+        }
+        if (d) {   /* same layout: make the depth writes available to a following pass */
+            img_barrier(g_vk.cmd, d->img, d->bar_aspect, 0, 1, 0, 1, d->layout, d->layout,
+                        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                        VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                        VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT);
+        }
+    }
+    memset(&g_vk.pass, 0, sizeof g_vk.pass);
+    g_vk.target_variant = VK_PV_MAIN;   /* the viewport is left as is (GL parity) */
+}
+
+/* Copy a rectangle of the main colour (or depth) image into level 0 of a COPY_DST
+ * texture. Memory row y of the main image is GL window row y (see the orientation
+ * note at ensure_rendering), and the copy keeps row order, so texture row r holds
+ * GL row y + r exactly as glCopyTexImage2D does: no flip. */
+RhiResult rhi_cmd_copy_main_to_texture(RhiTexture texture, int32_t x, int32_t y, int32_t w, int32_t h) {
+    RhiVkTexture *t = texture_lookup(texture, "copy_main_to_texture");
+    if (!t || t->layers != 1 || w <= 0 || h <= 0 || x < 0 || y < 0 || g_vk.pass.active ||
+        !(t->usage & RHI_TEXTURE_COPY_DST) ||
+        (t->format != RHI_FORMAT_RGBA8 && t->format != RHI_FORMAT_DEPTH) ||
+        w > INT_MAX - x || h > INT_MAX - y || !g_vk.in_frame ||
+        w > g_vk.width - x || h > g_vk.height - y) return RHI_ERR_INVALID;
+    int depth = t->format == RHI_FORMAT_DEPTH;
+    if (!ensure_recording()) return RHI_ERR_DEVICE_LOST;
+    /* "The texture takes the rectangle's size": recreate the storage in place
+     * under the same handle. The old image may still be referenced by recorded
+     * draws, so it is freed deferred. Colour keeps the full mip chain like
+     * rhi_texture_create (so generate_mips still works after a resize); depth is
+     * single-level. Only level 0 is written by the copy. */
+    if (t->width != w || t->height != h) {
+        VkImage img; VkDeviceMemory mem; VkImageView view;
+        uint32_t levels = depth ? 1u : mip_count(w, h);
+        if (!texture_make_storage(t, w, h, levels, &img, &mem, &view)) return RHI_ERR_UNSUPPORTED;
+        texture_release_storage(t);
+        t->img = img; t->mem = mem; t->view = view;
+        t->layout = VK_IMAGE_LAYOUT_UNDEFINED;
+        t->width = w; t->height = h; t->mip_levels = levels;
+    }
+    end_rendering_if_active();   /* leaves the main colour in TRANSFER_SRC */
+    texture_touch(t);
+
+    VkImageAspectFlags src_aspect = depth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+    if (depth) {
+        image_barrier(g_vk.depth, VK_DS_ASPECT, g_vk.depth_layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                      VK_ACCESS_TRANSFER_WRITE_BIT |
+                          VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                      VK_ACCESS_TRANSFER_READ_BIT,
+                      VK_PIPELINE_STAGE_TRANSFER_BIT |
+                          VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                      VK_PIPELINE_STAGE_TRANSFER_BIT);
+        g_vk.depth_layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    } else if (g_vk.color_layout != VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
+        image_barrier(g_vk.color, VK_IMAGE_ASPECT_COLOR_BIT, g_vk.color_layout,
+                      VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 0, VK_ACCESS_TRANSFER_READ_BIT,
+                      VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+        g_vk.color_layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    }
+    /* Whole destination image -> TRANSFER_DST. Earlier draws that sampled it must
+     * finish first (GL: they saw the old contents); its contents are replaced. */
+    img_barrier(g_vk.cmd, t->img, t->bar_aspect, 0, t->mip_levels, 0, 1,
+                VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT,
+                VK_ACCESS_TRANSFER_WRITE_BIT,
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                VK_PIPELINE_STAGE_TRANSFER_BIT);
+    VkImageCopy reg = { { src_aspect, 0, 0, 1 }, { x, y, 0 }, { src_aspect, 0, 0, 1 }, { 0, 0, 0 },
+                        { (uint32_t)w, (uint32_t)h, 1 } };
+    vkCmdCopyImage(g_vk.cmd, depth ? g_vk.depth : g_vk.color, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                   t->img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &reg);
+    VkImageLayout rl = rest_layout(t->usage);
+    int sampled = rl == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    img_barrier(g_vk.cmd, t->img, t->bar_aspect, 0, t->mip_levels, 0, 1,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, rl,
+                VK_ACCESS_TRANSFER_WRITE_BIT,
+                VK_ACCESS_TRANSFER_READ_BIT | (sampled ? VK_ACCESS_SHADER_READ_BIT : 0),
+                VK_PIPELINE_STAGE_TRANSFER_BIT,
+                VK_PIPELINE_STAGE_TRANSFER_BIT | (sampled ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT : 0));
+    t->layout = rl;
+    return RHI_OK;
+}
+
+/* --- Viewport / state snapshot / wireframe --- */
 /* Returns the stored GL-convention viewport (x, y, w, h, origin bottom-left). */
 void rhi_viewport(int32_t viewport[4]) {
     viewport[0] = g_vk.viewport[0]; viewport[1] = g_vk.viewport[1];
     viewport[2] = g_vk.viewport[2]; viewport[3] = g_vk.viewport[3];
 }
-void rhi_cmd_save_state(RhiStateSnapshot *out) { if (out) memset(out, 0, sizeof *out); }
-void rhi_cmd_restore_state(const RhiStateSnapshot *state) { (void)state; }
+/* What the backend snapshots: the bound pipeline, the viewport and the 2D
+ * texture on each sampler slot (cube bindings are not included, like GL). */
+#define VK_SNAPSHOT_MAGIC 0x56535431u   /* "VST1" */
+typedef struct {
+    uint32_t   valid;                    /* VK_SNAPSHOT_MAGIC once saved */
+    int32_t    pipeline;                 /* index into pipelines, -1 = none */
+    int32_t    viewport[4];
+    RhiTexture tex2d[RHI_TEXTURE_SLOTS];
+} RhiVkSnapshot;
+typedef char rhi_vk_snapshot_fits[sizeof(RhiVkSnapshot) <= sizeof(RhiStateSnapshot) ? 1 : -1];
+typedef char rhi_vk_snapshot_slots[RHI_TEXTURE_SLOTS <= RHI_STATE_TEXTURE_SLOTS ? 1 : -1];
+
+void rhi_cmd_save_state(RhiStateSnapshot *out) {
+    RhiVkSnapshot v;
+    if (!out) return;
+    memset(&v, 0, sizeof v);
+    v.valid = VK_SNAPSHOT_MAGIC;
+    v.pipeline = g_vk.bound_pipeline;
+    memcpy(v.viewport, g_vk.viewport, sizeof v.viewport);
+    memcpy(v.tex2d, g_vk.bound_2d, sizeof v.tex2d);
+    memset(out, 0, sizeof *out);
+    memcpy(out, &v, sizeof v);
+}
+
 void rhi_state_set_texture(RhiStateSnapshot *state, uint32_t slot, RhiTexture texture) {
-    (void)state; (void)slot; (void)texture;
+    RhiVkSnapshot v;
+    const RhiVkTexture *t = texture_lookup(texture, "state_set_texture");
+    if (!state || slot >= RHI_STATE_TEXTURE_SLOTS || (t && t->layers == 6)) return;   /* 2D only */
+    if (slot >= RHI_TEXTURE_SLOTS) return;   /* the backend has no such sampler slot */
+    memcpy(&v, state, sizeof v);
+    if (v.valid != VK_SNAPSHOT_MAGIC) return;
+    v.tex2d[slot] = t ? texture : (RhiTexture){0};
+    memcpy(state, &v, sizeof v);
+}
+
+/* Assigns the saved pipeline, viewport and 2D bindings; cube bindings stay. The
+ * recorded commands carry no ambient state (every draw sets its own), so this is
+ * pure bookkeeping apart from ending an open pass. */
+void rhi_cmd_restore_state(const RhiStateSnapshot *state) {
+    RhiVkSnapshot v;
+    if (!state) return;
+    memcpy(&v, state, sizeof v);
+    if (v.valid != VK_SNAPSHOT_MAGIC) return;   /* never saved */
+    rhi_cmd_end_pass();   /* GL rebinds the main framebuffer here; a pass ends */
+    g_vk.bound_pipeline = v.pipeline;
+    memcpy(g_vk.viewport, v.viewport, sizeof g_vk.viewport);
+    memcpy(g_vk.bound_2d, v.tex2d, sizeof g_vk.bound_2d);
 }
 /* Stores the GL-convention rect (origin bottom-left); each draw uses it as a
  * VkViewport with y = gl_y (positive height). See the orientation note at

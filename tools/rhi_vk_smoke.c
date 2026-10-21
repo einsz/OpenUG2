@@ -396,6 +396,71 @@ int main(void) {
         rhi_shader_destroy(sh);
     }
 
+    /* ---- P11f-3: cull winding matches GL ----
+     * GL treats CCW (in y-up NDC) as front. The backend once declared Vulkan's
+     * front face CCW too, but Vulkan measures winding in y-down framebuffer space,
+     * so GL-CCW arrived as back-facing: CULL_BACK removed every outer car panel
+     * (player body rendered black) while CULL_NONE draws looked right. */
+    {
+        static const RhiParamField fe_fields[] = {
+            { "uMVP", RHI_PARAM_MAT4, 0, 1 }, { "uColor", RHI_PARAM_VEC4, 64, 1 },
+        };
+        static const RhiParamLayout fe_layout = { fe_fields, 2, 80, "FeParams" };
+        static const char *const attrs[] = { "aPos" };
+        static const RhiParamLayout *const blocks[] = { &fe_layout };
+        RhiShaderDesc shd = { "", "", attrs, 1, "frontend", blocks, 1 };
+        RhiShader sh = rhi_shader_create(&shd);
+        EXPECT(sh.id != 0, "P11f-3 frontend shader_create");
+        float *fp = (float *)rhi_shader_params(sh, 0);
+        if (fp) {
+            memset(fp, 0, 80);
+            fp[0] = fp[5] = fp[10] = fp[15] = 1.0f;
+            fp[16] = 1.0f; fp[19] = 1.0f;                       /* red */
+        }
+        /* Full-screen-ish triangles; centre pixel is inside each. */
+        static const float ccw[6] = { -1.0f, -1.0f,   3.0f, -1.0f,   -1.0f, 3.0f };  /* CCW, y up */
+        static const float cw[6]  = { -1.0f, -1.0f,   -1.0f, 3.0f,   3.0f, -1.0f };  /* CW, y up */
+        RhiBuffer vb_ccw = rhi_buffer_create(&(RhiBufferDesc){ RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, sizeof ccw, ccw });
+        RhiBuffer vb_cw  = rhi_buffer_create(&(RhiBufferDesc){ RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, sizeof cw, cw });
+        struct { RhiCullMode cull; int use_cw; int want_red; const char *name; } cases[] = {
+            { RHI_CULL_BACK,  0, 1, "CULL_BACK keeps a GL-CCW triangle" },
+            { RHI_CULL_BACK,  1, 0, "CULL_BACK culls a GL-CW triangle" },
+            { RHI_CULL_FRONT, 0, 0, "CULL_FRONT culls a GL-CCW triangle" },
+            { RHI_CULL_FRONT, 1, 1, "CULL_FRONT keeps a GL-CW triangle" },
+        };
+        const float black[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+        for (unsigned i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+            RhiPipelineDesc pd;
+            rhi_pipeline_desc_init(&pd);
+            pd.shader = sh;
+            pd.vertex.attrib_count = 1;
+            pd.vertex.attribs[0] = (RhiVertexAttrib){ 0, 0, 0, RHI_VERTEX_FLOAT2 };
+            pd.vertex.stride[0] = 8;
+            pd.primitive = RHI_PRIMITIVE_TRIANGLES;
+            pd.cull = cases[i].cull;
+            RhiPipeline pipe = rhi_pipeline_create(&pd);
+            unsigned char px[4] = {0};
+            unsigned char *frame = (unsigned char *)malloc((size_t)W * H * 4);
+            EXPECT(rhi_frame_begin(NULL) == RHI_OK, "P11f-3 frame_begin");
+            rhi_cmd_clear_main(black, 1.0f);
+            rhi_cmd_bind_pipeline(pipe);
+            rhi_cmd_bind_vertex_buffer(0, cases[i].use_cw ? vb_cw : vb_ccw, 0);
+            rhi_cmd_draw(3, 0);
+            if (frame) {
+                EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "P11f-3 read_pixels");
+                memcpy(px, frame + ((size_t)(H / 2) * W + W / 2) * 4, 4);
+            }
+            EXPECT(rhi_frame_end() == RHI_OK, "P11f-3 frame_end");
+            free(frame);
+            EXPECT(cases[i].want_red ? is_red(px) : is_black(px), "P11f-3 %s, got %u,%u,%u,%u",
+                   cases[i].name, px[0], px[1], px[2], px[3]);
+        }
+        printf("P11f-3 cull winding: BACK/FRONT agree with GL CCW-front convention\n");
+        rhi_buffer_destroy(vb_ccw);
+        rhi_buffer_destroy(vb_cw);
+        rhi_shader_destroy(sh);
+    }
+
     /* ---- P11 review: per-draw param snapshot, mid-frame flush, partial viewport ----
      * One shared frontend shader + triangle pipeline, driven immediate-mode: write
      * params -> draw -> write DIFFERENT params -> draw. Before Fix 1 both draws saw
@@ -545,6 +610,777 @@ int main(void) {
         }
         #undef SET_PARAMS
         #undef PX
+        free(frame);
+        rhi_buffer_destroy(vb);
+        rhi_buffer_destroy(bvb);
+        rhi_shader_destroy(sh);
+    }
+
+    /* ---- P11f: the real UG2 material shader + its 6 descriptor bindings ----
+     * Translate src/shaders/ug2.* -> src/shaders/vk/ug2.* and drive one draw
+     * through the full material pipeline. The UBO mirrors render_params.h's
+     * UG2Params (size 828 = sizeof(UG2Params)); we declare only a few fields
+     * (enough for rhi_param_layout_check) but write the block by byte offset.
+     * This proves the ug2 pipeline + its UBO at binding 0 and the six samplers
+     * at bindings 1..6 are wired validation-clean. Exact colours are checked
+     * later by a full Vulkan-vs-GL scene screenshot; here we only require SOME
+     * non-black output and 0 validation messages. */
+    {
+        /* The MID-FLUSH test above shrank the per-frame UBO arena (to 128 B, then
+         * 256 B); the real device starts it at a few MB, big enough for any one
+         * block. Restore a large arena so the 828-byte UG2 block fits in one
+         * frame (outside a frame, as rhi_vk_test_force_arena requires). */
+        rhi_vk_test_force_arena(1u << 20);
+
+        /* Minimal layout: real block size + uMVP/uModel + one int sampler field. */
+        static const RhiParamField ug2_fields[] = {
+            { "uMVP",   RHI_PARAM_MAT4, 0,   1 },
+            { "uModel", RHI_PARAM_MAT4, 64,  1 },
+            { "uTex",   RHI_PARAM_INT,  804, 1 },   /* sampler-unit int, inside the block */
+        };
+        static const RhiParamLayout ug2_layout = { ug2_fields, 3, 828, "UG2Params" };
+        EXPECT(rhi_param_layout_check(&ug2_layout) == RHI_OK, "ug2 layout check");
+        static const char *const ug2_attrs[] = { "aPos", "aUV", "aNor", "aColor" };
+        static const RhiParamLayout *const ug2_blocks[] = { &ug2_layout };
+        RhiShaderDesc ug2d = { "", "", ug2_attrs, 4, "ug2", ug2_blocks, 1 };
+        RhiShader sh = rhi_shader_create(&ug2d);
+        EXPECT(sh.id != 0, "ug2 shader_create");
+        EXPECT(rhi_shader_native_program(sh) != 0, "ug2 native program nonzero");
+
+        float *fp = (float *)rhi_shader_params(sh, 0);
+        EXPECT(fp != NULL, "ug2 shader_params block 0");
+        if (fp) {
+            memset(fp, 0, 828);
+            fp[0] = fp[5] = fp[10] = fp[15] = 1.0f;            /* uMVP   = identity @0   */
+            fp[16] = fp[21] = fp[26] = fp[31] = 1.0f;          /* uModel = identity @64  */
+            fp[144] = 0.80f; fp[145] = 0.20f; fp[146] = 0.10f; /* uColor        @576 */
+            /* fp[147] uVColor = 0 */
+            fp[150] = 1.0f;                                    /* uLight = (0,0,1) @592 */
+            /* fp[151] uUseTex = 0 -> base = uColor (deterministic) */
+            fp[152] = 0.06f; fp[153] = 0.07f; fp[154] = 0.11f; /* uFogColor     @608 */
+            /* fp[155] uFogDensity = 0 -> fog = 1 (no fog wash) */
+            fp[158] = 10.0f;                                   /* uCamPos = (0,0,10) @624 */
+            /* fp[163] uEnvReady = 0 (per spec) */
+            fp[167] = 1.0f;                                    /* uAlpha        @668 */
+            fp[180] = 0.30f;                                   /* uAmbient      @720 */
+            fp[181] = 0.70f;                                   /* uDiffuse      @724 */
+            fp[182] = 0.20f;                                   /* uEnv          @728 (samples uEnvCube) */
+            fp[184] = 20.0f;                                   /* uGloss        @736 */
+            /* fp[190] uRoadReflection = 0 (per spec); fp[198] uHeadGain = 0;
+               fp[200] uHeadShadow = 0; uVista/uAlphaTest/uEmissiveTex/uFresnel/
+               uClearcoat all 0 -> the main lit path, no discard. */
+        }
+
+        RhiPipelineDesc pd;
+        rhi_pipeline_desc_init(&pd);
+        pd.shader = sh;
+        pd.vertex.attrib_count = 4;                            /* the engine's BatchedVertex */
+        pd.vertex.attribs[0] = (RhiVertexAttrib){ 0, 0, 0,  RHI_VERTEX_FLOAT3 };
+        pd.vertex.attribs[1] = (RhiVertexAttrib){ 1, 0, 12, RHI_VERTEX_FLOAT2 };
+        pd.vertex.attribs[2] = (RhiVertexAttrib){ 2, 0, 20, RHI_VERTEX_FLOAT3 };
+        pd.vertex.attribs[3] = (RhiVertexAttrib){ 3, 0, 32, RHI_VERTEX_UNORM8X4 };
+        pd.vertex.stride[0] = 36;
+        pd.primitive = RHI_PRIMITIVE_TRIANGLES;
+        pd.depth_test = 1; pd.depth_write = 1;                 /* depth test on */
+        pd.blend = 0; pd.cull = RHI_CULL_NONE;                 /* blend off */
+        RhiPipeline pipe = rhi_pipeline_create(&pd);
+        EXPECT(pipe.id != 0, "ug2 pipeline_create");
+
+        /* One screen-filling BatchedVertex triangle (36 B/vertex): pos (z=0),
+         * uv, normal (0,0,1 toward the camera), colour white. */
+        struct BV { float pos[3]; float uv[2]; float nor[3]; unsigned char col[4]; };
+        struct BV tri[3];
+        memset(tri, 0, sizeof tri);
+        const float P[3][2] = { { -1.0f, -1.0f }, { 3.0f, -1.0f }, { -1.0f, 3.0f } };
+        for (int i = 0; i < 3; i++) {
+            tri[i].pos[0] = P[i][0]; tri[i].pos[1] = P[i][1]; tri[i].pos[2] = 0.0f;
+            tri[i].uv[0] = (P[i][0] + 1.0f) * 0.5f; tri[i].uv[1] = (P[i][1] + 1.0f) * 0.5f;
+            tri[i].nor[0] = 0.0f; tri[i].nor[1] = 0.0f; tri[i].nor[2] = 1.0f;
+            tri[i].col[0] = tri[i].col[1] = tri[i].col[2] = tri[i].col[3] = 255;
+        }
+        EXPECT(sizeof(struct BV) == 36, "BatchedVertex is 36 bytes (got %zu)", sizeof(struct BV));
+        RhiBufferDesc vbd = { RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, sizeof tri, tri };
+        RhiBuffer vb = rhi_buffer_create(&vbd);
+        EXPECT(vb.id != 0, "ug2 vertex buffer_create");
+
+        /* uTex -> an RGBA8 2D texture at slot 0; uEnvCube -> a CUBE at slot 5. */
+        RhiTextureDesc t2d = { RHI_TEXTURE_2D, RHI_FORMAT_RGBA8, 4, 4, RHI_TEXTURE_SAMPLED };
+        RhiTexture tex2d = rhi_texture_create(&t2d);
+        EXPECT(tex2d.id != 0, "ug2 uTex (2D) create");
+        unsigned char solid[4 * 4 * 4];
+        for (int i = 0; i < 16; i++) { solid[i*4]=180; solid[i*4+1]=180; solid[i*4+2]=180; solid[i*4+3]=255; }
+        EXPECT(rhi_texture_upload(tex2d, 0, 0, solid, sizeof solid) == RHI_OK, "ug2 uTex upload");
+
+        RhiTextureDesc tcube = { RHI_TEXTURE_CUBE, RHI_FORMAT_RGBA8, 4, 4, RHI_TEXTURE_SAMPLED };
+        RhiTexture cube = rhi_texture_create(&tcube);
+        EXPECT(cube.id != 0, "ug2 uEnvCube (CUBE) create");
+        for (int f = 0; f < 6; f++)
+            EXPECT(rhi_texture_upload(cube, f, 0, solid, sizeof solid) == RHI_OK, "ug2 uEnvCube face upload");
+
+        unsigned char *frame = (unsigned char *)malloc((size_t)W * H * 4);
+        EXPECT(frame != NULL, "ug2 frame alloc");
+        const float black[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+        /* ---- P11f-1: a ug2 draw with NO cube bound (samplerCube slot 5 and every
+         * other slot but uTex fall back to the dummies) must be validation-clean ---- */
+        {
+            unsigned before = rhi_vk_validation_messages;
+            EXPECT(rhi_frame_begin(NULL) == RHI_OK, "no-cube frame_begin");
+            EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "no-cube clear");
+            rhi_cmd_bind_pipeline(pipe);
+            rhi_cmd_bind_vertex_buffer(0, vb, 0);
+            rhi_cmd_bind_texture(0, tex2d);
+            rhi_cmd_draw(3, 0);
+            EXPECT(frame && rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "no-cube read_pixels");
+            EXPECT(rhi_frame_end() == RHI_OK, "no-cube frame_end");
+            EXPECT(rhi_vk_validation_messages == before, "ug2 draw without a cube bound raised %u validation message(s)",
+                   rhi_vk_validation_messages - before);
+            const unsigned char *c0 = frame + ((size_t)(H / 2) * W + (W / 2)) * 4;
+            EXPECT(c0[0] || c0[1] || c0[2], "no-cube draw must still be non-black");
+            printf("NO-CUBE: ug2 draw with samplerCube unbound -> cube dummy, 0 new validation messages\n");
+        }
+
+        EXPECT(rhi_frame_begin(NULL) == RHI_OK, "ug2 frame_begin");
+        EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "ug2 clear black");
+        rhi_cmd_bind_pipeline(pipe);
+        rhi_cmd_bind_vertex_buffer(0, vb, 0);
+        rhi_cmd_bind_texture(0, tex2d);    /* uTex          (binding 1) */
+        rhi_cmd_bind_texture(5, cube);     /* uEnvCube      (binding 6) */
+        rhi_cmd_draw(3, 0);
+        EXPECT(frame && rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "ug2 read_pixels");
+        EXPECT(rhi_frame_end() == RHI_OK, "ug2 frame_end");
+
+        if (frame) {
+            const unsigned char *ctrp = frame + ((size_t)(H / 2) * W + (W / 2)) * 4;
+            printf("UG2 centre pixel RGBA = %u,%u,%u,%u\n", ctrp[0], ctrp[1], ctrp[2], ctrp[3]);
+            int nonblack = 0;
+            for (int i = 0; i < W * H; i++) {
+                const unsigned char *p = frame + (size_t)i * 4;
+                if (p[0] || p[1] || p[2]) { nonblack++; }
+            }
+            printf("UG2 non-black pixels = %d / %d\n", nonblack, W * H);
+            EXPECT(nonblack > 0, "ug2 draw must produce SOME non-black output");
+            EXPECT(ctrp[0] || ctrp[1] || ctrp[2], "ug2 centre pixel must be non-black, got %u,%u,%u,%u",
+                   ctrp[0], ctrp[1], ctrp[2], ctrp[3]);
+            printf("UG2 material: 6-binding pipeline (UBO + uTex + uEnvCube) drew non-black, validation below\n");
+        }
+        /* ---- P11f-1: cube vs 2D on the same slot ----
+         * Slot 5 is uEnvCube. A red cube + a BLUE 2D texture bound to slot 5 must
+         * shade with the cube (red-shifted env), not the 2D one: the 2D binding of
+         * a samplerCube slot is ignored and does not displace the cube binding. */
+        if (frame && fp) {
+            unsigned char redpx[4 * 4 * 4], bluepx[4 * 4 * 4];
+            for (int i = 0; i < 16; i++) {
+                redpx[i*4] = 255; redpx[i*4+1] = 0; redpx[i*4+2] = 0; redpx[i*4+3] = 255;
+                bluepx[i*4] = 0; bluepx[i*4+1] = 0; bluepx[i*4+2] = 255; bluepx[i*4+3] = 255;
+            }
+            for (int f = 0; f < 6; f++)
+                EXPECT(rhi_texture_upload(cube, f, 0, redpx, sizeof redpx) == RHI_OK, "red cube face upload");
+            RhiTexture blue2d = rhi_texture_create(&t2d);
+            EXPECT(blue2d.id != 0 && rhi_texture_upload(blue2d, 0, 0, bluepx, sizeof bluepx) == RHI_OK, "blue 2D");
+            fp[144] = fp[145] = fp[146] = 0.5f;     /* grey base, so env tint is the only colour */
+            fp[163] = 1.0f;                         /* uEnvReady */
+            fp[182] = 1.0f;                         /* uEnv      */
+            EXPECT(rhi_frame_begin(NULL) == RHI_OK, "cube/2D frame_begin");
+            EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "cube/2D clear");
+            rhi_cmd_bind_pipeline(pipe);
+            rhi_cmd_bind_vertex_buffer(0, vb, 0);
+            rhi_cmd_bind_texture(5, cube);          /* cube binding */
+            rhi_cmd_bind_texture(5, blue2d);        /* 2D binding of the same unit: must not clobber the cube */
+            rhi_cmd_draw(3, 0);
+            EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "cube/2D read");
+            EXPECT(rhi_frame_end() == RHI_OK, "cube/2D frame_end");
+            const unsigned char *cp = frame + ((size_t)(H / 2) * W + (W / 2)) * 4;
+            printf("CUBE-vs-2D centre RGBA = %u,%u,%u,%u\n", cp[0], cp[1], cp[2], cp[3]);
+            EXPECT(cp[0] > cp[2] + 8, "cube (red) must win slot 5 over the 2D (blue): got %u,%u,%u", cp[0], cp[1], cp[2]);
+            fp[163] = 0.0f; fp[182] = 0.20f;
+            printf("CUBE-vs-2D: red cube + blue 2D on slot 5 -> red-shifted (cube binding kept, 2D ignored)\n");
+
+            /* ---- upload-after-use + destroy-after-use + save/restore (uTex = slot 0) ---- */
+            fp[151] = 1.0f;                         /* uUseTex: output = the texture */
+            RhiTexture texA = rhi_texture_create(&t2d);
+            EXPECT(texA.id != 0 && rhi_texture_upload(texA, 0, 0, redpx, sizeof redpx) == RHI_OK, "texA red");
+
+            /* Upload after use: the first (left-half) draw was recorded before the
+             * upload, so it must show the OLD (red) contents; the second sees blue. */
+            EXPECT(rhi_frame_begin(NULL) == RHI_OK, "upload-after-use frame_begin");
+            EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "upload-after-use clear");
+            rhi_cmd_bind_pipeline(pipe);
+            rhi_cmd_bind_vertex_buffer(0, vb, 0);
+            rhi_cmd_bind_texture(0, texA);
+            EXPECT(rhi_cmd_set_viewport(0, 0, W / 2, H) == RHI_OK, "left viewport");
+            rhi_cmd_draw(3, 0);
+            EXPECT(rhi_texture_upload(texA, 0, 0, bluepx, sizeof bluepx) == RHI_OK, "mid-frame upload");
+            EXPECT(rhi_cmd_set_viewport(W / 2, 0, W / 2, H) == RHI_OK, "right viewport");
+            rhi_cmd_draw(3, 0);
+            EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "upload-after-use read");
+            EXPECT(rhi_frame_end() == RHI_OK, "upload-after-use frame_end");
+            const unsigned char *l = frame + ((size_t)(H / 2) * W + (W / 4)) * 4;
+            const unsigned char *r = frame + ((size_t)(H / 2) * W + (3 * W / 4)) * 4;
+            printf("UPLOAD-AFTER-USE left=%u,%u,%u right=%u,%u,%u\n", l[0], l[1], l[2], r[0], r[1], r[2]);
+            EXPECT(l[0] > l[2] + 100, "draw before the upload must see the OLD (red) texture");
+            EXPECT(r[2] > r[0] + 100, "draw after the upload must see the NEW (blue) texture");
+            printf("UPLOAD-AFTER-USE: earlier draw saw the old contents, later draw the new\n");
+
+            /* Destroy after use: the recorded draw still samples texA; the free is
+             * deferred past the submit. */
+            EXPECT(rhi_frame_begin(NULL) == RHI_OK, "destroy-after-use frame_begin");
+            EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "destroy-after-use clear");
+            rhi_cmd_bind_pipeline(pipe);
+            rhi_cmd_bind_vertex_buffer(0, vb, 0);
+            rhi_cmd_bind_texture(0, texA);
+            EXPECT(rhi_cmd_set_viewport(0, 0, W, H) == RHI_OK, "full viewport");
+            rhi_cmd_draw(3, 0);
+            rhi_texture_destroy(texA);
+            EXPECT(!rhi_texture_is_live(texA), "texA destroyed");
+            EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "destroy-after-use read");
+            EXPECT(rhi_frame_end() == RHI_OK, "destroy-after-use frame_end");
+            const unsigned char *d0 = frame + ((size_t)(H / 2) * W + (W / 2)) * 4;
+            EXPECT(d0[2] > d0[0] + 100, "draw before destroy must still show the texture (blue), got %u,%u,%u",
+                   d0[0], d0[1], d0[2]);
+            printf("DESTROY-AFTER-USE: same-frame destroy deferred, draw intact\n");
+
+            /* State snapshot round trip. */
+            RhiTexture texR = rhi_texture_create(&t2d), texB = rhi_texture_create(&t2d);
+            EXPECT(rhi_texture_upload(texR, 0, 0, redpx, sizeof redpx) == RHI_OK, "texR");
+            EXPECT(rhi_texture_upload(texB, 0, 0, bluepx, sizeof bluepx) == RHI_OK, "texB");
+            EXPECT(rhi_frame_begin(NULL) == RHI_OK, "snapshot frame_begin");
+            EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "snapshot clear");
+            rhi_cmd_bind_pipeline(pipe);
+            rhi_cmd_bind_vertex_buffer(0, vb, 0);
+            rhi_cmd_bind_texture(0, texR);
+            EXPECT(rhi_cmd_set_viewport(0, 0, W / 2, H) == RHI_OK, "snapshot left viewport");
+            RhiStateSnapshot snap, snap2;
+            rhi_cmd_save_state(&snap);
+            /* a helper changes everything the snapshot covers */
+            rhi_cmd_bind_texture(0, texB);
+            rhi_cmd_bind_pipeline((RhiPipeline){0});       /* invalid -> no pipeline */
+            EXPECT(rhi_cmd_set_viewport(W / 2, 0, W / 2, H) == RHI_OK, "snapshot right viewport");
+            rhi_cmd_restore_state(&snap);
+            int32_t vp[4]; rhi_viewport(vp);
+            EXPECT(vp[0] == 0 && vp[1] == 0 && vp[2] == W / 2 && vp[3] == H, "restore must bring the viewport back, got %d,%d,%d,%d",
+                   vp[0], vp[1], vp[2], vp[3]);
+            rhi_cmd_draw(3, 0);                            /* pipeline + texR + left viewport restored */
+            EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "snapshot read 1");
+            const unsigned char *sl = frame + ((size_t)(H / 2) * W + (W / 4)) * 4;
+            const unsigned char *sr = frame + ((size_t)(H / 2) * W + (3 * W / 4)) * 4;
+            printf("SNAPSHOT left=%u,%u,%u right=%u,%u,%u\n", sl[0], sl[1], sl[2], sr[0], sr[1], sr[2]);
+            EXPECT(sl[0] > sl[2] + 100, "restored texR draw must be red on the left");
+            EXPECT(is_black(sr), "right half must stay untouched (restore put the viewport back)");
+            /* cube textures are not accepted by rhi_state_set_texture; 2D ones are */
+            snap2 = snap;
+            rhi_state_set_texture(&snap2, 0, cube);        /* ignored: still texR */
+            rhi_state_set_texture(&snap, 0, texB);         /* restore texB on slot 0 instead */
+            EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "snapshot clear 2");
+            rhi_cmd_bind_texture(0, texR);
+            EXPECT(rhi_cmd_set_viewport(W / 2, 0, W / 2, H) == RHI_OK, "snapshot right viewport 2");
+            rhi_cmd_restore_state(&snap2);
+            rhi_cmd_draw(3, 0);
+            EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "snapshot read 2");
+            EXPECT(sl[0] > sl[2] + 100, "set_texture(cube) must be ignored (still red)");
+            rhi_cmd_restore_state(&snap);
+            EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "snapshot clear 3");
+            rhi_cmd_restore_state(&snap);                   /* clear_main reset the viewport; restore brings it back */
+            rhi_cmd_draw(3, 0);
+            EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "snapshot read 3");
+            EXPECT(rhi_frame_end() == RHI_OK, "snapshot frame_end");
+            EXPECT(sl[2] > sl[0] + 100, "restored set_texture(blue) draw must be blue on the left");
+            EXPECT(is_black(sr), "right half must stay untouched (3)");
+            /* restore of a zeroed (never saved) snapshot is a no-op */
+            RhiStateSnapshot zero; memset(&zero, 0, sizeof zero);
+            rhi_cmd_restore_state(&zero);
+            rhi_viewport(vp);
+            EXPECT(vp[2] == W / 2, "restoring a never-saved snapshot must not change state");
+            printf("SNAPSHOT: save/restore round trip (pipeline, viewport, 2D textures) + set_texture OK\n");
+            rhi_cmd_set_viewport(0, 0, W, H);
+            rhi_texture_destroy(texR); rhi_texture_destroy(texB);
+            fp[151] = 0.0f;
+            rhi_texture_destroy(blue2d);
+        }
+
+        /* ---- P11f-1b: a layout that omits an attribute the shader declares ----
+         * Drop aColor (location 3) from the pipeline layout. The shader then reads
+         * the default (0,0,0,1) for it, so with uVColor=2 (lit *= vColor.rgb) the
+         * output is black, while the full layout (white aColor) stays bright. */
+        if (frame && fp) {
+            RhiPipelineDesc pn = pd;
+            pn.vertex.attrib_count = 3;                  /* aPos, aUV, aNor only */
+            unsigned before = rhi_vk_validation_messages;
+            RhiPipeline pipe_nocol = rhi_pipeline_create(&pn);
+            EXPECT(pipe_nocol.id != 0 && pipe_nocol.id != pipe.id, "pipeline without aColor");
+            EXPECT(rhi_pipeline_create(&pn).id == pipe_nocol.id, "dedup still works for the reduced layout");
+            fp[167] = 1.0f; fp[148] = 0.0f;
+            fp[151] = 0.0f;
+            fp[147] = 2.0f;                              /* uVColor: lit *= vColor.rgb */
+            unsigned char centre[2][4];
+            for (int k = 0; k < 2; k++) {
+                EXPECT(rhi_frame_begin(NULL) == RHI_OK, "attr-default frame_begin");
+                EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "attr-default clear");
+                rhi_cmd_bind_pipeline(k ? pipe_nocol : pipe);
+                rhi_cmd_bind_vertex_buffer(0, vb, 0);
+                rhi_cmd_draw(3, 0);
+                EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "attr-default read");
+                EXPECT(rhi_frame_end() == RHI_OK, "attr-default frame_end");
+                memcpy(centre[k], frame + ((size_t)(H / 2) * W + (W / 2)) * 4, 4);
+            }
+            printf("ATTR-DEFAULT full-layout=%u,%u,%u,%u  no-aColor=%u,%u,%u,%u\n",
+                   centre[0][0], centre[0][1], centre[0][2], centre[0][3],
+                   centre[1][0], centre[1][1], centre[1][2], centre[1][3]);
+            EXPECT(centre[0][0] > 40, "full layout (white aColor) must be bright");
+            EXPECT(centre[1][0] < 8 && centre[1][1] < 8 && centre[1][2] < 8 && centre[1][3] == 255,
+                   "absent aColor must read (0,0,0,1) -> black, alpha 1");
+            EXPECT(rhi_vk_validation_messages == before, "absent-attribute pipeline raised validation messages");
+            fp[147] = 0.0f;
+            printf("ATTR-DEFAULT: attribute absent from layout reads (0,0,0,1), 0 validation messages\n");
+        }
+
+        /* ---- P11f-1: render-target textures start defined (zero) ---- */
+        {
+            RhiTextureDesc rt = { RHI_TEXTURE_2D, RHI_FORMAT_RGBA8, 8, 8, RHI_TEXTURE_SAMPLED | RHI_TEXTURE_COLOR_TARGET };
+            RhiTexture rtex = rhi_texture_create(&rt);
+            unsigned char px[8 * 8 * 4];
+            memset(px, 0x7f, sizeof px);
+            EXPECT(rtex.id != 0 && rhi_vk_texture_readback(rtex, 0, 0, px), "render target readback");
+            int allzero = 1;
+            for (size_t i = 0; i < sizeof px; i++) if (px[i]) allzero = 0;
+            EXPECT(allzero, "a fresh SAMPLED|COLOR_TARGET texture must read back zero");
+            RhiTextureDesc dd = { RHI_TEXTURE_2D, RHI_FORMAT_DEPTH, 16, 16, RHI_TEXTURE_SAMPLED | RHI_TEXTURE_COPY_DST };
+            RhiTexture dtex = rhi_texture_create(&dd);
+            EXPECT(dtex.id != 0, "RHI_FORMAT_DEPTH texture create");
+            /* sample both before they were ever rendered: bound to ug2 slots 0 and 3 */
+            EXPECT(rhi_frame_begin(NULL) == RHI_OK, "rt frame_begin");
+            EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "rt clear");
+            rhi_cmd_bind_pipeline(pipe);
+            rhi_cmd_bind_vertex_buffer(0, vb, 0);
+            rhi_cmd_bind_texture(0, rtex);
+            rhi_cmd_bind_texture(4, rtex);
+            rhi_cmd_draw(3, 0);
+            EXPECT(rhi_frame_end() == RHI_OK, "rt frame_end");
+            rhi_cmd_bind_texture(0, (RhiTexture){0});
+            rhi_cmd_bind_texture(4, (RhiTexture){0});
+            rhi_texture_destroy(rtex);
+            rhi_texture_destroy(dtex);
+            printf("RENDER-TARGET-INIT: colour target reads zero; depth texture created; sampling before first render is clean\n");
+        }
+
+        /* ---- P11f-2: render passes, main-target copies ---- */
+        if (frame && fp) {
+            #define REDDISH(p)  ((p)[0] > 100 && (p)[1] < 60 && (p)[2] < 60)
+            #define BLUEISH(p)  ((p)[2] > 100 && (p)[0] < 60 && (p)[1] < 60)
+            #define DARK(p)     ((p)[0] < 12 && (p)[1] < 12 && (p)[2] < 12)
+            unsigned vbefore = rhi_vk_validation_messages;
+            unsigned char redpx[4 * 4 * 4], bluepx[4 * 4 * 4];
+            for (int i = 0; i < 16; i++) {
+                redpx[i*4] = 255; redpx[i*4+1] = 0; redpx[i*4+2] = 0; redpx[i*4+3] = 255;
+                bluepx[i*4] = 0; bluepx[i*4+1] = 0; bluepx[i*4+2] = 255; bluepx[i*4+3] = 255;
+            }
+            RhiTexture texR = rhi_texture_create(&t2d), texB = rhi_texture_create(&t2d);
+            EXPECT(rhi_texture_upload(texR, 0, 0, redpx, sizeof redpx) == RHI_OK, "P11f2 texR");
+            EXPECT(rhi_texture_upload(texB, 0, 0, bluepx, sizeof bluepx) == RHI_OK, "P11f2 texB");
+            fp[151] = 1.0f;                                    /* uUseTex: output = the texture */
+            fp[182] = 0.0f;                                    /* uEnv off */
+            RhiPipelineDesc pdl = pd; pdl.depth_test = 1; pdl.depth_write = 1; pdl.depth_compare = RHI_COMPARE_LESS;
+            RhiPipeline pipeL = rhi_pipeline_create(&pdl);
+            const RhiTextureDesc rtd = { RHI_TEXTURE_2D, RHI_FORMAT_RGBA8, 64, 32,
+                                         RHI_TEXTURE_SAMPLED | RHI_TEXTURE_COLOR_TARGET };
+            const RhiTextureDesc dd16 = { RHI_TEXTURE_2D, RHI_FORMAT_D16, 64, 32, RHI_TEXTURE_DEPTH_TARGET };
+            RhiTexture rt = rhi_texture_create(&rtd), dep = rhi_texture_create(&dd16);
+            EXPECT(rt.id && dep.id, "P11f2 pass targets");
+            unsigned char px[64 * 32 * 4];
+            #define RTPX(x, row) (px + ((size_t)(row) * 64 + (x)) * 4)
+
+            /* (1) a pass with no draws still clears (colour AND depth). */
+            EXPECT(rhi_frame_begin(NULL) == RHI_OK, "P11f2 frame_begin");
+            {
+                RhiPassDesc pass = { {rt, 0}, {dep, 0}, RHI_LOAD_CLEAR, RHI_LOAD_CLEAR, {0.2f, 0.4f, 0.6f, 1.0f}, 1.0f };
+                EXPECT(rhi_cmd_begin_pass(&pass) == RHI_OK, "clear-only begin_pass");
+                int32_t vp[4]; rhi_viewport(vp);
+                EXPECT(vp[0] == 0 && vp[1] == 0 && vp[2] == 64 && vp[3] == 32, "begin_pass viewport = attachment size");
+                rhi_cmd_end_pass();
+                EXPECT(rhi_vk_texture_readback(rt, 0, 0, px), "clear-only readback");
+                int ok = 1;
+                for (int i = 0; i < 64 * 32; i++)
+                    if (!near8(px[i*4], chan(0.2f)) || !near8(px[i*4+1], chan(0.4f)) ||
+                        !near8(px[i*4+2], chan(0.6f)) || px[i*4+3] != 255) ok = 0;
+                EXPECT(ok, "clear-only pass: texture must equal the clear colour");
+                printf("PASS-CLEAR: draw-less pass cleared the texture to %u,%u,%u\n", px[0], px[1], px[2]);
+            }
+
+            /* (2) orientation end to end: draw red into the GL bottom-left quarter of
+             * the pass target, then sample it in the main target. */
+            rhi_cmd_bind_pipeline(pipeL);
+            rhi_cmd_bind_vertex_buffer(0, vb, 0);
+            rhi_cmd_bind_texture(0, texR);
+            RhiStateSnapshot saved; rhi_cmd_save_state(&saved);
+            EXPECT(rhi_cmd_set_viewport(0, 0, W, H) == RHI_OK, "main viewport");
+            {
+                RhiPassDesc pass = { {rt, 0}, {dep, 0}, RHI_LOAD_CLEAR, RHI_LOAD_CLEAR, {0, 0, 0, 1}, 1.0f };
+                EXPECT(rhi_cmd_begin_pass(&pass) == RHI_OK, "orientation begin_pass");
+                EXPECT(rhi_cmd_begin_pass(&pass) == RHI_ERR_INVALID, "nested begin_pass rejected");
+                float cc[4] = {0, 0, 0, 1};
+                EXPECT(rhi_cmd_clear_main(cc, 1.0f) == RHI_ERR_INVALID, "clear_main inside a pass rejected");
+                EXPECT(rhi_read_pixels(0, 0, 4, 4, RHI_READ_RGBA8, px, 0) == RHI_ERR_INVALID, "read_pixels inside a pass rejected");
+                EXPECT(rhi_cmd_copy_main_to_texture(texR, 0, 0, 4, 4) == RHI_ERR_INVALID, "copy inside a pass rejected");
+                rhi_cmd_set_viewport(0, 0, 32, 16);
+                rhi_cmd_draw(3, 0);
+                rhi_cmd_end_pass();
+                rhi_cmd_end_pass();   /* extra end_pass is a no-op */
+            }
+            EXPECT(rhi_vk_texture_readback(rt, 0, 0, px), "orientation readback");
+            /* memory row == GL row: red at the low rows / low x */
+            EXPECT(REDDISH(RTPX(8, 4)) && DARK(RTPX(40, 4)) && DARK(RTPX(8, 24)) && DARK(RTPX(40, 24)),
+                   "pass draw landed in the wrong quarter: (8,4)=%u,%u,%u (40,4)=%u,%u,%u (8,24)=%u,%u,%u",
+                   RTPX(8,4)[0], RTPX(8,4)[1], RTPX(8,4)[2], RTPX(40,4)[0], RTPX(40,4)[1], RTPX(40,4)[2],
+                   RTPX(8,24)[0], RTPX(8,24)[1], RTPX(8,24)[2]);
+            rhi_cmd_restore_state(&saved);
+            rhi_cmd_bind_texture(0, rt);
+            EXPECT(rhi_cmd_set_viewport(0, 0, W, H) == RHI_OK, "main viewport 2");
+            EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "orientation main clear");
+            rhi_cmd_bind_pipeline(pipeL);
+            rhi_cmd_bind_vertex_buffer(0, vb, 0);
+            rhi_cmd_draw(3, 0);
+            EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "orientation main read");
+            {
+                #define FPX(x, row) (frame + ((size_t)(row) * W + (x)) * 4)
+                const unsigned char *bl = FPX(W / 4, 3 * H / 4), *tl = FPX(W / 4, H / 4);
+                const unsigned char *br = FPX(3 * W / 4, 3 * H / 4), *tr = FPX(3 * W / 4, H / 4);
+                printf("PASS-ORIENT sampled in main: top-left=%u,%u,%u bottom-left=%u,%u,%u top-right=%u,%u,%u\n",
+                       tl[0], tl[1], tl[2], bl[0], bl[1], bl[2], tr[0], tr[1], tr[2]);
+                EXPECT(REDDISH(bl) && DARK(tl) && DARK(br) && DARK(tr),
+                       "red must sample at the bottom-left of the main frame (GL orientation)");
+            }
+            EXPECT(rhi_frame_end() == RHI_OK, "P11f2 frame_end 1");
+
+            /* (3) cube face N keeps the other faces; (4) back-to-back passes sharing a depth */
+            {
+                RhiTextureDesc cd = { RHI_TEXTURE_CUBE, RHI_FORMAT_RGBA8, 16, 16,
+                                      RHI_TEXTURE_SAMPLED | RHI_TEXTURE_COLOR_TARGET };
+                RhiTextureDesc cdd = { RHI_TEXTURE_2D, RHI_FORMAT_D16, 16, 16, RHI_TEXTURE_DEPTH_TARGET };
+                RhiTexture ct = rhi_texture_create(&cd), cdep = rhi_texture_create(&cdd);
+                EXPECT(ct.id && cdep.id, "cube RT create");
+                EXPECT(rhi_frame_begin(NULL) == RHI_OK, "cube frame_begin");
+                for (int f = 0; f < 6; f++) {
+                    RhiPassDesc pass = { {ct, f}, {cdep, 0}, RHI_LOAD_CLEAR, RHI_LOAD_CLEAR,
+                                         {(f & 1) ? 1.0f : 0.0f, (f & 2) ? 1.0f : 0.0f, (f & 4) ? 1.0f : 0.0f, 1}, 1.0f };
+                    EXPECT(rhi_cmd_begin_pass(&pass) == RHI_OK, "cube face %d begin_pass", f);
+                    rhi_cmd_end_pass();
+                }
+                RhiPassDesc p3 = { {ct, 3}, {cdep, 0}, RHI_LOAD_CLEAR, RHI_LOAD_CLEAR, {0.5f, 0.5f, 0.5f, 1}, 1.0f };
+                EXPECT(rhi_cmd_begin_pass(&p3) == RHI_OK, "cube face 3 re-render");
+                rhi_cmd_end_pass();
+                int cube_ok = 1;
+                for (int f = 0; f < 6; f++) {
+                    unsigned char cpx[16 * 16 * 4];
+                    EXPECT(rhi_vk_texture_readback(ct, f, 0, cpx), "cube readback face %d", f);
+                    int want[3] = { f == 3 ? 128 : ((f & 1) ? 255 : 0), f == 3 ? 128 : ((f & 2) ? 255 : 0),
+                                    f == 3 ? 128 : ((f & 4) ? 255 : 0) };
+                    if (!near8(cpx[0], want[0]) || !near8(cpx[1], want[1]) || !near8(cpx[2], want[2]) ||
+                        !near8(cpx[16*16*4-4], want[0])) cube_ok = 0;
+                }
+                EXPECT(cube_ok, "cube: re-rendering face 3 must leave the other faces intact");
+                printf("PASS-CUBE: six faces rendered one by one, re-render of face 3 kept the other five\n");
+
+                /* shared depth: pass A (clear depth) draws; pass B KEEPs the depth and
+                 * redraws the same geometry -> LESS rejects it (colour stays clear); pass C
+                 * clears the depth again and draws. */
+                RhiTextureDesc cd2 = { RHI_TEXTURE_2D, RHI_FORMAT_RGBA8, 16, 16, RHI_TEXTURE_SAMPLED | RHI_TEXTURE_COLOR_TARGET };
+                RhiTexture c2 = rhi_texture_create(&cd2);
+                rhi_cmd_bind_pipeline(pipeL);
+                rhi_cmd_bind_vertex_buffer(0, vb, 0);
+                rhi_cmd_bind_texture(0, texR);
+                unsigned char r3[3][16 * 16 * 4];
+                for (int k = 0; k < 3; k++) {
+                    RhiPassDesc pass = { {c2, 0}, {cdep, 0}, RHI_LOAD_CLEAR, k == 1 ? RHI_LOAD_KEEP : RHI_LOAD_CLEAR,
+                                         {0, 0, 0, 1}, 1.0f };
+                    EXPECT(rhi_cmd_begin_pass(&pass) == RHI_OK, "shared-depth pass %d", k);
+                    rhi_cmd_draw(3, 0);
+                    rhi_cmd_end_pass();
+                    EXPECT(rhi_vk_texture_readback(c2, 0, 0, r3[k]), "shared-depth readback %d", k);
+                }
+                printf("PASS-DEPTH: A=%u B(keep)=%u C(clear)=%u (red channel at centre)\n",
+                       r3[0][(8*16+8)*4], r3[1][(8*16+8)*4], r3[2][(8*16+8)*4]);
+                EXPECT(REDDISH(&r3[0][(8*16+8)*4]) && DARK(&r3[1][(8*16+8)*4]) && REDDISH(&r3[2][(8*16+8)*4]),
+                       "depth KEEP across back-to-back passes must reject the equal-depth redraw; CLEAR must not");
+                rhi_texture_destroy(c2);
+                rhi_texture_destroy(ct);
+                rhi_texture_destroy(cdep);
+                EXPECT(rhi_frame_end() == RHI_OK, "cube frame_end");
+            }
+
+            /* (5) forced mid-pass arena flush: earlier pass draws survive, no re-clear. */
+            {
+                rhi_vk_test_force_arena(1000);
+                unsigned f0 = rhi_vk_arena_flushes;
+                EXPECT(rhi_frame_begin(NULL) == RHI_OK, "flush frame_begin");
+                RhiPassDesc pass = { {rt, 0}, {dep, 0}, RHI_LOAD_CLEAR, RHI_LOAD_CLEAR, {0, 0, 0, 1}, 1.0f };
+                EXPECT(rhi_cmd_begin_pass(&pass) == RHI_OK, "flush begin_pass");
+                rhi_cmd_bind_pipeline(pipeL);
+                rhi_cmd_bind_vertex_buffer(0, vb, 0);
+                rhi_cmd_bind_texture(0, texR);
+                rhi_cmd_set_viewport(0, 0, 32, 32);
+                rhi_cmd_draw(3, 0);
+                rhi_cmd_bind_texture(0, texB);
+                rhi_cmd_set_viewport(32, 0, 32, 32);
+                rhi_cmd_draw(3, 0);          /* arena overflow -> mid-pass flush before this draw */
+                rhi_cmd_end_pass();
+                EXPECT(rhi_vk_texture_readback(rt, 0, 0, px), "flush readback");
+                EXPECT(rhi_vk_arena_flushes > f0, "the arena did not flush (%u -> %u)", f0, rhi_vk_arena_flushes);
+                printf("PASS-FLUSH: %u mid-pass flush(es); left=%u,%u,%u right=%u,%u,%u\n", rhi_vk_arena_flushes - f0,
+                       RTPX(16,16)[0], RTPX(16,16)[1], RTPX(16,16)[2], RTPX(48,16)[0], RTPX(48,16)[1], RTPX(48,16)[2]);
+                EXPECT(REDDISH(RTPX(16, 16)) && BLUEISH(RTPX(48, 16)),
+                       "a mid-pass flush must keep the earlier draw (LOAD, not a re-clear)");
+                EXPECT(rhi_frame_end() == RHI_OK, "flush frame_end");
+                rhi_vk_test_force_arena(1u << 20);
+            }
+
+            /* (6) copy colour (partial rect) == read_pixels of the same rect; resize in place;
+             * (7) copy depth; (8) restore_state ends a pass; (9) validation failures; (10) destroys */
+            {
+                EXPECT(rhi_frame_begin(NULL) == RHI_OK, "copy frame_begin");
+                EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "copy clear");
+                rhi_cmd_bind_pipeline(pipeL);
+                rhi_cmd_bind_vertex_buffer(0, vb, 0);
+                rhi_cmd_bind_texture(0, texR);
+                rhi_cmd_set_viewport(0, 0, W / 2, H / 2);
+                rhi_cmd_draw(3, 0);
+                rhi_cmd_bind_texture(0, texB);
+                rhi_cmd_set_viewport(W / 2, H / 2, W / 2, H / 2);
+                rhi_cmd_draw(3, 0);
+                rhi_cmd_set_viewport(W - 2, H - 2, 1, 1);   /* later "sampling" draws touch one pixel only */
+                RhiTextureDesc cdst = { RHI_TEXTURE_2D, RHI_FORMAT_RGBA8, 4, 4, RHI_TEXTURE_SAMPLED | RHI_TEXTURE_COPY_DST };
+                RhiTextureDesc ddst = { RHI_TEXTURE_2D, RHI_FORMAT_DEPTH, 4, 4, RHI_TEXTURE_SAMPLED | RHI_TEXTURE_COPY_DST };
+                RhiTexture cc = rhi_texture_create(&cdst), dc = rhi_texture_create(&ddst);
+                EXPECT(cc.id && dc.id, "copy destinations");
+                /* sample the (4x4, never copied) destination before the resize so the old image is referenced */
+                rhi_cmd_bind_texture(0, cc);
+                rhi_cmd_draw(3, 0);
+                const int cx = W / 4, cy = H / 4, cw = W / 2, ch = H / 2;
+                EXPECT(rhi_cmd_copy_main_to_texture(cc, cx, cy, cw, ch) == RHI_OK, "copy colour (resizing)");
+                unsigned char *tx = (unsigned char *)malloc((size_t)cw * ch * 4), *rp = (unsigned char *)malloc((size_t)cw * ch * 4);
+                EXPECT(rhi_vk_texture_readback(cc, 0, 0, tx), "copy readback");
+                /* the copy takes x, y from the bottom-left, read_pixels from the top-left (rhi.h) */
+                EXPECT(rhi_read_pixels(cx, H - cy - ch, cw, ch, RHI_READ_RGBA8, rp, 0) == RHI_OK, "copy reference read_pixels");
+                int same = 1;
+                for (int r = 0; r < ch; r++)   /* texture rows are bottom-up (GL), read_pixels top-down */
+                    if (memcmp(tx + (size_t)(ch - 1 - r) * cw * 4, rp + (size_t)r * cw * 4, (size_t)cw * 4)) same = 0;
+                EXPECT(same, "copy_main_to_texture must equal read_pixels of the same rect");
+                printf("COPY-COLOR: %dx%d rect at (%d,%d) equals read_pixels (texture took the rect size), centre=%u,%u,%u\n",
+                       cw, ch, cx, cy, tx[((size_t)(ch/2) * cw + cw/2) * 4], tx[((size_t)(ch/2) * cw + cw/2) * 4 + 1],
+                       tx[((size_t)(ch/2) * cw + cw/2) * 4 + 2]);
+                /* the copy must contain both the red (low-left) and blue (high-right) parts */
+                EXPECT(REDDISH(tx + ((size_t)10 * cw + 10) * 4) && BLUEISH(tx + ((size_t)(ch - 10) * cw + cw - 10) * 4),
+                       "copied texture lost the asymmetric pattern");
+                /* shrink the copy again: new size, matches again; the old image is freed deferred */
+                rhi_cmd_bind_texture(0, cc);
+                rhi_cmd_draw(3, 0);
+                EXPECT(rhi_cmd_copy_main_to_texture(cc, 0, 0, 40, 20) == RHI_OK, "copy colour (shrinking)");
+                unsigned char t2[40 * 20 * 4], r2[40 * 20 * 4];
+                EXPECT(rhi_vk_texture_readback(cc, 0, 0, t2) && rhi_read_pixels(0, H - 20, 40, 20, RHI_READ_RGBA8, r2, 0) == RHI_OK, "copy2 reads");
+                same = 1;
+                for (int r = 0; r < 20; r++)
+                    if (memcmp(t2 + (size_t)(19 - r) * 40 * 4, r2 + (size_t)r * 40 * 4, 40 * 4)) same = 0;
+                EXPECT(same, "second (smaller) copy must equal read_pixels");
+                /* codex P11f-2: a resized colour destination keeps its full mip chain, so mip
+                 * generation after the copy really fills level 1 (40x20 -> 20x10; the lower-left
+                 * of the main target is the uniform red quadrant). */
+                {
+                    unsigned char l1[20 * 10 * 4];
+                    EXPECT(rhi_texture_generate_mips(cc) == RHI_OK, "generate_mips after a resizing copy");
+                    EXPECT(rhi_vk_texture_readback(cc, 0, 1, l1), "level-1 readback after a resizing copy");
+                    EXPECT(REDDISH(l1 + ((size_t)5 * 20 + 10) * 4), "level 1 must hold the downsampled copy, not nothing");
+                    printf("COPY-MIPS: resized copy destination generates mip level 1 (%u,%u,%u)\n",
+                           l1[((size_t)5 * 20 + 10) * 4], l1[((size_t)5 * 20 + 10) * 4 + 1], l1[((size_t)5 * 20 + 10) * 4 + 2]);
+                }
+                free(tx); free(rp);
+
+                /* depth copy: the lower-left quarter was drawn at z=0 -> depth 0.5 (Vulkan range), the rest is 1 */
+                EXPECT(rhi_cmd_copy_main_to_texture(dc, 0, 0, W, H) == RHI_OK, "copy depth");
+                float *dv = (float *)malloc((size_t)W * H * sizeof(float));
+                EXPECT(rhi_vk_texture_readback(dc, 0, 0, dv), "depth readback");
+                #define DPX(x, row) dv[(size_t)(row) * W + (x)]
+                printf("COPY-DEPTH ll=%.4f lr=%.4f ul=%.4f ur(blue quarter)=%.4f\n", DPX(W/4, H/4), DPX(3*W/4, H/4),
+                       DPX(W/4, 3*H/4), DPX(3*W/4, 3*H/4));
+                EXPECT(DPX(W/4, H/4) > 0.45f && DPX(W/4, H/4) < 0.55f && DPX(3*W/4, H/4) > 0.99f &&
+                       DPX(W/4, 3*H/4) > 0.99f && DPX(3*W/4, 3*H/4) > 0.45f && DPX(3*W/4, 3*H/4) < 0.55f,
+                       "copied depth wrong (memory row == GL row expected)");
+                free(dv);
+                rhi_cmd_bind_texture(0, texR);
+                rhi_cmd_bind_texture(4, dc);    /* uReflectionDepth: sampling a depth copy must be valid */
+                rhi_cmd_bind_texture(3, cc);
+                rhi_cmd_draw(3, 0);
+                rhi_cmd_bind_texture(4, (RhiTexture){0}); rhi_cmd_bind_texture(3, (RhiTexture){0});
+
+                /* copy validation */
+                EXPECT(rhi_cmd_copy_main_to_texture(texR, 0, 0, 4, 4) == RHI_ERR_INVALID, "copy into a non-COPY_DST texture rejected");
+                EXPECT(rhi_cmd_copy_main_to_texture(cc, W - 4, 0, 8, 4) == RHI_ERR_INVALID, "copy rect outside the frame rejected");
+                EXPECT(rhi_cmd_copy_main_to_texture(cc, 0, 0, 0, 4) == RHI_ERR_INVALID, "empty copy rect rejected");
+                EXPECT(rhi_cmd_copy_main_to_texture((RhiTexture){0}, 0, 0, 4, 4) == RHI_ERR_INVALID, "copy into no texture rejected");
+
+                /* pass validation */
+                {
+                    RhiTexture nontarget = texR;
+                    RhiPassDesc bad = { {nontarget, 0}, {{0}, 0}, RHI_LOAD_CLEAR, RHI_LOAD_KEEP, {0}, 1 };
+                    EXPECT(rhi_cmd_begin_pass(&bad) == RHI_ERR_INVALID, "begin_pass with a non-target colour rejected");
+                    bad = (RhiPassDesc){ {rt, 1}, {{0}, 0}, RHI_LOAD_CLEAR, RHI_LOAD_KEEP, {0}, 1 };
+                    EXPECT(rhi_cmd_begin_pass(&bad) == RHI_ERR_INVALID, "begin_pass with face 1 of a 2D target rejected");
+                    bad = (RhiPassDesc){ {rt, 0}, {dep, 1}, RHI_LOAD_CLEAR, RHI_LOAD_KEEP, {0}, 1 };
+                    EXPECT(rhi_cmd_begin_pass(&bad) == RHI_ERR_INVALID, "begin_pass with depth face 1 rejected");
+                    bad = (RhiPassDesc){ {rt, 0}, {{0}, 0}, (RhiLoadOp)7, RHI_LOAD_KEEP, {0}, 1 };
+                    EXPECT(rhi_cmd_begin_pass(&bad) == RHI_ERR_INVALID, "begin_pass with a bad load op rejected");
+                    bad = (RhiPassDesc){ {{0}, 0}, {{0}, 0}, RHI_LOAD_CLEAR, RHI_LOAD_KEEP, {0}, 1 };
+                    EXPECT(rhi_cmd_begin_pass(&bad) == RHI_ERR_INVALID, "begin_pass with no colour rejected");
+                    EXPECT(rhi_cmd_begin_pass(NULL) == RHI_ERR_INVALID, "begin_pass(NULL) rejected");
+                    RhiTextureDesc smalld = { RHI_TEXTURE_2D, RHI_FORMAT_D16, 8, 8, RHI_TEXTURE_DEPTH_TARGET };
+                    RhiTexture sd8 = rhi_texture_create(&smalld);
+                    bad = (RhiPassDesc){ {rt, 0}, {sd8, 0}, RHI_LOAD_CLEAR, RHI_LOAD_CLEAR, {0}, 1 };
+                    EXPECT(rhi_cmd_begin_pass(&bad) == RHI_ERR_UNSUPPORTED, "depth smaller than colour -> UNSUPPORTED");
+                    rhi_texture_destroy(sd8);
+                }
+
+                /* restore_state ends the pass and brings back pipeline/viewport/textures */
+                rhi_cmd_bind_pipeline(pipeL);
+                rhi_cmd_bind_texture(0, texR);
+                rhi_cmd_set_viewport(0, 0, W / 2, H);
+                RhiStateSnapshot sv; rhi_cmd_save_state(&sv);
+                {
+                    RhiPassDesc pass = { {rt, 0}, {{0}, 0}, RHI_LOAD_CLEAR, RHI_LOAD_KEEP, {0, 0, 0, 1}, 1.0f };
+                    EXPECT(rhi_cmd_begin_pass(&pass) == RHI_OK, "restore-test begin_pass (no depth)");
+                    rhi_cmd_bind_texture(0, texB);
+                    rhi_cmd_bind_pipeline((RhiPipeline){0});
+                    rhi_cmd_restore_state(&sv);
+                    int32_t vp[4]; rhi_viewport(vp);
+                    EXPECT(vp[2] == W / 2 && vp[3] == H, "restore after a pass restores the viewport, got %d,%d,%d,%d",
+                           vp[0], vp[1], vp[2], vp[3]);
+                    EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "restore_state must have ended the pass");
+                    rhi_cmd_set_viewport(0, 0, W / 2, H);
+                    rhi_cmd_draw(3, 0);     /* pipeline + texR from the snapshot, main target */
+                    EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "restore read");
+                    EXPECT(REDDISH(FPX(W / 4, H / 2)) && DARK(FPX(3 * W / 4, H / 2)),
+                           "post-restore draw: red in the left half only");
+                    printf("PASS-RESTORE: restore_state ended the pass; viewport/pipeline/texture back, main draw OK\n");
+                }
+
+                /* destroy inside a pass ends it; destroy right after a pass is deferred */
+                {
+                    RhiTexture tmp = rhi_texture_create(&rtd);
+                    RhiPassDesc pass = { {tmp, 0}, {{0}, 0}, RHI_LOAD_CLEAR, RHI_LOAD_KEEP, {1, 1, 0, 1}, 1.0f };
+                    EXPECT(rhi_cmd_begin_pass(&pass) == RHI_OK, "destroy-in-pass begin_pass");
+                    rhi_cmd_draw(3, 0);
+                    rhi_texture_destroy(tmp);
+                    EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "destroying the attachment ended the pass");
+                    RhiTexture tmp2 = rhi_texture_create(&rtd);
+                    pass.color.texture = tmp2;
+                    EXPECT(rhi_cmd_begin_pass(&pass) == RHI_OK, "destroy-after-pass begin_pass");
+                    rhi_cmd_draw(3, 0);
+                    rhi_cmd_end_pass();
+                    rhi_texture_destroy(tmp2);
+                    printf("PASS-DESTROY: destroy inside a pass ends it; destroy after a pass is deferred\n");
+                }
+                rhi_texture_destroy(cc);
+                rhi_texture_destroy(dc);
+
+                /* an open pass is closed by frame_end */
+                {
+                    RhiPassDesc pass = { {rt, 0}, {dep, 0}, RHI_LOAD_CLEAR, RHI_LOAD_CLEAR, {0, 0, 0, 1}, 1.0f };
+                    EXPECT(rhi_cmd_begin_pass(&pass) == RHI_OK, "frame_end-in-pass begin_pass");
+                    EXPECT(rhi_frame_end() == RHI_OK, "frame_end closes an open pass");
+                    EXPECT(rhi_frame_begin(NULL) == RHI_OK, "frame after an open-pass frame_end");
+                    EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "main target usable again");
+                    EXPECT(rhi_frame_end() == RHI_OK, "last frame_end");
+                }
+            }
+            rhi_texture_destroy(rt); rhi_texture_destroy(dep);
+            rhi_texture_destroy(texR); rhi_texture_destroy(texB);
+            fp[151] = 0.0f; fp[182] = 0.20f;
+            EXPECT(rhi_vk_validation_messages == vbefore, "P11f-2 pass/copy tests raised %u validation message(s)",
+                   rhi_vk_validation_messages - vbefore);
+            #undef RTPX
+            #undef FPX
+            #undef DPX
+            printf("P11f-2: passes, cube faces, shared depth, mid-pass flush, copies, restore, validation, destroys OK\n");
+        }
+
+        free(frame);
+        rhi_texture_destroy(tex2d);
+        rhi_texture_destroy(cube);
+        rhi_buffer_destroy(vb);
+        rhi_shader_destroy(sh);
+    }
+
+    /* ---- P11f-1: stencil on the main target ----
+     * Draw A (colour writes off) INCRs the stencil in the top-left triangle; draw B
+     * is full-screen green with stencil EQUAL 0, so A's footprint must stay black. */
+    {
+        static const RhiParamField fe_fields[] = {
+            { "uMVP", RHI_PARAM_MAT4, 0, 1 }, { "uColor", RHI_PARAM_VEC4, 64, 1 },
+        };
+        static const RhiParamLayout fe_layout = { fe_fields, 2, 80, "FeParams" };
+        static const char *const attrs[] = { "aPos" };
+        static const RhiParamLayout *const blocks[] = { &fe_layout };
+        RhiShaderDesc shd = { "", "", attrs, 1, "frontend", blocks, 1 };
+        RhiShader sh = rhi_shader_create(&shd);
+        EXPECT(sh.id != 0, "stencil frontend shader_create");
+        RhiPipelineDesc pa;
+        rhi_pipeline_desc_init(&pa);
+        pa.shader = sh;
+        pa.vertex.attrib_count = 1;
+        pa.vertex.attribs[0] = (RhiVertexAttrib){ 0, 0, 0, RHI_VERTEX_FLOAT2 };
+        pa.vertex.stride[0] = 8;
+        pa.depth_write = 0;
+        pa.color_write = 0;
+        pa.stencil_test = 1;
+        pa.stencil_compare = RHI_COMPARE_ALWAYS;
+        pa.stencil_pass = RHI_STENCIL_INCR;
+        RhiPipeline pipeA = rhi_pipeline_create(&pa);
+        RhiPipelineDesc pb = pa;
+        pb.color_write = 0xF;
+        pb.stencil_compare = RHI_COMPARE_EQUAL;
+        pb.stencil_ref = 0;
+        pb.stencil_pass = RHI_STENCIL_KEEP;
+        RhiPipeline pipeB = rhi_pipeline_create(&pb);
+        EXPECT(pipeA.id && pipeB.id && pipeA.id != pipeB.id, "stencil pipelines");
+        static const float tri[6] = { -1.0f, 1.0f,   0.0f, 1.0f,   -1.0f, 0.0f };
+        static const float big[6] = { -1.0f, -1.0f,   3.0f, -1.0f,   -1.0f, 3.0f };
+        RhiBufferDesc vbd = { RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, sizeof tri, tri };
+        RhiBuffer vb = rhi_buffer_create(&vbd);
+        RhiBufferDesc bbd = { RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, sizeof big, big };
+        RhiBuffer bvb = rhi_buffer_create(&bbd);
+        const float black[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+        unsigned char *frame = (unsigned char *)malloc((size_t)W * H * 4);
+        EXPECT(frame != NULL, "stencil frame alloc");
+        if (frame) {
+            float *fp = (float *)rhi_shader_params(sh, 0);
+            memset(fp, 0, 80); fp[0] = fp[5] = fp[10] = fp[15] = 1.0f;
+            fp[16] = 0.0f; fp[17] = 1.0f; fp[18] = 0.0f; fp[19] = 1.0f;   /* green */
+            EXPECT(rhi_cmd_set_viewport(0, 0, W, H) == RHI_OK, "stencil viewport");
+            EXPECT(rhi_frame_begin(NULL) == RHI_OK, "stencil frame_begin");
+            EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "stencil clear (clears stencil to 0)");
+            rhi_cmd_bind_pipeline(pipeA);
+            rhi_cmd_bind_vertex_buffer(0, vb, 0);
+            rhi_cmd_draw(3, 0);
+            rhi_cmd_bind_pipeline(pipeB);
+            rhi_cmd_bind_vertex_buffer(0, bvb, 0);
+            rhi_cmd_draw(3, 0);
+            EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "stencil read");
+            EXPECT(rhi_frame_end() == RHI_OK, "stencil frame_end");
+            const unsigned char *masked = frame + ((size_t)32 * W + 43) * 4;
+            const unsigned char *open = frame + ((size_t)128 * W + 171) * 4;
+            printf("STENCIL masked(43,32)=%u,%u,%u,%u open(171,128)=%u,%u,%u,%u\n",
+                   masked[0], masked[1], masked[2], masked[3], open[0], open[1], open[2], open[3]);
+            EXPECT(is_black(masked), "stencil-INCR footprint must be masked by EQUAL 0, got %u,%u,%u",
+                   masked[0], masked[1], masked[2]);
+            EXPECT(is_green(open), "outside the INCR footprint stencil is still 0 -> green, got %u,%u,%u",
+                   open[0], open[1], open[2]);
+            /* a second clear resets stencil to 0 so the same footprint is green again */
+            EXPECT(rhi_frame_begin(NULL) == RHI_OK, "stencil2 frame_begin");
+            EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "stencil2 clear");
+            rhi_cmd_bind_pipeline(pipeB);
+            rhi_cmd_bind_vertex_buffer(0, bvb, 0);
+            rhi_cmd_draw(3, 0);
+            EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "stencil2 read");
+            EXPECT(rhi_frame_end() == RHI_OK, "stencil2 frame_end");
+            EXPECT(is_green(frame + ((size_t)32 * W + 43) * 4), "after clear_main the stencil is 0 again");
+            printf("STENCIL: INCR then EQUAL-0 draw is masked; clear_main resets stencil to 0\n");
+        }
         free(frame);
         rhi_buffer_destroy(vb);
         rhi_buffer_destroy(bvb);
