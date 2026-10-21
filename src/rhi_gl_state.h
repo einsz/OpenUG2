@@ -57,6 +57,8 @@ void glsEnable(GLenum cap);
 void glsDisable(GLenum cap);
 void glsBlendFunc(GLenum src, GLenum dst);
 void glsBlendFuncSeparate(GLenum src_rgb, GLenum dst_rgb, GLenum src_a, GLenum dst_a);
+void glsBlendEquation(GLenum mode);
+void glsBlendEquationSeparate(GLenum rgb, GLenum alpha);
 void glsDepthFunc(GLenum func);
 void glsDepthMask(GLboolean mask);
 void glsColorMask(GLboolean r, GLboolean g, GLboolean b, GLboolean a);
@@ -67,6 +69,7 @@ void glsClearDepthf(GLfloat depth);
 void glsClearDepth(GLdouble depth);
 #endif
 void glsViewport(GLint x, GLint y, GLsizei w, GLsizei h);
+void glsLineWidth(GLfloat width);
 void glsUseProgram(GLuint program);
 void glsLinkProgram(GLuint program);
 void glsDeleteProgram(GLuint program);
@@ -95,7 +98,7 @@ void glsUniformMatrix4fv(GLint loc, GLsizei count, GLboolean transpose, const GL
 /* ---- tracked-state getters: drop-in for the glIsEnabled / glGet* forms ----
  * Modelled caps: DEPTH_TEST BLEND CULL_FACE SCISSOR_TEST STENCIL_TEST DITHER
  * POLYGON_OFFSET_FILL. Modelled pnames: BLEND_{SRC,DST}[_RGB|_ALPHA],
- * DEPTH_FUNC, VIEWPORT, CURRENT_PROGRAM, FRAMEBUFFER_BINDING,
+ * BLEND_EQUATION_{RGB,ALPHA}, DEPTH_FUNC, VIEWPORT, CURRENT_PROGRAM, FRAMEBUFFER_BINDING,
  * RENDERBUFFER_BINDING, ACTIVE_TEXTURE, TEXTURE_BINDING_2D (active unit),
  * ARRAY_BUFFER_BINDING, DEPTH_WRITEMASK, COLOR_WRITEMASK, COLOR_CLEAR_VALUE,
  * DEPTH_CLEAR_VALUE. */
@@ -128,6 +131,8 @@ unsigned gls_fallback_queries(void);
 #  define glDisable(c)                    glsDisable(c)
 #  define glBlendFunc(s,d)                glsBlendFunc(s,d)
 #  define glBlendFuncSeparate(a,b,c,d)    glsBlendFuncSeparate(a,b,c,d)
+#  define glBlendEquation(m)              glsBlendEquation(m)
+#  define glBlendEquationSeparate(a,b)    glsBlendEquationSeparate(a,b)
 #  define glDepthFunc(f)                  glsDepthFunc(f)
 #  define glDepthMask(m)                  glsDepthMask(m)
 #  define glColorMask(r,g,b,a)            glsColorMask(r,g,b,a)
@@ -138,6 +143,7 @@ unsigned gls_fallback_queries(void);
 #    define glClearDepth(d)               glsClearDepth(d)
 #  endif
 #  define glViewport(x,y,w,h)             glsViewport(x,y,w,h)
+#  define glLineWidth(w)                  glsLineWidth(w)
 #  define glUseProgram(p)                 glsUseProgram(p)
 #  define glLinkProgram(p)                glsLinkProgram(p)
 #  define glDeleteProgram(p)              glsDeleteProgram(p)

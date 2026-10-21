@@ -934,6 +934,7 @@ void rhi_pipeline_desc_init(RhiPipelineDesc *d) {
     d->src_rgb = d->src_alpha = RHI_BLEND_ONE;
     d->dst_rgb = d->dst_alpha = RHI_BLEND_ZERO;
     d->color_write = 0xF;
+    d->line_width = 1.0f;
     d->stencil_test = 0;
     d->stencil_compare = RHI_COMPARE_ALWAYS;
     d->stencil_ref = 0;
@@ -961,6 +962,7 @@ static int pipeline_desc_equal(const RhiPipelineDesc *a, const RhiPipelineDesc *
            a->src_rgb == b->src_rgb && a->dst_rgb == b->dst_rgb &&
            a->src_alpha == b->src_alpha && a->dst_alpha == b->dst_alpha &&
            (a->color_write & 0xF) == (b->color_write & 0xF) &&
+           (a->line_width > 0 ? a->line_width : 1.0f) == (b->line_width > 0 ? b->line_width : 1.0f) &&
            !a->stencil_test == !b->stencil_test && a->stencil_compare == b->stencil_compare &&
            a->stencil_ref == b->stencil_ref && a->stencil_read_mask == b->stencil_read_mask &&
            a->stencil_write_mask == b->stencil_write_mask && a->stencil_fail == b->stencil_fail &&
@@ -1065,6 +1067,10 @@ void rhi_cmd_bind_pipeline(RhiPipeline pipeline) {
     if (!mask != !d->depth_write) glDepthMask(d->depth_write ? GL_TRUE : GL_FALSE);
     set_cap(GL_BLEND, d->blend);
     if (d->blend) {
+        GLint eq[2];   /* the equation is always ADD (rhi.h has no blend op) */
+        gls_get_integerv(GL_BLEND_EQUATION_RGB, &eq[0]); gls_get_integerv(GL_BLEND_EQUATION_ALPHA, &eq[1]);
+        if ((GLenum)eq[0] != GL_FUNC_ADD || (GLenum)eq[1] != GL_FUNC_ADD)
+            glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
         GLint f[4];
         gls_get_integerv(GL_BLEND_SRC_RGB, &f[0]); gls_get_integerv(GL_BLEND_DST_RGB, &f[1]);
         gls_get_integerv(GL_BLEND_SRC_ALPHA, &f[2]); gls_get_integerv(GL_BLEND_DST_ALPHA, &f[3]);
@@ -1077,6 +1083,11 @@ void rhi_cmd_bind_pipeline(RhiPipeline pipeline) {
     set_cap(GL_CULL_FACE, d->cull != RHI_CULL_NONE);
     set_cap(GL_POLYGON_OFFSET_FILL, 0);
     if (d->cull != RHI_CULL_NONE) glCullFace(d->cull == RHI_CULL_BACK ? GL_BACK : GL_FRONT);
+    {   /* line width (no effect on triangles); only sent when it changes */
+        GLfloat lw = 1.0f, want = d->line_width > 0 ? d->line_width : 1.0f;
+        gls_get_floatv(GL_LINE_WIDTH, &lw);
+        if (lw != want) glLineWidth(want);
+    }
     GLboolean cm[4];
     gls_get_booleanv(GL_COLOR_WRITEMASK, cm);
     GLboolean want_cm[4] = { (d->color_write & 1) ? GL_TRUE : GL_FALSE, (d->color_write & 2) ? GL_TRUE : GL_FALSE,
@@ -1330,9 +1341,10 @@ static const GLenum k_snapshot_caps[] = { GL_DEPTH_TEST, GL_BLEND, GL_CULL_FACE,
 
 typedef struct {
     int32_t   pipeline;
-    GLint     blend[4], depth_func, viewport[4], program, framebuffer, renderbuffer, active;
+    GLint     blend[4], blend_eq[2], array_buffer, depth_func, viewport[4], program, framebuffer, renderbuffer, active;
     GLint     texture[RHI_STATE_TEXTURE_SLOTS];
-    GLfloat   clear_color[4], clear_depth;
+    GLfloat   clear_color[4], clear_depth, line_width;
+    uint32_t  attrib_mask;   /* bit i: vertex attribute array i enabled */
     GLboolean caps[RHI_GL_SNAPSHOT_CAPS], depth_mask, color_mask[4];
 } RhiGlSnapshot;
 typedef char rhi_gl_snapshot_fits[sizeof(RhiGlSnapshot) <= sizeof(RhiStateSnapshot) ? 1 : -1];
@@ -1344,6 +1356,9 @@ void rhi_cmd_save_state(RhiStateSnapshot *out) {
     g.pipeline = g_cmd.pipeline;
     gls_get_integerv(GL_BLEND_SRC_RGB, &g.blend[0]); gls_get_integerv(GL_BLEND_DST_RGB, &g.blend[1]);
     gls_get_integerv(GL_BLEND_SRC_ALPHA, &g.blend[2]); gls_get_integerv(GL_BLEND_DST_ALPHA, &g.blend[3]);
+    gls_get_integerv(GL_BLEND_EQUATION_RGB, &g.blend_eq[0]); gls_get_integerv(GL_BLEND_EQUATION_ALPHA, &g.blend_eq[1]);
+    gls_get_integerv(GL_ARRAY_BUFFER_BINDING, &g.array_buffer);
+    for (GLuint i = 0; i < RHI_MAX_VERTEX_ATTRIBS; i++) if (gls_attrib_enabled(i)) g.attrib_mask |= 1u << i;
     gls_get_integerv(GL_DEPTH_FUNC, &g.depth_func);
     gls_get_integerv(GL_VIEWPORT, g.viewport);
     gls_get_integerv(GL_CURRENT_PROGRAM, &g.program);
@@ -1353,6 +1368,7 @@ void rhi_cmd_save_state(RhiStateSnapshot *out) {
     for (int i = 0; i < RHI_STATE_TEXTURE_SLOTS; i++) g.texture[i] = gls_texture_2d(i);
     gls_get_floatv(GL_COLOR_CLEAR_VALUE, g.clear_color);
     gls_get_floatv(GL_DEPTH_CLEAR_VALUE, &g.clear_depth);
+    gls_get_floatv(GL_LINE_WIDTH, &g.line_width);
     for (size_t i = 0; i < RHI_GL_SNAPSHOT_CAPS; i++) g.caps[i] = gls_is_enabled(k_snapshot_caps[i]);
     gls_get_booleanv(GL_DEPTH_WRITEMASK, &g.depth_mask);
     gls_get_booleanv(GL_COLOR_WRITEMASK, g.color_mask);
@@ -1394,9 +1410,17 @@ void rhi_cmd_restore_state(const RhiStateSnapshot *state) {
     if (memcmp(now.color_mask, g.color_mask, sizeof g.color_mask))
         glColorMask(g.color_mask[0], g.color_mask[1], g.color_mask[2], g.color_mask[3]);
     if (now.depth_func != g.depth_func) glDepthFunc((GLenum)g.depth_func);
+    if (now.line_width != g.line_width) glLineWidth(g.line_width);
     if (!now.depth_mask != !g.depth_mask) glDepthMask(g.depth_mask);
     if (memcmp(now.blend, g.blend, sizeof g.blend))
         glBlendFuncSeparate((GLenum)g.blend[0], (GLenum)g.blend[1], (GLenum)g.blend[2], (GLenum)g.blend[3]);
+    if (memcmp(now.blend_eq, g.blend_eq, sizeof g.blend_eq))
+        glBlendEquationSeparate((GLenum)g.blend_eq[0], (GLenum)g.blend_eq[1]);
+    if (now.array_buffer != g.array_buffer) glBindBuffer(GL_ARRAY_BUFFER, (GLuint)g.array_buffer);
+    for (GLuint i = 0; i < RHI_MAX_VERTEX_ATTRIBS; i++) {
+        if (((now.attrib_mask ^ g.attrib_mask) >> i & 1u) == 0) continue;
+        if (g.attrib_mask >> i & 1u) glEnableVertexAttribArray(i); else glDisableVertexAttribArray(i);
+    }
     for (size_t i = 0; i < RHI_GL_SNAPSHOT_CAPS; i++) set_cap(k_snapshot_caps[i], g.caps[i]);
     GLint active = now.active;
     for (int i = 0; i < RHI_STATE_TEXTURE_SLOTS; i++) {
