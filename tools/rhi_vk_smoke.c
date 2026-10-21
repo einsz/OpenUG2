@@ -10,6 +10,8 @@
  */
 #include "rhi.h"
 #include <SDL.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1681,6 +1683,84 @@ int main(void) {
         rhi_shader_destroy(sh);
         EXPECT(rhi_vk_validation_messages == vbefore, "P11g-3 tests raised %u validation message(s)",
                rhi_vk_validation_messages - vbefore);
+    }
+
+    /* ---- review follow-ups F2/F3/F4 (accepted after the #105 review): STATIC updates, deferred-free failure, oversized blocks ---- */
+    {
+        unsigned vbefore = rhi_vk_validation_messages;
+        static const RhiParamField fe_fields[] = {
+            { "uMVP", RHI_PARAM_MAT4, 0, 1 }, { "uColor", RHI_PARAM_VEC4, 64, 1 },
+        };
+        static const RhiParamLayout fe_layout = { fe_fields, 2, 80, "FeParams" };
+        static const char *const attrs[] = { "aPos" };
+        static const RhiParamLayout *const blocks[] = { &fe_layout };
+        RhiShaderDesc shd = { "", "", attrs, 1, "frontend", blocks, 1 };
+        RhiShader sh = rhi_shader_create(&shd);
+        RhiPipelineDesc pd;
+        rhi_pipeline_desc_init(&pd);
+        pd.shader = sh;
+        pd.vertex.attrib_count = 1;
+        pd.vertex.attribs[0] = (RhiVertexAttrib){ 0, 0, 0, RHI_VERTEX_FLOAT2 };
+        pd.vertex.stride[0] = 8;
+        RhiPipeline pipe = rhi_pipeline_create(&pd);
+        EXPECT(sh.id && pipe.id, "follow-up shader/pipeline");
+        static const float left[12]  = { -1,-1, 0,-1, -1,1,  -1,1, 0,-1, 0,1 };
+        static const float right[12] = {  0,-1, 1,-1,  0,1,   0,1, 1,-1, 1,1 };
+        static const float quads[16] = { -1,-1, 0,-1, -1,1, 0,1,   0,-1, 1,-1, 0,1, 1,1 };
+        static const uint16_t idx_left[6]  = { 0, 1, 2, 2, 1, 3 };
+        static const uint16_t idx_right[6] = { 4, 5, 6, 6, 5, 7 };
+        const float black[4] = { 0, 0, 0, 1 };
+        unsigned char *frame = (unsigned char *)malloc((size_t)W * H * 4);
+        float *fp = (float *)rhi_shader_params(sh, 0);
+        EXPECT(frame && fp, "follow-up setup");
+        if (frame && fp) {
+            memset(fp, 0, 80); fp[0] = fp[5] = fp[10] = fp[15] = 1.0f;
+            EXPECT(rhi_cmd_set_viewport(0, 0, W, H) == RHI_OK, "follow-up viewport");
+            #define COLOUR(r, g, b) do { fp[16] = (r); fp[17] = (g); fp[18] = (b); fp[19] = 1.0f; } while (0)
+            #define PXAT(x, y) (frame + ((size_t)(y) * W + (x)) * 4)
+
+            /* F3a: a STATIC vertex buffer updated between two draws; each draw must show the contents it was issued with. */
+            {
+                RhiBuffer vb = rhi_buffer_create(&(RhiBufferDesc){ RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, sizeof left, left });
+                EXPECT(vb.id, "F3a buffer");
+                EXPECT(rhi_frame_begin(NULL) == RHI_OK, "F3a frame_begin");
+                EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "F3a clear");
+                rhi_cmd_bind_pipeline(pipe); rhi_cmd_bind_vertex_buffer(0, vb, 0);
+                COLOUR(1, 0, 0); rhi_cmd_draw(6, 0);                                       /* left quad, red */
+                EXPECT(rhi_buffer_update(vb, 0, sizeof right, right) == RHI_OK, "F3a STATIC update between draws");
+                COLOUR(0, 1, 0); rhi_cmd_draw(6, 0);                                       /* right quad, green */
+                EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "F3a read");
+                printf("F3a STATIC vertex update: left=%u,%u,%u right=%u,%u,%u\n", PXAT(64, 96)[0], PXAT(64, 96)[1], PXAT(64, 96)[2],
+                       PXAT(192, 96)[0], PXAT(192, 96)[1], PXAT(192, 96)[2]);
+                EXPECT(is_red(PXAT(64, 96)), "F3a: the first draw must keep the geometry it was issued with (left red)");
+                EXPECT(is_green(PXAT(192, 96)), "F3a: the second draw sees the update (right green)");
+                EXPECT(rhi_frame_end() == RHI_OK, "F3a frame_end");
+                rhi_buffer_destroy(vb);
+            }
+            /* F3b: the same for a STATIC index buffer. */
+            {
+                RhiBuffer qb = rhi_buffer_create(&(RhiBufferDesc){ RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, sizeof quads, quads });
+                RhiBuffer ib = rhi_buffer_create(&(RhiBufferDesc){ RHI_BUFFER_INDEX, RHI_UPDATE_STATIC, sizeof idx_left, idx_left });
+                EXPECT(qb.id && ib.id, "F3b buffers");
+                EXPECT(rhi_frame_begin(NULL) == RHI_OK, "F3b frame_begin");
+                EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "F3b clear");
+                rhi_cmd_bind_pipeline(pipe); rhi_cmd_bind_vertex_buffer(0, qb, 0); rhi_cmd_bind_index_buffer(ib);
+                COLOUR(1, 0, 0); rhi_cmd_draw_indexed(6, 0);
+                EXPECT(rhi_buffer_update(ib, 0, sizeof idx_right, idx_right) == RHI_OK, "F3b STATIC index update between draws");
+                COLOUR(0, 1, 0); rhi_cmd_draw_indexed(6, 0);
+                EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "F3b read");
+                printf("F3b STATIC index update:  left=%u,%u,%u right=%u,%u,%u\n", PXAT(64, 96)[0], PXAT(64, 96)[1], PXAT(64, 96)[2],
+                       PXAT(192, 96)[0], PXAT(192, 96)[1], PXAT(192, 96)[2]);
+                EXPECT(is_red(PXAT(64, 96)) && is_green(PXAT(192, 96)), "F3b: index update between draws");
+                EXPECT(rhi_frame_end() == RHI_OK, "F3b frame_end");
+                rhi_buffer_destroy(qb); rhi_buffer_destroy(ib);
+            }
+            #undef COLOUR
+            #undef PXAT
+        }
+        free(frame);
+        rhi_shader_destroy(sh);
+        EXPECT(rhi_vk_validation_messages == vbefore, "follow-up tests raised %u validation message(s)", rhi_vk_validation_messages - vbefore);
     }
 
     /* ---- gate: two clears in one recording (WAW on the colour/depth images) ----

@@ -704,8 +704,9 @@ static unsigned char *buf_cur_ptr(const RhiVkBuffer *b) {
 static void stream_after_submit(void) {
     for (uint32_t i = 0; i < g_vk.buffers.count; i++) {
         RhiVkBuffer *b = &g_vk.buffers.slots[i];
-        if (!b->live || b->update != RHI_UPDATE_STREAM) continue;
-        if (b->in_arena && b->mapped && b->size) memcpy(b->mapped, g_vk.stream.mapped + b->cur_off, (size_t)b->size);
+        if (!b->live) continue;
+        if (b->update == RHI_UPDATE_STREAM && b->in_arena && b->mapped && b->size)
+            memcpy(b->mapped, g_vk.stream.mapped + b->cur_off, (size_t)b->size);
         b->in_arena = 0; b->in_use = 0;
     }
     g_vk.stream.offset = 0;
@@ -1561,6 +1562,9 @@ RhiResult rhi_buffer_update(RhiBuffer buf, size_t offset, size_t size, const voi
         memcpy(buf_cur_ptr(b) + offset, data, size);
         return RHI_OK;
     }
+    /* STATIC storage is written immediately (a submitted staging copy), so a draw already recorded this frame would see the new
+     * contents when it executes: submit those draws first. */
+    if (b->in_use && !frame_split()) return RHI_ERR_DEVICE_LOST;
     return stage_to_device(b->buf, offset, data, size) ? RHI_OK : RHI_ERR_DEVICE_LOST;
 }
 
@@ -2770,7 +2774,7 @@ static void draw_bind_resources(RhiVkPipeline *e, VkDeviceSize ubo_off) {
         if (!used_stream[s]) continue;
         RhiVkBuffer *b = g_vk.bound_vertex[s].id ? buffer_lookup(g_vk.bound_vertex[s], "draw") : NULL;
         if (b && b->buf && (b->usage & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)) {
-            if (b->update == RHI_UPDATE_STREAM) b->in_use = 1;   /* a recorded draw now reads it */
+            b->in_use = 1;   /* a recorded draw now reads it */
             vbufs[s] = buf_cur(b); voffs[s] = g_vk.bound_vertex_offset[s] + buf_cur_off(b);
         } else {
             /* GL disables the attribute (it then reads the current generic value; the
@@ -2887,7 +2891,7 @@ void rhi_cmd_draw_indexed(uint32_t index_count, uint32_t first_index) {
     RhiVkPipeline *e = draw_begin("draw_indexed");
     if (!e) return;
     draw_bind_resources(e, ubo_off);
-    if (index->update == RHI_UPDATE_STREAM) index->in_use = 1;
+    index->in_use = 1;   /* a recorded draw now reads it */
     vkCmdBindIndexBuffer(g_vk.cmd, buf_cur(index), buf_cur_off(index), VK_INDEX_TYPE_UINT16);
     vkCmdDrawIndexed(g_vk.cmd, index_count, 1, first_index, 0, 0);
 }
