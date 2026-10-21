@@ -14,8 +14,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Non-static global in rhi_vk.c (no rhi.h surface for it). */
+/* Non-static globals in rhi_vk.c (no rhi.h surface for them). */
 extern unsigned rhi_vk_validation_messages;
+/* Test-only backend path: reads buffer contents (STREAM mapping, or a STATIC
+ * device->host staging copy). Returns 1 on success, 0 on failure. */
+extern int rhi_vk_buffer_readback(RhiBuffer buf, size_t offset, size_t size, void *dst);
 
 static const int W = 256, H = 192;
 static const float CLEAR[4] = { 0.25f, 0.5f, 0.75f, 1.0f };
@@ -93,6 +96,68 @@ int main(void) {
            "RGB8 pixel = %u,%u,%u", rgb[0], rgb[1], rgb[2]);
 
     EXPECT(rhi_frame_end() == RHI_OK, "rhi_frame_end");
+
+    /* ---- P11b: GPU buffers (STATIC + STREAM; create/update/replace/readback) ---- */
+    /* Known byte patterns; i and 255-i are easy to eyeball on a mismatch. */
+    unsigned char pat_a[64], pat_b[16], pat_c[128], got[128];
+    for (int i = 0; i < 64; i++)  pat_a[i] = (unsigned char)i;
+    for (int i = 0; i < 16; i++)  pat_b[i] = (unsigned char)(0xA0 + i);
+    for (int i = 0; i < 128; i++) pat_c[i] = (unsigned char)(255 - i);
+
+    /* STATIC VERTEX buffer created from pat_a, read back via a device->host copy. */
+    RhiBufferDesc sdesc = { RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, sizeof pat_a, pat_a };
+    RhiBuffer sb = rhi_buffer_create(&sdesc);
+    EXPECT(sb.id != 0, "static buffer_create");
+    memset(got, 0, sizeof got);
+    EXPECT(rhi_vk_buffer_readback(sb, 0, sizeof pat_a, got), "static readback");
+    EXPECT(memcmp(got, pat_a, sizeof pat_a) == 0, "static initial contents mismatch");
+
+    /* Sub-range update at offset 16 (STATIC: stage + vkCmdCopyBuffer). */
+    EXPECT(rhi_buffer_update(sb, 16, sizeof pat_b, pat_b) == RHI_OK, "static buffer_update");
+    memset(got, 0, sizeof got);
+    EXPECT(rhi_vk_buffer_readback(sb, 0, sizeof pat_a, got), "static readback after update");
+    {
+        unsigned char want[64]; memcpy(want, pat_a, 64); memcpy(want + 16, pat_b, 16);
+        EXPECT(memcmp(got, want, 64) == 0, "static contents after sub-range update");
+    }
+    /* Out-of-range sub-range must be rejected, not silently clamped. */
+    EXPECT(rhi_buffer_update(sb, 60, 8, pat_b) == RHI_ERR_INVALID, "static update past end rejected");
+
+    /* Replace gives fresh, larger storage from pat_c. */
+    EXPECT(rhi_buffer_replace(sb, sizeof pat_c, pat_c) == RHI_OK, "static buffer_replace");
+    memset(got, 0, sizeof got);
+    EXPECT(rhi_vk_buffer_readback(sb, 0, sizeof pat_c, got), "static readback after replace");
+    EXPECT(memcmp(got, pat_c, sizeof pat_c) == 0, "static contents after replace");
+    printf("static buffer: create/update/replace verified (%zu -> %zu bytes)\n",
+           sizeof pat_a, sizeof pat_c);
+
+    /* STREAM INDEX buffer, initially empty (size 0); the first replace allocates it. */
+    RhiBufferDesc tdesc = { RHI_BUFFER_INDEX, RHI_UPDATE_STREAM, 0, NULL };
+    RhiBuffer tb = rhi_buffer_create(&tdesc);
+    EXPECT(tb.id != 0, "stream buffer_create (size 0)");
+    EXPECT(rhi_buffer_replace(tb, sizeof pat_a, pat_a) == RHI_OK, "stream first replace allocates");
+    memset(got, 0, sizeof got);
+    EXPECT(rhi_vk_buffer_readback(tb, 0, sizeof pat_a, got), "stream readback via mapping");
+    EXPECT(memcmp(got, pat_a, sizeof pat_a) == 0, "stream contents after replace");
+
+    /* STREAM sub-range update (memcpy into the persistent mapping). */
+    EXPECT(rhi_buffer_update(tb, 16, sizeof pat_b, pat_b) == RHI_OK, "stream buffer_update");
+    memset(got, 0, sizeof got);
+    EXPECT(rhi_vk_buffer_readback(tb, 0, sizeof pat_a, got), "stream readback after update");
+    {
+        unsigned char want[64]; memcpy(want, pat_a, 64); memcpy(want + 16, pat_b, 16);
+        EXPECT(memcmp(got, want, 64) == 0, "stream contents after sub-range update");
+    }
+    printf("stream buffer: size-0 create + replace/update verified\n");
+
+    /* An invalid description (two usage bits) is rejected like the GL backend. */
+    RhiBufferDesc bad = { RHI_BUFFER_VERTEX | RHI_BUFFER_INDEX, RHI_UPDATE_STATIC, 16, pat_a };
+    EXPECT(rhi_buffer_create(&bad).id == 0, "two usage bits rejected");
+
+    rhi_buffer_destroy(sb);
+    rhi_buffer_destroy(tb);
+    /* A destroyed handle is stale; a read must fail (also logs a stale-handle line). */
+    EXPECT(!rhi_vk_buffer_readback(sb, 0, 4, got), "readback of destroyed handle fails");
 
     rhi_device_destroy();
     SDL_DestroyWindow(win);

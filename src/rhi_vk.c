@@ -25,6 +25,22 @@ unsigned rhi_vk_validation_messages;
 #define VK_DEFAULT_W 1280
 #define VK_DEFAULT_H 720
 
+/* Buffer handle id = generation << 24 | (slot + 1), id 0 = no buffer, the same
+ * scheme and bit layout as the GL backend's buffer table (rhi_gl.c). */
+#define VK_SLOT_BITS 24u
+#define VK_SLOT_MASK ((1u << VK_SLOT_BITS) - 1u)
+
+typedef struct {
+    VkBuffer           buf;         /* VK_NULL_HANDLE when the slot holds no storage */
+    VkDeviceMemory     mem;
+    void              *mapped;      /* persistent map for STREAM, NULL for STATIC */
+    VkDeviceSize       size;        /* current storage size in bytes */
+    VkBufferUsageFlags usage;       /* VERTEX or INDEX usage bit (no transfer bits) */
+    uint8_t            update;      /* RHI_UPDATE_STATIC / RHI_UPDATE_STREAM */
+    uint8_t            live;        /* 1 while the slot is allocated (STREAM size 0 keeps buf NULL) */
+    uint8_t            generation;
+} RhiVkBuffer;
+
 static struct {
     SDL_Window              *window;
     VkInstance               instance;
@@ -51,6 +67,14 @@ static struct {
     uint64_t frame_index;
     int      in_frame;
     int      recording;                  /* cmd buffer is mid-recording */
+
+    struct {                             /* buffer handle table, shape of GL's g_buffers */
+        RhiVkBuffer *slots;
+        uint32_t     count, capacity;
+        uint32_t    *free_list;
+        uint32_t     free_count;
+        unsigned     stale_logged;
+    } buffers;
 } g_vk;
 
 /* -------------------------------------------------------------------------- */
@@ -126,6 +150,82 @@ static int flush(void) {
     if (!vk_ok(vkQueueSubmit(g_vk.queue, 1, &si, g_vk.fence), "vkQueueSubmit")) return 0;
     if (!vk_ok(vkWaitForFences(g_vk.device, 1, &g_vk.fence, VK_TRUE, UINT64_MAX), "vkWaitForFences")) return 0;
     return vk_ok(vkResetFences(g_vk.device, 1, &g_vk.fence), "vkResetFences");
+}
+
+/* Create a VkBuffer of `size` bytes with `usage`, back it with memory having
+ * every `props` property and bind them. Cleans up on any failure. 1 on success. */
+static int make_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags props,
+                       VkBuffer *buf, VkDeviceMemory *mem) {
+    *buf = VK_NULL_HANDLE; *mem = VK_NULL_HANDLE;
+    VkBufferCreateInfo bci = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, NULL, 0, size, usage,
+        VK_SHARING_MODE_EXCLUSIVE, 0, NULL };
+    if (!vk_ok(vkCreateBuffer(g_vk.device, &bci, NULL, buf), "vkCreateBuffer")) return 0;
+    VkMemoryRequirements mr; vkGetBufferMemoryRequirements(g_vk.device, *buf, &mr);
+    uint32_t mt = find_mem(mr.memoryTypeBits, props);
+    if (mt == UINT32_MAX) {
+        fprintf(stderr, "rhi_vk: no suitable buffer memory type\n");
+        vkDestroyBuffer(g_vk.device, *buf, NULL); *buf = VK_NULL_HANDLE; return 0;
+    }
+    VkMemoryAllocateInfo ai = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, NULL, mr.size, mt };
+    if (!vk_ok(vkAllocateMemory(g_vk.device, &ai, NULL, mem), "vkAllocateMemory(buffer)")) {
+        vkDestroyBuffer(g_vk.device, *buf, NULL); *buf = VK_NULL_HANDLE; return 0;
+    }
+    if (!vk_ok(vkBindBufferMemory(g_vk.device, *buf, *mem, 0), "vkBindBufferMemory")) {
+        vkFreeMemory(g_vk.device, *mem, NULL); vkDestroyBuffer(g_vk.device, *buf, NULL);
+        *buf = VK_NULL_HANDLE; *mem = VK_NULL_HANDLE; return 0;
+    }
+    return 1;
+}
+
+/* One-shot `vkCmdCopyBuffer` of `size` bytes src[src_off] -> dst[dst_off] on a
+ * temporary command buffer, blocking on a fence until it completes. The device
+ * queue serialises this with any frame submit, so it is safe mid-frame. 1 ok. */
+static int copy_buffer(VkBuffer src, VkDeviceSize src_off, VkBuffer dst, VkDeviceSize dst_off,
+                       VkDeviceSize size) {
+    VkCommandBuffer cb = VK_NULL_HANDLE;
+    VkCommandBufferAllocateInfo cbai = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO, NULL, g_vk.pool,
+        VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1 };
+    if (!vk_ok(vkAllocateCommandBuffers(g_vk.device, &cbai, &cb), "vkAllocateCommandBuffers(copy)")) return 0;
+    VkCommandBufferBeginInfo bi = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, NULL,
+        VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, NULL };
+    int ok = vk_ok(vkBeginCommandBuffer(cb, &bi), "vkBeginCommandBuffer(copy)");
+    if (ok) {
+        VkBufferCopy region = { src_off, dst_off, size };
+        vkCmdCopyBuffer(cb, src, dst, 1, &region);
+        ok = vk_ok(vkEndCommandBuffer(cb), "vkEndCommandBuffer(copy)");
+    }
+    VkFence fence = VK_NULL_HANDLE;
+    if (ok) {
+        VkFenceCreateInfo fci = { VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, NULL, 0 };
+        ok = vk_ok(vkCreateFence(g_vk.device, &fci, NULL, &fence), "vkCreateFence(copy)");
+    }
+    if (ok) {
+        VkSubmitInfo si = { VK_STRUCTURE_TYPE_SUBMIT_INFO, NULL, 0, NULL, NULL, 1, &cb, 0, NULL };
+        ok = vk_ok(vkQueueSubmit(g_vk.queue, 1, &si, fence), "vkQueueSubmit(copy)") &&
+             vk_ok(vkWaitForFences(g_vk.device, 1, &fence, VK_TRUE, UINT64_MAX), "vkWaitForFences(copy)");
+    }
+    if (fence) vkDestroyFence(g_vk.device, fence, NULL);
+    vkFreeCommandBuffers(g_vk.device, g_vk.pool, 1, &cb);
+    return ok;
+}
+
+/* Upload `size` bytes of `data` into device-local `dst` at `dst_off` through a
+ * temporary host-visible staging buffer and a one-shot copy. 1 on success. */
+static int stage_to_device(VkBuffer dst, VkDeviceSize dst_off, const void *data, VkDeviceSize size) {
+    VkBuffer staging; VkDeviceMemory smem;
+    if (!make_buffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                     &staging, &smem)) return 0;
+    void *map = NULL;
+    int ok = vk_ok(vkMapMemory(g_vk.device, smem, 0, VK_WHOLE_SIZE, 0, &map), "vkMapMemory(staging)");
+    if (ok) {
+        memcpy(map, data, size);
+        vkUnmapMemory(g_vk.device, smem);
+        ok = copy_buffer(staging, 0, dst, dst_off, size);
+    }
+    vkDestroyBuffer(g_vk.device, staging, NULL);
+    vkFreeMemory(g_vk.device, smem, NULL);
+    return ok;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -308,6 +408,15 @@ fail:
 
 void rhi_device_destroy(void) {
     if (g_vk.device) vkDeviceWaitIdle(g_vk.device);
+    /* Free every live buffer, then the handle table's own heap arrays. */
+    for (uint32_t i = 0; i < g_vk.buffers.count; i++) {
+        RhiVkBuffer *b = &g_vk.buffers.slots[i];
+        if (b->mapped) vkUnmapMemory(g_vk.device, b->mem);
+        if (b->buf) vkDestroyBuffer(g_vk.device, b->buf, NULL);
+        if (b->mem) vkFreeMemory(g_vk.device, b->mem, NULL);
+    }
+    free(g_vk.buffers.slots);
+    free(g_vk.buffers.free_list);
     if (g_vk.readback)     vkDestroyBuffer(g_vk.device, g_vk.readback, NULL);
     if (g_vk.readback_mem) vkFreeMemory(g_vk.device, g_vk.readback_mem, NULL);
     if (g_vk.depth)        vkDestroyImage(g_vk.device, g_vk.depth, NULL);
@@ -366,9 +475,14 @@ RhiResult rhi_cmd_clear_main(const float color[4], float depth) {
     VkImageSubresourceRange crange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
     VkImageSubresourceRange drange = { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
 
+    /* Wait on any prior transfer to these images this frame (an earlier clear,
+       a read_pixels or a copy_main_to_texture): source stage TRANSFER with
+       TRANSFER_WRITE|READ, not TOP_OF_PIPE, so a second clear is hazard-free.
+       oldLayout stays UNDEFINED since the clear discards the old contents. */
     image_barrier(g_vk.color, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
-                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, VK_ACCESS_TRANSFER_WRITE_BIT,
-                  VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                  VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                  VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
     VkClearColorValue cc; memcpy(cc.float32, color, sizeof cc.float32);
     vkCmdClearColorImage(g_vk.cmd, g_vk.color, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &cc, 1, &crange);
     /* Settle to TRANSFER_SRC so a later read_pixels copy needs no extra barrier. */
@@ -378,8 +492,9 @@ RhiResult rhi_cmd_clear_main(const float color[4], float depth) {
     g_vk.color_layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 
     image_barrier(g_vk.depth, VK_IMAGE_ASPECT_DEPTH_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
-                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, VK_ACCESS_TRANSFER_WRITE_BIT,
-                  VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                  VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                  VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
     VkClearDepthStencilValue cd = { depth, 0 };
     vkCmdClearDepthStencilImage(g_vk.cmd, g_vk.depth, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &cd, 1, &drange);
     return RHI_OK;
@@ -442,15 +557,168 @@ RhiResult rhi_read_pixels(int32_t x, int32_t y, int32_t w, int32_t h,
 /* Handle-returning: {0}; RhiResult: RHI_ERR_UNSUPPORTED; void: no-op.        */
 /* ========================================================================== */
 
-/* --- Buffers (TODO P11b) --- */
-RhiBuffer rhi_buffer_create(const RhiBufferDesc *desc) { (void)desc; RhiBuffer b = {0}; return b; }
+/* --- Buffers (P11b) ---
+ * The handle table mirrors the GL backend's (slot + generation, free list);
+ * STATIC buffers are device-local and filled through a staging copy, STREAM
+ * buffers are host-visible + coherent and persistently mapped. */
+
+/* Resolve a handle to its live slot, logging a bounded number of stale hits
+ * exactly like rhi_gl.c's buffer_lookup. */
+static RhiVkBuffer *buffer_lookup(RhiBuffer buf, const char *what) {
+    uint32_t slot = buf.id & VK_SLOT_MASK;
+    if (!buf.id) return NULL;
+    if (slot && slot <= g_vk.buffers.count) {
+        RhiVkBuffer *b = &g_vk.buffers.slots[slot - 1];
+        if (b->live && b->generation == (uint8_t)(buf.id >> VK_SLOT_BITS)) return b;
+    }
+    if (g_vk.buffers.stale_logged < 8) {
+        g_vk.buffers.stale_logged++;
+        fprintf(stderr, "rhi: %s: stale or invalid buffer handle 0x%08x\n", what, (unsigned)buf.id);
+    }
+    return NULL;
+}
+
+static int buffer_size_ok(size_t size) {
+    return size <= (size_t)PTRDIFF_MAX;
+}
+
+static uint32_t buffer_slot_alloc(void) {
+    if (g_vk.buffers.free_count) return g_vk.buffers.free_list[--g_vk.buffers.free_count];
+    if (g_vk.buffers.count == g_vk.buffers.capacity) {
+        uint32_t cap = g_vk.buffers.capacity ? g_vk.buffers.capacity * 2u : 256u;
+        if (cap > VK_SLOT_MASK) return 0;
+        RhiVkBuffer *slots = (RhiVkBuffer *)realloc(g_vk.buffers.slots, cap * sizeof *slots);
+        if (!slots) return 0;
+        g_vk.buffers.slots = slots;
+        uint32_t *list = (uint32_t *)realloc(g_vk.buffers.free_list, cap * sizeof *list);
+        if (!list) return 0;
+        g_vk.buffers.free_list = list;
+        g_vk.buffers.capacity = cap;
+    }
+    memset(&g_vk.buffers.slots[g_vk.buffers.count], 0, sizeof g_vk.buffers.slots[0]);
+    return ++g_vk.buffers.count;
+}
+
+/* Give `b` fresh storage of `size` bytes (any previous storage must already be
+ * released) and optionally fill it from `data`. size 0 leaves the slot empty. */
+static RhiResult buffer_alloc_storage(RhiVkBuffer *b, size_t size, const void *data) {
+    b->buf = VK_NULL_HANDLE; b->mem = VK_NULL_HANDLE; b->mapped = NULL; b->size = 0;
+    if (!size) return RHI_OK;
+    if (b->update == RHI_UPDATE_STREAM) {
+        if (!make_buffer(size, b->usage,
+                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                         &b->buf, &b->mem))
+            return RHI_ERR_DEVICE_LOST;
+        if (!vk_ok(vkMapMemory(g_vk.device, b->mem, 0, VK_WHOLE_SIZE, 0, &b->mapped), "vkMapMemory(stream)")) {
+            vkDestroyBuffer(g_vk.device, b->buf, NULL); vkFreeMemory(g_vk.device, b->mem, NULL);
+            b->buf = VK_NULL_HANDLE; b->mem = VK_NULL_HANDLE; b->mapped = NULL;
+            return RHI_ERR_DEVICE_LOST;
+        }
+        if (data) memcpy(b->mapped, data, size);
+    } else {
+        if (!make_buffer(size, b->usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &b->buf, &b->mem))
+            return RHI_ERR_DEVICE_LOST;
+        if (data && !stage_to_device(b->buf, 0, data, size)) {
+            vkDestroyBuffer(g_vk.device, b->buf, NULL); vkFreeMemory(g_vk.device, b->mem, NULL);
+            b->buf = VK_NULL_HANDLE; b->mem = VK_NULL_HANDLE;
+            return RHI_ERR_DEVICE_LOST;
+        }
+    }
+    b->size = size;
+    return RHI_OK;
+}
+
+RhiBuffer rhi_buffer_create(const RhiBufferDesc *desc) {
+    RhiBuffer out = {0};
+    if (!desc || (desc->usage != RHI_BUFFER_VERTEX && desc->usage != RHI_BUFFER_INDEX) ||
+        (desc->update != RHI_UPDATE_STATIC && desc->update != RHI_UPDATE_STREAM) ||
+        !buffer_size_ok(desc->size)) {
+        fprintf(stderr, "rhi: buffer_create: invalid description\n");
+        return out;
+    }
+    if (!g_vk.device) { fprintf(stderr, "rhi: buffer_create: no device\n"); return out; }
+    uint32_t slot = buffer_slot_alloc();
+    if (!slot) { fprintf(stderr, "rhi: buffer_create: out of handles\n"); return out; }
+    RhiVkBuffer *b = &g_vk.buffers.slots[slot - 1];
+    b->update = (uint8_t)desc->update;
+    b->usage  = desc->usage == RHI_BUFFER_INDEX ? VK_BUFFER_USAGE_INDEX_BUFFER_BIT
+                                                : VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    b->buf = VK_NULL_HANDLE; b->mem = VK_NULL_HANDLE; b->mapped = NULL; b->size = 0;
+    b->live = 1;
+    out.id = ((uint32_t)b->generation << VK_SLOT_BITS) | slot;
+    /* A STREAM buffer with no size/data gets its storage from the first replace. */
+    if (desc->update == RHI_UPDATE_STATIC || desc->size || desc->data) {
+        if (buffer_alloc_storage(b, desc->size, desc->data) != RHI_OK) {
+            fprintf(stderr, "rhi: buffer_create: %zu bytes could not be allocated\n", desc->size);
+            rhi_buffer_destroy(out);
+            return (RhiBuffer){0};
+        }
+    }
+    return out;
+}
+
 RhiResult rhi_buffer_update(RhiBuffer buf, size_t offset, size_t size, const void *data) {
-    (void)buf; (void)offset; (void)size; (void)data; return RHI_ERR_UNSUPPORTED;
+    RhiVkBuffer *b = buffer_lookup(buf, "buffer_update");
+    if (!b || !data || offset > b->size || size > b->size - offset) return RHI_ERR_INVALID;
+    if (!size) return RHI_OK;
+    if (b->update == RHI_UPDATE_STREAM) {
+        memcpy((unsigned char *)b->mapped + offset, data, size);
+        return RHI_OK;
+    }
+    return stage_to_device(b->buf, offset, data, size) ? RHI_OK : RHI_ERR_DEVICE_LOST;
 }
+
 RhiResult rhi_buffer_replace(RhiBuffer buf, size_t size, const void *data) {
-    (void)buf; (void)size; (void)data; return RHI_ERR_UNSUPPORTED;
+    RhiVkBuffer *b = buffer_lookup(buf, "buffer_replace");
+    if (!b || !buffer_size_ok(size)) return RHI_ERR_INVALID;
+    /* Fresh storage (orphan/realloc). No draws reference it yet (pre-P11e) and
+     * every copy above blocks, so releasing the old storage now is safe. */
+    if (b->mapped) { vkUnmapMemory(g_vk.device, b->mem); b->mapped = NULL; }
+    if (b->buf) vkDestroyBuffer(g_vk.device, b->buf, NULL);
+    if (b->mem) vkFreeMemory(g_vk.device, b->mem, NULL);
+    return buffer_alloc_storage(b, size, data);
 }
-void rhi_buffer_destroy(RhiBuffer buf) { (void)buf; }
+
+void rhi_buffer_destroy(RhiBuffer buf) {
+    RhiVkBuffer *b = buffer_lookup(buf, "buffer_destroy");
+    if (!b) return;
+    if (b->mapped) { vkUnmapMemory(g_vk.device, b->mem); b->mapped = NULL; }
+    if (b->buf) vkDestroyBuffer(g_vk.device, b->buf, NULL);
+    if (b->mem) vkFreeMemory(g_vk.device, b->mem, NULL);
+    b->buf = VK_NULL_HANDLE; b->mem = VK_NULL_HANDLE; b->size = 0; b->live = 0;
+    /* Retire the slot before its generation wraps and revives stale handles. */
+    if (b->generation == UINT8_MAX) return;
+    b->generation++;
+    g_vk.buffers.free_list[g_vk.buffers.free_count++] = buf.id & VK_SLOT_MASK;
+}
+
+/* Test-only (not in rhi.h): read `size` bytes at `offset` of `buf` into `dst`.
+ * STREAM reads the persistent mapping; STATIC copies device-local -> a host
+ * staging buffer with vkCmdCopyBuffer. The smoke declares it extern to verify
+ * buffer contents, since rhi.h exposes no buffer readback. 1 ok, 0 on failure. */
+int rhi_vk_buffer_readback(RhiBuffer buf, size_t offset, size_t size, void *dst) {
+    RhiVkBuffer *b = buffer_lookup(buf, "buffer_readback");
+    if (!b || !dst || offset > b->size || size > b->size - offset) return 0;
+    if (!size) return 1;
+    if (b->update == RHI_UPDATE_STREAM) {
+        memcpy(dst, (const unsigned char *)b->mapped + offset, size);
+        return 1;
+    }
+    VkBuffer staging; VkDeviceMemory smem;
+    if (!make_buffer(size, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                     &staging, &smem)) return 0;
+    int ok = copy_buffer(b->buf, offset, staging, 0, size);
+    if (ok) {
+        void *map = NULL;
+        ok = vk_ok(vkMapMemory(g_vk.device, smem, 0, VK_WHOLE_SIZE, 0, &map), "vkMapMemory(readback)");
+        if (ok) { memcpy(dst, map, size); vkUnmapMemory(g_vk.device, smem); }
+    }
+    vkDestroyBuffer(g_vk.device, staging, NULL);
+    vkFreeMemory(g_vk.device, smem, NULL);
+    return ok;
+}
 
 /* --- Textures (TODO P11c) --- */
 RhiTexture rhi_texture_create(const RhiTextureDesc *desc) { (void)desc; RhiTexture t = {0}; return t; }
