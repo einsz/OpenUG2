@@ -123,7 +123,9 @@ static char *wm_text(int is_vertex, const char *src, int len) {
 }
 
 RhiShader world_debug_shader_load(const char *vert_path, const char *frag_path) {
-    /* Prefer on-disk files (live-editable during dev); fall back per-shader to
+    /* The Vulkan backend ignores this GLSL (it ships build-time SPIR-V selected by
+       the "world_debug" label), so on-disk live editing only applies to GL.
+       Prefer on-disk files (live-editable during dev); fall back per-shader to
        the make-embedded source (generated_world_debug_shaders.h, xxd byte
        arrays -- not NUL-terminated, so pass their *_len) so the binary works
        from any working directory. */

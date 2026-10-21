@@ -35,6 +35,7 @@ unsigned rhi_vk_arena_flushes;
  * scheme and bit layout as the GL backend's buffer table (rhi_gl.c). */
 #define VK_SLOT_BITS 24u
 #define VK_SLOT_MASK ((1u << VK_SLOT_BITS) - 1u)
+#define VK_MAX_TIMERS 64u
 
 typedef struct {
     VkBuffer           buf;         /* VK_NULL_HANDLE when the slot holds no storage */
@@ -45,6 +46,10 @@ typedef struct {
     uint8_t            update;      /* RHI_UPDATE_STATIC / RHI_UPDATE_STREAM */
     uint8_t            live;        /* 1 while the slot is allocated (STREAM size 0 keeps buf NULL) */
     uint8_t            generation;
+    /* STREAM buffers updated between draws (hud pattern): see the stream arena. */
+    uint8_t            in_use;      /* a recorded, unsubmitted draw reads the current version */
+    uint8_t            in_arena;    /* the current version lives in g_vk.stream (copy-on-write) */
+    VkDeviceSize       cur_off;     /* offset of that version in the stream arena */
 } RhiVkBuffer;
 
 /* Texture handle slot, same scheme as RhiVkBuffer. The whole image (every mip
@@ -110,7 +115,7 @@ enum { VK_PV_MAIN = 0,        /* main target: colour RGBA8 + depth_fmt (depth AN
        VK_PV_COUNT };
 
 typedef struct {
-    VkPipeline      variant[VK_PV_COUNT];   /* per target format; MAIN eager, others lazy */
+    VkPipeline      variant[2 * VK_PV_COUNT]; /* per target format, [wire * VK_PV_COUNT + v]; MAIN fill eager, others lazy */
     RhiShader       shader;         /* the desc's shader, re-checked at bind/draw */
     RhiPipelineDesc desc;
 } RhiVkPipeline;
@@ -136,6 +141,15 @@ static struct {
     VkImageView    depth_view;           /* depth attachment view */
     VkImageLayout  depth_layout;         /* tracked across clear/render */
     VkFormat       depth_fmt;            /* D24_UNORM_S8_UINT, else D32_SFLOAT_S8_UINT */
+    int            wireframe;            /* rhi_cmd_set_wireframe: triangle pipelines draw as edges */
+    int            host_query_reset;     /* hostQueryReset enabled (timers need it) */
+    VkQueryPool    timer_pool;           /* 2 timestamps per timer slot */
+    struct {                             /* GPU timers: fixed table, handle = generation << 24 | (slot + 1) */
+        uint8_t  live, generation;
+        uint8_t  state;                  /* 0 never measured, 1 running, 2 ended (result may be pending) */
+        uint64_t unsubmitted;            /* g_vk.submits + 1 while its stamps sit in the open recording */
+    } timers[VK_MAX_TIMERS];
+    int            timer_running;        /* slot of the running timer, -1 none */
     int            target_variant;       /* pipeline variant for the current target (P11f-2 switches it) */
     uint64_t       submits;              /* frame command-buffer submits so far */
 
@@ -250,6 +264,19 @@ static struct {
     } arena;
     VkDeviceSize min_ubo_align;  /* minUniformBufferOffsetAlignment */
 
+    /* Stream arena: versions of STREAM buffers updated while a recorded draw still
+     * reads the old contents. Everything is recorded and submitted at frame_end (or
+     * a split), but the engine updates in place between draws, so an update to an
+     * in-use STREAM buffer copies the buffer here and writes the copy; draws bind
+     * the current version. flush() copies the versions back to the buffers' own
+     * storage and restarts the arena. demand grows it at frame_begin like `arena`. */
+    struct {
+        VkBuffer       buf;
+        VkDeviceMemory mem;
+        unsigned char *mapped;
+        VkDeviceSize   size, offset, demand;
+    } stream;
+
     /* Buffers whose storage a recorded-but-unsubmitted draw may still reference;
      * freed at frame_end after the submit+fence wait (P11-review Fix 2). */
     struct {
@@ -337,6 +364,7 @@ static void image_barrier(VkImage img, VkImageAspectFlags aspect, VkImageLayout 
 /* One-shot command helpers + a multi-subresource barrier, all defined with the
  * texture code further down but used already by device_create's dummy texture. */
 static void drain_pending_frees(void);
+static void stream_after_submit(void);
 static VkCommandBuffer oneshot_begin(void);
 static int oneshot_end(VkCommandBuffer cb);
 static void img_barrier(VkCommandBuffer cb, VkImage img, VkImageAspectFlags aspect,
@@ -365,6 +393,7 @@ static int flush(void) {
     g_vk.submits++;
     if (!vk_ok(vkWaitForFences(g_vk.device, 1, &g_vk.fence, VK_TRUE, UINT64_MAX), "vkWaitForFences")) return 0;
     drain_pending_frees();   /* everything recorded so far has completed */
+    stream_after_submit();
     return vk_ok(vkResetFences(g_vk.device, 1, &g_vk.fence), "vkResetFences");
 }
 
@@ -629,6 +658,52 @@ static int frame_split(void) {
     return g_vk.in_frame ? ensure_recording() : 1;
 }
 
+#define VK_STREAM_ARENA_INITIAL (8u * 1024u * 1024u)
+
+static int stream_arena_alloc(VkDeviceSize size) {
+    if (!make_buffer(size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                     &g_vk.stream.buf, &g_vk.stream.mem)) return 0;
+    void *map = NULL;
+    if (!vk_ok(vkMapMemory(g_vk.device, g_vk.stream.mem, 0, VK_WHOLE_SIZE, 0, &map), "vkMapMemory(stream arena)")) {
+        vkDestroyBuffer(g_vk.device, g_vk.stream.buf, NULL);
+        vkFreeMemory(g_vk.device, g_vk.stream.mem, NULL);
+        g_vk.stream.buf = VK_NULL_HANDLE; g_vk.stream.mem = VK_NULL_HANDLE;
+        return 0;
+    }
+    g_vk.stream.mapped = (unsigned char *)map;
+    g_vk.stream.size = size;
+    g_vk.stream.offset = 0;
+    return 1;
+}
+
+static void stream_arena_free(void) {
+    if (g_vk.stream.mapped) { vkUnmapMemory(g_vk.device, g_vk.stream.mem); g_vk.stream.mapped = NULL; }
+    if (g_vk.stream.buf) vkDestroyBuffer(g_vk.device, g_vk.stream.buf, NULL);
+    if (g_vk.stream.mem) vkFreeMemory(g_vk.device, g_vk.stream.mem, NULL);
+    g_vk.stream.buf = VK_NULL_HANDLE; g_vk.stream.mem = VK_NULL_HANDLE; g_vk.stream.size = 0;
+}
+
+/* The version of a buffer a draw reads / an update writes: its own storage, or
+ * its copy in the stream arena. */
+static VkBuffer buf_cur(const RhiVkBuffer *b) { return b->in_arena ? g_vk.stream.buf : b->buf; }
+static VkDeviceSize buf_cur_off(const RhiVkBuffer *b) { return b->in_arena ? b->cur_off : 0; }
+static unsigned char *buf_cur_ptr(const RhiVkBuffer *b) {
+    return b->in_arena ? g_vk.stream.mapped + b->cur_off : (unsigned char *)b->mapped;
+}
+
+/* After a submit + fence wait: every recorded draw has completed. Copy the arena
+ * versions back to the buffers' own storage and let the arena restart. */
+static void stream_after_submit(void) {
+    for (uint32_t i = 0; i < g_vk.buffers.count; i++) {
+        RhiVkBuffer *b = &g_vk.buffers.slots[i];
+        if (!b->live || b->update != RHI_UPDATE_STREAM) continue;
+        if (b->in_arena && b->mapped && b->size) memcpy(b->mapped, g_vk.stream.mapped + b->cur_off, (size_t)b->size);
+        b->in_arena = 0; b->in_use = 0;
+    }
+    g_vk.stream.offset = 0;
+}
+
 /* Snapshot `sz` bytes of `src` into the arena at an aligned offset for one draw
  * and write the offset to *out_off. If the current segment would overflow, do a
  * MID-FRAME FLUSH: close any render scope, submit + fence-wait the current
@@ -703,6 +778,13 @@ void rhi_vk_test_force_arena(size_t bytes) {
     arena_free();
     arena_alloc((VkDeviceSize)bytes);
     g_vk.arena.demand = 0;
+}
+
+/* Test-only: recreate the stream arena at `bytes` (same rules as the UBO hook). */
+void rhi_vk_test_force_stream_arena(size_t bytes) {
+    stream_arena_free();
+    stream_arena_alloc((VkDeviceSize)bytes);
+    g_vk.stream.demand = 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -837,8 +919,15 @@ RhiResult rhi_device_create(const RhiDeviceDesc *desc) {
     /* Dynamic rendering (core in 1.3): draws use vkCmdBeginRendering with the
      * offscreen views instead of a VkRenderPass/VkFramebuffer. Chained via the
      * feature struct alongside pEnabledFeatures (no VkPhysicalDeviceFeatures2). */
+    /* Host query reset (core 1.2): timers reset their queries from the CPU. */
+    VkPhysicalDeviceVulkan12Features sup12 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
+    VkPhysicalDeviceFeatures2 sup2 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, &sup12 };
+    vkGetPhysicalDeviceFeatures2(g_vk.phys, &sup2);
+    VkPhysicalDeviceVulkan12Features en12 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
+    en12.hostQueryReset = sup12.hostQueryReset;
+    g_vk.host_query_reset = sup12.hostQueryReset ? 1 : 0;
     VkPhysicalDeviceDynamicRenderingFeatures dyn = {
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES, NULL, VK_TRUE };
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES, &en12, VK_TRUE };
     /* Push descriptors (set 0 written per draw, no descriptor pool). Not core
      * before 1.4, so enable the extension and fetch its entry point by name. */
     const char *dev_exts[1]; uint32_t n_dev_exts = 0;
@@ -1029,6 +1118,7 @@ RhiResult rhi_device_create(const RhiDeviceDesc *desc) {
         g_vk.min_ubo_align = pdp.limits.minUniformBufferOffsetAlignment;
     }
     if (!arena_alloc(VK_ARENA_INITIAL)) goto fail;
+    if (!stream_arena_alloc(VK_STREAM_ARENA_INITIAL)) goto fail;
 
     /* Default viewport = whole target in GL convention (origin bottom-left). */
     g_vk.viewport[0] = 0; g_vk.viewport[1] = 0;
@@ -1037,6 +1127,14 @@ RhiResult rhi_device_create(const RhiDeviceDesc *desc) {
 
     g_vk.frame_index = 0;
     query_caps(&g_vk.caps);
+    g_vk.timer_running = -1;
+    if (g_vk.caps.gpu_timer) {   /* one pool, two timestamps per timer */
+        VkQueryPoolCreateInfo qpi = { VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO, NULL, 0,
+            VK_QUERY_TYPE_TIMESTAMP, 2u * VK_MAX_TIMERS, 0 };
+        if (!g_vk.host_query_reset ||
+            !vk_ok(vkCreateQueryPool(g_vk.device, &qpi, NULL, &g_vk.timer_pool), "vkCreateQueryPool"))
+            g_vk.caps.gpu_timer = 0;
+    }
     return RHI_OK;
 
 fail:
@@ -1050,6 +1148,7 @@ void rhi_device_destroy(void) {
     drain_pending_frees();
     free(g_vk.pending_free.items);
     arena_free();
+    stream_arena_free();
     /* Free every live buffer, then the handle table's own heap arrays. */
     for (uint32_t i = 0; i < g_vk.buffers.count; i++) {
         RhiVkBuffer *b = &g_vk.buffers.slots[i];
@@ -1086,7 +1185,7 @@ void rhi_device_destroy(void) {
     free(g_vk.shaders.free_list);
     /* Every created VkPipeline, then its table, then the shared layouts. */
     for (uint32_t i = 0; i < g_vk.pipelines.count; i++)
-        for (int v = 0; v < VK_PV_COUNT; v++)
+        for (int v = 0; v < 2 * VK_PV_COUNT; v++)
             if (g_vk.pipelines.slots[i].variant[v])
                 vkDestroyPipeline(g_vk.device, g_vk.pipelines.slots[i].variant[v], NULL);
     free(g_vk.pipelines.slots);
@@ -1111,6 +1210,7 @@ void rhi_device_destroy(void) {
     if (g_vk.depth_mem)    vkFreeMemory(g_vk.device, g_vk.depth_mem, NULL);
     if (g_vk.color)        vkDestroyImage(g_vk.device, g_vk.color, NULL);
     if (g_vk.color_mem)    vkFreeMemory(g_vk.device, g_vk.color_mem, NULL);
+    if (g_vk.timer_pool)   vkDestroyQueryPool(g_vk.device, g_vk.timer_pool, NULL);
     if (g_vk.fence)        vkDestroyFence(g_vk.device, g_vk.fence, NULL);
     if (g_vk.pool)         vkDestroyCommandPool(g_vk.device, g_vk.pool, NULL);
     if (g_vk.device)       vkDestroyDevice(g_vk.device, NULL);
@@ -1144,6 +1244,14 @@ RhiResult rhi_frame_begin(RhiFrameInfo *out) {
     }
     g_vk.arena.offset = 0;
     g_vk.arena.demand = 0;
+    if (g_vk.stream.demand > g_vk.stream.size) {   /* same for the stream arena */
+        VkDeviceSize ns = g_vk.stream.size ? g_vk.stream.size : VK_STREAM_ARENA_INITIAL;
+        while (ns < g_vk.stream.demand) ns *= 2u;
+        stream_arena_free();
+        if (!stream_arena_alloc(ns)) return RHI_ERR_DEVICE_LOST;
+    }
+    g_vk.stream.offset = 0;
+    g_vk.stream.demand = 0;
     if (!ensure_recording()) return RHI_ERR_DEVICE_LOST;
     g_vk.in_frame = 1;
     if (out) {
@@ -1365,6 +1473,7 @@ RhiBuffer rhi_buffer_create(const RhiBufferDesc *desc) {
     b->usage  = desc->usage == RHI_BUFFER_INDEX ? VK_BUFFER_USAGE_INDEX_BUFFER_BIT
                                                 : VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     b->buf = VK_NULL_HANDLE; b->mem = VK_NULL_HANDLE; b->mapped = NULL; b->size = 0;
+    b->in_arena = 0; b->in_use = 0;
     b->live = 1;
     out.id = ((uint32_t)b->generation << VK_SLOT_BITS) | slot;
     /* A STREAM buffer with no size/data gets its storage from the first replace. */
@@ -1378,15 +1487,31 @@ RhiBuffer rhi_buffer_create(const RhiBufferDesc *desc) {
     return out;
 }
 
+/* Give an in-use STREAM buffer a fresh version to write. 1 on success. */
+static int stream_cow(RhiVkBuffer *b) {
+    VkDeviceSize off = (g_vk.stream.offset + 15u) & ~(VkDeviceSize)15u;
+    VkDeviceSize vdem = (g_vk.stream.demand + 15u) & ~(VkDeviceSize)15u;
+    g_vk.stream.demand = vdem + b->size;   /* frame_begin grows the arena to fit */
+    if (off + b->size > g_vk.stream.size) {
+        /* flush() copies every arena version back and clears in_use: the buffer's
+         * own storage is current and nothing recorded reads it any more. */
+        return frame_split();
+    }
+    memcpy(g_vk.stream.mapped + off, buf_cur_ptr(b), (size_t)b->size);
+    b->in_arena = 1; b->cur_off = off; b->in_use = 0;
+    g_vk.stream.offset = off + b->size;
+    return 1;
+}
+
 RhiResult rhi_buffer_update(RhiBuffer buf, size_t offset, size_t size, const void *data) {
     RhiVkBuffer *b = buffer_lookup(buf, "buffer_update");
     if (!b || !data || offset > b->size || size > b->size - offset) return RHI_ERR_INVALID;
     if (!size) return RHI_OK;
     if (b->update == RHI_UPDATE_STREAM) {
-        /* NOTE: a STREAM buffer updated in place between draws in one frame (the
-         * hud-style pattern) would have earlier recorded draws see this new data
-         * at submit -- out of scope for this slice; left as a direct memcpy. */
-        memcpy((unsigned char *)b->mapped + offset, data, size);
+        /* A recorded draw still reads the current version: write a copy instead,
+         * or (arena full) submit first so the write lands in settled storage. */
+        if (b->in_use && !stream_cow(b)) return RHI_ERR_DEVICE_LOST;
+        memcpy(buf_cur_ptr(b) + offset, data, size);
         return RHI_OK;
     }
     return stage_to_device(b->buf, offset, data, size) ? RHI_OK : RHI_ERR_DEVICE_LOST;
@@ -1401,6 +1526,7 @@ RhiResult rhi_buffer_replace(RhiBuffer buf, size_t size, const void *data) {
     if (b->mapped) { vkUnmapMemory(g_vk.device, b->mem); b->mapped = NULL; }
     defer_or_free_buffer(b->buf, b->mem);
     b->buf = VK_NULL_HANDLE; b->mem = VK_NULL_HANDLE;
+    b->in_arena = 0; b->in_use = 0;   /* fresh storage; earlier draws keep their arena copy */
     return buffer_alloc_storage(b, size, data);
 }
 
@@ -1412,6 +1538,7 @@ void rhi_buffer_destroy(RhiBuffer buf) {
      * frame_end while in a frame, free immediately otherwise (P11-review Fix 2). */
     defer_or_free_buffer(b->buf, b->mem);
     b->buf = VK_NULL_HANDLE; b->mem = VK_NULL_HANDLE; b->size = 0; b->live = 0;
+    b->in_arena = 0; b->in_use = 0;
     /* Retire the slot before its generation wraps and revives stale handles. */
     if (b->generation == UINT8_MAX) return;
     b->generation++;
@@ -1427,7 +1554,7 @@ int rhi_vk_buffer_readback(RhiBuffer buf, size_t offset, size_t size, void *dst)
     if (!b || !dst || offset > b->size || size > b->size - offset) return 0;
     if (!size) return 1;
     if (b->update == RHI_UPDATE_STREAM) {
-        memcpy(dst, (const unsigned char *)b->mapped + offset, size);
+        memcpy(dst, buf_cur_ptr(b) + offset, size);
         return 1;
     }
     VkBuffer staging; VkDeviceMemory smem;
@@ -2098,7 +2225,15 @@ static const uint32_t *vk_shader_spirv(const char *label, int frag, size_t *byte
         if (frag) { *bytes = sizeof vk_headlight_shadow_frag; return vk_headlight_shadow_frag; }
         *bytes = sizeof vk_headlight_shadow_vert; return vk_headlight_shadow_vert;
     }
-    return NULL;   /* TODO: world_debug, hud */
+    if (label && !strcmp(label, "world_debug")) {
+        if (frag) { *bytes = sizeof vk_world_debug_frag; return vk_world_debug_frag; }
+        *bytes = sizeof vk_world_debug_vert; return vk_world_debug_vert;
+    }
+    if (label && !strcmp(label, "hud")) {
+        if (frag) { *bytes = sizeof vk_hud_frag; return vk_hud_frag; }
+        *bytes = sizeof vk_hud_vert; return vk_hud_vert;
+    }
+    return NULL;
 }
 
 /* Per-label samplerCube slots (bit n = texture slot n, binding n + 1). In ug2
@@ -2316,7 +2451,7 @@ static VkBlendFactor vk_blend(RhiBlendFactor f) {
 }
 
 /* Build one VkPipeline of `desc` for a render-target variant (VK_PV_*). */
-static VkPipeline build_pipeline(const RhiPipelineDesc *desc, int variant) {
+static VkPipeline build_pipeline(const RhiPipelineDesc *desc, int variant, int wire) {
     /* ---- vertex input: one binding per stream an attribute references ---- */
     VkVertexInputBindingDescription vbind[RHI_MAX_VERTEX_STREAMS + 1];
     uint32_t stride[RHI_MAX_VERTEX_STREAMS] = {0};
@@ -2380,7 +2515,7 @@ static VkPipeline build_pipeline(const RhiPipelineDesc *desc, int variant) {
     float lw = desc->line_width > 0 ? desc->line_width : 1.0f;
     if (!g_vk.wide_lines) lw = 1.0f;
     VkPipelineRasterizationStateCreateInfo rs = { VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-        NULL, 0, VK_FALSE, VK_FALSE, VK_POLYGON_MODE_FILL,
+        NULL, 0, VK_FALSE, VK_FALSE, wire ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL,
         desc->cull == RHI_CULL_BACK ? VK_CULL_MODE_BACK_BIT
             : desc->cull == RHI_CULL_FRONT ? VK_CULL_MODE_FRONT_BIT : VK_CULL_MODE_NONE,
         /* GL front faces are CCW in NDC (y up). Vulkan evaluates winding in
@@ -2475,7 +2610,7 @@ RhiPipeline rhi_pipeline_create(const RhiPipelineDesc *desc) {
     for (uint32_t i = 0; i < g_vk.pipelines.count; i++)
         if (pipeline_desc_equal(&g_vk.pipelines.slots[i].desc, desc)) { out.id = i + 1; return out; }
 
-    VkPipeline pipe = build_pipeline(desc, VK_PV_MAIN);   /* eager: create failures return {0} */
+    VkPipeline pipe = build_pipeline(desc, VK_PV_MAIN, 0);   /* eager: create failures return {0} */
     if (!pipe) return out;
     if (g_vk.pipelines.count == g_vk.pipelines.capacity) {
         uint32_t cap = g_vk.pipelines.capacity ? g_vk.pipelines.capacity * 2u : 64u;
@@ -2566,12 +2701,13 @@ static RhiVkPipeline *draw_begin(const char *what) {
     vkCmdSetScissor(g_vk.cmd, 0, 1, &sc);
     /* The pipeline variant for the current target's attachment formats; the
      * non-main ones are built on first use. */
-    int v = g_vk.target_variant;
-    if (!e->variant[v]) {
-        e->variant[v] = build_pipeline(&e->desc, v);
-        if (!e->variant[v]) { fprintf(stderr, "rhi: %s: pipeline variant %d failed\n", what, v); return NULL; }
+    int wire = g_vk.wireframe && e->desc.primitive == RHI_PRIMITIVE_TRIANGLES;   /* line topology has no polygon mode */
+    int v = g_vk.target_variant, vi = wire * VK_PV_COUNT + v;
+    if (!e->variant[vi]) {
+        e->variant[vi] = build_pipeline(&e->desc, v, wire);
+        if (!e->variant[vi]) { fprintf(stderr, "rhi: %s: pipeline variant %d failed\n", what, vi); return NULL; }
     }
-    vkCmdBindPipeline(g_vk.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, e->variant[v]);
+    vkCmdBindPipeline(g_vk.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, e->variant[vi]);
     return e;
 }
 
@@ -2587,7 +2723,8 @@ static void draw_bind_resources(RhiVkPipeline *e, VkDeviceSize ubo_off) {
         if (!used_stream[s]) continue;
         RhiVkBuffer *b = g_vk.bound_vertex[s].id ? buffer_lookup(g_vk.bound_vertex[s], "draw") : NULL;
         if (b && b->buf && (b->usage & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)) {
-            vbufs[s] = b->buf; voffs[s] = g_vk.bound_vertex_offset[s];
+            if (b->update == RHI_UPDATE_STREAM) b->in_use = 1;   /* a recorded draw now reads it */
+            vbufs[s] = buf_cur(b); voffs[s] = g_vk.bound_vertex_offset[s] + buf_cur_off(b);
         } else {
             /* GL disables the attribute (it then reads the current generic value; the
              * engine supplies its own constants there), so this stays zeros, unlike
@@ -2703,7 +2840,8 @@ void rhi_cmd_draw_indexed(uint32_t index_count, uint32_t first_index) {
     RhiVkPipeline *e = draw_begin("draw_indexed");
     if (!e) return;
     draw_bind_resources(e, ubo_off);
-    vkCmdBindIndexBuffer(g_vk.cmd, index->buf, 0, VK_INDEX_TYPE_UINT16);
+    if (index->update == RHI_UPDATE_STREAM) index->in_use = 1;
+    vkCmdBindIndexBuffer(g_vk.cmd, buf_cur(index), buf_cur_off(index), VK_INDEX_TYPE_UINT16);
     vkCmdDrawIndexed(g_vk.cmd, index_count, 1, first_index, 0, 0);
 }
 
@@ -2910,11 +3048,100 @@ RhiResult rhi_cmd_set_viewport(int32_t x, int32_t y, int32_t width, int32_t heig
     g_vk.viewport[2] = width; g_vk.viewport[3] = height;
     return RHI_OK;
 }
-RhiResult rhi_cmd_set_wireframe(int on) { (void)on; return RHI_ERR_UNSUPPORTED; }
+/* Triangle pipelines switch to their polygonMode=LINE variant (built on first use);
+ * pipelines with line topology are unaffected, like GL's glPolygonMode. */
+RhiResult rhi_cmd_set_wireframe(int on) {
+    if (!g_vk.caps.wireframe) return RHI_ERR_UNSUPPORTED;
+    g_vk.wireframe = on ? 1 : 0;
+    return RHI_OK;
+}
 
-/* --- GPU timers (TODO P11g) --- */
-RhiTimer rhi_timer_create(void) { RhiTimer t = {0}; return t; }
-void rhi_timer_destroy(RhiTimer timer) { (void)timer; }
-RhiResult rhi_cmd_timer_begin(RhiTimer timer) { (void)timer; return RHI_ERR_UNSUPPORTED; }
-RhiResult rhi_cmd_timer_end(void) { return RHI_ERR_UNSUPPORTED; }
-int rhi_timer_read(RhiTimer timer, uint64_t *ns) { (void)timer; (void)ns; return 0; }
+/* --- GPU timers --- */
+/* Slot of a live timer handle, or -1. */
+static int timer_slot(RhiTimer t) {
+    uint32_t slot = t.id & VK_SLOT_MASK;
+    if (!t.id || !slot || slot > VK_MAX_TIMERS) return -1;
+    if (!g_vk.timers[slot - 1].live || g_vk.timers[slot - 1].generation != (uint8_t)(t.id >> VK_SLOT_BITS)) return -1;
+    return (int)slot - 1;
+}
+
+RhiTimer rhi_timer_create(void) {
+    RhiTimer t = {0};
+    if (!g_vk.caps.gpu_timer) return t;
+    for (uint32_t i = 0; i < VK_MAX_TIMERS; i++) {
+        if (g_vk.timers[i].live) continue;
+        if (g_vk.timers[i].generation == UINT8_MAX && g_vk.timers[i].state == 3) continue;   /* retired */
+        /* `unsubmitted` is kept: the recycled query pair may still be pending in the open recording */
+        g_vk.timers[i].live = 1; g_vk.timers[i].state = 0;
+        t.id = ((uint32_t)g_vk.timers[i].generation << VK_SLOT_BITS) | (i + 1u);
+        return t;
+    }
+    fprintf(stderr, "rhi: timer_create: out of timers\n");
+    return t;
+}
+
+void rhi_timer_destroy(RhiTimer timer) {
+    int s = timer_slot(timer);
+    if (s < 0) return;
+    if (g_vk.timer_running == s) g_vk.timer_running = -1;
+    g_vk.timers[s].live = 0;
+    /* A running timer already wrote its begin stamp; nothing else is pending on it. */
+    if (g_vk.timers[s].generation == UINT8_MAX) g_vk.timers[s].state = 3;   /* retire before wrap */
+    else g_vk.timers[s].generation++;
+}
+
+/* The measurement is the GPU time between the two stamps of one timer; begin
+ * resets them from the host, so a slot reused while its stamps sit in the
+ * unsubmitted recording first splits the frame (the fence-waited submit makes the
+ * old pair final). */
+RhiResult rhi_cmd_timer_begin(RhiTimer timer) {
+    if (!g_vk.caps.gpu_timer) return RHI_ERR_UNSUPPORTED;
+    int s = timer_slot(timer);
+    if (s < 0 || g_vk.timer_running >= 0 || !g_vk.in_frame) return RHI_ERR_INVALID;
+    if (g_vk.recording && g_vk.timers[s].unsubmitted == g_vk.submits + 1u && !frame_split())
+        return RHI_ERR_DEVICE_LOST;
+    if (!ensure_recording()) return RHI_ERR_DEVICE_LOST;
+    vkResetQueryPool(g_vk.device, g_vk.timer_pool, 2u * (uint32_t)s, 2);
+    vkCmdWriteTimestamp(g_vk.cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, g_vk.timer_pool, 2u * (uint32_t)s);
+    g_vk.timers[s].state = 1;
+    g_vk.timers[s].unsubmitted = g_vk.submits + 1u;
+    g_vk.timer_running = s;
+    return RHI_OK;
+}
+
+RhiResult rhi_cmd_timer_end(void) {
+    if (!g_vk.caps.gpu_timer) return RHI_ERR_UNSUPPORTED;
+    int s = g_vk.timer_running;
+    if (s < 0 || !g_vk.in_frame) return RHI_ERR_INVALID;
+    if (!ensure_recording()) return RHI_ERR_DEVICE_LOST;
+    vkCmdWriteTimestamp(g_vk.cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, g_vk.timer_pool, 2u * (uint32_t)s + 1u);
+    g_vk.timers[s].state = 2;
+    g_vk.timers[s].unsubmitted = g_vk.submits + 1u;
+    g_vk.timer_running = -1;
+    return RHI_OK;
+}
+
+int rhi_timer_read(RhiTimer timer, uint64_t *ns) {
+    int s = timer_slot(timer);
+    if (s < 0 || !ns || g_vk.timers[s].state != 2) return 0;
+    /* Stamps still in the unsubmitted recording have not executed. */
+    if (g_vk.recording && g_vk.timers[s].unsubmitted == g_vk.submits + 1u) return 0;
+    uint64_t r[4];   /* {begin, avail, end, avail} */
+    VkResult res = vkGetQueryPoolResults(g_vk.device, g_vk.timer_pool, 2u * (uint32_t)s, 2, sizeof r, r,
+                                         2 * sizeof r[0], VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
+    if (res != VK_SUCCESS && res != VK_NOT_READY) return 0;
+    if (!r[1] || !r[3]) return 0;
+    uint64_t mask = 0;
+    {   /* timestampValidBits of the queue family */
+        uint32_t qc = 0; vkGetPhysicalDeviceQueueFamilyProperties(g_vk.phys, &qc, NULL);
+        VkQueueFamilyProperties *qp = calloc(qc ? qc : 1, sizeof *qp);
+        vkGetPhysicalDeviceQueueFamilyProperties(g_vk.phys, &qc, qp);
+        uint32_t bits = g_vk.queue_family < qc ? qp[g_vk.queue_family].timestampValidBits : 0;
+        free(qp);
+        mask = bits >= 64 ? UINT64_MAX : ((1ull << bits) - 1u);
+    }
+    VkPhysicalDeviceProperties props; vkGetPhysicalDeviceProperties(g_vk.phys, &props);
+    uint64_t ticks = (r[2] - r[0]) & mask;
+    *ns = (uint64_t)((double)ticks * (double)props.limits.timestampPeriod);
+    return 1;
+}
