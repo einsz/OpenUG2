@@ -778,7 +778,21 @@ VK_CFLAGS  := -std=c99 -Wall -Wextra -Wno-missing-field-initializers -D_DEFAULT_
 VK_ICD     ?= $(firstword $(wildcard /usr/share/vulkan/icd.d/lvp_icd*.json /etc/vulkan/icd.d/lvp_icd*.json))
 VK_RUN_ENV := SDL_VIDEODRIVER=offscreen $(if $(VK_ICD),VK_DRIVER_FILES=$(VK_ICD)) \
               $(if $(VK_SYSROOT),VK_ADD_LAYER_PATH=$(VK_SYSROOT)/usr/share/vulkan/explicit_layer.d LD_LIBRARY_PATH=$(VK_LIBDIR))
-rhi-vk-smoke: tools/rhi_vk_smoke.c src/rhi_vk.c src/rhi.h
+# Vulkan shaders: Vulkan-GLSL in src/shaders/vk/, compiled to SPIR-V and embedded
+# as uint32 arrays (vk_<name>_<ext>) by glslangValidator -- same build-time embed
+# idea as generated_shaders.h. Regenerated when any vk shader changes.
+VK_GLSLANG ?= $(if $(VK_SYSROOT),$(VK_SYSROOT)/usr/bin/glslangValidator,glslangValidator)
+VK_SHADERS := $(sort $(wildcard src/shaders/vk/*.vert src/shaders/vk/*.frag))
+src/generated_shaders_vk.h: $(VK_SHADERS)
+	@echo "/* AUTO-GENERATED from src/shaders/vk/ by glslangValidator -- do not edit */" > $@
+	@for f in $(VK_SHADERS); do \
+	  sym=vk_$$(basename $$f | tr '.' '_'); \
+	  $(VK_GLSLANG) -V --target-env vulkan1.1 --vn $$sym -o $@.tmp "$$f" >/dev/null || { rm -f $@ $@.tmp; exit 1; }; \
+	  cat $@.tmp >> $@; \
+	done
+	@rm -f $@.tmp
+
+rhi-vk-smoke: tools/rhi_vk_smoke.c src/rhi_vk.c src/rhi.h src/generated_shaders_vk.h
 	@mkdir -p build
 	$(CC) $(VK_CFLAGS) tools/rhi_vk_smoke.c src/rhi_vk.c -o build/rhi_vk_smoke $(VK_LIBS)
 	$(VK_RUN_ENV) ./build/rhi_vk_smoke

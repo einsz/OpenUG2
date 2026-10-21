@@ -265,6 +265,42 @@ int main(void) {
     rhi_texture_destroy(bc1_tex);   /* double destroy is a no-op */
     printf("texture/sampler negatives + destroyed-handle safety verified\n");
 
+    /* P11d: shader create for a label whose Vulkan SPIR-V is embedded ("frontend").
+       Param block matches FeParams (mat4 uMVP @0, vec4 uColor @64). */
+    {
+        static const RhiParamField fe_fields[] = {
+            { "uMVP", RHI_PARAM_MAT4, 0, 1 }, { "uColor", RHI_PARAM_VEC4, 64, 1 },
+        };
+        static const RhiParamLayout fe_layout = { fe_fields, 2, 80, "FeParams" };
+        static const char *const attrs[] = { "aPos" };
+        static const RhiParamLayout *const blocks[] = { &fe_layout };
+        RhiShaderDesc sd = { "", "", attrs, 1, "frontend", blocks, 1 };
+        RhiShader sh = rhi_shader_create(&sd);
+        EXPECT(sh.id != 0, "frontend shader_create");
+        EXPECT(rhi_shader_native_program(sh) != 0, "frontend native program nonzero");
+        void *pp = rhi_shader_params(sh, 0);
+        EXPECT(pp != NULL, "frontend shader_params block 0");
+        float probe[20];
+        for (int i = 0; i < 20; i++) probe[i] = (float)(i * 3 + 1);
+        memcpy(pp, probe, sizeof probe);
+        EXPECT(memcmp(pp, probe, sizeof probe) == 0, "shader_params write/read round-trip");
+        EXPECT(rhi_shader_params(sh, 1) == NULL, "out-of-range param block rejected");
+        RhiShaderDesc bad = { "", "", attrs, 1, "no_such_label", blocks, 1 };
+        EXPECT(rhi_shader_create(&bad).id == 0, "unknown-label shader rejected");
+        RhiShaderDesc nullblocks = { "", "", attrs, 1, "frontend", NULL, 1 };
+        EXPECT(rhi_shader_create(&nullblocks).id == 0, "NULL param_blocks rejected");
+
+        /* Stale-handle safety: destroy sh, create sh2 (reuses the slot), then
+           destroy the STALE sh again — sh2 must survive (generation check). */
+        rhi_shader_destroy(sh);
+        RhiShader sh2 = rhi_shader_create(&sd);
+        EXPECT(sh2.id != 0, "frontend shader re-create (slot reuse)");
+        rhi_shader_destroy(sh);                 /* stale handle to the reused slot */
+        EXPECT(rhi_shader_params(sh2, 0) != NULL, "sh2 survives stale destroy of sh");
+        rhi_shader_destroy(sh2);
+        printf("frontend shader: create + params round-trip + unknown/NULL reject + stale-destroy safe\n");
+    }
+
     rhi_texture_destroy(rgba_tex);
     rhi_texture_destroy(rgb_tex);
 

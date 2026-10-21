@@ -12,6 +12,7 @@
  * g_rhi in rhi_gl.c and the semantics (caps, drawable size, read_pixels row
  * order/format, rhi_cmd_clear_main) match rhi_gl.c exactly. */
 #include "rhi.h"
+#include "generated_shaders_vk.h"   /* build-time SPIR-V for the src/shaders/vk shaders */
 #include <SDL.h>
 #include <vulkan/vulkan.h>
 #include <stdio.h>
@@ -61,6 +62,27 @@ typedef struct {
     uint8_t            generation;
 } RhiVkTexture;
 
+/* One parameter block = a host-visible, persistently-mapped UBO. The game writes
+ * params through the mapping (rhi_shader_params), so the UBO is always current
+ * for the next draw (host-coherent; no GL-style flush needed). Its std140 layout
+ * equals the RhiParamLayout, which rhi_param_layout_check enforces. */
+#define VK_MAX_PARAM_BLOCKS 4u
+typedef struct {
+    VkBuffer       ubo;
+    VkDeviceMemory ubo_mem;
+    void          *mapped;
+    uint32_t       size;
+    const RhiParamLayout *layout;
+} RhiVkParamBlock;
+
+typedef struct {
+    VkShaderModule  vert, frag;     /* VK_NULL_HANDLE = free slot */
+    RhiVkParamBlock blocks[VK_MAX_PARAM_BLOCKS];
+    uint32_t        block_count;
+    uint8_t         live;
+    uint8_t         generation;
+} RhiVkShader;
+
 static struct {
     SDL_Window              *window;
     VkInstance               instance;
@@ -107,6 +129,13 @@ static struct {
         VkSampler      *handles;
         uint32_t        count, capacity;
     } samplers;
+    struct {                             /* shader handle table, same shape as buffers */
+        RhiVkShader *slots;
+        uint32_t     count, capacity;
+        uint32_t    *free_list;
+        uint32_t     free_count;
+        unsigned     stale_logged;
+    } shaders;
 } g_vk;
 
 /* -------------------------------------------------------------------------- */
@@ -463,6 +492,19 @@ void rhi_device_destroy(void) {
         if (g_vk.samplers.handles[i]) vkDestroySampler(g_vk.device, g_vk.samplers.handles[i], NULL);
     free(g_vk.samplers.descs);
     free(g_vk.samplers.handles);
+    /* Free every live shader (modules + param UBOs), then its table arrays. */
+    for (uint32_t i = 0; i < g_vk.shaders.count; i++) {
+        RhiVkShader *s = &g_vk.shaders.slots[i];
+        for (uint32_t b = 0; b < s->block_count; b++) {
+            if (s->blocks[b].mapped)  vkUnmapMemory(g_vk.device, s->blocks[b].ubo_mem);
+            if (s->blocks[b].ubo)     vkDestroyBuffer(g_vk.device, s->blocks[b].ubo, NULL);
+            if (s->blocks[b].ubo_mem) vkFreeMemory(g_vk.device, s->blocks[b].ubo_mem, NULL);
+        }
+        if (s->vert) vkDestroyShaderModule(g_vk.device, s->vert, NULL);
+        if (s->frag) vkDestroyShaderModule(g_vk.device, s->frag, NULL);
+    }
+    free(g_vk.shaders.slots);
+    free(g_vk.shaders.free_list);
     if (g_vk.readback)     vkDestroyBuffer(g_vk.device, g_vk.readback, NULL);
     if (g_vk.readback_mem) vkFreeMemory(g_vk.device, g_vk.readback_mem, NULL);
     if (g_vk.depth)        vkDestroyImage(g_vk.device, g_vk.depth, NULL);
@@ -1242,12 +1284,189 @@ RhiSampler rhi_texture_sampler(RhiTexture tex) {
     return t ? t->sampler : (RhiSampler){0};
 }
 
-/* --- Shaders / param blocks (TODO P11d) --- */
-RhiResult rhi_param_layout_check(const RhiParamLayout *layout) { (void)layout; return RHI_ERR_UNSUPPORTED; }
-RhiShader rhi_shader_create(const RhiShaderDesc *desc) { (void)desc; RhiShader s = {0}; return s; }
-void rhi_shader_destroy(RhiShader shader) { (void)shader; }
-void *rhi_shader_params(RhiShader shader, uint32_t block) { (void)shader; (void)block; return NULL; }
-uint32_t rhi_shader_native_program(RhiShader shader) { (void)shader; return 0; }
+/* --- Shaders / param blocks (P11d) --- */
+/* std140 layout validation, identical to the GL backend (backend-neutral). */
+static uint32_t param_size(RhiParamType t) {
+    switch (t) {
+    case RHI_PARAM_VEC2: return 8u;
+    case RHI_PARAM_VEC3: return 12u;
+    case RHI_PARAM_VEC4: return 16u;
+    case RHI_PARAM_MAT4: return 64u;
+    default:             return 4u;
+    }
+}
+static uint32_t param_align(RhiParamType t) {
+    return t == RHI_PARAM_VEC2 ? 8u : (t == RHI_PARAM_VEC3 || t == RHI_PARAM_VEC4 ||
+                                       t == RHI_PARAM_MAT4) ? 16u : 4u;
+}
+RhiResult rhi_param_layout_check(const RhiParamLayout *l) {
+    const char *name = l && l->name ? l->name : "params";
+    if (!l || !l->fields || !l->field_count) {
+        fprintf(stderr, "rhi: %s: empty parameter layout\n", name);
+        return RHI_ERR_INVALID;
+    }
+    for (uint32_t i = 0; i < l->field_count; i++) {
+        const RhiParamField *f = &l->fields[i];
+        if (!f->name || f->type < RHI_PARAM_FLOAT || f->type > RHI_PARAM_INT || !f->count) {
+            fprintf(stderr, "rhi: %s: field %u is malformed\n", name, (unsigned)i);
+            return RHI_ERR_INVALID;
+        }
+        if (f->count > 1 && f->type != RHI_PARAM_VEC4 && f->type != RHI_PARAM_MAT4) {
+            fprintf(stderr, "rhi: %s: %s: std140 arrays must be vec4 or mat4\n", name, f->name);
+            return RHI_ERR_INVALID;
+        }
+        uint64_t end = (uint64_t)f->offset + (uint64_t)param_size(f->type) * f->count;
+        if (f->offset % param_align(f->type) || end > l->size || end < f->offset) {
+            fprintf(stderr, "rhi: %s: %s: offset %u breaks std140 alignment or the block size\n",
+                    name, f->name, (unsigned)f->offset);
+            return RHI_ERR_INVALID;
+        }
+        for (uint32_t j = 0; j < i; j++) {
+            const RhiParamField *g = &l->fields[j];
+            uint64_t gend = (uint64_t)g->offset + (uint64_t)param_size(g->type) * g->count;
+            if (f->offset < gend && g->offset < end) {
+                fprintf(stderr, "rhi: %s: %s overlaps %s\n", name, f->name, g->name);
+                return RHI_ERR_INVALID;
+            }
+        }
+    }
+    return RHI_OK;
+}
+
+/* Build-time SPIR-V for a shader label + stage. The Vulkan backend can't compile
+ * the GLSL in RhiShaderDesc at runtime, so it ships a Vulkan-GLSL variant per
+ * label (src/shaders/vk/), compiled to SPIR-V by the build; desc->label selects.
+ * An unknown label is unsupported (the engine's shader set is fixed). */
+static const uint32_t *vk_shader_spirv(const char *label, int frag, size_t *bytes) {
+    if (label && !strcmp(label, "frontend")) {
+        if (frag) { *bytes = sizeof vk_frontend_frag; return vk_frontend_frag; }
+        *bytes = sizeof vk_frontend_vert; return vk_frontend_vert;
+    }
+    return NULL;   /* TODO P11e: ug2, headlight shadow, world_debug, hud */
+}
+
+static RhiVkShader *shader_lookup(RhiShader sh, const char *what) {
+    uint32_t slot = sh.id & VK_SLOT_MASK;
+    if (!sh.id) return NULL;
+    if (slot && slot <= g_vk.shaders.count) {
+        RhiVkShader *s = &g_vk.shaders.slots[slot - 1];
+        if (s->live && s->generation == (uint8_t)(sh.id >> VK_SLOT_BITS)) return s;
+    }
+    if (g_vk.shaders.stale_logged < 8) {
+        g_vk.shaders.stale_logged++;
+        fprintf(stderr, "rhi: %s: stale or invalid shader handle 0x%08x\n", what, (unsigned)sh.id);
+    }
+    return NULL;
+}
+static uint32_t shader_slot_alloc(void) {
+    if (g_vk.shaders.free_count) return g_vk.shaders.free_list[--g_vk.shaders.free_count];
+    if (g_vk.shaders.count == g_vk.shaders.capacity) {
+        uint32_t cap = g_vk.shaders.capacity ? g_vk.shaders.capacity * 2u : 64u;
+        if (cap > VK_SLOT_MASK) return 0;
+        RhiVkShader *slots = (RhiVkShader *)realloc(g_vk.shaders.slots, cap * sizeof *slots);
+        if (!slots) return 0;
+        g_vk.shaders.slots = slots;
+        uint32_t *list = (uint32_t *)realloc(g_vk.shaders.free_list, cap * sizeof *list);
+        if (!list) return 0;
+        g_vk.shaders.free_list = list;
+        g_vk.shaders.capacity = cap;
+    }
+    memset(&g_vk.shaders.slots[g_vk.shaders.count], 0, sizeof g_vk.shaders.slots[0]);
+    return ++g_vk.shaders.count;
+}
+
+static VkShaderModule make_module(const uint32_t *spv, size_t bytes) {
+    VkShaderModule m = VK_NULL_HANDLE;
+    VkShaderModuleCreateInfo ci = { VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, NULL, 0, bytes, spv };
+    if (!vk_ok(vkCreateShaderModule(g_vk.device, &ci, NULL, &m), "vkCreateShaderModule")) return VK_NULL_HANDLE;
+    return m;
+}
+
+/* Tear down a shader slot's resources and retire it (bump generation, return the
+ * slot to the free list). Used by the create-failure path and rhi_shader_destroy.
+ * Unmap is guarded by `mapped` so a slot whose vkMapMemory failed is freed
+ * without unmapping memory that was never mapped. */
+static void shader_slot_free(uint32_t slot) {
+    RhiVkShader *s = &g_vk.shaders.slots[slot - 1];
+    for (uint32_t i = 0; i < s->block_count; i++) {
+        if (s->blocks[i].mapped)  vkUnmapMemory(g_vk.device, s->blocks[i].ubo_mem);
+        if (s->blocks[i].ubo)     vkDestroyBuffer(g_vk.device, s->blocks[i].ubo, NULL);
+        if (s->blocks[i].ubo_mem) vkFreeMemory(g_vk.device, s->blocks[i].ubo_mem, NULL);
+    }
+    if (s->vert) vkDestroyShaderModule(g_vk.device, s->vert, NULL);
+    if (s->frag) vkDestroyShaderModule(g_vk.device, s->frag, NULL);
+    uint8_t gen = s->generation;
+    memset(s, 0, sizeof *s);
+    if (gen != UINT8_MAX) {   /* retire the slot unless its generation would wrap */
+        s->generation = gen + 1;
+        g_vk.shaders.free_list[g_vk.shaders.free_count++] = slot;
+    } else {
+        s->generation = gen;
+    }
+}
+
+RhiShader rhi_shader_create(const RhiShaderDesc *desc) {
+    RhiShader out = {0};
+    if (!desc || desc->param_block_count > VK_MAX_PARAM_BLOCKS ||
+        (desc->param_block_count && !desc->param_blocks)) {
+        fprintf(stderr, "rhi: shader_create: invalid description\n"); return out;
+    }
+    for (uint32_t i = 0; i < desc->param_block_count; i++)
+        if (rhi_param_layout_check(desc->param_blocks[i]) != RHI_OK) return out;
+    size_t vb = 0, fb = 0;
+    const uint32_t *vspv = vk_shader_spirv(desc->label, 0, &vb);
+    const uint32_t *fspv = vk_shader_spirv(desc->label, 1, &fb);
+    if (!vspv || !fspv) {
+        fprintf(stderr, "rhi_vk: no Vulkan SPIR-V for shader '%s'\n", desc->label ? desc->label : "?");
+        return out;
+    }
+    if (!g_vk.device) { fprintf(stderr, "rhi: shader_create: no device\n"); return out; }
+
+    uint32_t slot = shader_slot_alloc();
+    if (!slot) { fprintf(stderr, "rhi: shader_create: out of handles\n"); return out; }
+    RhiVkShader *s = &g_vk.shaders.slots[slot - 1];
+    s->vert = make_module(vspv, vb);
+    s->frag = make_module(fspv, fb);
+    if (!s->vert || !s->frag) goto fail;
+    s->block_count = desc->param_block_count;
+    for (uint32_t i = 0; i < s->block_count; i++) {
+        const RhiParamLayout *l = desc->param_blocks[i];
+        RhiVkParamBlock *pb = &s->blocks[i];
+        pb->layout = l;
+        pb->size = (uint32_t)l->size;
+        if (!make_buffer(l->size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                         &pb->ubo, &pb->ubo_mem)) goto fail;
+        if (!vk_ok(vkMapMemory(g_vk.device, pb->ubo_mem, 0, VK_WHOLE_SIZE, 0, &pb->mapped), "vkMapMemory(ubo)"))
+            goto fail;
+        memset(pb->mapped, 0, l->size);   /* params start zeroed, like the GL mirror */
+    }
+    s->live = 1;
+    out.id = ((uint32_t)s->generation << VK_SLOT_BITS) | slot;
+    return out;
+fail:
+    shader_slot_free(slot);
+    return (RhiShader){0};
+}
+
+void *rhi_shader_params(RhiShader shader, uint32_t block) {
+    RhiVkShader *s = shader_lookup(shader, "shader_params");
+    if (!s || block >= s->block_count) return NULL;
+    return s->blocks[block].mapped;   /* mapped UBO == the std140 mirror (host-coherent) */
+}
+
+void rhi_shader_destroy(RhiShader shader) {
+    /* shader_lookup validates the slot (nonzero, in range), the generation (so a
+     * stale handle to a reused slot is ignored) and liveness. */
+    if (!shader.id) return;
+    if (!shader_lookup(shader, "shader_destroy")) return;
+    shader_slot_free(shader.id & VK_SLOT_MASK);
+}
+
+uint32_t rhi_shader_native_program(RhiShader shader) {
+    RhiVkShader *s = shader_lookup(shader, "shader_native_program");
+    return s ? (shader.id & VK_SLOT_MASK) : 0u;   /* stable nonzero id for a live shader */
+}
 
 /* --- Pipelines (TODO P11e). desc_init is pure: copy the GL backend's defaults. --- */
 void rhi_pipeline_desc_init(RhiPipelineDesc *d) {
