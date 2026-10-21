@@ -41,6 +41,26 @@ typedef struct {
     uint8_t            generation;
 } RhiVkBuffer;
 
+/* Texture handle slot, same scheme as RhiVkBuffer. The whole image (every mip
+ * level and array layer) is tracked by one `layout`: uploads/blits/readbacks
+ * transition the full subresource range together, so it stays uniform. */
+typedef struct {
+    VkImage            img;         /* VK_NULL_HANDLE = free slot */
+    VkDeviceMemory     mem;
+    VkImageView        view;        /* default 2D/CUBE sampling (or depth) view */
+    VkFormat           vkfmt;
+    VkImageAspectFlags aspect;      /* COLOR, or DEPTH for D16/DEPTH */
+    VkImageLayout      layout;      /* current layout of all subresources */
+    RhiFormat          format;
+    uint32_t           usage;
+    int32_t            width, height;
+    uint32_t           layers;      /* 1 for 2D, 6 for CUBE */
+    uint32_t           mip_levels;
+    RhiSampler         sampler;     /* sampled with this (recorded; used in P11e) */
+    uint8_t            live;
+    uint8_t            generation;
+} RhiVkTexture;
+
 static struct {
     SDL_Window              *window;
     VkInstance               instance;
@@ -75,6 +95,18 @@ static struct {
         uint32_t     free_count;
         unsigned     stale_logged;
     } buffers;
+    struct {                             /* texture handle table, same shape */
+        RhiVkTexture *slots;
+        uint32_t      count, capacity;
+        uint32_t     *free_list;
+        uint32_t      free_count;
+        unsigned      stale_logged;
+    } textures;
+    struct {                             /* sampler list, searched by value (GL's g_samplers) */
+        RhiSamplerDesc *descs;
+        VkSampler      *handles;
+        uint32_t        count, capacity;
+    } samplers;
 } g_vk;
 
 /* -------------------------------------------------------------------------- */
@@ -417,6 +449,20 @@ void rhi_device_destroy(void) {
     }
     free(g_vk.buffers.slots);
     free(g_vk.buffers.free_list);
+    /* Free every live texture (view/image/memory), then its table arrays. */
+    for (uint32_t i = 0; i < g_vk.textures.count; i++) {
+        RhiVkTexture *t = &g_vk.textures.slots[i];
+        if (t->view) vkDestroyImageView(g_vk.device, t->view, NULL);
+        if (t->img)  vkDestroyImage(g_vk.device, t->img, NULL);
+        if (t->mem)  vkFreeMemory(g_vk.device, t->mem, NULL);
+    }
+    free(g_vk.textures.slots);
+    free(g_vk.textures.free_list);
+    /* Destroy every VkSampler, then the sampler list arrays. */
+    for (uint32_t i = 0; i < g_vk.samplers.count; i++)
+        if (g_vk.samplers.handles[i]) vkDestroySampler(g_vk.device, g_vk.samplers.handles[i], NULL);
+    free(g_vk.samplers.descs);
+    free(g_vk.samplers.handles);
     if (g_vk.readback)     vkDestroyBuffer(g_vk.device, g_vk.readback, NULL);
     if (g_vk.readback_mem) vkFreeMemory(g_vk.device, g_vk.readback_mem, NULL);
     if (g_vk.depth)        vkDestroyImage(g_vk.device, g_vk.depth, NULL);
@@ -720,23 +766,481 @@ int rhi_vk_buffer_readback(RhiBuffer buf, size_t offset, size_t size, void *dst)
     return ok;
 }
 
-/* --- Textures (TODO P11c) --- */
-RhiTexture rhi_texture_create(const RhiTextureDesc *desc) { (void)desc; RhiTexture t = {0}; return t; }
-RhiResult rhi_texture_upload(RhiTexture tex, int32_t face, int32_t level, const void *data, size_t size) {
-    (void)tex; (void)face; (void)level; (void)data; (void)size; return RHI_ERR_UNSUPPORTED;
-}
-RhiResult rhi_texture_generate_mips(RhiTexture tex) { (void)tex; return RHI_ERR_UNSUPPORTED; }
-void rhi_texture_destroy(RhiTexture tex) { (void)tex; }
-int rhi_texture_is_live(RhiTexture tex) { (void)tex; return 0; }
-uint32_t rhi_texture_native_id(RhiTexture tex) { (void)tex; return 0; }
+/* --- Textures (P11c) ---
+ * The handle table mirrors the buffer table. A texture is a VkImage with
+ * device-local memory and a default sampling view. Uploads go through a
+ * host-visible staging buffer and a one-shot vkCmdCopyBufferToImage; mip
+ * generation blits the chain down. Every transfer runs on its own fenced
+ * command buffer (like copy_buffer/stage_to_device), so texture work is safe
+ * whether or not a frame is open. RGB8 is stored as RGBA8 (A expanded to 255
+ * on upload); BC1/2/3 store the compressed blocks verbatim. */
 
-/* --- Samplers (TODO P11c) --- */
-RhiSampler rhi_sampler_create(const RhiSamplerDesc *desc) { (void)desc; RhiSampler s = {0}; return s; }
-const RhiSamplerDesc *rhi_sampler_desc(RhiSampler sampler) { (void)sampler; return NULL; }
-RhiResult rhi_texture_set_sampler(RhiTexture tex, RhiSampler sampler) {
-    (void)tex; (void)sampler; return RHI_ERR_UNSUPPORTED;
+static const RhiSamplerDesc k_default_sampler = {
+    RHI_FILTER_NEAREST, RHI_FILTER_LINEAR, RHI_MIP_LINEAR, RHI_WRAP_REPEAT, RHI_WRAP_REPEAT, 1.0f
+};
+
+static int format_compressed(RhiFormat f) {
+    return f == RHI_FORMAT_BC1 || f == RHI_FORMAT_BC2 || f == RHI_FORMAT_BC3;
 }
-RhiSampler rhi_texture_sampler(RhiTexture tex) { (void)tex; RhiSampler s = {0}; return s; }
+
+/* Bytes per 4x4 block for the BC formats (0 if not block-compressed). */
+static uint32_t format_block_bytes(RhiFormat f) {
+    return f == RHI_FORMAT_BC1 ? 8u : (f == RHI_FORMAT_BC2 || f == RHI_FORMAT_BC3) ? 16u : 0u;
+}
+
+/* Where a texture rests after an upload / mip generation. SHADER_READ_ONLY only
+ * when it is sampled (that layout requires SAMPLED/INPUT_ATTACHMENT usage);
+ * otherwise GENERAL, which every usage accepts and the next use re-barriers. */
+static VkImageLayout rest_layout(uint32_t usage) {
+    return (usage & RHI_TEXTURE_SAMPLED) ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                                         : VK_IMAGE_LAYOUT_GENERAL;
+}
+
+/* full mip chain length for a w x h image: floor(log2(max(w,h))) + 1 */
+static uint32_t mip_count(int32_t w, int32_t h) {
+    uint32_t m = (uint32_t)(w > h ? w : h), n = 1;
+    while (m > 1) { m >>= 1u; n++; }
+    return n;
+}
+
+/* Record a layout transition on `cb` over an explicit subresource range. */
+static void img_barrier(VkCommandBuffer cb, VkImage img, VkImageAspectFlags aspect,
+                        uint32_t base_lvl, uint32_t n_lvl, uint32_t base_layer, uint32_t n_layer,
+                        VkImageLayout old, VkImageLayout neu, VkAccessFlags srcA, VkAccessFlags dstA,
+                        VkPipelineStageFlags srcS, VkPipelineStageFlags dstS) {
+    VkImageMemoryBarrier b = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, NULL, srcA, dstA, old, neu,
+        VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, img,
+        { aspect, base_lvl, n_lvl, base_layer, n_layer } };
+    vkCmdPipelineBarrier(cb, srcS, dstS, 0, 0, NULL, 0, NULL, 1, &b);
+}
+
+/* Allocate + begin a one-shot primary command buffer; VK_NULL_HANDLE on error. */
+static VkCommandBuffer oneshot_begin(void) {
+    VkCommandBuffer cb = VK_NULL_HANDLE;
+    VkCommandBufferAllocateInfo cbai = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO, NULL, g_vk.pool,
+        VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1 };
+    if (!vk_ok(vkAllocateCommandBuffers(g_vk.device, &cbai, &cb), "vkAllocateCommandBuffers(oneshot)"))
+        return VK_NULL_HANDLE;
+    VkCommandBufferBeginInfo bi = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, NULL,
+        VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, NULL };
+    if (!vk_ok(vkBeginCommandBuffer(cb, &bi), "vkBeginCommandBuffer(oneshot)")) {
+        vkFreeCommandBuffers(g_vk.device, g_vk.pool, 1, &cb);
+        return VK_NULL_HANDLE;
+    }
+    return cb;
+}
+
+/* End, submit and block on `cb`, then free it. 1 on success. */
+static int oneshot_end(VkCommandBuffer cb) {
+    int ok = vk_ok(vkEndCommandBuffer(cb), "vkEndCommandBuffer(oneshot)");
+    VkFence fence = VK_NULL_HANDLE;
+    if (ok) {
+        VkFenceCreateInfo fci = { VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, NULL, 0 };
+        ok = vk_ok(vkCreateFence(g_vk.device, &fci, NULL, &fence), "vkCreateFence(oneshot)");
+    }
+    if (ok) {
+        VkSubmitInfo si = { VK_STRUCTURE_TYPE_SUBMIT_INFO, NULL, 0, NULL, NULL, 1, &cb, 0, NULL };
+        ok = vk_ok(vkQueueSubmit(g_vk.queue, 1, &si, fence), "vkQueueSubmit(oneshot)") &&
+             vk_ok(vkWaitForFences(g_vk.device, 1, &fence, VK_TRUE, UINT64_MAX), "vkWaitForFences(oneshot)");
+    }
+    if (fence) vkDestroyFence(g_vk.device, fence, NULL);
+    vkFreeCommandBuffers(g_vk.device, g_vk.pool, 1, &cb);
+    return ok;
+}
+
+static VkFormat texture_vkformat(RhiFormat f) {
+    switch (f) {
+    case RHI_FORMAT_RGB8:
+    case RHI_FORMAT_RGBA8: return VK_FORMAT_R8G8B8A8_UNORM;   /* RGB8 stored as RGBA8 */
+    case RHI_FORMAT_BC1:   return VK_FORMAT_BC1_RGBA_UNORM_BLOCK;
+    case RHI_FORMAT_BC2:   return VK_FORMAT_BC2_UNORM_BLOCK;
+    case RHI_FORMAT_BC3:   return VK_FORMAT_BC3_UNORM_BLOCK;
+    case RHI_FORMAT_D16:
+    case RHI_FORMAT_DEPTH: return VK_FORMAT_D16_UNORM;        /* main depth precision */
+    default:               return VK_FORMAT_UNDEFINED;
+    }
+}
+
+static RhiVkTexture *texture_find(RhiTexture tex) {
+    uint32_t slot = tex.id & VK_SLOT_MASK;
+    if (!tex.id) return NULL;
+    if (slot && slot <= g_vk.textures.count) {
+        RhiVkTexture *t = &g_vk.textures.slots[slot - 1];
+        if (t->live && t->generation == (uint8_t)(tex.id >> VK_SLOT_BITS)) return t;
+    }
+    return NULL;
+}
+
+static RhiVkTexture *texture_lookup(RhiTexture tex, const char *what) {
+    RhiVkTexture *t = texture_find(tex);
+    if (!t && tex.id && g_vk.textures.stale_logged < 8) {
+        g_vk.textures.stale_logged++;
+        fprintf(stderr, "rhi: %s: stale or invalid texture handle 0x%08x\n", what, (unsigned)tex.id);
+    }
+    return t;
+}
+
+static uint32_t texture_slot_alloc(void) {
+    if (g_vk.textures.free_count) return g_vk.textures.free_list[--g_vk.textures.free_count];
+    if (g_vk.textures.count == g_vk.textures.capacity) {
+        uint32_t cap = g_vk.textures.capacity ? g_vk.textures.capacity * 2u : 256u;
+        if (cap > VK_SLOT_MASK) return 0;
+        RhiVkTexture *slots = (RhiVkTexture *)realloc(g_vk.textures.slots, cap * sizeof *slots);
+        if (!slots) return 0;
+        g_vk.textures.slots = slots;
+        uint32_t *list = (uint32_t *)realloc(g_vk.textures.free_list, cap * sizeof *list);
+        if (!list) return 0;
+        g_vk.textures.free_list = list;
+        g_vk.textures.capacity = cap;
+    }
+    memset(&g_vk.textures.slots[g_vk.textures.count], 0, sizeof g_vk.textures.slots[0]);
+    return ++g_vk.textures.count;
+}
+
+RhiTexture rhi_texture_create(const RhiTextureDesc *desc) {
+    RhiTexture out = {0};
+    int depth16 = desc && desc->format == RHI_FORMAT_D16;
+    /* Validation mirrors the GL backend exactly (see rhi_texture_create there). */
+    if (!desc || (desc->type != RHI_TEXTURE_2D && desc->type != RHI_TEXTURE_CUBE) ||
+        desc->format < RHI_FORMAT_RGB8 || desc->format > RHI_FORMAT_DEPTH ||
+        desc->width <= 0 || desc->height <= 0 || !desc->usage ||
+        (desc->usage & ~(uint32_t)(RHI_TEXTURE_SAMPLED | RHI_TEXTURE_COLOR_TARGET |
+                                   RHI_TEXTURE_DEPTH_TARGET | RHI_TEXTURE_COPY_DST)) ||
+        (desc->format == RHI_FORMAT_DEPTH &&
+         (desc->type != RHI_TEXTURE_2D || desc->usage != (RHI_TEXTURE_SAMPLED | RHI_TEXTURE_COPY_DST))) ||
+        (depth16 && (desc->type != RHI_TEXTURE_2D || desc->usage != RHI_TEXTURE_DEPTH_TARGET)) ||
+        (!depth16 && (desc->usage & RHI_TEXTURE_DEPTH_TARGET)) ||
+        (desc->type == RHI_TEXTURE_CUBE && desc->width != desc->height)) {
+        fprintf(stderr, "rhi: texture_create: invalid description\n");
+        return out;
+    }
+    if (!g_vk.device) { fprintf(stderr, "rhi: texture_create: no device\n"); return out; }
+
+    int is_depth = depth16 || desc->format == RHI_FORMAT_DEPTH;
+    VkFormat vkfmt = texture_vkformat(desc->format);
+    uint32_t layers = desc->type == RHI_TEXTURE_CUBE ? 6u : 1u;
+    /* Depth images are single-level; colour images get a full mip chain so they
+     * can receive uploads up to level floor(log2(max(w,h))) (matches GL). */
+    uint32_t levels = is_depth ? 1u : mip_count(desc->width, desc->height);
+
+    VkImageUsageFlags vku = 0;
+    if (desc->usage & RHI_TEXTURE_SAMPLED)       vku |= VK_IMAGE_USAGE_SAMPLED_BIT;
+    if (desc->usage & RHI_TEXTURE_COLOR_TARGET)  vku |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    if (desc->usage & RHI_TEXTURE_DEPTH_TARGET)  vku |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    if (desc->usage & RHI_TEXTURE_COPY_DST)      vku |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    /* Colour textures are uploadable and blittable (mips) and readable by the
+     * test path, so they always carry both transfer bits. */
+    if (!is_depth) vku |= VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+
+    uint32_t slot = texture_slot_alloc();
+    if (!slot) { fprintf(stderr, "rhi: texture_create: out of handles\n"); return out; }
+    RhiVkTexture *t = &g_vk.textures.slots[slot - 1];
+    t->img = VK_NULL_HANDLE; t->mem = VK_NULL_HANDLE; t->view = VK_NULL_HANDLE;
+    t->vkfmt = vkfmt;
+    t->aspect = is_depth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+    t->layout = VK_IMAGE_LAYOUT_UNDEFINED;
+    t->format = desc->format;
+    t->usage = desc->usage;
+    t->width = desc->width;
+    t->height = desc->height;
+    t->layers = layers;
+    t->mip_levels = levels;
+    t->live = 1;
+    out.id = ((uint32_t)t->generation << VK_SLOT_BITS) | slot;
+
+    VkImageCreateInfo ici = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, NULL,
+        desc->type == RHI_TEXTURE_CUBE ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0u,
+        VK_IMAGE_TYPE_2D, vkfmt, { (uint32_t)desc->width, (uint32_t)desc->height, 1 }, levels, layers,
+        VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, vku, VK_SHARING_MODE_EXCLUSIVE, 0, NULL,
+        VK_IMAGE_LAYOUT_UNDEFINED };
+    if (!vk_ok(vkCreateImage(g_vk.device, &ici, NULL, &t->img), "vkCreateImage(texture)")) goto fail;
+    VkMemoryRequirements mr; vkGetImageMemoryRequirements(g_vk.device, t->img, &mr);
+    uint32_t mt = find_mem(mr.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    if (mt == UINT32_MAX) { fprintf(stderr, "rhi_vk: no device-local memory type\n"); goto fail; }
+    VkMemoryAllocateInfo ai = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, NULL, mr.size, mt };
+    if (!vk_ok(vkAllocateMemory(g_vk.device, &ai, NULL, &t->mem), "vkAllocateMemory(texture)")) goto fail;
+    if (!vk_ok(vkBindImageMemory(g_vk.device, t->img, t->mem, 0), "vkBindImageMemory(texture)")) goto fail;
+
+    /* A view needs a view-compatible usage (sampled / attachment). A transfer-
+     * only COPY_DST texture has none, so it gets no view (nor is it ever sampled). */
+    if (desc->usage & (RHI_TEXTURE_SAMPLED | RHI_TEXTURE_COLOR_TARGET | RHI_TEXTURE_DEPTH_TARGET)) {
+        VkImageViewCreateInfo vci = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, NULL, 0, t->img,
+            desc->type == RHI_TEXTURE_CUBE ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D, vkfmt,
+            { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY,
+              VK_COMPONENT_SWIZZLE_IDENTITY }, { t->aspect, 0, levels, 0, layers } };
+        if (!vk_ok(vkCreateImageView(g_vk.device, &vci, NULL, &t->view), "vkCreateImageView(texture)")) goto fail;
+    }
+
+    /* A fresh texture starts with the documented default sampler. */
+    t->sampler = rhi_sampler_create(&k_default_sampler);
+    if (!t->sampler.id) goto fail;
+    return out;
+
+fail:
+    rhi_texture_destroy(out);
+    return (RhiTexture){0};
+}
+
+RhiResult rhi_texture_upload(RhiTexture tex, int32_t face, int32_t level, const void *data, size_t size) {
+    RhiVkTexture *t = texture_lookup(tex, "texture_upload");
+    int faces = t && t->layers == 6 ? 6 : 1;
+    if (!t || t->format == RHI_FORMAT_D16 || t->format == RHI_FORMAT_DEPTH ||
+        face < 0 || face >= faces || level < 0 || (uint32_t)level >= t->mip_levels)
+        return RHI_ERR_INVALID;
+    int compressed = format_compressed(t->format);
+    if (compressed && (!data || !size || size > 0x7fffffff)) return RHI_ERR_INVALID;
+    /* Uncompressed with no data: the level is already allocated; undefined is fine. */
+    if (!compressed && !data) return RHI_OK;
+
+    int32_t w = t->width >> level, h = t->height >> level;
+    if (w < 1) w = 1;
+    if (h < 1) h = 1;
+
+    /* Compressed: the copy reads the mip's full block footprint, so `size` must
+       cover it, else vkCmdCopyBufferToImage reads past the staging buffer. */
+    if (compressed) {
+        uint32_t blocks = (uint32_t)((w + 3) / 4) * (uint32_t)((h + 3) / 4);
+        if (size < (size_t)blocks * format_block_bytes(t->format)) return RHI_ERR_INVALID;
+    }
+
+    /* Build the staging contents: BC blocks verbatim, RGBA8 verbatim, RGB8
+     * expanded to RGBA8 with A = 255. */
+    VkDeviceSize staging_size = compressed ? (VkDeviceSize)size : (VkDeviceSize)w * h * 4;
+    VkBuffer staging; VkDeviceMemory smem;
+    if (!make_buffer(staging_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                     &staging, &smem)) return RHI_ERR_DEVICE_LOST;
+    void *map = NULL;
+    int ok = vk_ok(vkMapMemory(g_vk.device, smem, 0, VK_WHOLE_SIZE, 0, &map), "vkMapMemory(tex staging)");
+    if (ok) {
+        if (compressed) {
+            memcpy(map, data, size);
+        } else if (t->format == RHI_FORMAT_RGB8) {
+            const unsigned char *s = (const unsigned char *)data;
+            unsigned char *d = (unsigned char *)map;
+            for (int32_t i = 0; i < w * h; i++) {
+                d[i*4] = s[i*3]; d[i*4+1] = s[i*3+1]; d[i*4+2] = s[i*3+2]; d[i*4+3] = 255;
+            }
+        } else {
+            memcpy(map, data, (size_t)w * h * 4);
+        }
+        vkUnmapMemory(g_vk.device, smem);
+    }
+    VkCommandBuffer cb = ok ? oneshot_begin() : VK_NULL_HANDLE;
+    if (cb) {
+        /* Whole image current -> TRANSFER_DST (preserves other levels unless it
+         * was UNDEFINED), copy one subresource, then whole image -> SHADER_READ. */
+        img_barrier(cb, t->img, t->aspect, 0, t->mip_levels, 0, t->layers,
+                    t->layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, VK_ACCESS_TRANSFER_WRITE_BIT,
+                    VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+        VkBufferImageCopy reg = { 0, 0, 0, { t->aspect, (uint32_t)level, (uint32_t)face, 1 },
+            { 0, 0, 0 }, { (uint32_t)w, (uint32_t)h, 1 } };
+        vkCmdCopyBufferToImage(cb, staging, t->img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &reg);
+        VkImageLayout rl = rest_layout(t->usage);
+        int sampled = rl == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        img_barrier(cb, t->img, t->aspect, 0, t->mip_levels, 0, t->layers,
+                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, rl,
+                    VK_ACCESS_TRANSFER_WRITE_BIT, sampled ? VK_ACCESS_SHADER_READ_BIT : 0,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    sampled ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT : VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+        ok = oneshot_end(cb);
+        if (ok) t->layout = rl;
+    } else {
+        ok = 0;
+    }
+    vkDestroyBuffer(g_vk.device, staging, NULL);
+    vkFreeMemory(g_vk.device, smem, NULL);
+    return ok ? RHI_OK : RHI_ERR_DEVICE_LOST;
+}
+
+RhiResult rhi_texture_generate_mips(RhiTexture tex) {
+    RhiVkTexture *t = texture_lookup(tex, "texture_generate_mips");
+    if (!t || t->layers != 1 || (t->format != RHI_FORMAT_RGB8 && t->format != RHI_FORMAT_RGBA8))
+        return RHI_ERR_INVALID;
+    if (t->mip_levels < 2) return RHI_OK;   /* nothing to generate */
+    VkCommandBuffer cb = oneshot_begin();
+    if (!cb) return RHI_ERR_DEVICE_LOST;
+    /* Level 0 -> TRANSFER_SRC, then blit each level from the one above with a
+     * LINEAR filter and the standard per-level barriers. */
+    img_barrier(cb, t->img, VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1,
+                t->layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 0, VK_ACCESS_TRANSFER_READ_BIT,
+                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+    int32_t sw = t->width, sh = t->height;
+    for (uint32_t i = 1; i < t->mip_levels; i++) {
+        int32_t dw = sw > 1 ? sw >> 1 : 1, dh = sh > 1 ? sh >> 1 : 1;
+        img_barrier(cb, t->img, VK_IMAGE_ASPECT_COLOR_BIT, i, 1, 0, 1,
+                    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    0, VK_ACCESS_TRANSFER_WRITE_BIT,
+                    VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+        VkImageBlit blit = {
+            { VK_IMAGE_ASPECT_COLOR_BIT, i - 1, 0, 1 }, { { 0, 0, 0 }, { sw, sh, 1 } },
+            { VK_IMAGE_ASPECT_COLOR_BIT, i,     0, 1 }, { { 0, 0, 0 }, { dw, dh, 1 } } };
+        vkCmdBlitImage(cb, t->img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                       t->img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
+        /* This level becomes the source for the next. */
+        img_barrier(cb, t->img, VK_IMAGE_ASPECT_COLOR_BIT, i, 1, 0, 1,
+                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                    VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+        sw = dw; sh = dh;
+    }
+    /* Leave every level in the usage-appropriate rest layout. */
+    VkImageLayout rl = rest_layout(t->usage);
+    int sampled = rl == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    img_barrier(cb, t->img, VK_IMAGE_ASPECT_COLOR_BIT, 0, t->mip_levels, 0, 1,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, rl,
+                VK_ACCESS_TRANSFER_READ_BIT, sampled ? VK_ACCESS_SHADER_READ_BIT : 0,
+                VK_PIPELINE_STAGE_TRANSFER_BIT,
+                sampled ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT : VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+    if (!oneshot_end(cb)) return RHI_ERR_DEVICE_LOST;
+    t->layout = rl;
+    return RHI_OK;
+}
+
+void rhi_texture_destroy(RhiTexture tex) {
+    RhiVkTexture *t = texture_lookup(tex, "texture_destroy");
+    if (!t) return;
+    if (t->view) vkDestroyImageView(g_vk.device, t->view, NULL);
+    if (t->img)  vkDestroyImage(g_vk.device, t->img, NULL);
+    if (t->mem)  vkFreeMemory(g_vk.device, t->mem, NULL);
+    t->view = VK_NULL_HANDLE; t->img = VK_NULL_HANDLE; t->mem = VK_NULL_HANDLE; t->live = 0;
+    /* Retire the slot before its generation wraps and revives stale handles. */
+    if (t->generation == UINT8_MAX) return;
+    t->generation++;
+    g_vk.textures.free_list[g_vk.textures.free_count++] = tex.id & VK_SLOT_MASK;
+}
+
+int rhi_texture_is_live(RhiTexture tex) {
+    return texture_find(tex) != NULL;
+}
+
+uint32_t rhi_texture_native_id(RhiTexture tex) {
+    /* Stable, nonzero per live texture (the slot index); 0 for {0}/destroyed.
+     * An identity for equality, not an ordering, per the rhi.h contract. */
+    return texture_find(tex) ? (tex.id & VK_SLOT_MASK) : 0u;
+}
+
+/* Test-only (not in rhi.h): read one uncompressed-colour mip level/face back
+ * into `dst` as tightly packed RGBA8 (R at byte 0), via an image->host-buffer
+ * copy like rhi_read_pixels. The smoke declares it extern to verify uploaded
+ * pixels, since rhi.h exposes no texture readback. 1 ok, 0 on failure. */
+int rhi_vk_texture_readback(RhiTexture tex, int32_t face, int32_t level, void *dst) {
+    RhiVkTexture *t = texture_lookup(tex, "texture_readback");
+    int faces = t && t->layers == 6 ? 6 : 1;
+    if (!t || !dst || format_compressed(t->format) || t->aspect != VK_IMAGE_ASPECT_COLOR_BIT ||
+        face < 0 || face >= faces || level < 0 || (uint32_t)level >= t->mip_levels) return 0;
+    int32_t w = t->width >> level, h = t->height >> level;
+    if (w < 1) w = 1;
+    if (h < 1) h = 1;
+    VkDeviceSize size = (VkDeviceSize)w * h * 4;
+    VkBuffer staging; VkDeviceMemory smem;
+    if (!make_buffer(size, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                     &staging, &smem)) return 0;
+    VkCommandBuffer cb = oneshot_begin();
+    int ok = cb != VK_NULL_HANDLE;
+    if (ok) {
+        img_barrier(cb, t->img, VK_IMAGE_ASPECT_COLOR_BIT, (uint32_t)level, 1, (uint32_t)face, 1,
+                    t->layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 0, VK_ACCESS_TRANSFER_READ_BIT,
+                    VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+        VkBufferImageCopy reg = { 0, 0, 0, { VK_IMAGE_ASPECT_COLOR_BIT, (uint32_t)level, (uint32_t)face, 1 },
+            { 0, 0, 0 }, { (uint32_t)w, (uint32_t)h, 1 } };
+        vkCmdCopyImageToBuffer(cb, t->img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, staging, 1, &reg);
+        /* Restore the subresource to the tracked whole-image layout. */
+        img_barrier(cb, t->img, VK_IMAGE_ASPECT_COLOR_BIT, (uint32_t)level, 1, (uint32_t)face, 1,
+                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, t->layout, VK_ACCESS_TRANSFER_READ_BIT, 0,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+        ok = oneshot_end(cb);
+    }
+    if (ok) {
+        void *map = NULL;
+        ok = vk_ok(vkMapMemory(g_vk.device, smem, 0, VK_WHOLE_SIZE, 0, &map), "vkMapMemory(tex readback)");
+        if (ok) { memcpy(dst, map, (size_t)size); vkUnmapMemory(g_vk.device, smem); }
+    }
+    vkDestroyBuffer(g_vk.device, staging, NULL);
+    vkFreeMemory(g_vk.device, smem, NULL);
+    return ok;
+}
+
+/* --- Samplers (P11c) ---
+ * A short list searched by value (GL's g_samplers): equal descriptions return
+ * the same handle id (index + 1). Each distinct description gets one VkSampler. */
+static int sampler_desc_valid(const RhiSamplerDesc *d) {
+    return d && (d->min_filter == RHI_FILTER_NEAREST || d->min_filter == RHI_FILTER_LINEAR) &&
+           (d->mag_filter == RHI_FILTER_NEAREST || d->mag_filter == RHI_FILTER_LINEAR) &&
+           d->mip_filter >= RHI_MIP_NONE && d->mip_filter <= RHI_MIP_LINEAR &&
+           (d->wrap_u == RHI_WRAP_REPEAT || d->wrap_u == RHI_WRAP_CLAMP) &&
+           (d->wrap_v == RHI_WRAP_REPEAT || d->wrap_v == RHI_WRAP_CLAMP) &&
+           d->max_anisotropy >= 1.0f;
+}
+
+static VkSamplerAddressMode vk_wrap(RhiWrap w) {
+    return w == RHI_WRAP_CLAMP ? VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE : VK_SAMPLER_ADDRESS_MODE_REPEAT;
+}
+
+RhiSampler rhi_sampler_create(const RhiSamplerDesc *desc) {
+    RhiSampler out = {0};
+    if (!sampler_desc_valid(desc)) { fprintf(stderr, "rhi: sampler_create: invalid description\n"); return out; }
+    for (uint32_t i = 0; i < g_vk.samplers.count; i++) {
+        const RhiSamplerDesc *d = &g_vk.samplers.descs[i];
+        if (d->min_filter == desc->min_filter && d->mag_filter == desc->mag_filter &&
+            d->mip_filter == desc->mip_filter && d->wrap_u == desc->wrap_u &&
+            d->wrap_v == desc->wrap_v && d->max_anisotropy == desc->max_anisotropy) {
+            out.id = i + 1; return out;
+        }
+    }
+    if (g_vk.samplers.count == g_vk.samplers.capacity) {
+        uint32_t cap = g_vk.samplers.capacity ? g_vk.samplers.capacity * 2u : 16u;
+        RhiSamplerDesc *descs = (RhiSamplerDesc *)realloc(g_vk.samplers.descs, cap * sizeof *descs);
+        if (!descs) { fprintf(stderr, "rhi: sampler_create: out of memory\n"); return out; }
+        g_vk.samplers.descs = descs;
+        VkSampler *handles = (VkSampler *)realloc(g_vk.samplers.handles, cap * sizeof *handles);
+        if (!handles) { fprintf(stderr, "rhi: sampler_create: out of memory\n"); return out; }
+        g_vk.samplers.handles = handles;
+        g_vk.samplers.capacity = cap;
+    }
+    /* Clamp anisotropy to the device limit, off at 1x or with no support. */
+    VkBool32 aniso_en = VK_FALSE;
+    float aniso = 1.0f;
+    if (g_vk.caps.max_anisotropy > 1.0f && desc->max_anisotropy > 1.0f) {
+        aniso_en = VK_TRUE;
+        aniso = desc->max_anisotropy < g_vk.caps.max_anisotropy ? desc->max_anisotropy
+                                                                : g_vk.caps.max_anisotropy;
+    }
+    VkSamplerCreateInfo sci = { VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO, NULL, 0,
+        desc->mag_filter == RHI_FILTER_LINEAR ? VK_FILTER_LINEAR : VK_FILTER_NEAREST,
+        desc->min_filter == RHI_FILTER_LINEAR ? VK_FILTER_LINEAR : VK_FILTER_NEAREST,
+        desc->mip_filter == RHI_MIP_LINEAR ? VK_SAMPLER_MIPMAP_MODE_LINEAR : VK_SAMPLER_MIPMAP_MODE_NEAREST,
+        vk_wrap(desc->wrap_u), vk_wrap(desc->wrap_v), VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        0.0f, aniso_en, aniso, VK_FALSE, VK_COMPARE_OP_ALWAYS,
+        0.0f, desc->mip_filter == RHI_MIP_NONE ? 0.0f : VK_LOD_CLAMP_NONE,
+        VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK, VK_FALSE };
+    VkSampler handle = VK_NULL_HANDLE;
+    if (!vk_ok(vkCreateSampler(g_vk.device, &sci, NULL, &handle), "vkCreateSampler")) return out;
+    g_vk.samplers.descs[g_vk.samplers.count] = *desc;
+    g_vk.samplers.handles[g_vk.samplers.count] = handle;
+    g_vk.samplers.count++;
+    out.id = g_vk.samplers.count;
+    return out;
+}
+
+const RhiSamplerDesc *rhi_sampler_desc(RhiSampler sampler) {
+    if (!sampler.id || sampler.id > g_vk.samplers.count) return NULL;
+    return &g_vk.samplers.descs[sampler.id - 1];
+}
+
+RhiResult rhi_texture_set_sampler(RhiTexture tex, RhiSampler sampler) {
+    RhiVkTexture *t = texture_lookup(tex, "texture_set_sampler");
+    const RhiSamplerDesc *d = rhi_sampler_desc(sampler);
+    if (!t || !d || t->format == RHI_FORMAT_D16) return RHI_ERR_INVALID;   /* D16 is not sampled */
+    t->sampler = sampler;
+    return RHI_OK;
+}
+
+RhiSampler rhi_texture_sampler(RhiTexture tex) {
+    RhiVkTexture *t = texture_lookup(tex, "texture_sampler");
+    return t ? t->sampler : (RhiSampler){0};
+}
 
 /* --- Shaders / param blocks (TODO P11d) --- */
 RhiResult rhi_param_layout_check(const RhiParamLayout *layout) { (void)layout; return RHI_ERR_UNSUPPORTED; }

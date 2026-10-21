@@ -19,6 +19,9 @@ extern unsigned rhi_vk_validation_messages;
 /* Test-only backend path: reads buffer contents (STREAM mapping, or a STATIC
  * device->host staging copy). Returns 1 on success, 0 on failure. */
 extern int rhi_vk_buffer_readback(RhiBuffer buf, size_t offset, size_t size, void *dst);
+/* Test-only backend path: reads one uncompressed-colour texture mip/face back
+ * as tightly packed RGBA8 (R at byte 0). Returns 1 on success, 0 on failure. */
+extern int rhi_vk_texture_readback(RhiTexture tex, int32_t face, int32_t level, void *dst);
 
 static const int W = 256, H = 192;
 static const float CLEAR[4] = { 0.25f, 0.5f, 0.75f, 1.0f };
@@ -158,6 +161,112 @@ int main(void) {
     rhi_buffer_destroy(tb);
     /* A destroyed handle is stale; a read must fail (also logs a stale-handle line). */
     EXPECT(!rhi_vk_buffer_readback(sb, 0, 4, got), "readback of destroyed handle fails");
+
+    /* ---- P11c: textures + samplers ---- */
+    /* (a) RGBA8 2D SAMPLED 4x4: upload a known pattern to level 0, read it back. */
+    RhiTextureDesc rgba_desc = { RHI_TEXTURE_2D, RHI_FORMAT_RGBA8, 4, 4, RHI_TEXTURE_SAMPLED };
+    RhiTexture rgba_tex = rhi_texture_create(&rgba_desc);
+    EXPECT(rgba_tex.id != 0, "rgba8 texture_create");
+    EXPECT(rhi_texture_is_live(rgba_tex), "rgba8 texture is live");
+    EXPECT(rhi_texture_native_id(rgba_tex) != 0, "rgba8 native id nonzero");
+    unsigned char tx_rgba[4 * 4 * 4], tx_got[4 * 4 * 4];
+    for (int i = 0; i < 4 * 4 * 4; i++) tx_rgba[i] = (unsigned char)((i * 7 + 3) & 0xff);
+    EXPECT(rhi_texture_upload(rgba_tex, 0, 0, tx_rgba, sizeof tx_rgba) == RHI_OK, "rgba8 upload L0");
+    memset(tx_got, 0, sizeof tx_got);
+    EXPECT(rhi_vk_texture_readback(rgba_tex, 0, 0, tx_got), "rgba8 readback L0");
+    EXPECT(memcmp(tx_got, tx_rgba, sizeof tx_rgba) == 0, "rgba8 contents mismatch");
+    printf("rgba8 4x4 texture: upload/readback byte-exact\n");
+
+    /* (b) RGB8 texture: upload 3-byte pixels, read back RGBA8 with A expanded to 255. */
+    RhiTextureDesc rgb_desc = { RHI_TEXTURE_2D, RHI_FORMAT_RGB8, 4, 4, RHI_TEXTURE_SAMPLED };
+    RhiTexture rgb_tex = rhi_texture_create(&rgb_desc);
+    EXPECT(rgb_tex.id != 0, "rgb8 texture_create");
+    unsigned char tx_rgb[4 * 4 * 3];
+    for (int i = 0; i < 4 * 4 * 3; i++) tx_rgb[i] = (unsigned char)((i * 5 + 11) & 0xff);
+    EXPECT(rhi_texture_upload(rgb_tex, 0, 0, tx_rgb, sizeof tx_rgb) == RHI_OK, "rgb8 upload L0");
+    memset(tx_got, 0, sizeof tx_got);
+    EXPECT(rhi_vk_texture_readback(rgb_tex, 0, 0, tx_got), "rgb8 readback L0");
+    {
+        int rgb_ok = 1;
+        for (int p = 0; p < 16; p++) {
+            if (tx_got[p*4] != tx_rgb[p*3] || tx_got[p*4+1] != tx_rgb[p*3+1] ||
+                tx_got[p*4+2] != tx_rgb[p*3+2] || tx_got[p*4+3] != 255) rgb_ok = 0;
+        }
+        EXPECT(rgb_ok, "rgb8 -> rgba8 expansion (A=255) mismatch");
+    }
+    printf("rgb8 4x4 texture: RGB->RGBA8 expansion verified (A=255)\n");
+
+    /* (c) BC1 texture: upload one 8-byte block; create+upload OK, no validation error. */
+    RhiTextureDesc bc1_desc = { RHI_TEXTURE_2D, RHI_FORMAT_BC1, 4, 4, RHI_TEXTURE_SAMPLED };
+    RhiTexture bc1_tex = rhi_texture_create(&bc1_desc);
+    EXPECT(bc1_tex.id != 0, "bc1 texture_create");
+    unsigned char bc1_block[8] = { 0x00, 0xF8, 0xE0, 0x07, 0x00, 0x55, 0xAA, 0xFF };
+    EXPECT(rhi_texture_upload(bc1_tex, 0, 0, bc1_block, sizeof bc1_block) == RHI_OK, "bc1 upload one block");
+    /* Undersized compressed upload (< the 4x4 BC1 block footprint) is rejected,
+       not passed to a copy that would read past the staging buffer. */
+    EXPECT(rhi_texture_upload(bc1_tex, 0, 0, bc1_block, 1) == RHI_ERR_INVALID, "bc1 undersized upload rejected");
+    printf("bc1 4x4 texture: create + one-block upload OK\n");
+
+    /* P11c review fixes: usage-only descriptions that rhi_texture_create accepts
+       must not trip validation. Transfer-only (COPY_DST, no view-compatible
+       usage) gets no image view; a non-sampled COLOR_TARGET upload rests in a
+       layout the image's usage allows (not SHADER_READ_ONLY). */
+    RhiTextureDesc copydst = { RHI_TEXTURE_2D, RHI_FORMAT_RGBA8, 8, 8, RHI_TEXTURE_COPY_DST };
+    RhiTexture ct = rhi_texture_create(&copydst);
+    EXPECT(ct.id != 0, "transfer-only (COPY_DST) texture_create");
+    rhi_texture_destroy(ct);
+    RhiTextureDesc rtonly = { RHI_TEXTURE_2D, RHI_FORMAT_RGBA8, 4, 4, RHI_TEXTURE_COLOR_TARGET };
+    RhiTexture rt = rhi_texture_create(&rtonly);
+    EXPECT(rt.id != 0, "colour-target-only texture_create");
+    EXPECT(rhi_texture_upload(rt, 0, 0, tx_rgba, sizeof tx_rgba) == RHI_OK, "colour-target-only upload");
+    rhi_texture_destroy(rt);
+    printf("transfer-only + colour-target-only textures: no validation errors\n");
+
+    /* (d) generate_mips on an RGBA8 texture (4x4 -> 3 levels). */
+    EXPECT(rhi_texture_generate_mips(rgba_tex) == RHI_OK, "rgba8 generate_mips");
+    printf("rgba8 generate_mips OK\n");
+
+    /* (e) samplers: dedup by value, set/get round-trip, fresh texture default. */
+    RhiSamplerDesc sd = { RHI_FILTER_LINEAR, RHI_FILTER_LINEAR, RHI_MIP_LINEAR,
+                          RHI_WRAP_CLAMP, RHI_WRAP_CLAMP, 1.0f };
+    RhiSampler smp1 = rhi_sampler_create(&sd);
+    RhiSampler smp2 = rhi_sampler_create(&sd);
+    EXPECT(smp1.id != 0, "sampler_create");
+    EXPECT(smp1.id == smp2.id, "equal sampler descs dedup to the same id (%u vs %u)", smp1.id, smp2.id);
+    RhiSamplerDesc sd_diff = sd; sd_diff.wrap_u = RHI_WRAP_REPEAT;
+    RhiSampler smp3 = rhi_sampler_create(&sd_diff);
+    EXPECT(smp3.id != 0 && smp3.id != smp1.id, "different sampler desc gets a different id");
+    {
+        const RhiSamplerDesc *rd = rhi_sampler_desc(smp1);
+        EXPECT(rd && rd->wrap_u == RHI_WRAP_CLAMP && rd->mip_filter == RHI_MIP_LINEAR,
+               "sampler_desc returns the stored description");
+    }
+    EXPECT(rhi_texture_set_sampler(rgba_tex, smp1) == RHI_OK, "texture_set_sampler");
+    EXPECT(rhi_texture_sampler(rgba_tex).id == smp1.id, "texture_sampler round-trip");
+    /* A fresh texture reports the documented default { NEAREST, LINEAR, LINEAR, REPEAT, 1 }. */
+    RhiSamplerDesc def = { RHI_FILTER_NEAREST, RHI_FILTER_LINEAR, RHI_MIP_LINEAR,
+                           RHI_WRAP_REPEAT, RHI_WRAP_REPEAT, 1.0f };
+    RhiSampler def_id = rhi_sampler_create(&def);
+    EXPECT(rhi_texture_sampler(rgb_tex).id == def_id.id, "fresh texture starts with the default sampler");
+    printf("samplers: dedup + set/get + default verified\n");
+
+    /* (f) negatives. */
+    RhiTextureDesc d16_sampled = { RHI_TEXTURE_2D, RHI_FORMAT_D16, 4, 4,
+                                   RHI_TEXTURE_SAMPLED | RHI_TEXTURE_DEPTH_TARGET };
+    EXPECT(rhi_texture_create(&d16_sampled).id == 0, "D16 with SAMPLED rejected");
+    EXPECT(rhi_texture_upload(rgba_tex, 0, 10, tx_rgba, sizeof tx_rgba) == RHI_ERR_INVALID,
+           "upload past the mip count rejected");
+    rhi_texture_destroy(bc1_tex);
+    EXPECT(!rhi_texture_is_live(bc1_tex), "destroyed texture is not live");
+    EXPECT(rhi_texture_native_id(bc1_tex) == 0, "destroyed texture native id is 0");
+    EXPECT(rhi_texture_upload(bc1_tex, 0, 0, bc1_block, 8) == RHI_ERR_INVALID, "upload of destroyed handle safe");
+    EXPECT(rhi_texture_generate_mips(bc1_tex) == RHI_ERR_INVALID, "generate_mips of destroyed handle safe");
+    EXPECT(!rhi_vk_texture_readback(bc1_tex, 0, 0, tx_got), "readback of destroyed texture fails");
+    rhi_texture_destroy(bc1_tex);   /* double destroy is a no-op */
+    printf("texture/sampler negatives + destroyed-handle safety verified\n");
+
+    rhi_texture_destroy(rgba_tex);
+    rhi_texture_destroy(rgb_tex);
 
     rhi_device_destroy();
     SDL_DestroyWindow(win);
