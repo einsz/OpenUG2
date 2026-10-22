@@ -1,3 +1,6 @@
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 #include "rhi_gl.h"
 #include <assert.h>
 #include <stdio.h>
@@ -62,6 +65,19 @@ int main(void) {
     assert(glGetError()==GL_NO_ERROR);
 
     /* Upload failures come back as results. */
+#ifndef _WIN32
+    /* The failure line names the GL error and says it was already pending. */
+    pending_error();
+    {   char log[512]={0};FILE*cap=tmpfile();assert(cap);fflush(stderr);
+        int saved=dup(2);assert(saved>=0&&dup2(fileno(cap),2)>=0);
+        RhiBuffer stale=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX,RHI_UPDATE_STATIC,16,NULL});
+        fflush(stderr);dup2(saved,2);close(saved);
+        rewind(cap);size_t got=fread(log,1,sizeof log-1,cap);log[got]=0;fclose(cap);
+        assert(!stale.id && glGetError()==GL_NO_ERROR);
+        fprintf(stderr,"%s",log);
+        assert(strstr(log,"already pending") && strstr(log,"GL_INVALID_"));
+    }
+#endif
     pending_error();
     RhiBuffer failed=rhi_buffer_create(&(RhiBufferDesc){RHI_BUFFER_VERTEX,RHI_UPDATE_STATIC,16,NULL});
     assert(!failed.id && glGetError()==GL_NO_ERROR);
