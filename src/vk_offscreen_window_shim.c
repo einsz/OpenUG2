@@ -27,6 +27,7 @@
  */
 #define _GNU_SOURCE
 #include <dlfcn.h>
+#include <string.h>
 #include <SDL.h>
 
 SDL_Window *SDL_CreateWindow(const char *title, int x, int y, int w, int h,
@@ -35,8 +36,11 @@ SDL_Window *SDL_CreateWindow(const char *title, int x, int y, int w, int h,
     if (!real)
         real = (SDL_Window *(*)(const char *, int, int, int, int, Uint32))
                dlsym(RTLD_NEXT, "SDL_CreateWindow");
-    /* Offscreen Vulkan: the backend uses its own VkImage, never an SDL surface.
-     * Drop SDL_WINDOW_VULKAN so the offscreen video driver accepts the window. */
-    flags &= ~(Uint32)SDL_WINDOW_VULKAN;
+    /* Under the offscreen video driver (headless) the backend uses its own VkImage and no
+     * surface; drop SDL_WINDOW_VULKAN so that driver accepts the window. With a real video
+     * driver (x11, wayland, cocoa) keep the flag: the backend then creates a window surface. */
+    const char *drv = SDL_GetCurrentVideoDriver();   /* the driver SDL picked, whether or not SDL_VIDEODRIVER was set */
+    if (drv && (!strcmp(drv, "offscreen") || !strcmp(drv, "dummy")))
+        flags &= ~(Uint32)SDL_WINDOW_VULKAN;
     return real ? real(title, x, y, w, h, flags) : NULL;
 }

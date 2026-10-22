@@ -812,11 +812,17 @@ rhi-vk-smoke: tools/rhi_vk_smoke.c src/rhi_vk.c src/rhi.h src/generated_shaders_
 # Offscreen `--shot` only (no swapchain, no UI renderers). Built with the Vulkan
 # flags above (VK_CFLAGS/VK_LIBS), NOT -lGL; run it with $(VK_RUN_ENV) (offscreen SDL, lavapipe).
 VK_GAME_SRC  := $(filter-out src/rhi_gl.c src/rhi_gl_state.c src/ugui/ugui_gl.c,$(SRC)) \
-                src/rhi_vk.c src/vk_ui_stubs.c src/vk_offscreen_window_shim.c
+                src/rhi_vk.c src/vk_ui_stubs.c
+# The shim (ELF symbol interposition) only serves the headless offscreen SDL driver on Linux. macOS has
+# no offscreen driver in use and no ELF interposition: there the window keeps SDL_WINDOW_VULKAN (MoltenVK
+# surface; the P12 present path is unverified on macOS).
+ifneq ($(UNAME),Darwin)
+VK_GAME_SRC  += src/vk_offscreen_window_shim.c
+endif
 # VK_CFLAGS already carries -DN2_VULKAN, the SDL2 includes and -Isrc; add the game's -O2 and the
 # nfsu2.h unused-static silence. The game also links libpng, libcrypto and zlib (system, or $(VK_SYSROOT)).
 VK_GAME_CFLAGS := $(VK_CFLAGS) -O2 -Wno-unused-function
-VK_GAME_LIBS   := $(VK_LIBS) -lpng16 -lcrypto -lz -lm -ldl
+VK_GAME_LIBS   := $(VK_LIBS) -lpng16 -lcrypto -lz -lm $(if $(filter Darwin,$(UNAME)),,-ldl)
 
 nfsu2-vk: $(VK_GAME_SRC) $(HDRS) $(GEN) src/generated_shaders_vk.h
 	$(CC) $(VK_GAME_CFLAGS) $(VK_GAME_SRC) -o nfsu2-vk $(VK_GAME_LIBS)
