@@ -421,6 +421,18 @@ GLint gls_attrib_enabled(GLuint index) {
     return v;
 }
 
+GLint gls_attrib_effective_stride(GLint size, GLint type, GLint stride) {
+    if (stride) return stride;
+    GLint bytes = 0;
+    switch ((GLenum)type) {
+    case GL_BYTE: case GL_UNSIGNED_BYTE: bytes = 1; break;
+    case GL_SHORT: case GL_UNSIGNED_SHORT: bytes = 2; break;
+    case GL_INT: case GL_UNSIGNED_INT: case GL_FLOAT: bytes = 4; break;
+    default: return 0;   /* other types: compare literally */
+    }
+    return size * bytes;
+}
+
 void gls_attrib_pointer(GLuint index, GlsAttribPointer *out) {
     if (index >= GLS_ATTRIBS) {   /* not modelled: ask GL */
         GLint v = 0; g_fallback++;
@@ -442,7 +454,8 @@ void gls_attrib_pointer(GLuint index, GlsAttribPointer *out) {
         glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, &r.buffer);
         glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_NORMALIZED, &v); r.normalized = v ? 1 : 0;
         glGetVertexAttribPointerv(index, GL_VERTEX_ATTRIB_ARRAY_POINTER, (void **)&r.pointer);
-        if (r.size != out->size || r.type != out->type || r.stride != out->stride || r.buffer != out->buffer ||
+        if (r.size != out->size || r.type != out->type ||
+            gls_attrib_effective_stride(r.size, r.type, r.stride) != gls_attrib_effective_stride(out->size, out->type, out->stride) || r.buffer != out->buffer ||
             r.normalized != out->normalized || r.pointer != out->pointer) verify_fail("attrib pointer", (GLenum)index);
     }
 #endif
