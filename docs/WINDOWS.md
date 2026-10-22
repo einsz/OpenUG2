@@ -54,6 +54,8 @@ Run from UCRT64 so its runtime DLLs are on PATH. If Windows reports a missing
 SDL2/GLEW/PNG/crypto/compiler DLL, return to that shell and check the installed
 packages. Do not download DLLs from third-party download sites. A packaged
 Actions artifact includes the imported runtime DLLs alongside the executables.
+Downloaded packages name them `openug2.exe` and `openug2-vk.exe`; the current
+source-build Make targets still produce `nfsu2.exe` and `nfsu2-vk.exe`.
 Install a current graphics driver from your GPU vendor: the Microsoft basic
 display driver does not establish working OpenGL/Vulkan support.
 
@@ -104,11 +106,11 @@ experimental Vulkan, runs asset-free CPU/portability tests, and uploads a
 Windows UCRT64 artifact with runtime DLLs and licenses. It runs on pull requests,
 pushes to `development`/`main`, and manual dispatch once the workflow is on
 GitHub. Download the artifact from a successful run's **Artifacts** section,
-extract the whole archive, and pass your data directory to `nfsu2.exe` from
+extract the whole archive, and pass your data directory to `openug2.exe` from
 PowerShell, for example:
 
 ```powershell
-.\nfsu2.exe --path "C:/Games/NFSU2" --hud --devui
+.\openug2.exe --path "C:/Games/NFSU2" --hud --devui
 .\rhi_vk_smoke.exe
 ```
 
@@ -124,10 +126,10 @@ of `--path`. Start with OpenGL and press **1** to check DebugUI; close the game
 before continuing. Vulkan smoke uses no game data.
 
 ```powershell
-.\nfsu2.exe --path "C:/Games/NFSU2" --hud --devui 2>&1 | Tee-Object opengl.log
+.\openug2.exe --path "C:/Games/NFSU2" --hud --devui 2>&1 | Tee-Object opengl.log
 .\rhi_vk_smoke.exe 2>&1 | Tee-Object vulkan-smoke.log
-.\nfsu2.exe --path "C:/Games/NFSU2" --resolution 1280x720 --frames 1 --shot opengl.png 2>&1 | Tee-Object opengl-shot.log
-.\nfsu2-vk.exe --path "C:/Games/NFSU2" --resolution 1280x720 --frames 1 --shot vulkan.png 2>&1 | Tee-Object vulkan-shot.log
+.\openug2.exe --path "C:/Games/NFSU2" --resolution 1280x720 --frames 1 --shot opengl.png 2>&1 | Tee-Object opengl-shot.log
+.\openug2-vk.exe --path "C:/Games/NFSU2" --resolution 1280x720 --frames 1 --shot vulkan.png 2>&1 | Tee-Object vulkan-shot.log
 ```
 
 Use the same data, car, track and options in both screenshots; do not add

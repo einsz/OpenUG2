@@ -7,10 +7,9 @@ set -euo pipefail
 root=build/OpenUG2-linux-x86_64
 mkdir -p build
 mkdir "$root"
-cp nfsu2 "$root/"
-for binary in nfsu2-vk build/rhi_vk_smoke; do
-    [[ ! -f $binary ]] || cp "$binary" "$root/"
-done
+cp nfsu2 "$root/openug2"
+[[ ! -f nfsu2-vk ]] || cp nfsu2-vk "$root/openug2-vk"
+[[ ! -f build/rhi_vk_smoke ]] || cp build/rhi_vk_smoke "$root/"
 mkdir "$root/licenses"
 cp LICENSE "$root/licenses/OpenUG2.txt"
 cp third_party/imgui/LICENSE.txt "$root/licenses/ImGui.txt"

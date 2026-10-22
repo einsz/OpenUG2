@@ -45,6 +45,8 @@ jobs:
       # Hosted runners do not establish OpenGL/Vulkan GPU or RenderDoc support.
       - name: Bundle runtime DLLs and licenses
         run: bash tools/package_windows.sh
+      - name: Check packaged executable and data-path handling
+        run: sh tools/data_path_cli_test.sh build/windows-ucrt64/openug2.exe
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: OpenUG2-windows-ucrt64-${{ github.sha }}

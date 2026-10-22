@@ -121,7 +121,7 @@ def package(binary, output, readme, revision=None):
         bundle = Path(temporary) / destination.name
         (bundle / 'lib').mkdir(parents=True)
         (bundle / 'licenses').mkdir()
-        copies = {source: bundle / ('nfsu2' if source == binary else 'lib/' + source.name)
+        copies = {source: bundle / ('openug2' if source == binary else 'lib/' + source.name)
                   for source in graph}
         for source, target in copies.items():
             shutil.copy2(source, target)

@@ -28,6 +28,8 @@ for ((i=0; i<${#queue[@]}; i++)); do
         fi
     done <<< "$imports"
 done
+mv "$stage/nfsu2.exe" "$stage/openug2.exe"
+mv "$stage/nfsu2-vk.exe" "$stage/openug2-vk.exe"
 mkdir "$stage/licenses"
 cp -R "$MINGW_PREFIX/share/licenses/." "$stage/licenses/"
 cp third_party/imgui/LICENSE.txt "$stage/licenses/ImGui.txt"

@@ -22,7 +22,7 @@ and PowerShell commands. Runtime DLLs and their licenses are included. From the
 extracted directory:
 
 ```powershell
-.\nfsu2.exe --path "YOUR_GAME_DATA_DIRECTORY" --hud --devui
+.\openug2.exe --path "YOUR_GAME_DATA_DIRECTORY" --hud --devui
 ```
 
 ## macOS 15 or newer
@@ -31,7 +31,7 @@ Choose **arm64** for Apple Silicon, **x86_64** for Intel. Extract the `.tar.gz`
 inside the downloaded artifact ZIP. In Terminal, enter the extracted directory:
 
 ```sh
-./nfsu2 --path "/path/to/your/game/data" --hud --devui
+./openug2 --path "/path/to/your/game/data" --hud --devui
 ```
 
 SDL2, libpng and libcrypto are bundled under `lib/`, with relative dependency
@@ -59,12 +59,12 @@ need equivalent SDL2, PNG16, crypto3, zlib and OpenGL runtime libraries.
 Extract the `.tar.gz` inside the artifact ZIP, enter its directory, and run:
 
 ```sh
-./nfsu2 --path "/path/to/your/game/data" --hud --devui
+./openug2 --path "/path/to/your/game/data" --hud --devui
 ```
 
-Use `ldd ./nfsu2` to identify a missing runtime library. `BUILD.txt` records the
+Use `ldd ./openug2` to identify a missing runtime library. `BUILD.txt` records the
 source revision; `RUNTIME-LIBRARIES.txt` records the build host's linkage.
-The optional `nfsu2-vk` and `rhi_vk_smoke` binaries are experimental, offscreen
+The optional `openug2-vk` and `rhi_vk_smoke` binaries are experimental, offscreen
 only; they also need a Vulkan loader/driver. Vulkan does not provide interactive
 presentation or DebugUI. Linux CI uses Mesa software rendering, not your GPU.
 
@@ -73,9 +73,9 @@ presentation or DebugUI. Linux CI uses Mesa software rendering, not your GPU.
 1. Start the OpenGL binary with your data directory. Check the world, car, HUD,
    and **1** to open/close DebugUI.
 2. Take a repeatable capture:
-   `./nfsu2 --path "DATA" --resolution 1280x720 --frames 1 --shot opengl.png`.
+   `./openug2 --path "DATA" --resolution 1280x720 --frames 1 --shot opengl.png`.
 3. When Vulkan is included, run the asset-free smoke test first, then repeat
-   the capture with `nfsu2-vk`. Expect `SMOKE OK`; clean validation requires that
+   the capture with `openug2-vk`. Expect `SMOKE OK`; clean validation requires that
    the validation layer was actually loaded.
 4. Include `BUILD.txt`, OS/CPU architecture, GPU/driver version, console output,
    and screenshots with your report. Never upload the original game assets.

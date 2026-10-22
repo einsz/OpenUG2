@@ -58,7 +58,9 @@ jobs:
           xvfb-run -a ./build/rhi_vk_smoke
       - name: Package Linux test bundle
         if: runner.os == 'Linux'
-        run: bash tools/package_linux.sh
+        run: |
+          bash tools/package_linux.sh
+          sh tools/data_path_cli_test.sh build/OpenUG2-linux-x86_64/openug2
       - name: Package relocatable macOS test bundle
         if: runner.os == 'macOS'
         run: |
@@ -66,7 +68,7 @@ jobs:
           python3 tools/package_macos.py
       - name: Check packaged macOS executable without game data
         if: runner.os == 'macOS'
-        run: sh tools/data_path_cli_test.sh "build/macos-$(uname -m)/nfsu2"
+        run: sh tools/data_path_cli_test.sh "build/macos-$(uname -m)/openug2"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: OpenUG2-${{ matrix.target }}-${{ github.sha }}
