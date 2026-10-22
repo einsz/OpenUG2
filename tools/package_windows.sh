@@ -11,7 +11,7 @@ queue=(nfsu2.exe nfsu2-vk.exe build/rhi_vk_smoke.exe)
 for file in "${queue[@]}"; do cp "$file" "$stage/"; done
 system=$(cygpath -u "${WINDIR:?}/System32")
 for ((i=0; i<${#queue[@]}; i++)); do
-    imports=$(objdump -p "${queue[i]}" | awk '$1 == "DLL" && $2 == "Name:" { print $3 }')
+    imports=$(objdump -p "${queue[i]}" | awk '$1 == "DLL" && $2 == "Name:" { sub(/\r$/, "", $3); print $3 }')
     [[ -n $imports ]] || continue
     while IFS= read -r dll; do
         [[ $dll =~ ^[a-zA-Z0-9_.-]+\.[dD][lL][lL]$ ]] || {
