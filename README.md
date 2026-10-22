@@ -144,7 +144,8 @@ a design at launch. Changing cars clears the vinyl and loads that car’s catalo
   frame rates, invalid elapsed times and bounded stall recovery.
 - **Renderer state** — rendering helpers save and restore tracked OpenGL state
   through a CPU-side cache. `GLS_VERIFY` builds compare it with the driver.
-  OpenGL/OpenGL ES remains the reference; Vulkan and DX12 are not implemented.
+  OpenGL/OpenGL ES remains the reference. Vulkan has an experimental offscreen
+  backend (no presentation or DebugUI); DX12 is not implemented.
 - **World visibility** — production uses the `ordinary` tier, whose view range
   follows the active fog (about 933 m with the current settings). Developer UI
   and provisional HUD elements are hidden by default and toggled with `1`.
@@ -214,7 +215,9 @@ Developer references:
 
 ## Build
 
-Needs **SDL2** and **zlib**.
+Needs a C/C++ compiler, GNU Make, **SDL2**, **zlib**, **libpng**,
+**OpenSSL/libcrypto**, `pkg-config`, and `xxd` for shader embedding.
+Windows desktop builds also use **GLEW**.
 
 Start with the active branch:
 
@@ -232,8 +235,8 @@ git pull --ff-only origin development
 ```
 
 ```sh
-# macOS:  brew install sdl2
-# Debian/Ubuntu:  sudo apt install libsdl2-dev zlib1g-dev
+# macOS:  brew install sdl2 zlib libpng openssl pkg-config
+# Debian/Ubuntu:  sudo apt install build-essential pkg-config libsdl2-dev zlib1g-dev libpng-dev libssl-dev libgl-dev xxd
 
 make debug           # recommended for development: includes ImGui diagnostics
 make                 # desktop build -> ./nfsu2
@@ -251,6 +254,21 @@ make gles            # OpenGL ES 2.0 build (embedded/mobile ARM)
 ARM cross-builds also need target SDL2, zlib and GLES2 headers/libraries;
 changing `CC` alone does not establish device compatibility. See the measured
 [ARM/PortMaster work in #11](https://github.com/whoismept/OpenUG2/issues/11).
+
+### Windows (64-bit, MSYS2 UCRT64)
+
+Follow the [Windows build and test guide](docs/WINDOWS.md) for package installation,
+DebugUI builds, runtime DLLs, and experimental Vulkan tests. After installing its
+dependencies, run these commands in **MSYS2 UCRT64** from the repository:
+
+```sh
+make -j2 debug
+./nfsu2.exe "C:/Games/NFSU2" --hud --devui
+```
+
+Use `development` for current work. The guide also explains the Windows Actions
+build/artifact workflow and which checks still need a physical Windows GPU.
+Vulkan currently supports offscreen tests/screenshots, not interactive DebugUI.
 
 ## Developer menu (ImGui)
 

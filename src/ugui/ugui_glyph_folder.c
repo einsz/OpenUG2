@@ -1,30 +1,37 @@
 /* Independent folder source; CONTROLLER_GLYPH_FOLDER requirements 1-9.
  * Public libpng provides standard decoding; OpenSSL provides SHA-256. */
 #include "ugui_glyph_folder.h"
+#ifndef _WIN32
 #include <png.h>
 #include <openssl/sha.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <unistd.h>
 #include "ugui_glyph_folder_index.h"
 #define FOLDER_INPUT_CAP 4096u
 
 const UgGlyphFolderEntry *ug_glyph_folder_index(size_t *count){if(count)*count=66;return folder_index;}
 const char *ug_glyph_folder_status(UgGlyphFolderStatus s) {
+#ifdef _WIN32
+    if(s==UG_FOLDER_UNSUPPORTED)return "folder source unsupported on Windows";
+#endif
     static const char *labels[]={"available","source absent/unreadable","missing file","unreadable file","path containment rejected","PNG identity/hash mismatch","invalid PNG","unsupported PNG representation","wrong dimensions","decoded RGBA validation failed","input/allocation limit","index configuration failure"};
     return (unsigned)s<sizeof labels/sizeof labels[0]?labels[s]:"unknown";
 }
 static int terminated(const char *s,size_t n){return memchr(s,0,n)!=NULL;}
 static int digest_valid(const char *s){if(!terminated(s,65)||strlen(s)!=64)return 0;for(int i=0;i<64;i++)if(!((s[i]>='0'&&s[i]<='9')||(s[i]>='a'&&s[i]<='f')))return 0;return 1;}
+#ifndef _WIN32
 static int digest_matches(const void *bytes,size_t n,const char *expected) {
     uint8_t digest[32];char hex[65];if(!SHA256(bytes,n,digest))return 0;
     for(int i=0;i<32;i++)snprintf(hex+2*i,3,"%02x",digest[i]);
     return !strcmp(hex,expected);
 }
+#endif
 static int relative_valid(const char *s) {
     if(!terminated(s,160)||!*s||s[0]=='/'||strchr(s,'\\'))return 0;
     for(const char *p=s;*p;){const char *end=strchr(p,'/');size_t n=end?(size_t)(end-p):strlen(p);
@@ -43,6 +50,7 @@ static int index_valid(const UgGlyphFolderEntry *e,size_t n) {
         for(size_t j=0;j<i;j++)if((e[j].family==a->family&&e[j].key==a->key)||!strcmp(e[j].file,a->file))return 0;
     }return 1;
 }
+#ifndef _WIN32
 /* Each component opens relative to an already-open directory, with no-follow.
  * Rejecting even internal symlinks makes escapes impossible without checking
  * a path and subsequently reopening it (which would race a symlink change). */
@@ -90,6 +98,7 @@ static UgGlyphFolderStatus read_record(int root,const UgGlyphFolderEntry *entry,
     status=decode_png(bytes,n,rgba);if(status!=UG_FOLDER_OK)return status;
     return digest_matches(rgba,4096,entry->rgba_sha256)?UG_FOLDER_OK:UG_FOLDER_RGBA;
 }
+#endif
 int ug_controller_load_folder_index(UgController *p,UgTexLib *lib,const char *root,const UgGlyphFolderEntry *entries,size_t count) {
     if(!p||!lib)return 0;
     p->folder_active=1;p->folder_count=0;p->folder_index_failed=0;p->available=p->xbox_available=0;
@@ -98,6 +107,12 @@ int ug_controller_load_folder_index(UgController *p,UgTexLib *lib,const char *ro
     if(!index_valid(entries,count)){p->folder_index_failed=1;snprintf(p->status,sizeof p->status,"TEST-ONLY PNG folder: index configuration failure");return 0;}
     p->folder_count=count;
     for(size_t i=0;i<count;i++){p->folder_records[i].family=entries[i].family;p->folder_records[i].key=entries[i].key;p->folder_records[i].status=UG_FOLDER_ABSENT;}
+#ifdef _WIN32
+    /* Fail closed until Windows has equivalent handle-relative no-reparse traversal. */
+    for(size_t i=0;i<count;i++)p->folder_records[i].status=UG_FOLDER_UNSUPPORTED;
+    snprintf(p->status,sizeof p->status,"TEST-ONLY PNG folder: unsupported on Windows");
+    return 0;
+#else
     int dir=root?open(root,O_RDONLY|O_DIRECTORY|O_CLOEXEC):-1;
     if(dir<0){snprintf(p->status,sizeof p->status,"TEST-ONLY PNG folder: source absent/unreadable");return 0;}
     int loaded=0;
@@ -113,5 +128,6 @@ int ug_controller_load_folder_index(UgController *p,UgTexLib *lib,const char *ro
         if(r->family==UG_CONTROLLER_PS2)p->available=1;else p->xbox_available=1;
     }
     close(dir);ug_texlib_index(lib);ug_controller_select(p,p->family);return loaded>0;
+#endif
 }
 int ug_controller_load_folder(UgController *p,UgTexLib *lib,const char *root){return ug_controller_load_folder_index(p,lib,root,folder_index,66);}

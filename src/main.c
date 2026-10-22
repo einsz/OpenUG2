@@ -3862,9 +3862,14 @@ int main(int argc, char **argv) {
     /* Hidden, fixed-size capture windows avoid the desktop's visible-window
        size clamp (notably macOS), using the same production GL draw path. */
     const int capture_window = shot || raudit || resident_route_audit;
+    uint32_t window_flags = rhi_window_flags(RHI_BACKEND_DEFAULT);
+#ifdef N2_VULKAN
+    /* Offscreen Vulkan uses the window size only; it creates no SDL surface. */
+    window_flags &= ~(uint32_t)SDL_WINDOW_VULKAN;
+#endif
     SDL_Window *win = SDL_CreateWindow("OpenUG2",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, render_width, render_height,
-        rhi_window_flags(RHI_BACKEND_DEFAULT) |
+        window_flags |
         (capture_window ? SDL_WINDOW_HIDDEN : SDL_WINDOW_RESIZABLE));
     if (!win) { fprintf(stderr,"window: %s\n",SDL_GetError()); return 1; }
     /* The device also sets tightly packed readback rows (odd-width captures)

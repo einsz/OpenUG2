@@ -48,7 +48,8 @@ static int is_green(const unsigned char *p) { return p[0] == 0 && p[1] == 255 &&
 static int is_blue(const unsigned char *p)  { return p[0] == 0 && p[1] == 0 && p[2] == 255 && p[3] == 255; }
 static int is_black(const unsigned char *p) { return p[0] == 0 && p[1] == 0 && p[2] == 0 && p[3] == 255; }
 
-int main(void) {
+int main(int argc, char **argv) {
+    (void)argc; (void)argv;
     if (SDL_Init(SDL_INIT_VIDEO) != 0) { fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError()); return 2; }
     printf("SDL video driver: %s\n", SDL_GetCurrentVideoDriver());
 
@@ -56,16 +57,10 @@ int main(void) {
     uint32_t flags = rhi_window_flags(RHI_BACKEND_VULKAN);
     EXPECT(flags != 0, "rhi_window_flags(VULKAN) should be nonzero");
 
-    /* The offscreen SDL driver has no Vulkan surface support, so SDL_WINDOW_VULKAN
-     * is rejected. Offscreen v0 creates no surface and uses the window only for
-     * its size, so fall back to a plain hidden window there (like the spike). */
+    /* Offscreen Vulkan uses the window size only; it creates no SDL surface. */
+    flags &= ~(uint32_t)SDL_WINDOW_VULKAN;
     SDL_Window *win = SDL_CreateWindow("rhi_vk_smoke", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
                                        W, H, flags | SDL_WINDOW_HIDDEN);
-    if (!win) {
-        fprintf(stderr, "note: SDL_WINDOW_VULKAN unavailable (%s); using a plain hidden window\n", SDL_GetError());
-        win = SDL_CreateWindow("rhi_vk_smoke", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-                               W, H, SDL_WINDOW_HIDDEN);
-    }
     if (!win) { fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError()); SDL_Quit(); return 2; }
 
     RhiDeviceDesc desc = { RHI_BACKEND_VULKAN, 0, win };

@@ -33,6 +33,8 @@
 #include <SDL.h>
 #ifdef N2_GLES
 #  include <SDL_opengles2.h>
+#elif defined(_WIN32)
+#  include <GL/glew.h>
 #elif defined(__APPLE__)
 #  ifndef GL_SILENCE_DEPRECATION
 #    define GL_SILENCE_DEPRECATION 1
@@ -131,6 +133,35 @@ unsigned gls_fallback_queries(void);
 #endif
 
 #ifndef GLS_IMPLEMENTATION
+#  if defined(_WIN32) && !defined(N2_GLES)
+/* GLEW's function-pointer macros stay intact in the shim implementation. */
+#    undef glBlendFuncSeparate
+#    undef glBlendEquation
+#    undef glBlendEquationSeparate
+#    undef glUseProgram
+#    undef glLinkProgram
+#    undef glDeleteProgram
+#    undef glBindFramebuffer
+#    undef glBindRenderbuffer
+#    undef glDeleteFramebuffers
+#    undef glDeleteRenderbuffers
+#    undef glActiveTexture
+#    undef glBindBuffer
+#    undef glDeleteBuffers
+#    undef glEnableVertexAttribArray
+#    undef glVertexAttribPointer
+#    undef glDisableVertexAttribArray
+#    undef glUniform1f
+#    undef glUniform2f
+#    undef glUniform3f
+#    undef glUniform4f
+#    undef glUniform1i
+#    undef glUniform1fv
+#    undef glUniform2fv
+#    undef glUniform3fv
+#    undef glUniform4fv
+#    undef glUniformMatrix4fv
+#  endif
 #  define SDL_GL_CreateContext(w)         glsCreateContext(w)
 #  define SDL_GL_DeleteContext(c)         glsDeleteContext(c)
 #  define glEnable(c)                     glsEnable(c)

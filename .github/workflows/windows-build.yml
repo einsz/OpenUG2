@@ -1,0 +1,52 @@
+name: Windows build
+
+on:
+  push:
+    branches: [development, main]
+  pull_request:
+    branches: [development, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ucrt64:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            make git vim perl
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-SDL2
+            mingw-w64-ucrt-x86_64-glew
+            mingw-w64-ucrt-x86_64-libpng
+            mingw-w64-ucrt-x86_64-openssl
+            mingw-w64-ucrt-x86_64-zlib
+            mingw-w64-ucrt-x86_64-vulkan-headers
+            mingw-w64-ucrt-x86_64-vulkan-loader
+            mingw-w64-ucrt-x86_64-glslang
+      - name: Build DebugUI and experimental offscreen Vulkan
+        run: make -j2 debug nfsu2-vk build/rhi_vk_smoke.exe
+      - name: Asset-free CPU and portability checks
+        run: make check-gl resource-map-test dir-scan-test hud-race-test drivetrain-test
+      # Hosted runners do not establish OpenGL/Vulkan GPU or RenderDoc support.
+      - name: Bundle runtime DLLs and licenses
+        run: bash tools/package_windows.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: OpenUG2-windows-ucrt64-${{ github.sha }}
+          path: build/windows-ucrt64/
+          if-no-files-found: error
+          retention-days: 14

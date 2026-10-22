@@ -77,6 +77,18 @@ static GlsState *st(void) {
 SDL_GLContext glsCreateContext(SDL_Window *window) {
     SDL_GLContext ctx = SDL_GL_CreateContext(window);
     S.live = 0;
+#if defined(_WIN32) && !defined(N2_GLES)
+    if (ctx) {
+        glewExperimental = GL_TRUE;
+        GLenum status = glewInit();
+        if (status != GLEW_OK) {
+            SDL_GL_DeleteContext(ctx);
+            SDL_SetError("GLEW initialization failed: %s",
+                         (const char *)glewGetErrorString(status));
+            return NULL;
+        }
+    }
+#endif
     return ctx;
 }
 void glsDeleteContext(SDL_GLContext ctx) {
