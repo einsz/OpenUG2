@@ -29,4 +29,13 @@ for form in positional named after; do
     [ "$code" -eq 1 ] || { echo "unexpected carinfo exit $code" >&2; exit 1; }
     case $output in *"$root/CARS/__PATH_TEST__/GEOMETRY.BIN"*) ;; *) echo "wrong data root: $form" >&2; exit 1 ;; esac
 done
+code=0
+output=$("$exe" --path "$root" --hud --devui 2>&1) || code=$?
+[ "$code" -eq 1 ] || { echo "unexpected missing-world exit $code" >&2; exit 1; }
+for file in L4RA.BUN STREAML4RA.BUN; do
+    case $output in
+        *"$root/TRACKS/$file (READ FAILED, 0 bytes)"*) ;;
+        *) echo "missing startup file diagnostic: $file" >&2; exit 1 ;;
+    esac
+done
 echo 'data_path_cli_test: PASS'

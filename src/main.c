@@ -3549,11 +3549,17 @@ int main(int argc, char **argv) {
         long companion_len=0, stream_len=0;
         unsigned char *companion=n2_read_file(companion_path,&companion_len);
         unsigned char *stream=n2_read_file(stream_path,&stream_len);
+        int companion_read=companion!=NULL, stream_read=stream!=NULL;
         int focused=companion && stream &&
             winst_default_focus(companion,companion_len,stream,stream_len,world2_spawn_xy);
         free(companion); free(stream);
         if (!focused) {
             fprintf(stderr,"cannot derive an authored start region for %s\n",trackname);
+            fprintf(stderr,"  data directory: %s\n",dataroot);
+            fprintf(stderr,"  companion: %s (%s, %ld bytes)\n",companion_path,
+                    companion_read?"read OK":"READ FAILED",companion_len);
+            fprintf(stderr,"  stream: %s (%s, %ld bytes)\n",stream_path,
+                    stream_read?"read OK":"READ FAILED",stream_len);
             return 1;
         }
         printf("open world: %s authored focus (%.3f, %.3f)\n",trackname,
