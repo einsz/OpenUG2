@@ -55,7 +55,9 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           make -j2 nfsu2-vk build/rhi_vk_smoke
-          xvfb-run -a ./build/rhi_vk_smoke
+          icd=$(find /usr/share/vulkan/icd.d -name 'lvp_icd*.json' -print -quit)
+          test -n "$icd"
+          VK_ICD_FILENAMES="$icd" VK_DRIVER_FILES="$icd" xvfb-run -a ./build/rhi_vk_smoke
       - name: Package Linux test bundle
         if: runner.os == 'Linux'
         run: |
@@ -68,7 +70,8 @@ jobs:
           python3 tools/package_macos.py
       - name: Check packaged macOS executable without game data
         if: runner.os == 'macOS'
-        run: sh tools/data_path_cli_test.sh "build/macos-$(uname -m)/openug2"
+        timeout-minutes: 2
+        run: sh -x tools/data_path_cli_test.sh "build/macos-$(uname -m)/openug2"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: OpenUG2-${{ matrix.target }}-${{ github.sha }}
