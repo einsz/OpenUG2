@@ -43,7 +43,7 @@ jobs:
           sudo apt-get install -y build-essential pkg-config libsdl2-dev zlib1g-dev libpng-dev libssl-dev libgl1-mesa-dev xxd xvfb xauth libgl1-mesa-dri libvulkan-dev mesa-vulkan-drivers vulkan-validationlayers glslang-tools
       - name: Install macOS build dependencies
         if: runner.os == 'macOS'
-        run: brew install sdl2 libpng openssl@3 pkgconf
+        run: brew install sdl2 sdl3 libpng openssl@3 pkgconf
       - name: Build DebugUI
         run: make -j2 debug
       - name: Asset-free CPU and portability tests
@@ -67,17 +67,11 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           python3 -m unittest discover -s tools -p package_macos_test.py
-          python3 tools/package_macos.py
+          python3 tools/package_macos.py --extra-library "$(brew --prefix sdl3)/lib/libSDL3.dylib"
       - name: Check packaged macOS executable without game data
         if: runner.os == 'macOS'
         timeout-minutes: 2
-        run: |
-          # Capture a stack if package startup stalls, rather than hiding it.
-          (sleep 15; for pid in $(pgrep -x openug2); do sample "$pid" 1 1 -file /dev/stdout; done) &
-          monitor=$!
-          trap 'kill "$monitor" 2>/dev/null || :' EXIT
-          xattr -l "build/macos-$(uname -m)/openug2"
-          sh -x tools/data_path_cli_test.sh "build/macos-$(uname -m)/openug2"
+        run: sh tools/data_path_cli_test.sh "build/macos-$(uname -m)/openug2"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: OpenUG2-${{ matrix.target }}-${{ github.sha }}

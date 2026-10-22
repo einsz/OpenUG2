@@ -34,7 +34,8 @@ inside the downloaded artifact ZIP. In Terminal, enter the extracted directory:
 ./openug2 --path "/path/to/your/game/data" --hud --devui
 ```
 
-SDL2, libpng and libcrypto are bundled under `lib/`, with relative dependency
+SDL2, SDL3 (needed by SDL2 compatibility builds), libpng and libcrypto are
+bundled under `lib/`, with relative dependency
 paths and licenses. Homebrew is not needed to run the package. This initial
 package is a command-line executable, not a `.app` installer; it is ad-hoc
 signed, not Apple Developer ID signed or notarized. Follow macOS's normal

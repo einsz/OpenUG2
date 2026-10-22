@@ -61,11 +61,18 @@ def resolve_dependency(value, loader, executable, search_paths):
     return matches.pop()
 
 
-def dependency_graph(executable):
+def dependency_graph(executable, extra_libraries=()):
     graph = {}
     names = {}
     root_rpaths = [(executable, item) for item in rpaths(executable)]
     pending = deque([(executable, root_rpaths)])
+    for extra in extra_libraries:
+        source = extra.resolve(strict=True)
+        for name in (extra.name, source.name):
+            if name in names and names[name] != source:
+                raise ValueError(f'Dylib basename collision: {names[name]} and {source}')
+            names[name] = source
+        pending.append((source, root_rpaths))
     while pending:
         source, inherited = pending.popleft()
         if source in graph:
@@ -99,7 +106,7 @@ def dependency_license(source):
     raise ValueError(f'No dependency license found for {source}')
 
 
-def package(binary, output, readme, revision=None):
+def package(binary, output, readme, revision=None, extra_libraries=()):
     binary = binary.resolve(strict=True)
     readme = readme.resolve(strict=True)
     architectures = run('lipo', '-archs', str(binary)).split()
@@ -110,7 +117,7 @@ def package(binary, output, readme, revision=None):
     archive = output / f'OpenUG2-macos-{arch}.tar.gz'
     if destination.exists() or archive.exists():
         raise ValueError(f'Refusing to overwrite existing package: {destination} or {archive}')
-    graph = dependency_graph(binary)
+    graph = dependency_graph(binary, extra_libraries)
     for source in graph:
         if source != binary and arch not in run('lipo', '-archs', str(source)).split():
             raise ValueError(f'Dependency does not support {arch}: {source}')
@@ -150,6 +157,12 @@ def package(binary, output, readme, revision=None):
         run('codesign', '--force', '--sign', '-', str(copies[binary]))
         for target in copies.values():
             run('codesign', '--verify', '--strict', str(target))
+        for extra in extra_libraries:
+            source = extra.resolve(strict=True)
+            if extra.name != source.name:
+                alias = bundle / 'lib' / extra.name
+                if not alias.exists():
+                    alias.symlink_to(source.name)
         temporary_archive = Path(temporary) / archive.name
         with tarfile.open(temporary_archive, 'w:gz') as tar:
             tar.add(bundle, arcname=bundle.name)
@@ -164,9 +177,11 @@ def main():
     parser.add_argument('--output', type=Path, default=Path('build'))
     parser.add_argument('--readme', type=Path, default=Path('docs/TEST_BUILDS.md'))
     parser.add_argument('--revision')
+    parser.add_argument('--extra-library', type=Path, action='append', default=[],
+                        help='Also bundle a dynamically loaded dylib (repeatable)')
     args = parser.parse_args()
     try:
-        archive = package(args.binary, args.output, args.readme, args.revision)
+        archive = package(args.binary, args.output, args.readme, args.revision, args.extra_library)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         parser.exit(1, f'Packaging failed: {error}\n')
     print(archive)
