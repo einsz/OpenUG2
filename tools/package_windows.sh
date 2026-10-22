@@ -15,7 +15,7 @@ for ((i=0; i<${#queue[@]}; i++)); do
     [[ -n $imports ]] || continue
     while IFS= read -r dll; do
         dll=${dll%$'\r'}
-        [[ $dll =~ ^[a-zA-Z0-9_.-]+\.[dD][lL][lL]$ ]] || {
+        [[ $dll =~ ^[a-zA-Z0-9_+.-]+\.[dD][lL][lL]$ ]] || {
             printf 'Unexpected DLL import name from %s: %q\n' "${queue[i]}" "$dll" >&2; exit 1;
         }
         [[ -f "$stage/$dll" ]] && continue
