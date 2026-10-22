@@ -71,7 +71,13 @@ jobs:
       - name: Check packaged macOS executable without game data
         if: runner.os == 'macOS'
         timeout-minutes: 2
-        run: sh -x tools/data_path_cli_test.sh "build/macos-$(uname -m)/openug2"
+        run: |
+          # Capture a stack if package startup stalls, rather than hiding it.
+          (sleep 15; for pid in $(pgrep -x openug2); do sample "$pid" 1 1 -file /dev/stdout; done) &
+          monitor=$!
+          trap 'kill "$monitor" 2>/dev/null || :' EXIT
+          xattr -l "build/macos-$(uname -m)/openug2"
+          sh -x tools/data_path_cli_test.sh "build/macos-$(uname -m)/openug2"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: OpenUG2-${{ matrix.target }}-${{ github.sha }}
