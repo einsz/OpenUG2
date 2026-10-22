@@ -1,0 +1,75 @@
+name: macOS and Linux builds
+
+on:
+  push:
+    branches: [development, main]
+  pull_request:
+    branches: [development, main]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            target: linux-x86_64
+          - runner: macos-15
+            target: macos-arm64
+          - runner: macos-15-intel
+            target: macos-x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install Linux build and software-rendering dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libsdl2-dev zlib1g-dev libpng-dev libssl-dev libgl1-mesa-dev xxd xvfb xauth libgl1-mesa-dri libvulkan-dev mesa-vulkan-drivers vulkan-validationlayers glslang-tools
+      - name: Install macOS build dependencies
+        if: runner.os == 'macOS'
+        run: brew install sdl2 libpng openssl@3 pkgconf
+      - name: Build DebugUI
+        run: make -j2 debug
+      - name: Asset-free CPU and portability tests
+        run: make check-gl resource-map-test dir-scan-test hud-race-test drivetrain-test data-path-cli-test
+      - name: Linux OpenGL regression tests with software rendering
+        if: runner.os == 'Linux'
+        run: xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 make rhi-frame-test hud-caller-state-test CFLAGS='-O1 -g -std=c99 -Wall -Wextra -DGLS_VERIFY'
+      - name: Linux experimental Vulkan offscreen build and smoke test
+        if: runner.os == 'Linux'
+        run: |
+          make -j2 nfsu2-vk build/rhi_vk_smoke
+          xvfb-run -a ./build/rhi_vk_smoke
+      - name: Package Linux test bundle
+        if: runner.os == 'Linux'
+        run: bash tools/package_linux.sh
+      - name: Package relocatable macOS test bundle
+        if: runner.os == 'macOS'
+        run: |
+          python3 -m unittest discover -s tools -p package_macos_test.py
+          python3 tools/package_macos.py
+      - name: Check packaged macOS executable without game data
+        if: runner.os == 'macOS'
+        run: sh tools/data_path_cli_test.sh "build/macos-$(uname -m)/nfsu2"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: OpenUG2-${{ matrix.target }}-${{ github.sha }}
+          path: build/OpenUG2-${{ matrix.target }}.tar.gz
+          if-no-files-found: error
+          retention-days: 7

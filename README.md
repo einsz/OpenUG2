@@ -40,6 +40,15 @@ OpenUG2 is an **early clean-room engine prototype**, not yet a finished or
 drop-in replacement for the original game. The asset → render → drive → race
 pipeline works, but only selected content has been verified end to end.
 
+### Download a test build
+
+See the [desktop test-build guide](docs/TEST_BUILDS.md) for Windows x86_64,
+Linux x86_64, macOS Apple Silicon and macOS Intel packages from
+[GitHub Actions](https://github.com/whoismept/OpenUG2/actions).
+The primary builds include DebugUI; bring your own game data and supply it
+with `--path`. These are development test builds pending hardware feedback.
+For a local Windows build, follow [the MSYS2 UCRT64 guide](docs/WINDOWS.md).
+
 ### Current development screenshots
 
 Recent captures of racing, the map editor, vehicle detail, texture filtering,

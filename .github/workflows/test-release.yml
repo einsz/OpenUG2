@@ -1,0 +1,53 @@
+name: Publish desktop preview
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    if: github.ref == 'refs/heads/development' || github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/desktop-build.yml
+  windows:
+    if: github.ref == 'refs/heads/development' || github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/windows-build.yml
+  publish:
+    needs: [desktop, windows]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: OpenUG2-*
+          path: packages
+      - name: Assemble archives and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir release
+          for target in linux-x86_64 macos-arm64 macos-x86_64; do
+            cp "packages/OpenUG2-$target-$GITHUB_SHA/OpenUG2-$target.tar.gz" release/
+          done
+          (cd "packages/OpenUG2-windows-ucrt64-$GITHUB_SHA" && zip -r ../../release/OpenUG2-windows-x86_64.zip .)
+          (cd release && sha256sum *.tar.gz *.zip > SHA256SUMS)
+          cat > notes.md <<'NOTES'
+          Development test packages with OpenGL and DebugUI. Supply your own game data with --path.
+          macOS 15+: choose arm64 for Apple Silicon or x86_64 for Intel. Ad-hoc signed, not notarized.
+          Linux x86_64: Ubuntu 22.04/glibc 2.35 baseline; system runtime libraries required.
+          Windows x86_64: runtime DLLs included. Windows/Linux Vulkan binaries are experimental and offscreen only.
+          These previews require real-device testing before a stable release. No game assets are included.
+          See docs/TEST_BUILDS.md at this release's source revision for instructions.
+          NOTES
+      - name: Publish immutable preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "preview-${GITHUB_SHA:0:12}" --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --prerelease --latest=false \
+            --title "Desktop test build ${GITHUB_SHA:0:12}" --notes-file notes.md release/*

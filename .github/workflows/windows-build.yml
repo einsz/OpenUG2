@@ -6,6 +6,7 @@ on:
   pull_request:
     branches: [development, main]
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -49,4 +50,4 @@ jobs:
           name: OpenUG2-windows-ucrt64-${{ github.sha }}
           path: build/windows-ucrt64/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
