@@ -59,8 +59,9 @@ hud-race-test: tools/hud_race_test.c src/hud_race.c src/hud_race.h src/hud.h src
 
 # Renderer-boundary gate (issue #14, P10): fail if any src/ file outside the GL
 # backend names a GL header, a gl* entry point or a GL* type. The allowed GL
-# owners are listed in tools/check_gl.sh (the backend, Dear ImGui's GL2 backend,
-# and the self-contained hud.c / ugui_gl.c renderers still to be migrated).
+# owners are listed in tools/check_gl.sh: the backend, Dear ImGui's GL2 backend
+# (debugui.cpp) and the ugui library's GL backend (ugui/ugui_gl.c) -- the two
+# self-contained UI renderers that keep the GL context state themselves.
 check-gl:
 	@sh tools/check_gl.sh src
 .PHONY: check-gl
@@ -190,6 +191,14 @@ hud-state-test: tools/hud_state_test.c src/render.c src/render_params.c src/hud_
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/hud_state_test.c src/render.c src/render_params.c src/hud_baseline.c src/hud_asset.c src/hud_texture.c src/rhi_gl.c src/rhi_gl_state.c src/tex_override.c -o build/hud_state_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
 	./build/hud_state_test
 .PHONY: hud-state-test
+
+# Asset-free check that the authored hud_draw hands the caller's vertex-attribute descriptions and element-buffer binding back
+# (uses the hud_test_white_widget hook, compiled in only here).
+hud-caller-state-test: tools/hud_caller_state_test.c src/hud.c src/hud_race.c src/ugui/ugui_codec.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c $(HDRS) $(GEN)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -DHUD_TEST_HOOKS -Isrc tools/hud_caller_state_test.c src/hud.c src/hud_race.c src/ugui/ugui_codec.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c -o build/hud_caller_state_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
+	./build/hud_caller_state_test
+.PHONY: hud-caller-state-test
 
 world-render-test: tools/world_render_test.c src/nfsu2.h
 	@mkdir -p build
@@ -757,3 +766,58 @@ race-ai-source-test: tools/race_ai_source_test.c src/race_ai_source.h src/asset_
 	$(CC) $(CFLAGS) -Isrc tools/race_ai_source_test.c -o build/race_ai_source_test -lm
 	./build/race_ai_source_test
 .PHONY: race-ai-source-test
+
+# ----------------------------------------------------------------------------
+# Vulkan backend (issue #14, P11a). Offscreen v0 only. By default it builds against the system SDL2 and
+# Vulkan (sdl2-config, -lvulkan, glslangValidator on PATH). To build against a self-contained tree instead
+# (headers in $(VK_SYSROOT)/usr/include, libraries in $(VK_SYSROOT)/usr/lib/x86_64-linux-gnu, tools in
+# $(VK_SYSROOT)/usr/bin), set VK_SYSROOT=/path. VK_ICD is the Vulkan driver the smoke test runs on
+# (default: lavapipe, if its ICD file is found; the Khronos validation layer is used when installed).
+VK_SYSROOT ?=
+ifneq ($(VK_SYSROOT),)
+VK_LIBDIR  := $(VK_SYSROOT)/usr/lib/x86_64-linux-gnu
+VK_INC     := -I$(VK_SYSROOT)/usr/include/SDL2 -I$(VK_SYSROOT)/usr/include -I$(VK_SYSROOT)/usr/include/x86_64-linux-gnu
+VK_LIBS    := -L$(VK_LIBDIR) -lSDL2 -lvulkan -Wl,-rpath,$(VK_LIBDIR)
+else
+VK_INC     := $(SDL_CFLAGS)
+VK_LIBS    := $(SDL_LIBS) -lvulkan
+endif
+VK_CFLAGS  := -std=c99 -Wall -Wextra -Wno-missing-field-initializers -D_DEFAULT_SOURCE -DN2_VULKAN $(VK_INC) -Isrc
+VK_ICD     ?= $(firstword $(wildcard /usr/share/vulkan/icd.d/lvp_icd*.json /etc/vulkan/icd.d/lvp_icd*.json))
+VK_RUN_ENV := SDL_VIDEODRIVER=offscreen $(if $(VK_ICD),VK_DRIVER_FILES=$(VK_ICD)) \
+              $(if $(VK_SYSROOT),VK_ADD_LAYER_PATH=$(VK_SYSROOT)/usr/share/vulkan/explicit_layer.d LD_LIBRARY_PATH=$(VK_LIBDIR))
+# Vulkan shaders: Vulkan-GLSL in src/shaders/vk/, compiled to SPIR-V and embedded
+# as uint32 arrays (vk_<name>_<ext>) by glslangValidator -- same build-time embed
+# idea as generated_shaders.h. Regenerated when any vk shader changes.
+VK_GLSLANG ?= $(if $(VK_SYSROOT),$(VK_SYSROOT)/usr/bin/glslangValidator,glslangValidator)
+VK_SHADERS := $(sort $(wildcard src/shaders/vk/*.vert src/shaders/vk/*.frag))
+src/generated_shaders_vk.h: $(VK_SHADERS)
+	@echo "/* AUTO-GENERATED from src/shaders/vk/ by glslangValidator -- do not edit */" > $@
+	@for f in $(VK_SHADERS); do \
+	  sym=vk_$$(basename $$f | tr '.' '_'); \
+	  $(VK_GLSLANG) -V --target-env vulkan1.1 --vn $$sym -o $@.tmp "$$f" >/dev/null || { rm -f $@ $@.tmp; exit 1; }; \
+	  cat $@.tmp >> $@; \
+	done
+	@rm -f $@.tmp
+
+rhi-vk-smoke: tools/rhi_vk_smoke.c src/rhi_vk.c src/rhi.h src/generated_shaders_vk.h
+	@mkdir -p build
+	$(CC) $(VK_CFLAGS) tools/rhi_vk_smoke.c src/rhi_vk.c -o build/rhi_vk_smoke $(VK_LIBS)
+	$(VK_RUN_ENV) ./build/rhi_vk_smoke
+.PHONY: rhi-vk-smoke
+
+# Full game linked against the Vulkan backend (issue #14, P11 screenshot
+# comparison). Same game sources as `nfsu2`, but the GL backend + GL-only UI
+# renderers are dropped and src/rhi_vk.c + src/vk_ui_stubs.c take their place.
+# Offscreen `--shot` only (no swapchain, no UI renderers). Built with the Vulkan
+# flags above (VK_CFLAGS/VK_LIBS), NOT -lGL; run it with $(VK_RUN_ENV) (offscreen SDL, lavapipe).
+VK_GAME_SRC  := $(filter-out src/rhi_gl.c src/rhi_gl_state.c src/ugui/ugui_gl.c,$(SRC)) \
+                src/rhi_vk.c src/vk_ui_stubs.c src/vk_offscreen_window_shim.c
+# VK_CFLAGS already carries -DN2_VULKAN, the SDL2 includes and -Isrc; add the game's -O2 and the
+# nfsu2.h unused-static silence. The game also links libpng, libcrypto and zlib (system, or $(VK_SYSROOT)).
+VK_GAME_CFLAGS := $(VK_CFLAGS) -O2 -Wno-unused-function
+VK_GAME_LIBS   := $(VK_LIBS) -lpng16 -lcrypto -lz -lm -ldl
+
+nfsu2-vk: $(VK_GAME_SRC) $(HDRS) $(GEN) src/generated_shaders_vk.h
+	$(CC) $(VK_GAME_CFLAGS) $(VK_GAME_SRC) -o nfsu2-vk $(VK_GAME_LIBS)
+.PHONY: nfsu2-vk

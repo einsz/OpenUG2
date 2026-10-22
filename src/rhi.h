@@ -38,7 +38,8 @@ typedef enum RhiResult {
 typedef enum RhiBackend {
     RHI_BACKEND_DEFAULT = 0, /* the backend this build was compiled for */
     RHI_BACKEND_GL,          /* desktop GL 2.1 compatibility (macOS: legacy 2.1 context) */
-    RHI_BACKEND_GLES2        /* OpenGL ES 2.0 */
+    RHI_BACKEND_GLES2,       /* OpenGL ES 2.0 */
+    RHI_BACKEND_VULKAN       /* Vulkan 1.1+ (offscreen v0; swapchain + MoltenVK later) */
 } RhiBackend;
 
 typedef enum RhiDeviceFlags {
@@ -368,9 +369,13 @@ typedef struct RhiPipelineDesc {
     RhiCullMode     cull;          /* counter-clockwise faces are front faces */
     uint8_t         depth_test, depth_write;
     RhiCompare      depth_compare;
-    uint8_t         blend;
+    uint8_t         blend;         /* the blend equation is always ADD */
     RhiBlendFactor  src_rgb, dst_rgb, src_alpha, dst_alpha;
     uint8_t         color_write;   /* bits 0..3 = R, G, B, A */
+    float           line_width;    /* RHI_PRIMITIVE_LINES width in pixels; <= 0
+                                      means 1 (GL: glLineWidth, clamped to the
+                                      driver's aliased-line range; ignored for
+                                      triangles). */
     uint8_t         stencil_test;
     RhiCompare      stencil_compare;
     uint8_t         stencil_ref, stencil_read_mask, stencil_write_mask;
@@ -457,16 +462,20 @@ void rhi_viewport(int32_t viewport[4]);
 
 /* The state the next draw uses when no pipeline or texture is bound in
  * between: the bound pipeline and its raster state, the texture on sampler
- * slots 0..RHI_STATE_TEXTURE_SLOTS-1, the viewport and the target. Helpers
+ * slots 0..RHI_STATE_TEXTURE_SLOTS-1, the viewport, the target, the blend
+ * equation, the array-buffer and element-buffer bindings, which vertex
+ * attribute arrays are enabled, and the pointer description (size, type,
+ * normalization, stride, offset, source buffer) of attributes
+ * 0..RHI_MAX_VERTEX_ATTRIBS-1. Helpers
  * that bind their own pipelines save it on entry and restore it on exit, so
  * callers that still draw with ambient state (HUD, frontend, debug UI) get
  * theirs back. Restore sends only what differs. Not included: stencil
  * functions and the cull face (set by every pipeline that uses them), the
- * scissor rectangle, wireframe mode, vertex/index buffers, or cube textures.
+ * scissor rectangle, wireframe mode, or cube textures.
  * Current helpers do not change the scissor rectangle or wireframe mode;
  * a helper that does must preserve those explicitly. */
 #define RHI_STATE_TEXTURE_SLOTS 8
-typedef struct RhiStateSnapshot { uint32_t opaque[48]; } RhiStateSnapshot;
+typedef struct RhiStateSnapshot { uint32_t opaque[112]; } RhiStateSnapshot;
 void rhi_cmd_save_state(RhiStateSnapshot *out);
 void rhi_cmd_restore_state(const RhiStateSnapshot *state);
 /* Makes `state` restore `texture` (2D) on `slot` instead of what was there:

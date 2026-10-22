@@ -30,14 +30,17 @@ typedef struct {
     int live;
     GLboolean enabled[GLS_NCAPS];
     GLint blend[4];                 /* src_rgb, dst_rgb, src_alpha, dst_alpha */
+    GLint blend_eq[2];              /* rgb, alpha */
     GLint depth_func;
     GLboolean depth_mask, color_mask[4];
     GLfloat clear_color[4], clear_depth;
+    GLfloat line_width;
     GLint viewport[4];
-    GLint program, framebuffer, renderbuffer, array_buffer;
+    GLint program, framebuffer, renderbuffer, array_buffer, element_buffer;
     GLint active;                   /* unit index, 0-based */
     GLint tex2d[GLS_UNITS];
     GLint attrib[GLS_ATTRIBS];
+    GlsAttribPointer aptr[GLS_ATTRIBS];   /* glVertexAttribPointer state, GL initial values until set */
     GlsProgram prog[GLS_PROGRAMS];
 } GlsState;
 
@@ -54,9 +57,12 @@ static void gls_reset(SDL_GLContext ctx) {
     S.ctx = ctx; S.live = 1;
     for (int i = 0; i < GLS_NCAPS; i++) S.enabled[i] = caps[i] == GL_DITHER;
     S.blend[0] = S.blend[2] = GL_ONE; S.blend[1] = S.blend[3] = GL_ZERO;
+    S.blend_eq[0] = S.blend_eq[1] = GL_FUNC_ADD;
     S.depth_func = GL_LESS; S.depth_mask = GL_TRUE;
     for (int i = 0; i < 4; i++) S.color_mask[i] = GL_TRUE;
     S.clear_depth = 1.0f;
+    S.line_width = 1.0f;
+    for (int i = 0; i < GLS_ATTRIBS; i++) S.aptr[i] = (GlsAttribPointer){ 4, (GLint)GL_FLOAT, 0, 0, 0, NULL };
     SDL_Window *w = SDL_GL_GetCurrentWindow();
     if (w) SDL_GL_GetDrawableSize(w, &S.viewport[2], &S.viewport[3]);
 }
@@ -103,6 +109,16 @@ void glsBlendFuncSeparate(GLenum src_rgb, GLenum dst_rgb, GLenum src_a, GLenum d
     s->blend[2] = (GLint)src_a;   s->blend[3] = (GLint)dst_a;
     glBlendFuncSeparate(src_rgb, dst_rgb, src_a, dst_a);
 }
+void glsBlendEquation(GLenum mode) {
+    GlsState *s = st();
+    s->blend_eq[0] = s->blend_eq[1] = (GLint)mode;
+    glBlendEquation(mode);
+}
+void glsBlendEquationSeparate(GLenum rgb, GLenum alpha) {
+    GlsState *s = st();
+    s->blend_eq[0] = (GLint)rgb; s->blend_eq[1] = (GLint)alpha;
+    glBlendEquationSeparate(rgb, alpha);
+}
 void glsDepthFunc(GLenum func) { st()->depth_func = (GLint)func; glDepthFunc(func); }
 void glsDepthMask(GLboolean mask) { st()->depth_mask = mask ? GL_TRUE : GL_FALSE; glDepthMask(mask); }
 void glsColorMask(GLboolean r, GLboolean g, GLboolean b, GLboolean a) {
@@ -128,6 +144,11 @@ void glsViewport(GLint x, GLint y, GLsizei w, GLsizei h) {
     GlsState *s = st();
     s->viewport[0] = x; s->viewport[1] = y; s->viewport[2] = w; s->viewport[3] = h;
     glViewport(x, y, w, h);
+}
+
+void glsLineWidth(GLfloat width) {
+    st()->line_width = width;   /* GL returns the set value, not the raster clamp */
+    glLineWidth(width);
 }
 void glsUseProgram(GLuint program) { st()->program = (GLint)program; glUseProgram(program); }
 void glsBindFramebuffer(GLenum target, GLuint fbo) {
@@ -162,16 +183,27 @@ void glsDeleteTextures(GLsizei n, const GLuint *ids) {
 }
 void glsBindBuffer(GLenum target, GLuint buffer) {
     if (target == GL_ARRAY_BUFFER) st()->array_buffer = (GLint)buffer;
+    else if (target == GL_ELEMENT_ARRAY_BUFFER) st()->element_buffer = (GLint)buffer;
     glBindBuffer(target, buffer);
 }
 void glsDeleteBuffers(GLsizei n, const GLuint *ids) {
     GlsState *s = st();
-    for (GLsizei i = 0; i < n; i++) if (ids[i] && (GLint)ids[i] == s->array_buffer) s->array_buffer = 0;
+    for (GLsizei i = 0; i < n; i++) {
+        if (!ids[i]) continue;
+        if ((GLint)ids[i] == s->array_buffer) s->array_buffer = 0;
+        if ((GLint)ids[i] == s->element_buffer) s->element_buffer = 0;
+        for (int a = 0; a < GLS_ATTRIBS; a++) if (s->aptr[a].buffer == (GLint)ids[i]) s->aptr[a].buffer = 0;   /* GL detaches it */
+    }
     glDeleteBuffers(n, ids);
 }
 void glsEnableVertexAttribArray(GLuint index) {
     if (index < GLS_ATTRIBS) st()->attrib[index] = 1;
     glEnableVertexAttribArray(index);
+}
+void glsVertexAttribPointer(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void *pointer) {
+    GlsState *s = st();
+    if (index < GLS_ATTRIBS) s->aptr[index] = (GlsAttribPointer){ size, (GLint)type, stride, s->array_buffer, normalized ? 1 : 0, pointer };
+    glVertexAttribPointer(index, size, type, normalized, stride, pointer);
 }
 void glsDisableVertexAttribArray(GLuint index) {
     if (index < GLS_ATTRIBS) st()->attrib[index] = 0;
@@ -318,12 +350,15 @@ static int tracked_integerv(GLenum pname, GLint *out) {
     case GL_BLEND_DST_RGB: out[0] = s->blend[1]; return 1;
     case GL_BLEND_SRC_ALPHA: out[0] = s->blend[2]; return 1;
     case GL_BLEND_DST_ALPHA: out[0] = s->blend[3]; return 1;
+    case GL_BLEND_EQUATION_RGB: out[0] = s->blend_eq[0]; return 1;
+    case GL_BLEND_EQUATION_ALPHA: out[0] = s->blend_eq[1]; return 1;
     case GL_DEPTH_FUNC: out[0] = s->depth_func; return 1;
     case GL_VIEWPORT: memcpy(out, s->viewport, sizeof s->viewport); return 4;
     case GL_CURRENT_PROGRAM: out[0] = s->program; return 1;
     case GL_FRAMEBUFFER_BINDING: out[0] = s->framebuffer; return 1;
     case GL_RENDERBUFFER_BINDING: out[0] = s->renderbuffer; return 1;
     case GL_ARRAY_BUFFER_BINDING: out[0] = s->array_buffer; return 1;
+    case GL_ELEMENT_ARRAY_BUFFER_BINDING: out[0] = s->element_buffer; return 1;
     case GL_ACTIVE_TEXTURE: out[0] = (GLint)GL_TEXTURE0 + s->active; return 1;
     case GL_TEXTURE_BINDING_2D:
         if (s->active < 0 || s->active >= GLS_UNITS) return 0;
@@ -358,6 +393,7 @@ void gls_get_floatv(GLenum pname, GLfloat *out) {
     int n = 0;
     if (pname == GL_COLOR_CLEAR_VALUE) { memcpy(out, s->clear_color, sizeof s->clear_color); n = 4; }
     else if (pname == GL_DEPTH_CLEAR_VALUE) { out[0] = s->clear_depth; n = 1; }
+    else if (pname == GL_LINE_WIDTH) { out[0] = s->line_width; n = 1; }
     if (!n) { g_fallback++; glGetFloatv(pname, out); return; }
 #ifdef GLS_VERIFY
     GLfloat real[4]; glGetFloatv(pname, real);
@@ -383,6 +419,33 @@ GLint gls_attrib_enabled(GLuint index) {
     if (!real != !v) verify_fail("attrib", (GLenum)index);
 #endif
     return v;
+}
+
+void gls_attrib_pointer(GLuint index, GlsAttribPointer *out) {
+    if (index >= GLS_ATTRIBS) {   /* not modelled: ask GL */
+        GLint v = 0; g_fallback++;
+        glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_SIZE, &out->size);
+        glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_TYPE, &out->type);
+        glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_STRIDE, &out->stride);
+        glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, &out->buffer);
+        glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_NORMALIZED, &v); out->normalized = v ? 1 : 0;
+        out->pointer = NULL; glGetVertexAttribPointerv(index, GL_VERTEX_ATTRIB_ARRAY_POINTER, (void **)&out->pointer);
+        return;
+    }
+    *out = st()->aptr[index];
+#ifdef GLS_VERIFY
+    {
+        GlsAttribPointer r = {0}; GLint v = 0;
+        glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_SIZE, &r.size);
+        glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_TYPE, &r.type);
+        glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_STRIDE, &r.stride);
+        glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, &r.buffer);
+        glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_NORMALIZED, &v); r.normalized = v ? 1 : 0;
+        glGetVertexAttribPointerv(index, GL_VERTEX_ATTRIB_ARRAY_POINTER, (void **)&r.pointer);
+        if (r.size != out->size || r.type != out->type || r.stride != out->stride || r.buffer != out->buffer ||
+            r.normalized != out->normalized || r.pointer != out->pointer) verify_fail("attrib pointer", (GLenum)index);
+    }
+#endif
 }
 
 unsigned gls_fallback_queries(void) { return g_fallback; }

@@ -47,6 +47,36 @@ int main(void) {
     /* Pipelines have no depth bias: binding one turns a caller's polygon offset off. */
     glEnable(GL_POLYGON_OFFSET_FILL);rhi_cmd_bind_pipeline(p);
     assert(!glIsEnabled(GL_POLYGON_OFFSET_FILL) && !gls_is_enabled(GL_POLYGON_OFFSET_FILL));
+    /* Blend pipelines force the ADD equation; a snapshot brings the caller's equation,
+       array-buffer binding and enabled attribute arrays back. */
+    {
+        bad=d;bad.blend=1;bad.src_rgb=bad.src_alpha=RHI_BLEND_SRC_ALPHA;
+        bad.dst_rgb=bad.dst_alpha=RHI_BLEND_ONE_MINUS_SRC_ALPHA;
+        RhiPipeline blended=rhi_pipeline_create(&bad);assert(blended.id);
+        GLuint scratch;glGenBuffers(1,&scratch);
+        glBlendEquationSeparate(GL_FUNC_SUBTRACT,GL_FUNC_REVERSE_SUBTRACT);
+        glBindBuffer(GL_ARRAY_BUFFER,scratch);glEnableVertexAttribArray(5);
+        RhiStateSnapshot saved;rhi_cmd_save_state(&saved);
+        rhi_cmd_bind_pipeline(blended);rhi_cmd_bind_vertex_buffer(0,v,0);rhi_cmd_bind_vertex_buffer(1,(RhiBuffer){0},0);
+        GLint eq[2];gls_get_integerv(GL_BLEND_EQUATION_RGB,&eq[0]);gls_get_integerv(GL_BLEND_EQUATION_ALPHA,&eq[1]);
+        assert(eq[0]==GL_FUNC_ADD && eq[1]==GL_FUNC_ADD);
+        glGetIntegerv(GL_BLEND_EQUATION_RGB,&eq[0]);glGetIntegerv(GL_BLEND_EQUATION_ALPHA,&eq[1]);
+        assert(eq[0]==GL_FUNC_ADD && eq[1]==GL_FUNC_ADD);
+        rhi_cmd_draw(3,0);   /* rebinds the array buffer, switches attribute 5 off */
+        assert(!gls_attrib_enabled(5));
+        rhi_cmd_restore_state(&saved);
+        GLint buf,on;
+        gls_get_integerv(GL_BLEND_EQUATION_RGB,&eq[0]);gls_get_integerv(GL_BLEND_EQUATION_ALPHA,&eq[1]);
+        assert(eq[0]==GL_FUNC_SUBTRACT && eq[1]==GL_FUNC_REVERSE_SUBTRACT);
+        glGetIntegerv(GL_BLEND_EQUATION_RGB,&eq[0]);glGetIntegerv(GL_BLEND_EQUATION_ALPHA,&eq[1]);
+        assert(eq[0]==GL_FUNC_SUBTRACT && eq[1]==GL_FUNC_REVERSE_SUBTRACT);
+        gls_get_integerv(GL_ARRAY_BUFFER_BINDING,&buf);assert((GLuint)buf==scratch);
+        glGetIntegerv(GL_ARRAY_BUFFER_BINDING,&buf);assert((GLuint)buf==scratch);
+        glGetVertexAttribiv(5,GL_VERTEX_ATTRIB_ARRAY_ENABLED,&on);assert(on && gls_attrib_enabled(5));
+        assert(glGetError()==GL_NO_ERROR);
+        glDisableVertexAttribArray(5);glBindBuffer(GL_ARRAY_BUFFER,0);glDeleteBuffers(1,&scratch);
+        glBlendEquation(GL_FUNC_ADD);rhi_cmd_bind_pipeline(p);
+    }
     rhi_cmd_bind_vertex_buffer(0,v,0);rhi_cmd_bind_index_buffer(i);
     /* A null color stream disables its array and uses the caller's constant. */
     glEnableVertexAttribArray(1);glVertexAttrib4f(1,1,1,1,1);rhi_cmd_bind_vertex_buffer(1,(RhiBuffer){0},0);
