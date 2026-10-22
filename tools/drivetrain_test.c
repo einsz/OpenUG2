@@ -9,6 +9,7 @@
  * of spec statements that have no vector (marked non-vector in the output); the
  * launch run there is a smoke test only. Exit code is nonzero if any check fails. */
 #include <math.h>
+#include <ctype.h>
 #include <float.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -91,12 +92,12 @@ static int json_nums(const char *blk, const char *key, double *out, int max) {
     const char *p = strstr(blk, pat);
     if (!p) return -1;
     p = strchr(p, ':'); if (!p) return -1;
-    p++; while (*p == ' ' || *p == '\n') p++;
+    p++; while (isspace((unsigned char)*p)) p++;
     int n = 0;
     if (*p != '[') { out[0] = !strncmp(p, "true", 4) ? 1 : (!strncmp(p, "false", 5) ? 0 : strtod(p, NULL)); return 1; }
     p++;
     for (;;) {
-        while (*p == ' ' || *p == '\n' || *p == ',') p++;
+        while (isspace((unsigned char)*p) || *p == ',') p++;
         if (*p == ']' || !*p) break;
         if (!strncmp(p, "true", 4)) { if (n < max) out[n++] = 1; p += 4; }
         else if (!strncmp(p, "false", 5)) { if (n < max) out[n++] = 0; p += 5; }
@@ -107,6 +108,15 @@ static int json_nums(const char *blk, const char *key, double *out, int max) {
 }
 static double json_num(const char *blk, const char *key) {
     double v[1]; return json_nums(blk, key, v, 1) == 1 ? v[0] : NAN;
+}
+
+static void test_json_whitespace(void) {
+    const char *input = "{\"values\":\r\n[\r\nnull,\r\ntrue,\tfalse,\r\n1.25],\"scalar\":\r\ntrue}";
+    double values[4];
+    int n = json_nums(input, "values", values, 4);
+    CHECK(n == 4 && isnan(values[0]) && values[1] == 1 && values[2] == 0 && values[3] == 1.25,
+          "JSON whitespace before null, boolean and numeric array elements");
+    CHECK(json_num(input, "scalar") == 1, "JSON CRLF before scalar boolean");
 }
 
 static const char *CARS[4] = { "PEUGOT", "240SX", "SKYLINE", "SYNTH_RWD" };
@@ -916,6 +926,7 @@ int main(int argc, char **argv) {
     g_params_json = slurp("s1_params.json");
     if (!g_params_json) return 1;
     printf("drivetrain_test: vectors in %s\n", g_dir);
+    test_json_whitespace();
     test_params();         printf("params       : %d checks, %d failed so far\n", g_checks, g_fail);
     test_engine_torque();  printf("engine torque: %d checks, %d failed so far\n", g_checks, g_fail);
     test_substeps();       printf("substeps     : %d checks, %d failed so far\n", g_checks, g_fail);
