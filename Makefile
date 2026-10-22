@@ -852,3 +852,8 @@ dir-scan-test: tools/dir_scan_test.c src/dir_scan.h
 	$(CC) $(CFLAGS) -Isrc tools/dir_scan_test.c -o build/dir_scan_test$(EXEEXT)
 	./build/dir_scan_test$(EXEEXT)
 .PHONY: dir-scan-test
+
+# Data-root option parsing, no assets or graphics needed. Keep DebugUI enabled.
+data-path-cli-test: debug
+	sh tools/data_path_cli_test.sh ./$(GAME)
+.PHONY: data-path-cli-test

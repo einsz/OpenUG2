@@ -2211,7 +2211,8 @@ int main(int argc, char **argv) {
     world_ground_selftest();
     audio_selftest();
     /* Point at your own NFSU2 install/data directory (contains TRACKS/, CARS/).
-       Usage: nfsu2 [DATA_DIR] [options]
+       Usage: nfsu2 [DATA_DIR | --path DATA_DIR] [options]
+         --path DATA_DIR  game data directory (positional DATA_DIR also accepted)
          --drivetrain     opt in to stock Stage-1/2/3/4/5 drivetrain (docs/DRIVETRAIN.md)
          --drivetrain-trace FILE  record manual driving diagnostics to CSV
          --car NAME       car folder under CARS/ (default HUMMER)
@@ -2399,7 +2400,13 @@ int main(int argc, char **argv) {
     int tex_override_off = 0, tex_override_budget = 0;
     int want_laps = 2;       /* --laps N: race distance for --event */
     for (int i = 1; i < argc; i++) {
-        if      (!strcmp(argv[i], "--shot")    && i+1 < argc) shot      = argv[++i];
+        if (!strcmp(argv[i], "--path")) {
+            if (i+1 >= argc || !argv[i+1][0] || !strncmp(argv[i+1], "--", 2)) {
+                fprintf(stderr, "--path requires a data directory\n"); return 2;
+            }
+            dataroot = argv[++i];
+        }
+        else if (!strcmp(argv[i], "--shot") && i+1 < argc) shot = argv[++i];
         else if (!strcmp(argv[i], "--pause-shot")) pause_shot = 1;
         else if (!strcmp(argv[i], "--pause-ui-ms") && i+1<argc) pause_ui_ms=(float)atof(argv[++i]);
         else if (!strcmp(argv[i], "--pause-events") && i+1<argc) pause_events=argv[++i];

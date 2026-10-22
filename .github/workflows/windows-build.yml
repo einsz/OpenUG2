@@ -40,7 +40,7 @@ jobs:
       - name: Build DebugUI and experimental offscreen Vulkan
         run: make -j2 debug nfsu2-vk build/rhi_vk_smoke.exe
       - name: Asset-free CPU and portability checks
-        run: make check-gl resource-map-test dir-scan-test hud-race-test drivetrain-test
+        run: make check-gl resource-map-test dir-scan-test hud-race-test drivetrain-test data-path-cli-test
       # Hosted runners do not establish OpenGL/Vulkan GPU or RenderDoc support.
       - name: Bundle runtime DLLs and licenses
         run: bash tools/package_windows.sh

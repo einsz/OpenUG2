@@ -263,7 +263,7 @@ dependencies, run these commands in **MSYS2 UCRT64** from the repository:
 
 ```sh
 make -j2 debug
-./nfsu2.exe "C:/Games/NFSU2" --hud --devui
+./nfsu2.exe --path "C:/Games/NFSU2" --hud --devui
 ```
 
 Use `development` for current work. The guide also explains the Windows Actions
@@ -317,10 +317,13 @@ Point it at your NFS: Underground 2 data directory (the folder containing
 `TRACKS/`, `CARS/`, …):
 
 ```sh
-./nfsu2 /path/to/nfsu2/data
+./nfsu2 --path /path/to/nfsu2/data
 # Player HUD and developer panel (after make debug):
-./nfsu2 /path/to/nfsu2/data --hud --devui
+./nfsu2 --path /path/to/nfsu2/data --hud --devui
 ```
+
+`--path DIR` selects the data root; the older positional `DATA_DIR` argument
+also works. Quote directories containing spaces.
 
 The normal command opens the current L4RA open-world reference. The engine
 derives a start district from the selected STREAM bundle and places the car on

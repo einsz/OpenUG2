@@ -36,8 +36,12 @@ Check that `echo "$MSYSTEM"` prints `UCRT64` and `command -v gcc` is under
 git clone --branch development https://github.com/whoismept/OpenUG2.git
 cd OpenUG2
 make -j2 debug
-./nfsu2.exe "C:/Games/NFSU2" --hud --devui
+./nfsu2.exe --path "C:/Games/NFSU2" --hud --devui
 ```
+
+`--path` accepts your own data directory, including quoted paths with spaces.
+The earlier positional data-directory argument is also accepted. A missing or
+empty `--path` value exits with a usage error.
 
 Supply your own legally obtained Underground 2 data directory, containing
 `CARS/`, `TRACKS/`, and `GLOBAL/`. No original game assets are distributed.
@@ -69,7 +73,7 @@ pacman -S --needed \
   mingw-w64-ucrt-x86_64-glslang
 make -j2 nfsu2-vk
 make rhi-vk-smoke
-./nfsu2-vk.exe "C:/Games/NFSU2" --shot windows-vulkan.png
+./nfsu2-vk.exe --path "C:/Games/NFSU2" --shot windows-vulkan.png
 ```
 
 An RTX 4070 machine with the NVIDIA driver is a useful hardware test host.
@@ -104,7 +108,7 @@ extract the whole archive, and pass your data directory to `nfsu2.exe` from
 PowerShell, for example:
 
 ```powershell
-.\nfsu2.exe "C:/Games/NFSU2" --hud --devui
+.\nfsu2.exe --path "C:/Games/NFSU2" --hud --devui
 .\rhi_vk_smoke.exe
 ```
 
@@ -112,3 +116,23 @@ These are development artifacts, not tagged releases or an installer. Hosted
 runner compilation and CPU tests do not validate physical GPU rendering,
 interactive DebugUI, or RenderDoc capture/replay. Those need a Windows hardware
 run before claiming runtime compatibility or promoting a public release.
+
+## Collect Windows test results
+
+In the extracted package folder, use PowerShell and replace only the value
+of `--path`. Start with OpenGL and press **1** to check DebugUI; close the game
+before continuing. Vulkan smoke uses no game data.
+
+```powershell
+.\nfsu2.exe --path "C:/Games/NFSU2" --hud --devui 2>&1 | Tee-Object opengl.log
+.\rhi_vk_smoke.exe 2>&1 | Tee-Object vulkan-smoke.log
+.\nfsu2.exe --path "C:/Games/NFSU2" --resolution 1280x720 --frames 1 --shot opengl.png 2>&1 | Tee-Object opengl-shot.log
+.\nfsu2-vk.exe --path "C:/Games/NFSU2" --resolution 1280x720 --frames 1 --shot vulkan.png 2>&1 | Tee-Object vulkan-shot.log
+```
+
+Use the same data, car, track and options in both screenshots; do not add
+`--devui` to the comparison capture. The experimental Vulkan backend does not
+render the GL-only UI, so compare vehicle/world rendering. Keep `BUILD.txt`,
+the logs and both PNGs when reporting results. A `validation messages: 0` line
+is evidence of clean validation only if the validation layer was actually
+loaded; a "validation not found" warning means that layer did not run.
