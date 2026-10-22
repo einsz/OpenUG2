@@ -806,6 +806,15 @@ rhi-vk-smoke: tools/rhi_vk_smoke.c src/rhi_vk.c src/rhi.h src/generated_shaders_
 	$(VK_RUN_ENV) ./build/rhi_vk_smoke
 .PHONY: rhi-vk-smoke
 
+# Present path (P12): a shown window, swapchain, resize, minimise. Runs on the real video driver (set
+# VK_PRESENT_ENV, e.g. DISPLAY=:N SDL_VIDEODRIVER=x11); under the offscreen driver it skips itself.
+VK_PRESENT_ENV ?= $(VK_RUN_ENV)
+rhi-vk-present-test: tools/rhi_vk_present_test.c src/rhi_vk.c src/rhi.h src/generated_shaders_vk.h
+	@mkdir -p build
+	$(CC) $(VK_CFLAGS) tools/rhi_vk_present_test.c src/rhi_vk.c -o build/rhi_vk_present_test $(VK_LIBS)
+	$(VK_PRESENT_ENV) ./build/rhi_vk_present_test
+.PHONY: rhi-vk-present-test
+
 # Full game linked against the Vulkan backend (issue #14, P11 screenshot
 # comparison). Same game sources as `nfsu2`, but the GL backend + GL-only UI
 # renderers are dropped and src/rhi_vk.c + src/vk_ui_stubs.c take their place.
