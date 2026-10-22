@@ -14,8 +14,9 @@ for ((i=0; i<${#queue[@]}; i++)); do
     imports=$(objdump -p "${queue[i]}" | awk '$1 == "DLL" && $2 == "Name:" { sub(/\r$/, "", $3); print $3 }')
     [[ -n $imports ]] || continue
     while IFS= read -r dll; do
+        dll=${dll%$'\r'}
         [[ $dll =~ ^[a-zA-Z0-9_.-]+\.[dD][lL][lL]$ ]] || {
-            echo 'Unexpected DLL import name.' >&2; exit 1;
+            printf 'Unexpected DLL import name from %s: %q\n' "${queue[i]}" "$dll" >&2; exit 1;
         }
         [[ -f "$stage/$dll" ]] && continue
         source=$(find "$MINGW_PREFIX/bin" -maxdepth 1 -iname "$dll" -type f -print -quit)
