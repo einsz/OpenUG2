@@ -192,6 +192,14 @@ hud-state-test: tools/hud_state_test.c src/render.c src/render_params.c src/hud_
 	./build/hud_state_test
 .PHONY: hud-state-test
 
+# Asset-free check that the authored hud_draw hands the caller's vertex-attribute descriptions and element-buffer binding back
+# (uses the hud_test_white_widget hook, compiled in only here).
+hud-caller-state-test: tools/hud_caller_state_test.c src/hud.c src/hud_race.c src/ugui/ugui_codec.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c $(HDRS) $(GEN)
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -DHUD_TEST_HOOKS -Isrc tools/hud_caller_state_test.c src/hud.c src/hud_race.c src/ugui/ugui_codec.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/render.c src/render_params.c src/rhi_gl_state.c src/rhi_gl.c src/tex_override.c -o build/hud_caller_state_test $(SDL_LIBS) $(GL_LIBS) -lz -lm
+	./build/hud_caller_state_test
+.PHONY: hud-caller-state-test
+
 world-render-test: tools/world_render_test.c src/nfsu2.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Isrc tools/world_render_test.c -o build/world_render_test -lm

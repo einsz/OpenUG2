@@ -575,3 +575,27 @@ int hud_pick(Hud*h,float nx,float ny,float*wx,float*wy){
  float zero[3]={0},one[3]={1,0,0},two[3]={0,1,0},o[3],x[3],y[3];ha_point(&h->package,(size_t)h->masknode,zero,o,0);ha_point(&h->package,(size_t)h->masknode,one,x,0);ha_point(&h->package,(size_t)h->masknode,two,y,0);double scale=fmin(f->width/640.0,f->height/480.0),dx=(screenx-f->width*.5)/scale-(o[0]+fit_shift(h,h->masknode,f->width,f->height)),dy=(screeny-f->height*.5)/scale-o[1],a=x[0]-o[0],b=x[1]-o[1],c=y[0]-o[0],d=y[1]-o[1],det=a*d-b*c;
  HaNode*n=h->package.nodes+h->masknode;if(fabs(det)<1e-12||!n->size[0]||!n->size[1])return 0;double mx=(d*dx-c*dy)/det/n->size[0]+.5,my=(-b*dx+a*dy)/det/n->size[1]+.5,u=n->uv[0]+mx*(n->uv[2]-n->uv[0]),v=n->uv[1]+my*(n->uv[3]-n->uv[1]);double px=fmax(0,fmin(h->mask_width-1,u*h->mask_width-.5)),py=fmax(0,fmin(h->mask_height-1,v*h->mask_height-.5));int ix=(int)px,iy=(int)py,jx=ix+1<h->mask_width?ix+1:ix,jy=iy+1<h->mask_height?iy+1:iy;double tx=px-ix,ty=py-iy;double coverage=(1-ty)*((1-tx)*h->mask_alpha[iy*h->mask_width+ix]+tx*h->mask_alpha[iy*h->mask_width+jx])+ty*((1-tx)*h->mask_alpha[jy*h->mask_width+ix]+tx*h->mask_alpha[jy*h->mask_width+jx]);if(coverage<=0)return 0;*wx=(float)result[0];*wy=(float)result[1];return 1;
 }
+
+#ifdef HUD_TEST_HOOKS
+/* Test only (compiled with -DHUD_TEST_HOOKS, see hud.h): a HUD whose authored package is a single white image node shown as the career
+ * widget backing, so the real hud_draw can be exercised with a GL context and no game data. */
+Hud *hud_test_white_widget(void){
+ Hud*h=calloc(1,sizeof *h);if(!h)return NULL;hud_default_settings(&h->settings);
+ release_layout(h);   /* clears the package and sets every node index to -1 */
+ HaNode*n=calloc(1,sizeof *n);HaResource*r=calloc(1,sizeof *r);Texture*t=calloc(1,sizeof *t);
+ char*name=strdup("white.tga");
+ if(!n||!r||!t||!name){free(n);free(r);free(t);free(name);free(h);return NULL;}
+ n->kind=HA_KIND_IMAGE;n->valid=1;n->appearance=1;n->parent=-1;n->resource=0;
+ n->size[0]=n->size[1]=64;n->uv[2]=n->uv[3]=1;memset(n->color,255,sizeof n->color);n->quaternion[3]=1;
+ r->kind=1;r->name=name;
+ unsigned char white[4]={255,255,255,255};
+ t[0].id=rhi_texture_create(&(RhiTextureDesc){RHI_TEXTURE_2D,RHI_FORMAT_RGBA8,1,1,RHI_TEXTURE_SAMPLED});
+ rhi_texture_upload(t[0].id,0,0,white,sizeof white);t[0].w=t[0].h=1;
+ h->package.nodes=n;h->package.count=1;h->package.resources=r;h->package.resource_count=1;h->textures=t;
+ h->layout_mode=0;h->layout_ready=1;h->widget_ok=1;
+ h->bank_value=h->bank_label=h->bank_backing=-1;h->widget_dpad=h->widget_highlight=h->widget_centre=h->widget_mail=-1;
+ h->nos_backing=h->nos_alpha=h->shift_icon=h->glow_node=-1;h->widget_backing=0;
+ init_shader(h);
+ return h;
+}
+#endif

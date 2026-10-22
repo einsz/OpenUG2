@@ -463,17 +463,19 @@ void rhi_viewport(int32_t viewport[4]);
 /* The state the next draw uses when no pipeline or texture is bound in
  * between: the bound pipeline and its raster state, the texture on sampler
  * slots 0..RHI_STATE_TEXTURE_SLOTS-1, the viewport, the target, the blend
- * equation, the array-buffer binding and which vertex attribute arrays are
- * enabled (not their pointers: every rhi draw sets its own). Helpers
+ * equation, the array-buffer and element-buffer bindings, which vertex
+ * attribute arrays are enabled, and the pointer description (size, type,
+ * normalization, stride, offset, source buffer) of attributes
+ * 0..RHI_MAX_VERTEX_ATTRIBS-1. Helpers
  * that bind their own pipelines save it on entry and restore it on exit, so
  * callers that still draw with ambient state (HUD, frontend, debug UI) get
  * theirs back. Restore sends only what differs. Not included: stencil
  * functions and the cull face (set by every pipeline that uses them), the
- * scissor rectangle, wireframe mode, index buffers, or cube textures.
+ * scissor rectangle, wireframe mode, or cube textures.
  * Current helpers do not change the scissor rectangle or wireframe mode;
  * a helper that does must preserve those explicitly. */
 #define RHI_STATE_TEXTURE_SLOTS 8
-typedef struct RhiStateSnapshot { uint32_t opaque[48]; } RhiStateSnapshot;
+typedef struct RhiStateSnapshot { uint32_t opaque[112]; } RhiStateSnapshot;
 void rhi_cmd_save_state(RhiStateSnapshot *out);
 void rhi_cmd_restore_state(const RhiStateSnapshot *state);
 /* Makes `state` restore `texture` (2D) on `slot` instead of what was there:

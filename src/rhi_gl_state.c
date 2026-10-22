@@ -36,10 +36,11 @@ typedef struct {
     GLfloat clear_color[4], clear_depth;
     GLfloat line_width;
     GLint viewport[4];
-    GLint program, framebuffer, renderbuffer, array_buffer;
+    GLint program, framebuffer, renderbuffer, array_buffer, element_buffer;
     GLint active;                   /* unit index, 0-based */
     GLint tex2d[GLS_UNITS];
     GLint attrib[GLS_ATTRIBS];
+    GlsAttribPointer aptr[GLS_ATTRIBS];   /* glVertexAttribPointer state, GL initial values until set */
     GlsProgram prog[GLS_PROGRAMS];
 } GlsState;
 
@@ -61,6 +62,7 @@ static void gls_reset(SDL_GLContext ctx) {
     for (int i = 0; i < 4; i++) S.color_mask[i] = GL_TRUE;
     S.clear_depth = 1.0f;
     S.line_width = 1.0f;
+    for (int i = 0; i < GLS_ATTRIBS; i++) S.aptr[i] = (GlsAttribPointer){ 4, (GLint)GL_FLOAT, 0, 0, 0, NULL };
     SDL_Window *w = SDL_GL_GetCurrentWindow();
     if (w) SDL_GL_GetDrawableSize(w, &S.viewport[2], &S.viewport[3]);
 }
@@ -181,16 +183,27 @@ void glsDeleteTextures(GLsizei n, const GLuint *ids) {
 }
 void glsBindBuffer(GLenum target, GLuint buffer) {
     if (target == GL_ARRAY_BUFFER) st()->array_buffer = (GLint)buffer;
+    else if (target == GL_ELEMENT_ARRAY_BUFFER) st()->element_buffer = (GLint)buffer;
     glBindBuffer(target, buffer);
 }
 void glsDeleteBuffers(GLsizei n, const GLuint *ids) {
     GlsState *s = st();
-    for (GLsizei i = 0; i < n; i++) if (ids[i] && (GLint)ids[i] == s->array_buffer) s->array_buffer = 0;
+    for (GLsizei i = 0; i < n; i++) {
+        if (!ids[i]) continue;
+        if ((GLint)ids[i] == s->array_buffer) s->array_buffer = 0;
+        if ((GLint)ids[i] == s->element_buffer) s->element_buffer = 0;
+        for (int a = 0; a < GLS_ATTRIBS; a++) if (s->aptr[a].buffer == (GLint)ids[i]) s->aptr[a].buffer = 0;   /* GL detaches it */
+    }
     glDeleteBuffers(n, ids);
 }
 void glsEnableVertexAttribArray(GLuint index) {
     if (index < GLS_ATTRIBS) st()->attrib[index] = 1;
     glEnableVertexAttribArray(index);
+}
+void glsVertexAttribPointer(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void *pointer) {
+    GlsState *s = st();
+    if (index < GLS_ATTRIBS) s->aptr[index] = (GlsAttribPointer){ size, (GLint)type, stride, s->array_buffer, normalized ? 1 : 0, pointer };
+    glVertexAttribPointer(index, size, type, normalized, stride, pointer);
 }
 void glsDisableVertexAttribArray(GLuint index) {
     if (index < GLS_ATTRIBS) st()->attrib[index] = 0;
@@ -345,6 +358,7 @@ static int tracked_integerv(GLenum pname, GLint *out) {
     case GL_FRAMEBUFFER_BINDING: out[0] = s->framebuffer; return 1;
     case GL_RENDERBUFFER_BINDING: out[0] = s->renderbuffer; return 1;
     case GL_ARRAY_BUFFER_BINDING: out[0] = s->array_buffer; return 1;
+    case GL_ELEMENT_ARRAY_BUFFER_BINDING: out[0] = s->element_buffer; return 1;
     case GL_ACTIVE_TEXTURE: out[0] = (GLint)GL_TEXTURE0 + s->active; return 1;
     case GL_TEXTURE_BINDING_2D:
         if (s->active < 0 || s->active >= GLS_UNITS) return 0;
@@ -405,6 +419,33 @@ GLint gls_attrib_enabled(GLuint index) {
     if (!real != !v) verify_fail("attrib", (GLenum)index);
 #endif
     return v;
+}
+
+void gls_attrib_pointer(GLuint index, GlsAttribPointer *out) {
+    if (index >= GLS_ATTRIBS) {   /* not modelled: ask GL */
+        GLint v = 0; g_fallback++;
+        glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_SIZE, &out->size);
+        glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_TYPE, &out->type);
+        glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_STRIDE, &out->stride);
+        glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, &out->buffer);
+        glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_NORMALIZED, &v); out->normalized = v ? 1 : 0;
+        out->pointer = NULL; glGetVertexAttribPointerv(index, GL_VERTEX_ATTRIB_ARRAY_POINTER, (void **)&out->pointer);
+        return;
+    }
+    *out = st()->aptr[index];
+#ifdef GLS_VERIFY
+    {
+        GlsAttribPointer r = {0}; GLint v = 0;
+        glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_SIZE, &r.size);
+        glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_TYPE, &r.type);
+        glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_STRIDE, &r.stride);
+        glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, &r.buffer);
+        glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_NORMALIZED, &v); r.normalized = v ? 1 : 0;
+        glGetVertexAttribPointerv(index, GL_VERTEX_ATTRIB_ARRAY_POINTER, (void **)&r.pointer);
+        if (r.size != out->size || r.type != out->type || r.stride != out->stride || r.buffer != out->buffer ||
+            r.normalized != out->normalized || r.pointer != out->pointer) verify_fail("attrib pointer", (GLenum)index);
+    }
+#endif
 }
 
 unsigned gls_fallback_queries(void) { return g_fallback; }
