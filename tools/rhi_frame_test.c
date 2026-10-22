@@ -198,6 +198,20 @@ int main(void) {
         glGetVertexAttribiv(3,GL_VERTEX_ATTRIB_ARRAY_ENABLED,&iv);assert(iv);
         glGetVertexAttribiv(5,GL_VERTEX_ATTRIB_ARRAY_ENABLED,&iv);assert(!iv);
         glDisableVertexAttribArray(0);glDisableVertexAttribArray(3);glBindBuffer(GL_ARRAY_BUFFER,0);glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,0);
+        /* Tightly packed strides: 0 and size*typesize are the same fetch, and a driver may report either (macOS reports 16 for a default
+           FLOAT4 attribute). The comparison treats them as equal, and restoring a default attribute twice stays consistent. */
+        assert(gls_attrib_effective_stride(4,GL_FLOAT,0)==16 && gls_attrib_effective_stride(4,GL_FLOAT,16)==16);
+        assert(gls_attrib_effective_stride(3,GL_UNSIGNED_BYTE,0)==3 && gls_attrib_effective_stride(2,GL_SHORT,0)==4);
+        assert(gls_attrib_effective_stride(4,GL_FLOAT,24)==24 && gls_attrib_effective_stride(4,GL_FLOAT,0)!=gls_attrib_effective_stride(4,GL_FLOAT,24));
+        for(int pass=0;pass<2;pass++){
+            GlsAttribPointer d;gls_attrib_pointer(6,&d);   /* never configured: GL defaults */
+            assert(d.size==4 && d.type==(GLint)GL_FLOAT && d.stride==0 && d.buffer==0 && !d.pointer);
+            RhiStateSnapshot dv;rhi_cmd_save_state(&dv);
+            glVertexAttribPointer(6,2,GL_FLOAT,GL_FALSE,8,(const void*)0);
+            rhi_cmd_restore_state(&dv);
+            gls_attrib_pointer(6,&d);
+            assert(d.size==4 && d.type==(GLint)GL_FLOAT && d.stride==0 && !d.pointer);
+        }
         glDeleteBuffers(2,ab);glDeleteBuffers(2,eb);
         assert(glGetError()==GL_NO_ERROR);
     }

@@ -113,6 +113,8 @@ GLint gls_attrib_enabled(GLuint index);  /* GL_VERTEX_ATTRIB_ARRAY_ENABLED */
  * stride 0, NULL pointer, buffer 0). `buffer` is the ARRAY_BUFFER that was bound when the pointer was set, as GL records it. */
 typedef struct GlsAttribPointer { GLint size, type, stride, buffer, normalized; const void *pointer; } GlsAttribPointer;
 void gls_attrib_pointer(GLuint index, GlsAttribPointer *out);
+/* Stride 0 means tightly packed (size * type size); drivers may report either form for the same attribute. Returns the packed value for 0. */
+GLint gls_attrib_effective_stride(GLint size, GLint type, GLint stride);
 GLint gls_texture_2d(int unit);          /* GL_TEXTURE_BINDING_2D on `unit`, any active unit */
 
 /* ---- uniform mirror (replaces glGetUniformfv) ----
