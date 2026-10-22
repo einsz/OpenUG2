@@ -10,6 +10,8 @@
  */
 #include "rhi.h"
 #include <SDL.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,6 +23,9 @@ extern unsigned rhi_vk_arena_flushes;            /* mid-frame UBO-arena flushes 
  * multi-draw path can be forced to flush mid-frame with just a couple of draws. */
 extern void rhi_vk_test_force_arena(size_t bytes);
 extern void rhi_vk_test_force_stream_arena(size_t bytes);
+extern size_t rhi_vk_test_arena_size(void);                   /* size of the per-frame parameter arena */
+extern void rhi_vk_test_fail_pending_alloc(unsigned n);       /* the next n deferred-free list growths fail */
+extern uint32_t rhi_vk_test_last_stride(uint32_t stream);     /* binding stride of `stream` in the last draw's pipeline */
 extern int rhi_vk_test_sync_hazard(void);                    /* two unsynchronised clears (WAW) */   /* the STREAM-version arena */
 /* Test-only backend path: reads buffer contents (STREAM mapping, or a STATIC
  * device->host staging copy). Returns 1 on success, 0 on failure. */
@@ -1681,6 +1686,188 @@ int main(void) {
         rhi_shader_destroy(sh);
         EXPECT(rhi_vk_validation_messages == vbefore, "P11g-3 tests raised %u validation message(s)",
                rhi_vk_validation_messages - vbefore);
+    }
+
+    /* ---- review follow-ups F2/F3/F4 (accepted after the #105 review): STATIC updates, deferred-free failure, oversized blocks ---- */
+    {
+        unsigned vbefore = rhi_vk_validation_messages;
+        static const RhiParamField fe_fields[] = {
+            { "uMVP", RHI_PARAM_MAT4, 0, 1 }, { "uColor", RHI_PARAM_VEC4, 64, 1 },
+        };
+        static const RhiParamLayout fe_layout = { fe_fields, 2, 80, "FeParams" };
+        static const char *const attrs[] = { "aPos" };
+        static const RhiParamLayout *const blocks[] = { &fe_layout };
+        RhiShaderDesc shd = { "", "", attrs, 1, "frontend", blocks, 1 };
+        RhiShader sh = rhi_shader_create(&shd);
+        RhiPipelineDesc pd;
+        rhi_pipeline_desc_init(&pd);
+        pd.shader = sh;
+        pd.vertex.attrib_count = 1;
+        pd.vertex.attribs[0] = (RhiVertexAttrib){ 0, 0, 0, RHI_VERTEX_FLOAT2 };
+        pd.vertex.stride[0] = 8;
+        RhiPipeline pipe = rhi_pipeline_create(&pd);
+        EXPECT(sh.id && pipe.id, "follow-up shader/pipeline");
+        static const float left[12]  = { -1,-1, 0,-1, -1,1,  -1,1, 0,-1, 0,1 };
+        static const float right[12] = {  0,-1, 1,-1,  0,1,   0,1, 1,-1, 1,1 };
+        static const float quads[16] = { -1,-1, 0,-1, -1,1, 0,1,   0,-1, 1,-1, 0,1, 1,1 };
+        static const uint16_t idx_left[6]  = { 0, 1, 2, 2, 1, 3 };
+        static const uint16_t idx_right[6] = { 4, 5, 6, 6, 5, 7 };
+        const float black[4] = { 0, 0, 0, 1 };
+        unsigned char *frame = (unsigned char *)malloc((size_t)W * H * 4);
+        float *fp = (float *)rhi_shader_params(sh, 0);
+        EXPECT(frame && fp, "follow-up setup");
+        if (frame && fp) {
+            memset(fp, 0, 80); fp[0] = fp[5] = fp[10] = fp[15] = 1.0f;
+            EXPECT(rhi_cmd_set_viewport(0, 0, W, H) == RHI_OK, "follow-up viewport");
+            #define COLOUR(r, g, b) do { fp[16] = (r); fp[17] = (g); fp[18] = (b); fp[19] = 1.0f; } while (0)
+            #define PXAT(x, y) (frame + ((size_t)(y) * W + (x)) * 4)
+
+            /* F3a: a STATIC vertex buffer updated between two draws; each draw must show the contents it was issued with. */
+            {
+                RhiBuffer vb = rhi_buffer_create(&(RhiBufferDesc){ RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, sizeof left, left });
+                EXPECT(vb.id, "F3a buffer");
+                EXPECT(rhi_frame_begin(NULL) == RHI_OK, "F3a frame_begin");
+                EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "F3a clear");
+                rhi_cmd_bind_pipeline(pipe); rhi_cmd_bind_vertex_buffer(0, vb, 0);
+                COLOUR(1, 0, 0); rhi_cmd_draw(6, 0);                                       /* left quad, red */
+                EXPECT(rhi_buffer_update(vb, 0, sizeof right, right) == RHI_OK, "F3a STATIC update between draws");
+                COLOUR(0, 1, 0); rhi_cmd_draw(6, 0);                                       /* right quad, green */
+                EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "F3a read");
+                printf("F3a STATIC vertex update: left=%u,%u,%u right=%u,%u,%u\n", PXAT(64, 96)[0], PXAT(64, 96)[1], PXAT(64, 96)[2],
+                       PXAT(192, 96)[0], PXAT(192, 96)[1], PXAT(192, 96)[2]);
+                EXPECT(is_red(PXAT(64, 96)), "F3a: the first draw must keep the geometry it was issued with (left red)");
+                EXPECT(is_green(PXAT(192, 96)), "F3a: the second draw sees the update (right green)");
+                EXPECT(rhi_frame_end() == RHI_OK, "F3a frame_end");
+                rhi_buffer_destroy(vb);
+            }
+            /* F3b: the same for a STATIC index buffer. */
+            {
+                RhiBuffer qb = rhi_buffer_create(&(RhiBufferDesc){ RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, sizeof quads, quads });
+                RhiBuffer ib = rhi_buffer_create(&(RhiBufferDesc){ RHI_BUFFER_INDEX, RHI_UPDATE_STATIC, sizeof idx_left, idx_left });
+                EXPECT(qb.id && ib.id, "F3b buffers");
+                EXPECT(rhi_frame_begin(NULL) == RHI_OK, "F3b frame_begin");
+                EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "F3b clear");
+                rhi_cmd_bind_pipeline(pipe); rhi_cmd_bind_vertex_buffer(0, qb, 0); rhi_cmd_bind_index_buffer(ib);
+                COLOUR(1, 0, 0); rhi_cmd_draw_indexed(6, 0);
+                EXPECT(rhi_buffer_update(ib, 0, sizeof idx_right, idx_right) == RHI_OK, "F3b STATIC index update between draws");
+                COLOUR(0, 1, 0); rhi_cmd_draw_indexed(6, 0);
+                EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "F3b read");
+                printf("F3b STATIC index update:  left=%u,%u,%u right=%u,%u,%u\n", PXAT(64, 96)[0], PXAT(64, 96)[1], PXAT(64, 96)[2],
+                       PXAT(192, 96)[0], PXAT(192, 96)[1], PXAT(192, 96)[2]);
+                EXPECT(is_red(PXAT(64, 96)) && is_green(PXAT(192, 96)), "F3b: index update between draws");
+                EXPECT(rhi_frame_end() == RHI_OK, "F3b frame_end");
+                rhi_buffer_destroy(qb); rhi_buffer_destroy(ib);
+            }
+            /* F4: the deferred-free list cannot grow while a recorded draw still uses the buffer being replaced. */
+            {
+                RhiBuffer vb = rhi_buffer_create(&(RhiBufferDesc){ RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, sizeof left, left });
+                EXPECT(vb.id, "F4 buffer");
+                unsigned v4 = rhi_vk_validation_messages;
+                EXPECT(rhi_frame_begin(NULL) == RHI_OK, "F4 frame_begin");
+                EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "F4 clear");
+                rhi_cmd_bind_pipeline(pipe); rhi_cmd_bind_vertex_buffer(0, vb, 0);
+                COLOUR(1, 0, 0); rhi_cmd_draw(6, 0);                                       /* records a draw that reads the old storage */
+                rhi_vk_test_fail_pending_alloc(1);                                         /* the pending-free list cannot grow */
+                EXPECT(rhi_buffer_replace(vb, sizeof right, right) == RHI_OK, "F4 replace");
+                COLOUR(0, 1, 0); rhi_cmd_draw(6, 0);                                       /* new storage */
+                EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "F4 read");
+                EXPECT(rhi_frame_end() == RHI_OK, "F4 frame_end");
+                printf("F4 deferred-free failure: left=%u,%u,%u right=%u,%u,%u validation messages %u\n", PXAT(64, 96)[0], PXAT(64, 96)[1],
+                       PXAT(64, 96)[2], PXAT(192, 96)[0], PXAT(192, 96)[1], PXAT(192, 96)[2], rhi_vk_validation_messages - v4);
+                EXPECT(is_red(PXAT(64, 96)) && is_green(PXAT(192, 96)), "F4: both draws render with the storage they were issued with");
+                EXPECT(rhi_vk_validation_messages == v4, "F4: replacing a buffer with a failing free list raised %u validation message(s)",
+                       rhi_vk_validation_messages - v4);
+                rhi_buffer_destroy(vb);
+            }
+            /* F2a: a parameter block far beyond any uniform-buffer range is rejected at shader creation. */
+            {
+                static const RhiParamField big_fields[] = { { "uBig", RHI_PARAM_FLOAT, 0, 1 } };
+                static const RhiParamLayout big_layout = { big_fields, 1, 4u * 1024u * 1024u + 16u, "BigParams" };
+                static const RhiParamLayout *const big_blocks[] = { &big_layout };
+                RhiShaderDesc bd = { "", "", attrs, 1, "frontend", big_blocks, 1 };
+                RhiShader big = rhi_shader_create(&bd);
+                printf("F2a oversized parameter block (4 MiB + 16): shader_create %s\n", big.id ? "ACCEPTED" : "rejected");
+                EXPECT(big.id == 0, "F2a: a 4 MiB + 16 byte parameter block must be rejected");
+                if (big.id) rhi_shader_destroy(big);
+            }
+            /* F2b: a block larger than the whole arena (forced tiny) must not be copied past its end: the arena grows first. */
+            {
+                rhi_vk_test_force_arena(64);                                                 /* smaller than the 80-byte block */
+                EXPECT(rhi_frame_begin(NULL) == RHI_OK, "F2b frame_begin");
+                EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "F2b clear");
+                RhiBuffer vb = rhi_buffer_create(&(RhiBufferDesc){ RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, sizeof left, left });
+                rhi_cmd_bind_pipeline(pipe); rhi_cmd_bind_vertex_buffer(0, vb, 0);
+                COLOUR(1, 0, 0); rhi_cmd_draw(6, 0);
+                EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "F2b read");
+                printf("F2b block larger than the arena: arena %zu bytes after the draw (block 80), left=%u,%u,%u\n", rhi_vk_test_arena_size(),
+                       PXAT(64, 96)[0], PXAT(64, 96)[1], PXAT(64, 96)[2]);
+                EXPECT(rhi_vk_test_arena_size() >= 80, "F2b: the arena must grow to hold the block (is %zu bytes)", rhi_vk_test_arena_size());
+                EXPECT(is_red(PXAT(64, 96)), "F2b: the draw still renders");
+                EXPECT(rhi_frame_end() == RHI_OK, "F2b frame_end");
+                rhi_buffer_destroy(vb);
+                rhi_vk_test_force_arena(1u << 20);
+            }
+            #undef COLOUR
+            #undef PXAT
+        }
+        free(frame);
+        rhi_shader_destroy(sh);
+        EXPECT(rhi_vk_validation_messages == vbefore, "follow-up tests raised %u validation message(s)", rhi_vk_validation_messages - vbefore);
+    }
+
+    /* ---- F1: a declared vertex stream the draw leaves unbound must read from a stride-0 binding, never past the dummy buffer ---- */
+    {
+        typedef struct { float tint[4], dialClip[4], halfSize[2], roads; int32_t art, silhouette; } HudParams;
+        static const RhiParamField hf[] = {
+            { "tint", RHI_PARAM_VEC4, offsetof(HudParams, tint), 1 }, { "dialClip", RHI_PARAM_VEC4, offsetof(HudParams, dialClip), 1 },
+            { "halfSize", RHI_PARAM_VEC2, offsetof(HudParams, halfSize), 1 }, { "roads", RHI_PARAM_FLOAT, offsetof(HudParams, roads), 1 },
+            { "art", RHI_PARAM_INT, offsetof(HudParams, art), 1 }, { "silhouette", RHI_PARAM_INT, offsetof(HudParams, silhouette), 1 } };
+        static const RhiParamLayout hl = { hf, 6, sizeof(HudParams), "HudParams" };
+        static const char *const hattrs[] = { "position", "sampleUV", "clipUV" };
+        static const RhiParamLayout *const hblocks[] = { &hl };
+        RhiShader hs = rhi_shader_create(&(RhiShaderDesc){ "", "", hattrs, 3, "hud", hblocks, 1 });
+        EXPECT(hs.id != 0, "F1 hud shader");
+        HudParams *hp = (HudParams *)rhi_shader_params(hs, 0);
+        RhiTexture art = rhi_texture_create(&(RhiTextureDesc){ RHI_TEXTURE_2D, RHI_FORMAT_RGBA8, 1, 1, RHI_TEXTURE_SAMPLED });
+        const unsigned char white[4] = { 255, 255, 255, 255 };
+        EXPECT(art.id && rhi_texture_upload(art, 0, 0, white, 4) == RHI_OK, "F1 texture");
+        enum { NV = 4098 };
+        float *pos = (float *)malloc(sizeof(float) * 2 * NV);
+        static const float quad6[12] = { -0.7f,-0.7f, 0.7f,-0.7f, 0.7f,0.7f,  -0.7f,-0.7f, 0.7f,0.7f, -0.7f,0.7f };
+        for (int i = 0; i < NV; i++) { pos[i * 2] = quad6[(i % 6) * 2]; pos[i * 2 + 1] = quad6[(i % 6) * 2 + 1]; }
+        RhiBuffer pvb = rhi_buffer_create(&(RhiBufferDesc){ RHI_BUFFER_VERTEX, RHI_UPDATE_STATIC, sizeof(float) * 2 * NV, pos });
+        static const uint16_t hidx[9] = { 0, 1, 2, 3, 4, 5, 4000, 4001, 4002 };   /* the last triangle fetches far past a 256-byte dummy */
+        RhiBuffer pib = rhi_buffer_create(&(RhiBufferDesc){ RHI_BUFFER_INDEX, RHI_UPDATE_STATIC, sizeof hidx, hidx });
+        RhiPipelineDesc hd; rhi_pipeline_desc_init(&hd); hd.shader = hs; hd.cull = RHI_CULL_NONE;
+        hd.vertex.attribs[0] = (RhiVertexAttrib){ 0, 0, 0, RHI_VERTEX_FLOAT2 };       /* position: stream 0, stride 8 */
+        hd.vertex.attribs[1] = (RhiVertexAttrib){ 1, 1, 0, RHI_VERTEX_UNORM8X4 };     /* sampleUV from stream 1, stride 4: left unbound */
+        hd.vertex.attrib_count = 2; hd.vertex.stride[0] = 8; hd.vertex.stride[1] = 4;
+        RhiPipeline hpipe = rhi_pipeline_create(&hd);
+        EXPECT(hp && pvb.id && pib.id && hpipe.id, "F1 setup");
+        unsigned char *frame = (unsigned char *)malloc((size_t)W * H * 4);
+        if (hp && pvb.id && pib.id && hpipe.id && frame) {
+            memset(hp, 0, sizeof *hp); for (int i = 0; i < 4; i++) hp->tint[i] = 1; hp->halfSize[0] = hp->halfSize[1] = 1; hp->art = 0; hp->silhouette = 1;
+            const float black[4] = { 0, 0, 0, 1 };
+            unsigned v1 = rhi_vk_validation_messages;
+            EXPECT(rhi_cmd_set_viewport(0, 0, W, H) == RHI_OK, "F1 viewport");
+            EXPECT(rhi_frame_begin(NULL) == RHI_OK, "F1 frame_begin");
+            EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "F1 clear");
+            rhi_cmd_bind_pipeline(hpipe); rhi_cmd_bind_vertex_buffer(0, pvb, 0); rhi_cmd_bind_vertex_buffer(1, (RhiBuffer){0}, 0); rhi_cmd_bind_texture(0, art);
+            rhi_cmd_draw(NV, 0);                                                          /* non-indexed, 4098 vertices, stream 1 absent */
+            uint32_t s0 = rhi_vk_test_last_stride(0), s1 = rhi_vk_test_last_stride(1);
+            rhi_cmd_bind_index_buffer(pib); rhi_cmd_draw_indexed(9, 0);                   /* indexed, reaches index 4002 */
+            EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "F1 read");
+            EXPECT(rhi_frame_end() == RHI_OK, "F1 frame_end");
+            const unsigned char *c = frame + ((size_t)96 * W + 128) * 4;
+            printf("F1 absent stream: binding stride of stream 0 = %u (bound), stream 1 = %u (absent, declared 4); centre pixel %u,%u,%u; validation messages %u\n",
+                   s0, s1, c[0], c[1], c[2], rhi_vk_validation_messages - v1);
+            EXPECT(s0 == 8, "F1: the bound stream keeps its declared stride (got %u)", s0);
+            EXPECT(s1 == 0, "F1: the unbound stream must use a stride-0 binding so the dummy buffer is always enough (got %u)", s1);
+            EXPECT(c[0] == 255 && c[1] == 255 && c[2] == 255, "F1: the draw with the absent stream still renders");
+            EXPECT(rhi_vk_validation_messages == v1, "F1 raised %u validation message(s)", rhi_vk_validation_messages - v1);
+        }
+        free(frame); free(pos);
+        rhi_buffer_destroy(pvb); rhi_buffer_destroy(pib); rhi_texture_destroy(art); rhi_shader_destroy(hs);
     }
 
     /* ---- gate: two clears in one recording (WAW on the colour/depth images) ----
