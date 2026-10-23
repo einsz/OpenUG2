@@ -1,11 +1,18 @@
 # Desktop test builds
 
-Download development packages from a successful GitHub Actions run on
-`development`. The **Windows build** and **macOS and Linux builds** workflows
-produce separate artifacts for Windows x86_64, Linux x86_64, macOS Apple Silicon
+**Build/release automation is paused.** Repository Actions are disabled and the
+workflow references are archived outside `.github/workflows/`. The future
+[six-platform build and release plan](BUILD_RELEASE_PLAN.md) is documentation
+only. Existing releases remain available; older Actions artifacts still expire.
+
+Existing preview packages are available under
+[Releases](https://github.com/whoismept/OpenUG2/releases). Earlier successful
+GitHub Actions runs on `development` produced separate artifacts for
+Windows x86_64, Linux x86_64, macOS Apple Silicon
 (arm64), and macOS Intel (x86_64). Artifacts expire after seven days. Manual
 preview releases, when published, provide public downloads under Releases.
-Maintainers can run **Publish desktop preview** on `development` or `main`:
+After explicit reactivation, **Publish desktop preview** is the earlier recipe
+for `development` or `main` (it must be updated for the six-platform plan):
 it rebuilds all four packages, requires every build/test job to succeed, then
 publishes a prerelease named `preview-<commit>` with SHA256 checksums. It never
 marks the preview as the latest stable release or replaces an existing tag.

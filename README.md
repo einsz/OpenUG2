@@ -43,10 +43,14 @@ pipeline works, but only selected content has been verified end to end.
 ### Download a test build
 
 See the [desktop test-build guide](docs/TEST_BUILDS.md) for Windows x86_64,
-Linux x86_64, macOS Apple Silicon and macOS Intel packages from
-[GitHub Actions](https://github.com/whoismept/OpenUG2/actions).
+Linux x86_64, macOS Apple Silicon and macOS Intel packages under
+[Releases](https://github.com/whoismept/OpenUG2/releases). Earlier
+[Actions artifacts](https://github.com/whoismept/OpenUG2/actions) may expire.
 The primary builds include DebugUI; bring your own game data and supply it
 with `--path`. These are development test builds pending hardware feedback.
+**Actions builds and publication are currently paused.** The
+[six-platform distribution plan](docs/BUILD_RELEASE_PLAN.md) records future
+Linux, Windows and macOS builds for both ARM64 and x86_64; it is not active CI.
 For a local Windows build, follow [the MSYS2 UCRT64 guide](docs/WINDOWS.md).
 
 ### Current development screenshots

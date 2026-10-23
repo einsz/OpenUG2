@@ -101,11 +101,14 @@ first; packaging refuses to mix outputs into an existing directory.
 
 ## Actions build artifacts
 
-[Windows build](../.github/workflows/windows-build.yml) builds DebugUI and
+[Windows build reference](../.github/workflows-disabled/windows-build.yml) is
+currently **inactive**: repository Actions are disabled. Follow the
+[six-platform plan](BUILD_RELEASE_PLAN.md) for future reactivation. The archived
+recipe builds DebugUI and
 experimental Vulkan, runs asset-free CPU/portability tests, and uploads a
-Windows UCRT64 artifact with runtime DLLs and licenses. It runs on pull requests,
-pushes to `development`/`main`, and manual dispatch once the workflow is on
-GitHub. Download the artifact from a successful run's **Artifacts** section,
+Windows UCRT64 artifact with runtime DLLs and licenses. Its former triggers were
+pull requests, pushes and manual dispatch; they do not run while paused.
+For any unexpired earlier artifact, download from its successful run's **Artifacts** section,
 extract the whole archive, and pass your data directory to `openug2.exe` from
 PowerShell, for example:
 
