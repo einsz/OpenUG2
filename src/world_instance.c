@@ -815,9 +815,15 @@ int winst_default_focus(const unsigned char *companion, long companion_len,
         return 0;
     WInstRegion *regions = NULL;
     int count = 0;
-    if (!winst_parse_regions(companion, companion_len, &regions, &count)) return 0;
+    if (!winst_parse_regions(companion, companion_len, &regions, &count)) {
+        fprintf(stderr,"authored focus: companion has no valid region polygon table\n");
+        return 0;
+    }
     unsigned char *present=(unsigned char *)calloc(65536,1);
     if (!present || !winst_mark_section_ids(stream,0,stream_len,0,present,65536)) {
+        fprintf(stderr,"authored focus: %s\n",present
+                ?"stream has an invalid instance section table"
+                :"cannot allocate region presence table");
         free(present);
         winst_free_regions(regions,count);
         return 0;
@@ -855,7 +861,10 @@ int winst_default_focus(const unsigned char *companion, long companion_len,
     }
     free(present);
     winst_free_regions(regions, count);
-    if (best < 0) return 0;
+    if (best < 0) {
+        fprintf(stderr,"authored focus: no companion region matches a stream instance section\n");
+        return 0;
+    }
     out_xy[0] = best_x;
     out_xy[1] = best_y;
     return 1;

@@ -141,10 +141,26 @@ static void query_caps(RhiCaps *c) {
 /* GL reports allocation and upload failures through glGetError. An error left
  * by an earlier call is reported here too, as the callers' own checks did.
  * Bounded: some drivers report errors forever without a context. */
-static RhiResult gl_result(void) {
+static GLenum gl_take_error(void) {
     GLenum first = glGetError();
-    if (first == GL_NO_ERROR) return RHI_OK;
+    if (first == GL_NO_ERROR) return first;
     for (int i = 0; i < 16 && glGetError() != GL_NO_ERROR; i++) {}
+    return first;
+}
+
+static const char *gl_error_name(GLenum e) {
+    switch (e) {
+    case GL_INVALID_ENUM: return "GL_INVALID_ENUM";
+    case GL_INVALID_VALUE: return "GL_INVALID_VALUE";
+    case GL_INVALID_OPERATION: return "GL_INVALID_OPERATION";
+    case GL_OUT_OF_MEMORY: return "GL_OUT_OF_MEMORY";
+    default: return "unknown GL error";
+    }
+}
+
+static RhiResult gl_result(void) {
+    GLenum first = gl_take_error();
+    if (first == GL_NO_ERROR) return RHI_OK;
     return first == GL_OUT_OF_MEMORY ? RHI_ERR_OUT_OF_MEMORY : RHI_ERR_UNSUPPORTED;
 }
 
@@ -333,11 +349,20 @@ RhiBuffer rhi_buffer_create(const RhiBufferDesc *desc) {
     out.id = ((uint32_t)b->generation << RHI_GL_SLOT_BITS) | slot;
     /* A STREAM buffer without a size gets its storage from the first replace. */
     if (desc->update == RHI_UPDATE_STATIC || desc->size || desc->data) {
+        /* STATIC uploads are checked: an error already pending counts as a failure,
+           but is named separately from the one glBufferData raised. */
+        GLenum stale = desc->update == RHI_UPDATE_STATIC ? gl_take_error() : GL_NO_ERROR;
         glBindBuffer(b->target, name);
         glBufferData(b->target, (GLsizeiptr)desc->size, desc->data, b->hint);
         b->size = desc->size;
-        if (desc->update == RHI_UPDATE_STATIC && gl_result() != RHI_OK) {
-            fprintf(stderr, "rhi: buffer_create: %zu bytes could not be allocated\n", desc->size);
+        GLenum err = desc->update == RHI_UPDATE_STATIC ? gl_take_error() : GL_NO_ERROR;
+        if (stale || err) {
+            if (stale)
+                fprintf(stderr, "rhi: buffer_create: %zu bytes not uploaded: %s (0x%04x) was already pending before the call\n",
+                        desc->size, gl_error_name(stale), (unsigned)stale);
+            if (err)
+                fprintf(stderr, "rhi: buffer_create: %zu bytes could not be allocated: glBufferData raised %s (0x%04x)\n",
+                        desc->size, gl_error_name(err), (unsigned)err);
             rhi_buffer_destroy(out);
             return (RhiBuffer){0};
         }

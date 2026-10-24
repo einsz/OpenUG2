@@ -2099,6 +2099,8 @@ static int n2_mesh_matslots(const unsigned char *d, long beg, long end,
 #define N2_MAT_TRAFFICWINDOWS 0x1ff8c329u
 #define N2_MAT_WINDOWMASK 0x3ed70c43u
 #define N2_MAT_CARSKIN    0xd6d6080au
+/* DECAL: source alpha-shaped cards, including HUMMER's tow hooks. */
+#define N2_MAT_DECAL      0x02a05578u
 
 /* Third material, identified by MEASUREMENT rather than by cracking its name
  * (the hash is one-way; "DULLPLASTIC" == 0x0fedee40 and "MOLDINGS" ==
@@ -2129,6 +2131,10 @@ static int n2_mesh_matslots(const unsigned char *d, long beg, long end,
 #define N2_MAT_DULLPLASTIC 0x0fedee40u
 #define N2_MAT_CHROME      0x54949afdu
 #define N2_MAT_MOLDINGS    0x12c9453cu
+#define N2_MAT_GRILL       0x02dddad9u
+/* Shared plate material/texture names: LICENSEPLATE and LICENSE_PLATE. */
+#define N2_MAT_LICENSEPLATE 0x4c95c6f8u
+#define N2_TEX_LICENSEPLATE 0x029a22f7u
 #define N2_MAT_HEADLIGHT   0x9c645529u
 #define N2_MAT_HEADLIGHTGLASS 0xa6348ee3u
 
@@ -2152,6 +2158,12 @@ static int n2_mesh_matslots(const unsigned char *d, long beg, long end,
 #define N2_MAT_CLEARPLASTIC    0x33a26cb6u
 #define N2_MAT_ALUMINUM        0x2e65e067u
 #define N2_MAT_CARBONFIBRE     0x721aff7cu
+
+/* Driver and DECAL cards need holes with depth write. Some DECAL atlases
+ * carry pixel alpha despite opaque TPK flags. CARSKIN stays paint coverage. */
+static int n2_car_cutout(int cat, int texmode,uint32_t material) {
+    return material==N2_MAT_DECAL || (cat==N2_CAR_INTERIOR && texmode!=N2_DRAW_OPAQUE);
+}
 /* Unresolved material name. It is the only lens on Miata, but coexists
  * with BRAKELIGHT on Golf and also occurs in Supra headlights. Its role
  * cannot be inferred globally from the hash alone. */
@@ -2178,7 +2190,7 @@ static int n2_car_tail_lens(const N2Scene *car, int index) {
 
 static int n2_car_dark_trim(uint32_t mat) {
     return mat==N2_MAT_DULLPLASTIC || mat==N2_MAT_MOLDINGS ||
-           mat==N2_MAT_RUBBER || mat==N2_MAT_WINDOWMASK;
+           mat==N2_MAT_RUBBER || mat==N2_MAT_WINDOWMASK || mat==N2_MAT_GRILL;
 }
 
 /* Bare metal also occurs on bumpers, badges and lamp housings. */
@@ -2253,6 +2265,7 @@ static void n2_car_light_anchors(const N2Scene *car, float out[4][4]) {
  * thing that lets a same-texture BODY+WINDSHIELD object split correctly: the
  * pre-existing texture-key split cannot see this distinction at all. */
 static int n2_mat_class(uint32_t hash, int fallback) {
+    if (hash == N2_MAT_LICENSEPLATE) return N2_CAR_MECH; /* unpainted textured metal */
     if (hash == N2_MAT_WINDSHIELD || hash == N2_MAT_TRAFFICWINDOWS) return N2_CAR_GLASS;
     if (hash == N2_MAT_CARSKIN)    return N2_CAR_BODY;
     if (hash == N2_MAT_INTERIOR || hash == N2_MAT_INTERIOR_NAMED) return N2_CAR_INTERIOR;
@@ -2438,8 +2451,8 @@ static void n2_walk_car(const unsigned char *d, long beg, long end, N2Scene *sce
 }
 /* A socket is owned by a retained source object. Material slices and LOD
  * copies may repeat it; disagreeing transforms reject the attachment. */
-static int n2_car_socket(const unsigned char *d,long len,const N2Scene *s,
-                         uint32_t key,float out[16]) {
+static int n2_car_socket_frame(const unsigned char *d,long len,const N2Scene *s,
+                               uint32_t key,float out[16],int scaled) {
     int found=0;
     for(int i=0;i<s->count;i++) {
         long off=s->meshes[i].car_source;
@@ -2456,8 +2469,14 @@ static int n2_car_socket(const unsigned char *d,long len,const N2Scene *s,
                 float m[16];memcpy(m,p+at+16,sizeof m);
                 for(int a=0;a<16;a++)if(!isfinite(m[a]))return -1;
                 if(fabsf(m[3])+fabsf(m[7])+fabsf(m[11])+fabsf(m[15]-1)>1e-4f)return -1;
+                float basis[12];memcpy(basis,m,sizeof basis);
+                if(scaled)for(int a=0;a<3;a++) {
+                    float n=hypotf(hypotf(m[a*4],m[a*4+1]),m[a*4+2]);
+                    if(!isfinite(n) || n<1e-6f)return -1;
+                    for(int k=0;k<3;k++)basis[a*4+k]/=n;
+                }
                 for(int a=0;a<3;a++)for(int b=a;b<3;b++) {
-                    float dot=0;for(int k=0;k<3;k++)dot+=m[a*4+k]*m[b*4+k];
+                    float dot=0;for(int k=0;k<3;k++)dot+=basis[a*4+k]*basis[b*4+k];
                     if(fabsf(dot-(a==b?1.f:0.f))>.002f)return -1;
                 }
                 if(found) {for(int a=0;a<16;a++)if(fabsf(out[a]-m[a])>1e-5f)return -1;}
@@ -2466,6 +2485,10 @@ static int n2_car_socket(const unsigned char *d,long len,const N2Scene *s,
         }
     }
     return found;
+}
+static int n2_car_socket(const unsigned char *d,long len,const N2Scene *s,
+                         uint32_t key,float out[16]) {
+    return n2_car_socket_frame(d,len,s,key,out,0);
 }
 
 /* Sockets are validated orthonormal by n2_car_socket. Rotate normals with
@@ -3003,6 +3026,7 @@ static void n2_car_profile(const N2Scene *s, const char *name,
     float t0[3] = { 1e30f, 1e30f, 1e30f }, t1[3] = { -1e30f, -1e30f, -1e30f };
     int ntv = 0;
     for (int i = 0; i < s->count; i++) {
+        if(s->meshes[i].car_material==N2_MAT_LICENSEPLATE)continue; /* visual attachment */
         int tire = s->meshes[i].cat == N2_CAR_TIRE;
         for (int q = 0; q < s->meshes[i].nverts; q++) {
             const float *v = s->meshes[i].verts + q*5;

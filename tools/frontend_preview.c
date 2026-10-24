@@ -3,16 +3,7 @@
  *   default 640×480, try 1280×720 for widescreen check.
  *
  * Keys: ↑↓ navigate, Enter confirm, Esc back/quit. */
-#ifdef __APPLE__
-#ifndef GL_SILENCE_DEPRECATION
-#define GL_SILENCE_DEPRECATION
-#endif
-#include <OpenGL/gl.h>
-#else
-#include <GL/gl.h>
-#endif
-
-#include <SDL.h>
+#include "rhi_gl_state.h"
 #include "frontend.h"
 #include "frontend_draw.h"
 #include <stdio.h>

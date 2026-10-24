@@ -5,6 +5,9 @@
 #include <string.h>
 #include <dirent.h>
 #include <limits.h>
+#ifdef _WIN32
+#include "dir_scan.h"
+#endif
 
 #include "ai.h"
 #include "physics.h"   /* PHYS_MAXSPD paces the AI against the player's cap */
@@ -443,7 +446,11 @@ int ai_roads_load(AiRoadNet *roads,const char *troot) {
     if(!roads || !troot)return 0;
     ai_roads_free(roads);
     struct dirent **files=NULL;
+#ifdef _WIN32
+    int nf=n2_dir_scan(troot,&files),cap=0,nfiles=0;
+#else
     int nf=scandir(troot,&files,NULL,alphasort),cap=0,nfiles=0;
+#endif
     if(nf<0)return 0;
     for(int f=0;f<nf;f++) {
         if(strncmp(files[f]->d_name,"ROUTES",6))continue;
