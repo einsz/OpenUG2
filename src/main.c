@@ -460,6 +460,7 @@ static int prepare_car_switch(CarSwitchCandidate *candidate,
         n2_load_car_colored(candidate->data, candidate->len, &candidate->scene,
                     candidate->keys, candidate->nkeys, &candidate->config,
                     candidate->prelight) <= 0 ||
+        n2_mod_add_plate(dataroot,candidate->data,candidate->len,&candidate->scene)<0 ||
         !car_body_metrics(&candidate->scene, candidate->bb, candidate->bloom)) {
         car_switch_release(candidate); return 0;
     }
@@ -538,7 +539,7 @@ static int car_body_metrics(const N2Scene *car, float bb[6], float bloom[4][4]) 
         for(int v=0;v<m->nverts;v++) {
             const float*p=m->verts+v*5;
             for(int a=0;a<5;a++)if(!isfinite(p[a]))return 0;
-            if(m->cat!=N2_CAR_TIRE)for(int a=0;a<3;a++) {
+            if(m->cat!=N2_CAR_TIRE && m->car_material!=N2_MAT_LICENSEPLATE)for(int a=0;a<3;a++) {
                 bb[a]=fminf(bb[a],p[a]);bb[a+3]=fmaxf(bb[a+3],p[a]);
             }
         }
@@ -794,6 +795,7 @@ static int prepare_body_kit(BodyKitCandidate *kit,
     if(n2_load_car_colored(data,len,&kit->scene,keys,nkeys,config,
                            active && active->count && active->meshes[0].vcol)<=0)goto failed;
     if(!n2_mod_assemble(dataroot,data,len,config,&kit->scene))goto failed;
+    if(n2_mod_add_plate(dataroot,data,len,&kit->scene)<0)goto failed;
     int selected=config->body_kit==0;
     for(int p=0;p<N2_PART_COUNT;p++)if(config->parts[p])selected=1;
     for(int i=0;i<kit->scene.count;i++) {
@@ -823,6 +825,14 @@ static int prepare_body_kit(BodyKitCandidate *kit,
         for(int j=0;j<kit->ntextures;j++)if(kit->keys[j]==tk)seen=1;
         if(seen)continue;
         N2Tex t={0};int loaded=texdata && n2_load_car_tex_by_key(texdata,texlen,tk,&t);
+        if(!loaded && tk==N2_TEX_LICENSEPLATE) {
+            long bytes=0;unsigned char *global=load_global_car_data(dataroot,&bytes);
+            if(global) {
+                N2Tpk tpk=n2_tpk_open(global,bytes);
+                loaded=n2_tpk_decode(global,bytes,tpk,tk,&t);
+                free(tpk.blk);free(global);
+            }
+        }
         if(!loaded) {
             free(t.rgb);free(t.alpha);free(t.dxt);
             /* Keep existing untextured stock parts' established fallback. */
@@ -4724,6 +4734,9 @@ int main(int argc, char **argv) {
         puts("");
         ncar = n2_load_car_colored(cdata, clen, &car, ckeys, nck, &carcfg,
                                    car_prelight);
+        if(n2_mod_add_plate(dataroot,cdata,clen,&car)<0)
+            fprintf(stderr,"car plate: source model, texture or rear socket unavailable\n");
+        ncar=car.count;
         /* Wheels are modelled once at the origin (the SolidObject transform is
            identity for every part — verified), so a lone wheel mesh renders
            buried in the body. Place it at 4 arch positions derived from the body
@@ -9896,7 +9909,7 @@ int main(int argc, char **argv) {
                        no soft-top marker (M111), so they take the same paint and
                        their own texture like every other body mesh. */
                     ug2_vec3(rp.p->uColor, pnt[0], pnt[1], pnt[2]);
-                    if (tex.id && !hasalpha) {
+                    if (tex.id && (!hasalpha || material==N2_MAT_DECAL)) {
                         rp.p->uUseTex = 1.0f;
                         rhi_cmd_bind_texture(0, tex);
                     } else {
@@ -9955,8 +9968,11 @@ int main(int argc, char **argv) {
                     if (insp_on && g_dbg.insp_cull)
                         cull = g_dbg.insp_cull == 1 ? RHI_CULL_BACK : RHI_CULL_FRONT;
 #endif
+                    float alpha_test=rp.p->uAlphaTest;
+                    if (tex.id && n2_car_cutout(c, texmode,material)) rp.p->uAlphaTest = 1.0f;
                     rhi_cmd_bind_pipeline(cpipe.opaque[cull]);
                     render_draw_gpumesh(&cgm[i]); g_dbg.drawn++;
+                    rp.p->uAlphaTest = alpha_test;
                 }
 #ifdef DEBUG_UI
                 if (insp_on && g_dbg.insp_wire) rhi_cmd_set_wireframe(0);
@@ -10066,7 +10082,7 @@ int main(int argc, char **argv) {
                         rp.p->uEnv = .85f*g_dbg.body_env*qenv[vq];
                         rp.p->uClearcoat = draw_gpu[i].trim?0.0f:
                             fminf(1.0f,g_dbg.body_clearcoat*qcoat[vq]);
-                        if(tex.id&&hasalpha)rp.p->uDecal = 1.0f;
+                        if(tex.id&&hasalpha&&material!=N2_MAT_DECAL)rp.p->uDecal = 1.0f;
                     }else if(!tex.id){
                         if(c==N2_CAR_TIRE)ug2_vec3(rp.p->uColor, .05f, .05f, .06f);
                         else if(c==N2_CAR_MECH)ug2_vec3(rp.p->uColor, .05f, .05f, .05f);
@@ -10083,8 +10099,11 @@ int main(int argc, char **argv) {
                         ug2_copy(rp.p->uMVP, AIMVPc, 16);
                         render_model(&rp,AIModel);
                     } else {
+                        float alpha_test=rp.p->uAlphaTest;
+                        if(tex.id&&n2_car_cutout(c,texmode,material))rp.p->uAlphaTest = 1.0f;
                         rhi_cmd_bind_pipeline(cpipe.opaque[RHI_CULL_NONE]);
                         render_draw_gpumesh(&draw_gpu[i]); g_dbg.drawn++;
+                        rp.p->uAlphaTest = alpha_test;
                     }
                 }
                 if(g_dbg.show_tires){

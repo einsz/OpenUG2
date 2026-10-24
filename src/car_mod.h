@@ -1,6 +1,7 @@
 #ifndef OPENUG2_CAR_MOD_H
 #define OPENUG2_CAR_MOD_H
 #include "nfsu2.h"
+#include <limits.h>
 
 static const char *const n2_mod_libraries[] = {
     "", "SPOILER", "SPOILER_HATCH", "SPOILER_SUV", "EXHAUST", "ROOF"
@@ -126,6 +127,136 @@ static int n2_mod_attach(const char *root,const unsigned char *data,long len,
         n2_car_transform(dst,sockets[k],slot==N2_PART_EXHAUST);
     }
     n2_free_scene(&part);return 1;
+}
+
+/* Traffic bodies have no rear socket. Fit the shared plate to their indexed
+ * rear skin at a host-selected height, rather than to the bumper bounding box. */
+static int n2_mod_traffic_plate_hit(const N2Scene *car,float y,float z,
+                                     float *rear,float *slope) {
+    float best=INFINITY,dz=0;
+    for(int i=0;i<car->count;i++) {
+        const N2Mesh *m=car->meshes+i;
+        if(m->car_material!=0x19e0ecbeu || m->car_mount!=N2_MOUNT_BODY)continue; /* TRAFFIC */
+        for(int j=0;j+2<m->nidx;j+=3) {
+            if(m->idx[j]>=m->nverts || m->idx[j+1]>=m->nverts || m->idx[j+2]>=m->nverts)return -1;
+            const float *a=m->verts+m->idx[j]*5,*b=m->verts+m->idx[j+1]*5,*c=m->verts+m->idx[j+2]*5;
+            float nx=(b[1]-a[1])*(c[2]-a[2])-(b[2]-a[2])*(c[1]-a[1]);
+            if(!isfinite(nx))return -1;
+            if(nx>=-1e-7f)continue;
+            float u=((y-a[1])*(c[2]-a[2])-(z-a[2])*(c[1]-a[1]))/nx;
+            float v=((b[1]-a[1])*(z-a[2])-(b[2]-a[2])*(y-a[1]))/nx;
+            if(u<-.0001f || v<-.0001f || u+v>1.0001f)continue;
+            float x=a[0]+u*(b[0]-a[0])+v*(c[0]-a[0]);
+            float nz=(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);
+            if(!isfinite(x) || !isfinite(nz))return -1;
+            if(x<-.1f && x<best){best=x;dz=-nz/nx;}
+        }
+    }
+    if(!isfinite(best))return 0;
+    *rear=best;*slope=dz;return 1;
+}
+
+static int n2_mod_plate_frame(const unsigned char *data,long len,const N2Scene *car,float socket[16]) {
+    int found=n2_car_socket_frame(data,len,car,0xc805f7e0u,socket,1); /* REAR_LICENSE_PLATE */
+    if(found)return found;
+    float cy=0,cz=.58f,scale=1;
+    /* Host placement hints: these indexed faces bound the visible plate recess.
+     * Derive the mount from their vertices; traffic files provide no marker. */
+    static const struct {const char *body;int face[4];} recess[]={
+        {"MINIVAN_BODY_A",{386,387,-1,-1}},
+        {"SUV_BODY_A",{54,55,207,208}},
+        {"DR_SEDAN02_BODY_A",{348,349,-1,-1}},
+        {"TAXI02_BODY_A",{351,352,-1,-1}},
+        {"PANELVAN_BODY_A",{115,116,-1,-1}}
+    };
+    for(int i=0;i<car->count;i++) {
+        const N2Mesh *m=car->meshes+i;
+        if(m->car_material!=0x19e0ecbeu || m->car_mount!=N2_MOUNT_BODY)continue;
+        char name[64];n2_car_source_name(data,len,m,name);
+        for(unsigned r=0;r<sizeof recess/sizeof *recess;r++)if(!strcmp(name,recess[r].body)) {
+            float ymin=INFINITY,ymax=-INFINITY,zmin=INFINITY,zmax=-INFINITY;
+            for(int f=0;f<4 && recess[r].face[f]>=0;f++) {
+                int first=recess[r].face[f]*3;
+                if(first+2>=m->nidx)return -1;
+                for(int k=0;k<3;k++) {
+                    int v=m->idx[first+k];if(v>=m->nverts)return -1;
+                    float y=m->verts[v*5+1],z=m->verts[v*5+2];
+                    if(!isfinite(y) || !isfinite(z))return -1;
+                    ymin=fminf(ymin,y);ymax=fmaxf(ymax,y);zmin=fminf(zmin,z);zmax=fmaxf(zmax,z);
+                }
+            }
+            cy=(ymin+ymax)*.5f;cz=(zmin+zmax)*.5f;
+            scale=fminf(1,fminf((ymax-ymin)*.9f/.305f,(zmax-zmin)*.9f/.143f));
+            if(scale<.5f)return -1;
+        }
+    }
+    float rear,slope;found=n2_mod_traffic_plate_hit(car,cy,cz,&rear,&slope);
+    if(found!=1)return found;
+    if(fabsf(slope)>1)return -1;
+    float upz=1/sqrtf(1+slope*slope),upx=slope*upz,offset=0;
+    /* Sample beyond STYLE01's 0.305 x 0.143 m footprint to clear the skin. */
+    for(int y=-1;y<=1;y++)for(int z=-1;z<=1;z++) {
+        float x,unused;
+        found=n2_mod_traffic_plate_hit(car,cy+y*.155f*scale,cz+z*.073f*scale*upz,&x,&unused);
+        if(found!=1)return found;
+        offset=fminf(offset,x-(rear+z*.073f*scale*upx));
+    }
+    const float frame[]={upx*scale,0,upz*scale,0, 0,scale,0,0, -upz*scale,0,upx*scale,0,
+                         rear+offset+upx*.071f*scale-.003f,cy,cz+upz*.071f*scale,1};
+    memcpy(socket,frame,sizeof frame);return 1;
+}
+
+static int n2_mod_plate_data(const unsigned char *data,long len,N2Scene *car,
+                             const unsigned char *plate,long bytes,
+                             const uint32_t *keys,int nkeys) {
+    for(int i=0;i<car->count;i++)if(car->meshes[i].car_material==N2_MAT_LICENSEPLATE)return 0;
+    float socket[16];int found=n2_mod_plate_frame(data,len,car,socket);
+    if(found!=1)return found;
+    if(!plate || bytes<=0)return -1;
+    N2CarConfig cfg={.hood_style=1};N2Scene part={0};
+    n2_load_car(plate,bytes,&part,keys,nkeys,&cfg);
+    if(!part.count)goto failed;
+    float scale[3];
+    for(int a=0;a<3;a++) {
+        scale[a]=hypotf(hypotf(socket[a*4],socket[a*4+1]),socket[a*4+2]);
+        for(int k=0;k<3;k++)socket[a*4+k]/=scale[a];
+    }
+    for(int i=0;i<part.count;i++) {
+        N2Mesh *m=part.meshes+i;
+        if(m->car_material!=N2_MAT_LICENSEPLATE || m->texkey!=N2_TEX_LICENSEPLATE)goto failed;
+        /* Preserve authored width/height scales; normals use inverse scale. */
+        for(int v=0;v<m->nverts;v++)for(int a=0;a<3;a++) {
+            int axis=a==0?2:a==2?0:1;
+            m->verts[v*5+a]*=scale[axis];
+            if(m->authored_normals)m->verts[m->nverts*5+v*3+a]/=scale[axis];
+        }
+        /* The plate's -X normal/+Z up use the same socket axes as exhausts. */
+        n2_car_transform(m,socket,1);
+        m->car_source=0;m->famkey=0;m->namekey=0;m->tierid=0;
+        m->vkind=0;m->vnum=0;m->car_part=0;m->car_mount=N2_MOUNT_BODY;
+    }
+    if(part.count>INT_MAX-car->count)goto failed;
+    int total=car->count+part.count;
+    N2Mesh *grown=(N2Mesh *)realloc(car->meshes,(size_t)total*sizeof *grown);
+    if(!grown)goto failed;
+    car->meshes=grown;car->cap=total;
+    memcpy(car->meshes+car->count,part.meshes,(size_t)part.count*sizeof *part.meshes);
+    car->count=total;free(part.meshes);return 1;
+failed:
+    n2_free_scene(&part);return -1;
+}
+
+static int n2_mod_add_plate(const char *root,const unsigned char *data,long len,
+                            N2Scene *car) {
+    float socket[16];int found=n2_mod_plate_frame(data,len,car,socket);
+    if(found!=1)return found;
+    char path[1024];long bytes=0;
+    snprintf(path,sizeof path,"%s/CARS/PLATES/GEOMETRY.BIN",root);
+    unsigned char *plate=n2_read_file(path,&bytes);if(!plate)return -1;
+    /* This library references GLOBALB, independently of the car's own TPK. */
+    const uint32_t key=N2_TEX_LICENSEPLATE;
+    int result=n2_mod_plate_data(data,len,car,plate,bytes,&key,1);
+    free(plate);return result;
 }
 
 static int n2_mod_assemble(const char *root,const unsigned char *data,long len,

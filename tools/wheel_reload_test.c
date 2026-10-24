@@ -201,6 +201,20 @@ static void test_car_switch_archive(const char *root) {
     for(int i=0;i<count;i++) {
         next_handle=1;CarSwitchCandidate candidate={0};
         assert(prepare_car_switch(&candidate,root,cars[i]));
+        int plates=0;
+        for(int m=0;m<candidate.scene.count;m++)if(candidate.scene.meshes[m].car_material==N2_MAT_LICENSEPLATE) {
+            N2Mesh *mesh=candidate.scene.meshes+m;int bound=0;
+            for(int t=0;t<candidate.ntextures;t++)if(candidate.tex_keys[t]==mesh->texkey)bound=1;
+            assert(mesh->texkey==N2_TEX_LICENSEPLATE && bound && mesh->car_mount==N2_MOUNT_BODY);
+            for(int v=0;v<mesh->nverts;v++) {
+                const float *p=mesh->verts+v*5;
+                if(!strcmp(cars[i],"4DR_SEDAN02") || !strcmp(cars[i],"TAXI02"))assert(p[2]>.083f && p[2]<.229f);
+                if(!strcmp(cars[i],"MINIVAN"))assert(p[2]>.279f && p[2]<.514f);
+                if(!strcmp(cars[i],"PANELVAN"))assert(p[1]<-.068f && p[1]>-.518f);
+            }
+            plates++;
+        }
+        assert(plates==1);
         if(candidate.prelight)traffic++;
         if(candidate.prelight)for(int m=0;m<candidate.scene.count;m++)
             if(candidate.scene.meshes[m].cat==N2_CAR_GLASS){
@@ -228,7 +242,7 @@ static void test_car_switch_archive(const char *root) {
                 candidate.texlen,&candidate.scene,candidate.tex_keys,candidate.ntextures,root));
             assert(rebuilt.scene.count==candidate.scene.count && rebuilt.ntextures==0);
             for(int m=0;m<rebuilt.scene.count;m++) {
-                assert(rebuilt.scene.meshes[m].vcol);
+                assert(!!rebuilt.scene.meshes[m].vcol==!!candidate.scene.meshes[m].vcol);
                 assert(rebuilt.scene.meshes[m].texkey==candidate.scene.meshes[m].texkey);
             }
             body_kit_release(&rebuilt);
