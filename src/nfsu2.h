@@ -110,6 +110,7 @@ typedef struct {
     uint64_t placement_id; /* All world placement slices, including fixed scenery. */
     uint64_t prop_id;
     float prop_angle;
+    float prop_offset[3]; /* Applied debris translation, relative to the source placement. */
     unsigned prop_revision;
     unsigned char prop_broken;
 } N2Mesh;
@@ -220,7 +221,6 @@ static int n2_tex_mode(const N2Tex *t) {
     if (t->blend == 2) return N2_DRAW_ADD;
     return N2_DRAW_OPAQUE;
 }
-
 /* Authored transparency is safe only when the mesh-to-material association is
  * structural. This is separate from n2_tex_mode: that function decodes what a
  * texture wants; this function decides whether this particular world mesh has
@@ -836,6 +836,38 @@ typedef struct {
     float area;
 } N2Geom;
 
+/* The small roadside signs carry XYZ/normal/D3DCOLOR/UV (36 bytes), unlike
+   ordinary 24-byte prelit world streams. Require the source vertex count and
+   exact padded buffer length; never infer this from apparent corrupt floats. */
+static int n2_road_sign(const char *name) {
+    /* Source traffic-sign families, independent of placement and selected LOD.
+       XS also contains shops and gantries, which are not light roadside props. */
+    static const char *const prefixes[]={"XS_WARN","XS_SPEED","XS_NOPARK",
+        "XS_SIGNALAHEAD","XS_DONOT","XS_YEILD","XS_SLOWTRAFFIC",
+        "XS_CURVYRD","XS_FREEWAYENDS","XS_35FT","XS_MEDIANPOLE","XS_CHEVRON"};
+    if(!name)return 0;
+    size_t n=strlen(name);
+    for(unsigned i=0;i<sizeof prefixes/sizeof prefixes[0];i++) {
+        size_t len=strlen(prefixes[i]);
+        if(n>=len && n2_icontains((const unsigned char *)name,(long)len,prefixes[i]))return 1;
+    }
+    return 0;
+}
+static int n2_world_vertex_stride(const unsigned char *d,long beg,long end,N2Leaf vtx) {
+    char name[40];n2_mesh_name(d,beg,end,name,sizeof name);
+    if(!n2_road_sign(name))return 24;
+    N2Leaf header[1];int count=0;n2_find_leaves(d,beg,end,0x134900u,header,&count,1);
+    if(!count || header[0].size>INT32_MAX)return 24;
+    int hp=n2_skip_filler(d+header[0].off,(int)header[0].size);
+    if(header[0].size-(unsigned)hp<56)return 24;
+    uint32_t n=n2_u32(d+header[0].off+hp+52);
+    if(!n || n>65535 || (uint64_t)n*36>vtx.size)return 24;
+    if(vtx.size>INT32_MAX)return 24;
+    unsigned pad=vtx.size-n*36;
+    if(n2_vertex_filler(d+vtx.off,(int)vtx.size,36)!=(int)pad)return 24;
+    return 36;
+}
+
 /* Measure one 0x80134010 object exactly as n2_walk_meshes would build it:
  * every 0x134B01/0x134B03 leaf pair, stride 24, placed by the object matrix. */
 static int n2_obj_geom(const unsigned char *d, long beg, long end,
@@ -1280,7 +1312,8 @@ static void n2_walk_meshes(const unsigned char *d, long beg, long end, N2Scene *
                     int exact = sk != 0;
                     if (!sk) { sk = tk; if (n2_m102) n2_m102_rng_unres++; }
                     else if (n2_m102) n2_m102_rng_res++;
-                    n2_add_pair(d, vtx[0], idx[0], cat, scene, 24, 16, 12, cull,
+                    int stride=n2_world_vertex_stride(d,ds,ds+size,vtx[0]);
+                    n2_add_pair(d, vtx[0], idx[0], cat, scene, stride, stride==36?28:16, stride==36?24:12, cull,
                                   sk, objm,
                                   (long)sub[a].start, (long)sub[a].count,
                                   (unsigned char)N2_DRAW_OPAQUE);
@@ -1295,7 +1328,8 @@ static void n2_walk_meshes(const unsigned char *d, long beg, long end, N2Scene *
                 int exact_single_slot = nslot == 1 && slot[0] != 0;
                 for (int k = 0; k < pairs; k++) {
                     int before = scene->count;
-                    n2_add_pair(d, vtx[k], idx[k], cat, scene, 24, 16, 12, cull,
+                    int stride=n2_world_vertex_stride(d,ds,ds+size,vtx[k]);
+                    n2_add_pair(d, vtx[k], idx[k], cat, scene, stride, stride==36?28:16, stride==36?24:12, cull,
                                   tk, objm, 0, -1,
                                   (unsigned char)N2_DRAW_OPAQUE);
                     for (int m2 = before; m2 < scene->count; m2++) {
@@ -2099,6 +2133,8 @@ static int n2_mesh_matslots(const unsigned char *d, long beg, long end,
 #define N2_MAT_TRAFFICWINDOWS 0x1ff8c329u
 #define N2_MAT_WINDOWMASK 0x3ed70c43u
 #define N2_MAT_CARSKIN    0xd6d6080au
+/* DECAL: source alpha-shaped cards, including HUMMER's tow hooks. */
+#define N2_MAT_DECAL      0x02a05578u
 
 /* Third material, identified by MEASUREMENT rather than by cracking its name
  * (the hash is one-way; "DULLPLASTIC" == 0x0fedee40 and "MOLDINGS" ==
@@ -2129,6 +2165,10 @@ static int n2_mesh_matslots(const unsigned char *d, long beg, long end,
 #define N2_MAT_DULLPLASTIC 0x0fedee40u
 #define N2_MAT_CHROME      0x54949afdu
 #define N2_MAT_MOLDINGS    0x12c9453cu
+#define N2_MAT_GRILL       0x02dddad9u
+/* Shared plate material/texture names: LICENSEPLATE and LICENSE_PLATE. */
+#define N2_MAT_LICENSEPLATE 0x4c95c6f8u
+#define N2_TEX_LICENSEPLATE 0x029a22f7u
 #define N2_MAT_HEADLIGHT   0x9c645529u
 #define N2_MAT_HEADLIGHTGLASS 0xa6348ee3u
 
@@ -2152,6 +2192,12 @@ static int n2_mesh_matslots(const unsigned char *d, long beg, long end,
 #define N2_MAT_CLEARPLASTIC    0x33a26cb6u
 #define N2_MAT_ALUMINUM        0x2e65e067u
 #define N2_MAT_CARBONFIBRE     0x721aff7cu
+
+/* Driver and DECAL cards need holes with depth write. Some DECAL atlases
+ * carry pixel alpha despite opaque TPK flags. CARSKIN stays paint coverage. */
+static int n2_car_cutout(int cat, int texmode,uint32_t material) {
+    return material==N2_MAT_DECAL || (cat==N2_CAR_INTERIOR && texmode!=N2_DRAW_OPAQUE);
+}
 /* Unresolved material name. It is the only lens on Miata, but coexists
  * with BRAKELIGHT on Golf and also occurs in Supra headlights. Its role
  * cannot be inferred globally from the hash alone. */
@@ -2178,7 +2224,7 @@ static int n2_car_tail_lens(const N2Scene *car, int index) {
 
 static int n2_car_dark_trim(uint32_t mat) {
     return mat==N2_MAT_DULLPLASTIC || mat==N2_MAT_MOLDINGS ||
-           mat==N2_MAT_RUBBER || mat==N2_MAT_WINDOWMASK;
+           mat==N2_MAT_RUBBER || mat==N2_MAT_WINDOWMASK || mat==N2_MAT_GRILL;
 }
 
 /* Bare metal also occurs on bumpers, badges and lamp housings. */
@@ -2253,6 +2299,7 @@ static void n2_car_light_anchors(const N2Scene *car, float out[4][4]) {
  * thing that lets a same-texture BODY+WINDSHIELD object split correctly: the
  * pre-existing texture-key split cannot see this distinction at all. */
 static int n2_mat_class(uint32_t hash, int fallback) {
+    if (hash == N2_MAT_LICENSEPLATE) return N2_CAR_MECH; /* unpainted textured metal */
     if (hash == N2_MAT_WINDSHIELD || hash == N2_MAT_TRAFFICWINDOWS) return N2_CAR_GLASS;
     if (hash == N2_MAT_CARSKIN)    return N2_CAR_BODY;
     if (hash == N2_MAT_INTERIOR || hash == N2_MAT_INTERIOR_NAMED) return N2_CAR_INTERIOR;
@@ -2438,8 +2485,8 @@ static void n2_walk_car(const unsigned char *d, long beg, long end, N2Scene *sce
 }
 /* A socket is owned by a retained source object. Material slices and LOD
  * copies may repeat it; disagreeing transforms reject the attachment. */
-static int n2_car_socket(const unsigned char *d,long len,const N2Scene *s,
-                         uint32_t key,float out[16]) {
+static int n2_car_socket_frame(const unsigned char *d,long len,const N2Scene *s,
+                               uint32_t key,float out[16],int scaled) {
     int found=0;
     for(int i=0;i<s->count;i++) {
         long off=s->meshes[i].car_source;
@@ -2456,8 +2503,14 @@ static int n2_car_socket(const unsigned char *d,long len,const N2Scene *s,
                 float m[16];memcpy(m,p+at+16,sizeof m);
                 for(int a=0;a<16;a++)if(!isfinite(m[a]))return -1;
                 if(fabsf(m[3])+fabsf(m[7])+fabsf(m[11])+fabsf(m[15]-1)>1e-4f)return -1;
+                float basis[12];memcpy(basis,m,sizeof basis);
+                if(scaled)for(int a=0;a<3;a++) {
+                    float n=hypotf(hypotf(m[a*4],m[a*4+1]),m[a*4+2]);
+                    if(!isfinite(n) || n<1e-6f)return -1;
+                    for(int k=0;k<3;k++)basis[a*4+k]/=n;
+                }
                 for(int a=0;a<3;a++)for(int b=a;b<3;b++) {
-                    float dot=0;for(int k=0;k<3;k++)dot+=m[a*4+k]*m[b*4+k];
+                    float dot=0;for(int k=0;k<3;k++)dot+=basis[a*4+k]*basis[b*4+k];
                     if(fabsf(dot-(a==b?1.f:0.f))>.002f)return -1;
                 }
                 if(found) {for(int a=0;a<16;a++)if(fabsf(out[a]-m[a])>1e-5f)return -1;}
@@ -2466,6 +2519,10 @@ static int n2_car_socket(const unsigned char *d,long len,const N2Scene *s,
         }
     }
     return found;
+}
+static int n2_car_socket(const unsigned char *d,long len,const N2Scene *s,
+                         uint32_t key,float out[16]) {
+    return n2_car_socket_frame(d,len,s,key,out,0);
 }
 
 /* Sockets are validated orthonormal by n2_car_socket. Rotate normals with
@@ -3003,6 +3060,7 @@ static void n2_car_profile(const N2Scene *s, const char *name,
     float t0[3] = { 1e30f, 1e30f, 1e30f }, t1[3] = { -1e30f, -1e30f, -1e30f };
     int ntv = 0;
     for (int i = 0; i < s->count; i++) {
+        if(s->meshes[i].car_material==N2_MAT_LICENSEPLATE)continue; /* visual attachment */
         int tire = s->meshes[i].cat == N2_CAR_TIRE;
         for (int q = 0; q < s->meshes[i].nverts; q++) {
             const float *v = s->meshes[i].verts + q*5;
@@ -3089,8 +3147,9 @@ static long n2_global_car_record(const unsigned char *g,long glen,const char *ca
 
 /* Source dimensions/inertia for diagnostics and subsequent dynamics work.
  * No render bounds, contact footprint or handling constants are replaced here.
- * The four wheel entries stay in source index order; wheel Z is still unverified. */
-typedef struct { float x,y,radius,width; } N2WheelShapeAttr;
+ * The four wheel entries stay in source index order. Wheel Z is the hub height
+ * above the body origin (the Stage5 contact mount Z). */
+typedef struct { float x,y,z,radius,width; } N2WheelShapeAttr;
 typedef struct {
     long record_offset;
     float mass_tonnes,body[3],inertia[3]; /* L/W/H metres; Ixx/Iyy/Izz tonne*m^2 */
@@ -3114,9 +3173,9 @@ static int n2_global_car_shape(const unsigned char *g,long glen,const char *name
         long w=at+0x120+0x30*k;
         if(n2_u32(g+w+0x18)!=(uint32_t)k)return 0;
         N2WheelShapeAttr *v=&a.wheel[k];
-        memcpy(&v->x,g+w,4);memcpy(&v->y,g+w+4,4);
+        memcpy(&v->x,g+w,4);memcpy(&v->y,g+w+4,4);memcpy(&v->z,g+w+8,4);
         memcpy(&v->radius,g+w+0x10,4);memcpy(&v->width,g+w+0x14,4);
-        if(!isfinite(v->x) || !isfinite(v->y) || !isfinite(v->radius) ||
+        if(!isfinite(v->x) || !isfinite(v->y) || !isfinite(v->z) || !isfinite(v->radius) ||
            v->radius<=0 || !isfinite(v->width) || v->width<=0)return 0;
     }
     *out=a;return 1;

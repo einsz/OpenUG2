@@ -104,3 +104,4 @@ tools/capture_vehicle_shots.sh
 /cleanroom/
 /src/ugui/DESIGN*.md
 /src/ugui/HANDOFF.md
+/.agents

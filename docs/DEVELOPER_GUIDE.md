@@ -293,8 +293,9 @@ not a decoded file-format field.
 developer-overlay callers through the GL setters it wraps. Renderer helpers
 query that CPU copy when saving/restoring state. `-DGLS_VERIFY` compares tracked
 getters with the driver and aborts on a mismatch. Uniform readbacks and some
-HUD/frontend queries remain; this is not yet a backend-neutral renderer or a
-Vulkan implementation. See [issue #14](https://github.com/whoismept/OpenUG2/issues/14).
+HUD/frontend queries remain in the GL reference. An experimental Vulkan
+offscreen backend exists, without presentation or DebugUI. For Windows builds
+and hardware validation, see [WINDOWS.md](WINDOWS.md). See [issue #14](https://github.com/whoismept/OpenUG2/issues/14).
 
 ### Batch construction
 

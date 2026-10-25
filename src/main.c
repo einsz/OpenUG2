@@ -32,6 +32,7 @@
 #include "physics.h"
 #include "drive_stage1.h"
 #include "drive_trace.h"
+#include "player_motion.h"
 #include "drive_presentation.h"
 #include "tire_marks.h"
 #include "tire_marks_drive.h"
@@ -131,7 +132,10 @@ static VehicleWheelConfig wheel_config_for(const char *name, const N2CarProfile 
     VehicleWheelConfig c={0};
     N2CarShapeAttr shape;
     int have_shape=n2_global_car_shape(gdata,glen,name,&shape);
+    /* ponytail: one mean mount Z for the body; front/rear differ by <=2.3 cm. */
+    c.hub_body_z=have_shape?0:p->hub_z;
     for(int k=0;k<4;k++){
+        if(have_shape)c.hub_body_z+=.25f*shape.wheel[k].z;
         float r=have_shape&&p->wheel_r>0?shape.wheel[k].radius/p->wheel_r:1;
         float w=have_shape&&p->wheel_w>0?shape.wheel[k].width/p->wheel_w:1;
         c.visual_radius_scale[k]=isfinite(r)&&r>0?r:1;
@@ -161,6 +165,15 @@ static float body_ride_height(float wheel_ride, float body_bottom, float drop) {
     float base=fmaxf(0.05f,wheel_ride);
     float available=fmaxf(0.0f,base+body_bottom-0.02f);
     return fmaxf(0.05f,base-fminf(fmaxf(drop,0.0f),available));
+}
+
+/* AI body origin above its contact plane, paired with ai_wheel_matrices. The
+ * tyre mesh is modelled at the body origin, but the source mounts the hub
+ * hub_body_z above it (as the Stage5 player body does), so the body sits that
+ * far below the rest hub instead of riding on it. */
+static float ai_body_ride(const N2CarProfile *p,float floor,
+                          const VehicleWheelConfig *wheel,float scale) {
+    return body_ride_height(p->ride*scale,floor,g_dbg.body_drop)+wheel->ride_y-wheel->hub_body_z;
 }
 
 /* The retail light records do not carry bulb wattage. Keep the visual response
@@ -460,6 +473,7 @@ static int prepare_car_switch(CarSwitchCandidate *candidate,
         n2_load_car_colored(candidate->data, candidate->len, &candidate->scene,
                     candidate->keys, candidate->nkeys, &candidate->config,
                     candidate->prelight) <= 0 ||
+        n2_mod_add_plate(dataroot,candidate->data,candidate->len,&candidate->scene)<0 ||
         !car_body_metrics(&candidate->scene, candidate->bb, candidate->bloom)) {
         car_switch_release(candidate); return 0;
     }
@@ -538,7 +552,7 @@ static int car_body_metrics(const N2Scene *car, float bb[6], float bloom[4][4]) 
         for(int v=0;v<m->nverts;v++) {
             const float*p=m->verts+v*5;
             for(int a=0;a<5;a++)if(!isfinite(p[a]))return 0;
-            if(m->cat!=N2_CAR_TIRE)for(int a=0;a<3;a++) {
+            if(m->cat!=N2_CAR_TIRE && m->car_material!=N2_MAT_LICENSEPLATE)for(int a=0;a<3;a++) {
                 bb[a]=fminf(bb[a],p[a]);bb[a+3]=fmaxf(bb[a+3],p[a]);
             }
         }
@@ -587,16 +601,16 @@ static void pf_open(const char *path) {
         pf_gpu_ok=(pf_q[i/PF_GPU_N][i%PF_GPU_N]=rhi_timer_create()).id!=0;
     printf("perf csv %s: gpu timer %s\n",path,pf_gpu_ok?"on":"unavailable (CPU only)");
     fprintf(pf_csv,"frame,traffic,racers,target,ai_visible,draws,contact_passes,pair_checks,"
-                   "pair_hits,world_fixes,wall_candidates,spawn_attempts");
+                   "pair_hits,world_fixes,wall_candidates,spawn_attempts,spawn_checks");
     for(int s=0;s<PF_N;s++)fprintf(pf_csv,",cpu_%s",pf_name[s]);
     fprintf(pf_csv,",cpu_total,gpu_lag_frame,gpu_scene,gpu_ai_cars,gpu_rest,gpu_total\n");
     pf_last=SDL_GetPerformanceCounter();
 }
-static void pf_row(long frame,const int counts[12]) {
+static void pf_row(long frame,const int counts[13]) {
     if(!pf_csv)return;
     double total=0;
     fprintf(pf_csv,"%ld",frame);
-    for(int i=1;i<12;i++)fprintf(pf_csv,",%d",counts[i]);
+    for(int i=1;i<13;i++)fprintf(pf_csv,",%d",counts[i]);
     for(int s=0;s<PF_N;s++){fprintf(pf_csv,",%.4f",pf_ms[s]);total+=pf_ms[s];pf_ms[s]=0;}
     fprintf(pf_csv,",%.4f",total);
     double g[PF_GPU_N]={0};int have=0;
@@ -794,6 +808,7 @@ static int prepare_body_kit(BodyKitCandidate *kit,
     if(n2_load_car_colored(data,len,&kit->scene,keys,nkeys,config,
                            active && active->count && active->meshes[0].vcol)<=0)goto failed;
     if(!n2_mod_assemble(dataroot,data,len,config,&kit->scene))goto failed;
+    if(n2_mod_add_plate(dataroot,data,len,&kit->scene)<0)goto failed;
     int selected=config->body_kit==0;
     for(int p=0;p<N2_PART_COUNT;p++)if(config->parts[p])selected=1;
     for(int i=0;i<kit->scene.count;i++) {
@@ -823,6 +838,14 @@ static int prepare_body_kit(BodyKitCandidate *kit,
         for(int j=0;j<kit->ntextures;j++)if(kit->keys[j]==tk)seen=1;
         if(seen)continue;
         N2Tex t={0};int loaded=texdata && n2_load_car_tex_by_key(texdata,texlen,tk,&t);
+        if(!loaded && tk==N2_TEX_LICENSEPLATE) {
+            long bytes=0;unsigned char *global=load_global_car_data(dataroot,&bytes);
+            if(global) {
+                N2Tpk tpk=n2_tpk_open(global,bytes);
+                loaded=n2_tpk_decode(global,bytes,tpk,tk,&t);
+                free(tpk.blk);free(global);
+            }
+        }
         if(!loaded) {
             free(t.rgb);free(t.alpha);free(t.dxt);
             /* Keep existing untextured stock parts' established fallback. */
@@ -2211,7 +2234,8 @@ int main(int argc, char **argv) {
     world_ground_selftest();
     audio_selftest();
     /* Point at your own NFSU2 install/data directory (contains TRACKS/, CARS/).
-       Usage: nfsu2 [DATA_DIR] [options]
+       Usage: nfsu2 [DATA_DIR | --path DATA_DIR] [options]
+         --path DATA_DIR  game data directory (positional DATA_DIR also accepted)
          --drivetrain     opt in to stock Stage-1/2/3/4/5 drivetrain (docs/DRIVETRAIN.md)
          --drivetrain-trace FILE  record manual driving diagnostics to CSV
          --car NAME       car folder under CARS/ (default HUMMER)
@@ -2399,7 +2423,13 @@ int main(int argc, char **argv) {
     int tex_override_off = 0, tex_override_budget = 0;
     int want_laps = 2;       /* --laps N: race distance for --event */
     for (int i = 1; i < argc; i++) {
-        if      (!strcmp(argv[i], "--shot")    && i+1 < argc) shot      = argv[++i];
+        if (!strcmp(argv[i], "--path")) {
+            if (i+1 >= argc || !argv[i+1][0] || !strncmp(argv[i+1], "--", 2)) {
+                fprintf(stderr, "--path requires a data directory\n"); return 2;
+            }
+            dataroot = argv[++i];
+        }
+        else if (!strcmp(argv[i], "--shot") && i+1 < argc) shot = argv[++i];
         else if (!strcmp(argv[i], "--pause-shot")) pause_shot = 1;
         else if (!strcmp(argv[i], "--pause-ui-ms") && i+1<argc) pause_ui_ms=(float)atof(argv[++i]);
         else if (!strcmp(argv[i], "--pause-events") && i+1<argc) pause_events=argv[++i];
@@ -3542,11 +3572,17 @@ int main(int argc, char **argv) {
         long companion_len=0, stream_len=0;
         unsigned char *companion=n2_read_file(companion_path,&companion_len);
         unsigned char *stream=n2_read_file(stream_path,&stream_len);
+        int companion_read=companion!=NULL, stream_read=stream!=NULL;
         int focused=companion && stream &&
             winst_default_focus(companion,companion_len,stream,stream_len,world2_spawn_xy);
         free(companion); free(stream);
         if (!focused) {
             fprintf(stderr,"cannot derive an authored start region for %s\n",trackname);
+            fprintf(stderr,"  data directory: %s\n",dataroot);
+            fprintf(stderr,"  companion: %s (%s, %ld bytes)\n",companion_path,
+                    companion_read?"read OK":"READ FAILED",companion_len);
+            fprintf(stderr,"  stream: %s (%s, %ld bytes)\n",stream_path,
+                    stream_read?"read OK":"READ FAILED",stream_len);
             return 1;
         }
         printf("open world: %s authored focus (%.3f, %.3f)\n",trackname,
@@ -3862,9 +3898,16 @@ int main(int argc, char **argv) {
     /* Hidden, fixed-size capture windows avoid the desktop's visible-window
        size clamp (notably macOS), using the same production GL draw path. */
     const int capture_window = shot || raudit || resident_route_audit;
+    uint32_t window_flags = rhi_window_flags(RHI_BACKEND_DEFAULT);
+#ifdef N2_VULKAN
+    /* Headless SDL drivers cannot create a Vulkan surface; desktop drivers keep presentation. */
+    const char *video_driver = SDL_GetCurrentVideoDriver();
+    if (video_driver && (!strcmp(video_driver, "offscreen") || !strcmp(video_driver, "dummy")))
+        window_flags &= ~(uint32_t)SDL_WINDOW_VULKAN;
+#endif
     SDL_Window *win = SDL_CreateWindow("OpenUG2",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, render_width, render_height,
-        rhi_window_flags(RHI_BACKEND_DEFAULT) |
+        window_flags |
         (capture_window ? SDL_WINDOW_HIDDEN : SDL_WINDOW_RESIZABLE));
     if (!win) { fprintf(stderr,"window: %s\n",SDL_GetError()); return 1; }
     /* The device also sets tightly packed readback rows (odd-width captures)
@@ -4706,6 +4749,9 @@ int main(int argc, char **argv) {
         puts("");
         ncar = n2_load_car_colored(cdata, clen, &car, ckeys, nck, &carcfg,
                                    car_prelight);
+        if(n2_mod_add_plate(dataroot,cdata,clen,&car)<0)
+            fprintf(stderr,"car plate: source model, texture or rear socket unavailable\n");
+        ncar=car.count;
         /* Wheels are modelled once at the origin (the SolidObject transform is
            identity for every part — verified), so a lone wheel mesh renders
            buried in the body. Place it at 4 arch positions derived from the body
@@ -6220,6 +6266,7 @@ int main(int argc, char **argv) {
         race_place_on_grid(&world, &scene, carpos, &heading0);
     float heading = heading0, speed = 0.0f, vel[2] = {0,0};
     float steer_filtered = 0.0f;
+    PlayerMotion player_motion={.awaiting_drive=1};
     float cam[3] = { spawn[0], spawn[1], spawn[2]+5 };
     float landing_offset=0,landing_velocity=0;
     if (sstatic) {
@@ -6262,6 +6309,9 @@ int main(int argc, char **argv) {
     }
     int racetimer = 0, finish_place = 0;
     HudRaceClock hud_race_clock={0};
+    int outrun_slot=-1;Uint32 outrun_until=0; /* free-roam outrun shown on the race HUD */
+    int outrun_offer=-1,outrun_challenge=0;   /* challengeable rival; Enter Race pressed */
+    const char *outrun_notice=NULL;Uint32 outrun_notice_until=0;
 #ifdef OPENUG2_MENU
     Fe frontend;
     FeDraw *frontend_draw = NULL;
@@ -6537,6 +6587,7 @@ int main(int argc, char **argv) {
                     if (pad_edge & ((1u<<CB_ACT_SHIFT_UP)|(1u<<CB_ACT_SHIFT_DOWN))) { drag_shift=(pad_edge&(1u<<CB_ACT_SHIFT_UP))?1:-1; continue; }
                     if (pad_edge & ((1u<<CB_ACT_STEER_LEFT)|(1u<<CB_ACT_STEER_RIGHT))) { drag_change=(pad_edge&(1u<<CB_ACT_STEER_LEFT))?1:-1; continue; }
                 }
+                if ((pad_edge & (1u<<CB_ACT_ENTER_RACE)) && outrun_offer>=0) { outrun_challenge=1; continue; }
                 if ((pad_edge & (1u<<CB_ACT_CAMERA)) && race_state != 3) {
                     int drift_ev=world.city.race.active && world.city.race.kind==N2_RACE_DRIFT;
                     int ev_id=world.city.race.active && world.city.race.ev>=0
@@ -6640,6 +6691,10 @@ int main(int argc, char **argv) {
                 if (k == SDLK_g && hud && !e.key.repeat && !kbound) {
                     g_dbg.gps_n = 0; g_dbg.gps_request = 0;   /* cancel guidance */
                     printf("HUD: destination cleared\n");
+                }
+                else if (cx_key_is(&g_cx, (int)e.key.keysym.scancode, CB_ACT_ENTER_RACE) && !e.key.repeat &&
+                         outrun_offer >= 0) {
+                    outrun_challenge = 1;   /* Enter Race beside a rival: outrun challenge */
                 }
                 else if (cx_key_is(&g_cx, (int)e.key.keysym.scancode, CB_ACT_CAMERA) && !e.key.repeat && race_state != 3) {
                     /* Change Camera (binding): next view, with Shift previous (SPEC 2.3). */
@@ -7649,6 +7704,7 @@ int main(int argc, char **argv) {
             stage1_previous=stage1_active;presentation_snap=1;
         }
         int pf_spawns=0;
+        int player_placed=!g_ride_ready && speed==0 && vel[0]==0 && vel[1]==0;
         float sim_wheel_scale=g_dbg.wheel_scale>0.05f?g_dbg.wheel_scale:1.0f;
         float car_ride=carprof.ride*sim_wheel_scale;
         float car_body_ride=body_ride_height(car_ride,car_floor,g_dbg.body_drop);
@@ -7710,7 +7766,7 @@ int main(int argc, char **argv) {
            straight into the physics, so the car throws itself through an S-curve
            hands-free. Interactive only -- gated on !shot so it never fights the
            headless --shot A* autopilot below. */
-        if (g_dbg.auto_drive && !shot && !g_dbg.freecam) {
+        if (g_dbg.auto_drive && !shot && race_state==1 && driving_keys) {
             static float adt = 0.0f; adt += 0.02f;      /* ~5 s period at 60 Hz */
             throttle = 1.0f;
             steer = sinf(adt) * 0.35f;                  /* gentle S -- hard lock scrubs
@@ -7925,11 +7981,20 @@ int main(int argc, char **argv) {
             heading += da;
         }
         float ground_old[3]={carpos[0],carpos[1],carpos[2]}, ground_oldh=heading;
+        int player_motion_allowed=player_motion_tick(&player_motion,race_state==1,
+            player_placed,throttle>0 || throttle<0);
+        player_placed=0;
+        if(!player_motion_allowed) {
+            throttle=steer=steer_filtered=0;handbrake=1;
+            vel[0]=vel[1]=speed=0;
+            if(g_stage1.dynamic_initialized || g_stage1.prepared)
+                stage1_drive_reset(&g_stage1,vel,heading);
+        }
         float drive_trace_incoming[3];
         memcpy(drive_trace_incoming,g_stage1.body.force,sizeof drive_trace_incoming);
         float drive_trace_ground_fraction=1;
         float dmag = 0.0f, load_lat = 0.0f;
-        if (!sstatic && !capture_policy.freeze_motion) {
+        if (player_motion_allowed && !sstatic && !capture_policy.freeze_motion) {
             float oldvx = vel[0], oldvy = vel[1];
             if(g_vehicle_source_valid)
                 g_vehicle=phys_vehicle_from_source(&g_vehicle_source,
@@ -8498,7 +8563,7 @@ int main(int argc, char **argv) {
             /* TM-2 clause 3: the current venue id (event route id; free roam 4000). */
             int tm_venue = world.city.race.active && world.city.race.ev >= 0
                          ? world.city.ev[world.city.race.ev].id : 4000;
-            if(tm_drive_gate(&g_stage1,tm_venue) && !sstatic && !capture_policy.freeze_motion) {
+            if(player_motion_allowed && tm_drive_gate(&g_stage1,tm_venue) && !sstatic && !capture_policy.freeze_motion) {
                 TmWheelIn tm_in[4];float tm_origin[3];
                 tm_drive_inputs(&g_stage1,g_tm_width,0,tm_in,tm_origin);
                 TmGround tm_ground={tm_world_ground,&scene,0};
@@ -8552,13 +8617,42 @@ int main(int argc, char **argv) {
         pf_mark(PF_PLAYER_SIM);
         /* Take all speed decisions from the same frame, then apply driver
            inputs through the shared tyre/suspension/collision simulation. */
+        int offer=-1;
         if(!ai_race && race_state==1) {
             AiCar player={.pos={carpos[0],carpos[1],carpos[2]},.head=heading,.spd=speed,
                 .half_length=(carbb[3]-carbb[0])*.5f,.half_width=(carbb[4]-carbb[1])*.5f,
                 .height=carbb[5]-carbb[2]};
+            if(outrun_challenge && outrun_offer>=0 && !follow_roam_ai)
+                ai_outrun_begin(ais,traffic_routes,outrun_offer,&player);
             for(int k=0;k<nai;k++)ai_traffic_follow(ais,traffic_routes,&roam_roads,k,nai,
                                                   follow_roam_ai?NULL:&player);
+            if(!follow_roam_ai)offer=ai_outrun_challengeable(ais,traffic_routes,nai,&player);
+            static int encounter_shown[N_OPENWORLD_AI],leads_shown[N_OPENWORLD_AI];
+            for(int k=0;k<nai;k++)if(traffic_routes[k].racer) {
+                const AiTraffic *r=&traffic_routes[k];
+                if(r->encounter==AI_ENCOUNTER_RACING && r->lead_changes!=leads_shown[k]) {
+                    leads_shown[k]=r->lead_changes;
+                    outrun_notice=r->player_leads?"YOU TOOK THE LEAD":"LEAD LOST";
+                    outrun_notice_until=SDL_GetTicks()+2000;
+                    printf("OUTRUN: %s\n",r->player_leads?"player takes the lead":"rival takes the lead");
+                }
+                if(r->encounter==encounter_shown[k])continue;
+                int e=encounter_shown[k]=r->encounter;
+                if(e==AI_ENCOUNTER_RACING) {
+                    outrun_slot=k;leads_shown[k]=r->lead_changes;
+                    outrun_notice=r->player_leads?"OUTRUN: YOU LEAD":"OUTRUN: TAKE THE LEAD";
+                    outrun_notice_until=SDL_GetTicks()+2500;
+                    printf("OUTRUN: racer %d challenged, player %s; the leader wins %.0f m clear\n",
+                           k,r->player_leads?"leads":"trails",AI_OUTRUN_LEAD_M);
+                } else if(e!=AI_ENCOUNTER_CRUISE) {
+                    outrun_until=outrun_notice_until=SDL_GetTicks()+4000;
+                    outrun_notice=e==AI_ENCOUNTER_WON?"OUTRUN WON":"OUTRUN LOST";
+                    printf("OUTRUN: %s after %.1f s, %d lead changes\n",e==AI_ENCOUNTER_WON?"won":"lost",
+                           r->outrun_ticks/PHYS_TICKRATE,r->lead_changes);
+                }
+            }
         }
+        outrun_offer=offer;outrun_challenge=0;
         pf_mark(PF_AI_FOLLOW);
         for (int k = 0; race_state == 1 && k < nai; k++) {
             if(ai_race && world.city.race.active && aipath.n>1) {
@@ -8647,7 +8741,7 @@ int main(int argc, char **argv) {
 
         pf_mark(PF_AI_CONTACT);
         if(race_state==1 && !sstatic && !capture_policy.freeze_motion)
-            world_props_step(1/PHYS_TICKRATE);
+            world_props_step_collisions(1/PHYS_TICKRATE,&scene,obst,obstz,obstsrc,nobst);
         if(!ai_race && race_state==1 && racetimer%30==0) {
             nai=ai_traffic_update(&roam_roads,&traffic_world,ais,traffic_routes,carpos,heading);
             pf_spawns=1;
@@ -9878,7 +9972,7 @@ int main(int argc, char **argv) {
                        no soft-top marker (M111), so they take the same paint and
                        their own texture like every other body mesh. */
                     ug2_vec3(rp.p->uColor, pnt[0], pnt[1], pnt[2]);
-                    if (tex.id && !hasalpha) {
+                    if (tex.id && (!hasalpha || material==N2_MAT_DECAL)) {
                         rp.p->uUseTex = 1.0f;
                         rhi_cmd_bind_texture(0, tex);
                     } else {
@@ -9937,8 +10031,11 @@ int main(int argc, char **argv) {
                     if (insp_on && g_dbg.insp_cull)
                         cull = g_dbg.insp_cull == 1 ? RHI_CULL_BACK : RHI_CULL_FRONT;
 #endif
+                    float alpha_test=rp.p->uAlphaTest;
+                    if (tex.id && n2_car_cutout(c, texmode,material)) rp.p->uAlphaTest = 1.0f;
                     rhi_cmd_bind_pipeline(cpipe.opaque[cull]);
                     render_draw_gpumesh(&cgm[i]); g_dbg.drawn++;
+                    rp.p->uAlphaTest = alpha_test;
                 }
 #ifdef DEBUG_UI
                 if (insp_on && g_dbg.insp_wire) rhi_cmd_set_wireframe(0);
@@ -9978,7 +10075,7 @@ int main(int argc, char **argv) {
                 float aiWheelT[4][16],aiBrakeT[4][16],aiWheelWorld[4][16],aiBrakeWorld[4][16];
                 float oscale=g_dbg.wheel_scale>0.05f?g_dbg.wheel_scale:1.0f;
                 float owheelride=draw_profile.ride*oscale;
-                float obodyride=body_ride_height(owheelride,draw_floor,g_dbg.body_drop);
+                float obodyride=ai_body_ride(&draw_profile,draw_floor,&draw_wheel,oscale);
                 if(!render_ais[k].render_visible)continue;   /* wheel spin kept current above */
                 float steer=render_ais[k].steer*.5f;
                 ai_wheel_matrices(&draw_wheel,oscale,render_ais[k].wheel_angle,steer,
@@ -10048,7 +10145,7 @@ int main(int argc, char **argv) {
                         rp.p->uEnv = .85f*g_dbg.body_env*qenv[vq];
                         rp.p->uClearcoat = draw_gpu[i].trim?0.0f:
                             fminf(1.0f,g_dbg.body_clearcoat*qcoat[vq]);
-                        if(tex.id&&hasalpha)rp.p->uDecal = 1.0f;
+                        if(tex.id&&hasalpha&&material!=N2_MAT_DECAL)rp.p->uDecal = 1.0f;
                     }else if(!tex.id){
                         if(c==N2_CAR_TIRE)ug2_vec3(rp.p->uColor, .05f, .05f, .06f);
                         else if(c==N2_CAR_MECH)ug2_vec3(rp.p->uColor, .05f, .05f, .05f);
@@ -10065,8 +10162,11 @@ int main(int argc, char **argv) {
                         ug2_copy(rp.p->uMVP, AIMVPc, 16);
                         render_model(&rp,AIModel);
                     } else {
+                        float alpha_test=rp.p->uAlphaTest;
+                        if(tex.id&&n2_car_cutout(c,texmode,material))rp.p->uAlphaTest = 1.0f;
                         rhi_cmd_bind_pipeline(cpipe.opaque[RHI_CULL_NONE]);
                         render_draw_gpumesh(&draw_gpu[i]); g_dbg.drawn++;
+                        rp.p->uAlphaTest = alpha_test;
                     }
                 }
                 if(g_dbg.show_tires){
@@ -10360,14 +10460,14 @@ int main(int argc, char **argv) {
                 int visual=ai_actor_visual(c,ai_race,nai,world.city.race.active);
                 const CarSwitchCandidate *tv=(!ai_race || world.city.race.active) && traffic[visual].gpu?&traffic[visual]:NULL;
                 const float (*lamps)[4]=tv?tv->bloom:opponent_bloom;
-                float ride=tv?tv->profile.ride:opponent_profile.ride;
+                const N2CarProfile *profile=tv?&tv->profile:&opponent_profile;
                 float floor=tv?tv->body_floor:opponent_floor;
                 float aup[3],z=render_ais[c].pos[2],model[16];
                 if(render_ais[c].ride_ready)phys_ride_body_up(&render_ais[c].ride,render_ais[c].head,aup);
                 else world_ground_pose(&scene,render_ais[c].pos[0],render_ais[c].pos[1],z,&z,aup);
                 float oscale=g_dbg.wheel_scale>0.05f?g_dbg.wheel_scale:1.0f;
                 mat_car(render_ais[c].pos,render_ais[c].head,aup,
-                    body_ride_height(ride*oscale,floor,g_dbg.body_drop),model);
+                    ai_body_ride(profile,floor,tv?&tv->wheel:&opponent_wheel,oscale),model);
                 for (int b=0;b<4;b++) {
                     if(lamps[b][3]<.5f||(b<2?!g_dbg.night_mode:(!g_dbg.night_mode&&!render_ais[c].braking)))continue;
                     float bx=model[0]*lamps[b][0]+model[4]*lamps[b][1]+
@@ -10426,6 +10526,45 @@ int main(int argc, char **argv) {
             }
             rp.p->uAlpha = 1.0f; rp.p->uSoft = 0.0f;
             rp.p->uUnlit = 0.0f; ug2_copy(rp.p->uMVP, MVP, 16);
+        }
+
+        /* Short metal-on-ground streaks from the movable roadside panels. */
+        if (world2 && g_dbg.show_track && (!pause_menu || opt_gfx.v[ST_GFX_PARTICLES]) &&
+            (passmode==0 || passmode==2)) {
+            WorldPropSpark sparks[64];
+            int count=world_prop_sparks(sparks,64);
+            if(count) {
+                UG2Params saved=*rp.p;
+                rhi_cmd_bind_pipeline(cpipe.halo);
+                rp.p->uUnlit=1;rp.p->uUseTex=0;rp.p->uVColor=0;
+                rp.p->uSoft=0;rp.p->uEmissiveTex=0;rp.p->uVista=0;
+                rp.p->uUVCheck=0;rp.p->uAlphaTest=0;
+                ug2_vec3(rp.p->uColor,1,.65f,.18f);
+                for(int i=0;i<count;i++) {
+                    float axis[3],view[3],side[3];
+                    for(int a=0;a<3;a++) {
+                        axis[a]=sparks[i].pos[a]-sparks[i].tail[a];
+                        view[a]=cam[a]-sparks[i].pos[a];
+                    }
+                    float length=sqrtf(axis[0]*axis[0]+axis[1]*axis[1]+axis[2]*axis[2]);
+                    if(length<1e-5f)continue;
+                    if(length>.08f)for(int a=0;a<3;a++)axis[a]*=.08f/length;
+                    side[0]=axis[1]*view[2]-axis[2]*view[1];
+                    side[1]=axis[2]*view[0]-axis[0]*view[2];
+                    side[2]=axis[0]*view[1]-axis[1]*view[0];
+                    float width=sqrtf(side[0]*side[0]+side[1]*side[1]+side[2]*side[2]);
+                    if(width<1e-6f)continue;
+                    for(int a=0;a<3;a++)side[a]*=.018f/width;
+                    float M[16]={axis[0],axis[1],axis[2],0,side[0],side[1],side[2],0,
+                        0,0,1,0,sparks[i].pos[0]-axis[0]-side[0]*.5f,
+                        sparks[i].pos[1]-axis[1]-side[1]*.5f,
+                        sparks[i].pos[2]-axis[2]-side[2]*.5f,1},MV[16];
+                    mat_mul(MVP,M,MV);ug2_copy(rp.p->uMVP,MV,16);
+                    rp.p->uAlpha=sparks[i].alpha*.8f;
+                    render_draw_gpumesh(&quad);g_dbg.drawn++;
+                }
+                *rp.p=saved;
+            }
         }
 
         /* drift smoke: camera-facing billboards, light + fading, additive-ish */
@@ -10847,8 +10986,27 @@ int main(int argc, char **argv) {
                in free-roam dress during a perfectly real armed event. */
             const WRace *wr = &world.city.race;
             int event_race = wr->active;
-            hs.racing = (event_race || (ai_race && race_state != 3)) ? 1 : 0;
-            if (hs.racing) {
+            int outrun=-1;
+            if(!event_race && !ai_race && outrun_slot>=0 && outrun_slot<nai &&
+               traffic_routes[outrun_slot].racer) { /* a fallen rival is no longer present */
+                int e=traffic_routes[outrun_slot].encounter;
+                if(e==AI_ENCOUNTER_RACING || (e>AI_ENCOUNTER_RACING && SDL_GetTicks()<outrun_until))outrun=e;
+            }
+            hs.racing = (event_race || (ai_race && race_state != 3) || outrun>=0) ? 1 : 0;
+            if (outrun>=0) {
+                /* An outrun reuses the sprint HUD: progress is the player's lead. */
+                const AiTraffic *r=&traffic_routes[outrun_slot];
+                static float rival_xy[2];
+                rival_xy[0]=render_ais[outrun_slot].pos[0];rival_xy[1]=render_ais[outrun_slot].pos[1];
+                hs.circuit=0;hs.race_kind=N2_RACE_SPRINT;
+                hs.sprint_progress=fmaxf(0,fminf(1,r->outrun_lead/AI_OUTRUN_LEAD_M));
+                hs.position=r->outrun_lead>0?1:2;hs.cars=2;
+                hs.race_phase=outrun==AI_ENCOUNTER_RACING?HUD_RACE_RUNNING:
+                    outrun==AI_ENCOUNTER_WON?HUD_RACE_FINISHED:HUD_RACE_FAILED;
+                hs.have_race_time=1;hs.elapsed_seconds=r->outrun_ticks/PHYS_TICKRATE;
+                hs.opponent_xy=rival_xy;hs.opponent_n=1;hs.route_next=-1;
+                hs.route_xy=NULL;hs.route_n=0;
+            } else if (hs.racing) {
                 int ev = world.city.active_ev;
                 hs.circuit = (ev >= 0 && ev < world.city.nev)
                            ? world.city.ev[ev].circuit : 1;
@@ -10906,7 +11064,15 @@ int main(int argc, char **argv) {
                 }
             } else {
                 hs.nav_xy = world.city.nav; hs.nav_n = world.city.nnav;
+                /* Roaming rivals on the free-roam map, as the original marks them. */
+                static float rival_xy[2*N_OPENWORLD_AI];int rivals=0;
+                for(int k=0;!ai_race && k<nai && k<draw_nai;k++)if(traffic_routes[k].present && traffic_routes[k].racer) {
+                    rival_xy[2*rivals]=render_ais[k].pos[0];rival_xy[2*rivals+1]=render_ais[k].pos[1];rivals++;
+                }
+                hs.opponent_xy=rival_xy;hs.opponent_n=rivals;
             }
+            hs.notice=SDL_GetTicks()<outrun_notice_until?outrun_notice:
+                      !hs.racing && outrun_offer>=0?"ENTER RACE KEY: OUTRUN":NULL;
 
             /* Guidance: only when a route was actually solved. The bearing is
                to the next node ALONG THE ROUTE, never the straight line to the
@@ -11835,9 +12001,9 @@ int main(int argc, char **argv) {
         if (pf_csv) {
             int pf_vis=0;
             pf_vis=g_dbg.traffic_visible;
-            int counts[12]={0,g_dbg.traffic_active,g_dbg.traffic_racers,g_dbg.traffic_target,pf_vis,g_dbg.drawn,
+            int counts[13]={0,g_dbg.traffic_active,g_dbg.traffic_racers,g_dbg.traffic_target,pf_vis,g_dbg.drawn,
                 (int)g_ai_perf.passes,(int)g_ai_perf.pairs,(int)g_ai_perf.hits,(int)g_ai_perf.world_fixes,
-                (int)g_ai_perf.wall_candidates,pf_spawns};
+                (int)g_ai_perf.wall_candidates,pf_spawns,(int)g_ai_perf.spawn_checks};
             pf_row(pf_frame,counts); memset(&g_ai_perf,0,sizeof g_ai_perf);
             pf_last=SDL_GetPerformanceCounter();
         }

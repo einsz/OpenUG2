@@ -93,6 +93,7 @@ typedef struct {
     float front_track;   /* full front track width (lateral wheel-centre spacing) */
     float rear_track;    /* full rear track width */
     float ride_y;        /* hub-centre height (measured from the car's tyre mesh) */
+    float hub_body_z;    /* source hub height above the body origin; ride_y without source */
     float visual_radius_scale[4], visual_width_scale[4]; /* geometry only; source size / mesh size */
 } VehicleWheelConfig;
 

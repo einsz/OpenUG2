@@ -2,6 +2,7 @@
 #define STAGE5_TEST_NO_MAIN
 #include "drive_stage5_test.c"
 #include "drive_session.h"
+#include "player_motion.h"
 static const char *g_dir="docs/cleanroom-driving-physics/ordinary-mode/test-vectors";
 static int g_fail;
 #include "test_json.h"
@@ -50,4 +51,24 @@ static void lifecycle(void){
  t.drive.session=(DriveSession){DRIVE_SESSION_SUPPLIED,4};tick5(&t,1,0,0,NULL);assert(t.drive.body_race==4&&!t.drive.body_mode.stabilize);
  puts("ordinary-mode: readiness, countdown, pause/resume, preparation, coast and reset passed");
 }
-int main(void){vectors();lifecycle();return g_fail?1:0;}
+static void player_lifecycle(void){
+ PlayerMotion s={.awaiting_drive=1};
+ /* A steering-only action or an unavailable driving screen cannot launch. */
+ for(int k=0;k<180;k++)assert(!player_motion_tick(&s,0,0,1));
+ assert(!player_motion_tick(&s,1,0,0));
+ assert(player_motion_tick(&s,1,0,1));
+ Trace actual;dynamic_fixture(&actual);tick5(&actual,1,0,0,NULL);
+ Trace reference=actual;
+ for(int k=0;k<120;k++){
+  assert(player_motion_tick(&s,1,0,0));
+  tick5(&actual,0,0,0,NULL);tick5(&reference,0,0,0,NULL);
+ }
+ assert(!memcmp(&actual,&reference,sizeof actual)); /* no automatic brake while coasting */
+ assert(!player_motion_tick(&s,1,1,0)); /* a new placement rearms the hold */
+ assert(player_motion_tick(&s,1,0,1)); /* forward or reverse request */
+ assert(!player_motion_tick(&s,0,0,0));
+ assert(!player_motion_tick(&s,1,0,0));
+ assert(player_motion_tick(&s,1,0,1));
+ puts("player motion: spawn, locked screens, first drive, unchanged coast and respawn passed");
+}
+int main(void){vectors();lifecycle();player_lifecycle();return g_fail?1:0;}

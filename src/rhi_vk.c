@@ -197,6 +197,7 @@ static struct {
     VkBuffer       dummy_vbuf;
     VkDeviceMemory dummy_vbuf_mem;
     uint32_t       last_stride[RHI_MAX_VERTEX_STREAMS];   /* test hook: binding stride per stream of the last draw */
+    uint32_t       build_absent_offset;                   /* test hook: largest attribute offset on an absent stream in the last pipeline built */
     uint32_t       draw_absent;                           /* streams the current draw leaves without a usable vertex buffer */
     /* One vec4 (0,0,0,1): the value a shader reads for an attribute its pipeline
      * layout does not name (GL's default generic attribute value). Bound on the
@@ -837,6 +838,7 @@ size_t rhi_vk_test_arena_size(void) { return (size_t)g_vk.arena.size; }
 void rhi_vk_test_fail_pending_alloc(unsigned n) { g_test_fail_pending_alloc = n; }
 
 /* Test-only: the vertex-binding stride the last draw's pipeline used for `stream` (0xFFFFFFFF if the stream was not used). */
+uint32_t rhi_vk_test_last_absent_offset(void) { return g_vk.build_absent_offset; }
 uint32_t rhi_vk_test_last_stride(uint32_t stream) { return stream < RHI_MAX_VERTEX_STREAMS ? g_vk.last_stride[stream] : 0xFFFFFFFFu; }
 
 void rhi_vk_test_force_stream_arena(size_t bytes) {
@@ -2645,6 +2647,7 @@ static VkPipeline build_pipeline(const RhiPipelineDesc *desc, int variant, int w
      * are passed on. */
     const RhiVkShader *shv = shader_find(desc->shader);
     uint32_t shader_attribs = shv ? shv->attrib_count : 0, n_attr = 0;
+    g_vk.build_absent_offset = 0;
     for (uint32_t i = 0; i < desc->vertex.attrib_count; i++) {
         const RhiVertexAttrib *a = &desc->vertex.attribs[i];
         if (a->location >= shader_attribs) continue;
@@ -2656,7 +2659,10 @@ static VkPipeline build_pipeline(const RhiPipelineDesc *desc, int variant, int w
         vattr[n_attr].location = a->location;
         vattr[n_attr].binding  = s;
         vattr[n_attr].format   = vk_vertex_format(a->format);
-        vattr[n_attr].offset   = a->offset;
+        /* An absent stream reads the 256-byte dummy through a stride-0 binding: its attributes are fetched at offset 0, whatever the
+         * layout declares, so no declared offset can reach past the dummy. */
+        vattr[n_attr].offset   = (absent >> s & 1u) ? 0u : a->offset;
+        if (absent >> s & 1u && vattr[n_attr].offset > g_vk.build_absent_offset) g_vk.build_absent_offset = vattr[n_attr].offset;
         n_attr++;
     }
     for (uint32_t s = 0; s < RHI_MAX_VERTEX_STREAMS; s++)

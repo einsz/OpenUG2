@@ -22,18 +22,27 @@ SDL_LIBS   := $(shell sdl2-config --libs)
 DATA    ?= .
 
 UNAME := $(shell uname)
+WINDOWS := $(filter MINGW% MSYS%,$(UNAME))
+EXEEXT := $(if $(WINDOWS),.exe)
+GAME := nfsu2$(EXEEXT)
 ifeq ($(UNAME),Darwin)
   # Keep C and C++ on the SDK belonging to the selected Xcode toolchain.
   ifndef SDKROOT
     export SDKROOT := $(shell xcrun --sdk macosx --show-sdk-path)
   endif
   GL_LIBS := -framework OpenGL
+else ifneq ($(WINDOWS),)
+  override CFLAGS += -D_USE_MATH_DEFINES
+  # Native MinGW/UCRT binaries; keep a console for diagnostics.
+  SDL_LIBS := $(filter-out -mwindows,$(SDL_LIBS))
+  GL_LIBS := $(shell pkg-config --libs glew) -lopengl32
 else
   GL_LIBS := -lGL
 endif
 
+UGUI_CFLAGS := $(shell pkg-config --cflags libpng libcrypto)
 UGUI_IMAGE_LIBS := $(shell pkg-config --libs libpng libcrypto)
-override CFLAGS += $(shell pkg-config --cflags libpng libcrypto)
+override CFLAGS += $(UGUI_CFLAGS)
 # engine modules: orchestrator + Renderer/Physics/AI/Audio/Resources/World
 GAME_UI_SRC := $(wildcard src/ugui/*.c) src/pause_menu.c src/pause_screen.c src/pause_entries.c src/gui_view.c src/gui_carousel.c src/gui_dialog.c src/gui_layout.c src/gui_timing.c src/options_menu.c src/settings.c src/controls_bind.c src/controls_menu.c src/controls_store.c src/controls_sdl.c src/frontend/frontend.c src/frontend/frontend_draw.c
 SRC  := src/main.c src/render.c src/render_params.c src/physics.c src/drivetrain.c src/braking.c src/resistance.c src/lateral.c src/drive_stage1.c src/contact.c src/body_response.c src/drive_contact.c src/tire_marks.c src/ai.c src/audio.c src/resource.c src/world.c src/world_instance.c src/world_resident.c src/world_mesh.c src/hud.c src/hud_asset.c src/hud_texture.c src/hud_baseline.c src/rhi_gl_state.c src/rhi_gl.c src/camera.c src/tex_override.c $(GAME_UI_SRC)
@@ -47,15 +56,16 @@ GUI_ART_HDR := $(wildcard src/gui_*.h) src/pause_entries.h src/pause_screen.h sr
 HDRS += src/ug2_track_collision.h src/drivetrain.h src/braking.h src/resistance.h src/lateral.h src/drive_stage1.h src/contact.h src/body_response.h src/tire_marks.h src/tire_marks_drive.h
 HDRS += src/drive_trace.h src/drive_presentation.h src/drive_session.h
 SRC += src/hud_race.c
-HDRS += src/hud_race.h
+HDRS += src/hud_race.h src/dir_scan.h
+HDRS += src/player_motion.h
 
 hud-race-test: tools/hud_race_test.c src/hud_race.c src/hud_race.h src/hud.h src/hud_asset.c src/hud_asset.h src/ugui/ugui_codec.c
 	@mkdir -p build
-	$(CC) $(CFLAGS) $(SDL_CFLAGS) -Isrc tools/hud_race_test.c src/hud_race.c src/hud_asset.c src/ugui/ugui_codec.c -o build/hud_race_test -lm
+	$(CC) $(CFLAGS) -DSDL_MAIN_HANDLED $(filter-out -Dmain=SDL_main,$(SDL_CFLAGS)) -Isrc tools/hud_race_test.c src/hud_race.c src/hud_asset.c src/ugui/ugui_codec.c -o build/hud_race_test -lm
 	./build/hud_race_test
 .PHONY: hud-race-test
 
-.DEFAULT_GOAL := nfsu2   # keep `make` building the binary, not the generated header
+.DEFAULT_GOAL := $(GAME)   # keep `make` building the binary, not the generated header
 
 # Renderer-boundary gate (issue #14, P10): fail if any src/ file outside the GL
 # backend names a GL header, a gl* entry point or a GL* type. The allowed GL
@@ -83,17 +93,23 @@ src/generated_shaders.h: $(SHADERS)
 	@echo "/* AUTO-GENERATED from src/shaders/ by make -- do not edit */" > $@
 	@for f in $(SHADERS); do xxd -i $$f | sed 's/^unsigned/static const unsigned/' >> $@; done
 
-nfsu2: $(SRC) $(HDRS) $(GEN)
-	$(CC) $(CFLAGS) $(SDL_CFLAGS) $(SRC) -o nfsu2 $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lz -lm
+ifneq ($(WINDOWS),)
+# Preserve explicit `make nfsu2` calls while tracking the actual .exe output.
+nfsu2: $(GAME)
+.PHONY: nfsu2
+endif
+
+$(GAME): $(SRC) $(HDRS) $(GEN)
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) $(SRC) -o $(GAME) $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lz -lm
 
 # Explicit build variants. Both write the same `nfsu2` executable; the last
 # target built is the one that is currently on disk.
 normal: $(SRC) $(HDRS) $(GEN)
-	$(CC) $(CFLAGS) $(SDL_CFLAGS) $(SRC) -o nfsu2 $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lz -lm
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) $(SRC) -o $(GAME) $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lz -lm
 
 menu: $(SRC) $(HDRS) $(GEN)
 	$(CC) $(CFLAGS) -DOPENUG2_MENU $(SDL_CFLAGS) $(SRC) \
-		-o nfsu2 \
+		-o $(GAME) \
 		$(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lz -lm
 
 # Dev build with the Dear ImGui debug overlay + freecam controls (`make debug`).
@@ -109,7 +125,7 @@ build/%.o: $(IMGUI_DIR)/%.cpp
 build/%.o: $(IMGUI_DIR)/backends/%.cpp
 	@mkdir -p build
 	$(CXX) -O2 $(SDL_CFLAGS) -I$(IMGUI_DIR) -c $< -o $@
-build/debugui.o: src/debugui.cpp src/race_log.h src/race.h src/debug.h src/race_ai_source.h src/car_config.h src/traffic_heatmap.h
+build/debugui.o: src/debugui.cpp src/rhi_gl_state.h src/race_log.h src/race.h src/debug.h src/race_ai_source.h src/car_config.h src/traffic_heatmap.h
 	@mkdir -p build
 	$(CXX) -O2 $(SDL_CFLAGS) -I$(IMGUI_DIR) -c src/debugui.cpp -o $@
 
@@ -119,7 +135,7 @@ build/%.dbg.o: src/%.c $(HDRS) $(GEN)
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -DDEBUG_UI -c $< -o $@
 
 debug: $(DBG_OBJ) $(IMGUI_OBJ)
-	$(CXX) -O2 $(DBG_OBJ) $(IMGUI_OBJ) -o nfsu2 $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lz -lm
+	$(CXX) -O2 $(DBG_OBJ) $(IMGUI_OBJ) -o $(GAME) $(SDL_LIBS) $(GL_LIBS) $(UGUI_IMAGE_LIBS) -lz -lm
 
 # Gameplay camera vs docs/cleanroom-camera/test-vectors (docs/CAMERA.md). DATA may point
 # at an install to also check the real GLOBALB through the loader (structure only);
@@ -435,13 +451,13 @@ ai-drive-cli-test: nfsu2
 # OpenGL ES 2.0 (embedded/mobile). Cross-compile e.g.:
 #   CC=aarch64-linux-gnu-gcc make gles
 gles: $(SRC) $(HDRS) $(GEN)
-	$(CC) $(CFLAGS) -DN2_GLES $(SDL_CFLAGS) $(SRC) -o nfsu2 $(SDL_LIBS) -lGLESv2 $(UGUI_IMAGE_LIBS) -lz -lm
+	$(CC) $(CFLAGS) -DN2_GLES $(SDL_CFLAGS) $(SRC) -o $(GAME) $(SDL_LIBS) -lGLESv2 $(UGUI_IMAGE_LIBS) -lz -lm
 
-run: nfsu2
-	./nfsu2 $(DATA)
+run: $(GAME)
+	./$(GAME) "$(DATA)"
 
 clean:
-	rm -f nfsu2 *.png $(GEN)
+	rm -f nfsu2 nfsu2.exe nfsu2-vk nfsu2-vk.exe *.png $(GEN) src/generated_shaders_vk.h
 	rm -rf build
 
 .PHONY: race-ai-test race-events-check run normal menu gles clean debug world-instance-test world-cli-test car-material-test world-render-test world-resident-test district-collision-test wheel-render-test light-state-test world-texture-test world-group-test world-group-audit ai-drive-test ai-drive-cli-test resolution-cli-test render-resolution-test
@@ -780,11 +796,11 @@ VK_INC     := -I$(VK_SYSROOT)/usr/include/SDL2 -I$(VK_SYSROOT)/usr/include -I$(V
 VK_LIBS    := -L$(VK_LIBDIR) -lSDL2 -lvulkan -Wl,-rpath,$(VK_LIBDIR)
 else
 VK_INC     := $(SDL_CFLAGS)
-VK_LIBS    := $(SDL_LIBS) -lvulkan
+VK_LIBS    := $(SDL_LIBS) $(if $(WINDOWS),-lvulkan-1,-lvulkan)
 endif
-VK_CFLAGS  := -std=c99 -Wall -Wextra -Wno-missing-field-initializers -D_DEFAULT_SOURCE -DN2_VULKAN $(VK_INC) -Isrc
+VK_CFLAGS  := -std=c99 -Wall -Wextra -Wno-missing-field-initializers -D_DEFAULT_SOURCE -DN2_VULKAN $(if $(WINDOWS),-D_USE_MATH_DEFINES) $(VK_INC) -Isrc
 VK_ICD     ?= $(firstword $(wildcard /usr/share/vulkan/icd.d/lvp_icd*.json /etc/vulkan/icd.d/lvp_icd*.json))
-VK_RUN_ENV := SDL_VIDEODRIVER=offscreen $(if $(VK_ICD),VK_DRIVER_FILES=$(VK_ICD)) \
+VK_RUN_ENV := $(if $(WINDOWS),,SDL_VIDEODRIVER=offscreen) $(if $(VK_ICD),VK_DRIVER_FILES=$(VK_ICD)) \
               $(if $(VK_SYSROOT),VK_ADD_LAYER_PATH=$(VK_SYSROOT)/usr/share/vulkan/explicit_layer.d LD_LIBRARY_PATH=$(VK_LIBDIR))
 # Vulkan shaders: Vulkan-GLSL in src/shaders/vk/, compiled to SPIR-V and embedded
 # as uint32 arrays (vk_<name>_<ext>) by glslangValidator -- same build-time embed
@@ -800,10 +816,12 @@ src/generated_shaders_vk.h: $(VK_SHADERS)
 	done
 	@rm -f $@.tmp
 
-rhi-vk-smoke: tools/rhi_vk_smoke.c src/rhi_vk.c src/rhi.h src/generated_shaders_vk.h
+build/rhi_vk_smoke$(EXEEXT): tools/rhi_vk_smoke.c src/rhi_vk.c src/rhi.h src/generated_shaders_vk.h
 	@mkdir -p build
-	$(CC) $(VK_CFLAGS) tools/rhi_vk_smoke.c src/rhi_vk.c -o build/rhi_vk_smoke $(VK_LIBS)
-	$(VK_RUN_ENV) ./build/rhi_vk_smoke
+	$(CC) $(VK_CFLAGS) tools/rhi_vk_smoke.c src/rhi_vk.c -o $@ $(VK_LIBS)
+
+rhi-vk-smoke: build/rhi_vk_smoke$(EXEEXT)
+	$(VK_RUN_ENV) ./build/rhi_vk_smoke$(EXEEXT)
 .PHONY: rhi-vk-smoke
 
 # Full game linked against the Vulkan backend (issue #14, P11 screenshot
@@ -813,17 +831,30 @@ rhi-vk-smoke: tools/rhi_vk_smoke.c src/rhi_vk.c src/rhi.h src/generated_shaders_
 # flags above (VK_CFLAGS/VK_LIBS), NOT -lGL; run it with $(VK_RUN_ENV) (offscreen SDL, lavapipe).
 VK_GAME_SRC  := $(filter-out src/rhi_gl.c src/rhi_gl_state.c src/ugui/ugui_gl.c,$(SRC)) \
                 src/rhi_vk.c src/vk_ui_stubs.c
-# The shim (ELF symbol interposition) only serves the headless offscreen SDL driver on Linux. macOS has
-# no offscreen driver in use and no ELF interposition: there the window keeps SDL_WINDOW_VULKAN (MoltenVK
-# surface; the P12 present path is unverified on macOS).
-ifneq ($(UNAME),Darwin)
-VK_GAME_SRC  += src/vk_offscreen_window_shim.c
-endif
 # VK_CFLAGS already carries -DN2_VULKAN, the SDL2 includes and -Isrc; add the game's -O2 and the
 # nfsu2.h unused-static silence. The game also links libpng, libcrypto and zlib (system, or $(VK_SYSROOT)).
-VK_GAME_CFLAGS := $(VK_CFLAGS) -O2 -Wno-unused-function
-VK_GAME_LIBS   := $(VK_LIBS) -lpng16 -lcrypto -lz -lm $(if $(filter Darwin,$(UNAME)),,-ldl)
+VK_GAME_CFLAGS := $(VK_CFLAGS) $(if $(VK_SYSROOT),,$(UGUI_CFLAGS)) -O2 -Wno-unused-function
+VK_GAME_LIBS   := $(VK_LIBS) $(if $(VK_SYSROOT),-lpng16 -lcrypto,$(UGUI_IMAGE_LIBS)) -lz -lm
 
 nfsu2-vk: $(VK_GAME_SRC) $(HDRS) $(GEN) src/generated_shaders_vk.h
-	$(CC) $(VK_GAME_CFLAGS) $(VK_GAME_SRC) -o nfsu2-vk $(VK_GAME_LIBS)
+	$(CC) $(VK_GAME_CFLAGS) $(VK_GAME_SRC) -o nfsu2-vk$(EXEEXT) $(VK_GAME_LIBS)
 .PHONY: nfsu2-vk
+
+# Native file mapping and Windows sorted-directory compatibility, no assets/GPU.
+resource-map-test: tools/resource_map_test.c src/resource.c src/resource.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Isrc tools/resource_map_test.c src/resource.c -o build/resource_map_test$(EXEEXT) -lm
+	./build/resource_map_test$(EXEEXT)
+
+.PHONY: resource-map-test
+
+dir-scan-test: tools/dir_scan_test.c src/dir_scan.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Isrc tools/dir_scan_test.c -o build/dir_scan_test$(EXEEXT)
+	./build/dir_scan_test$(EXEEXT)
+.PHONY: dir-scan-test
+
+# Data-root option parsing, no assets or graphics needed. Keep DebugUI enabled.
+data-path-cli-test: debug
+	sh tools/data_path_cli_test.sh ./$(GAME)
+.PHONY: data-path-cli-test

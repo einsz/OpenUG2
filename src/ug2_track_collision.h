@@ -15,14 +15,14 @@ typedef struct {
 } UG2TrackGroups;
 typedef struct { UG2TrackGroups result; int seen,valid; } UG2TCGroupsRead;
 static int ug2_tc_groups_visit(const unsigned char *bytes,uint32_t id,long begin,long end,void *context) {
-    UG2TCGroupsRead *read=context;
+    UG2TCGroupsRead *read=(UG2TCGroupsRead *)context;
     if(!read->valid)return 0;
     if(id!=0x3412f)return id>>28==8;
     if(read->seen++ || !(end-begin) || (end-begin)%32 || (end-begin)/32>256)goto invalid;
     read->result.count=(size_t)(end-begin)/32;read->result.source_offset=(uint64_t)begin;
     for(size_t k=0;k<read->result.count;k++) {
         const unsigned char *r=bytes+begin+32*k,*name=r+9;
-        const unsigned char *stop=memchr(name,0,23);
+        const unsigned char *stop=(const unsigned char *)memchr(name,0,23);
         if(!stop || stop==name)goto invalid;
         uint32_t hash=0xffffffffu;
         for(const unsigned char *p=name;p<stop;p++) {
@@ -216,7 +216,7 @@ static int ug2_tc_group(const unsigned char *bytes,long begin,long end,UG2TCRead
         if(read->result.count==read->capacity) {
             size_t cap=read->capacity?read->capacity*2:256;
             if(cap<read->capacity || cap>SIZE_MAX/sizeof poly)return 0;
-            UG2TrackPolygon *grown=realloc(read->result.polygons,cap*sizeof poly);
+            UG2TrackPolygon *grown=(UG2TrackPolygon *)realloc(read->result.polygons,cap*sizeof poly);
             if(!grown)return 0;
             read->result.polygons=grown;read->capacity=cap;
         }
@@ -225,7 +225,7 @@ static int ug2_tc_group(const unsigned char *bytes,long begin,long end,UG2TCRead
     return 1;
 }
 static int ug2_tc_visit(const unsigned char *bytes,uint32_t id,long begin,long end,void *context) {
-    UG2TCRead *read=context;
+    UG2TCRead *read=(UG2TCRead *)context;
     if(!read->valid)return 0;
     if(id==0x80034130){read->valid=ug2_tc_group(bytes,begin,end,read);return 0;}
     return id>>28==8;

@@ -5,6 +5,10 @@
 #include <string.h>
 #include <time.h>
 #include <limits.h>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
 
 #include "physics.h"
 
@@ -169,6 +173,17 @@ static int resident_vista_batches(WorldResidentResources *resources,
         free(part); /* handles moved into resources->vista */
     }
     return 1;
+}
+
+/* Loading telemetry needs a monotonic clock, not POSIX thread emulation. */
+static void wrb_now(struct timespec *out) {
+#ifdef _WIN32
+    ULONGLONG ms = GetTickCount64();
+    out->tv_sec = (time_t)(ms / 1000);
+    out->tv_nsec = (long)(ms % 1000) * 1000000;
+#else
+    clock_gettime(CLOCK_MONOTONIC, out);
+#endif
 }
 
 static uint32_t wrb_ms(struct timespec *a, struct timespec *b) {
@@ -383,7 +398,7 @@ int world_resident_prepare(WorldResident *candidate,
     candidate->center[1] = center_y;
     candidate->radius = args->policy.resident_radius;
     struct timespec t0, t1;
-    if (timing) clock_gettime(CLOCK_MONOTONIC, &t0);
+    if (timing) wrb_now(&t0);
 
     WLoadOptions options = {
         1, center_x, center_y, args->policy.resident_radius,
@@ -395,7 +410,7 @@ int world_resident_prepare(WorldResident *candidate,
         if (candidate->world.scene.meshes[i].cat == N2_SKY)
             candidate->world.scene.meshes[i].texkey = n2_sky_remap_key(
                 args->sky_profile, candidate->world.scene.meshes[i].texkey);
-    if (timing) { clock_gettime(CLOCK_MONOTONIC, &t1);
+    if (timing) { wrb_now(&t1);
                   timing->neighborhood_ms = wrb_ms(&t0, &t1); }
     return 1;
 }
@@ -403,9 +418,9 @@ int world_resident_prepare(WorldResident *candidate,
 int world_resident_finish(WorldResident *candidate, float x, float y, float z,
                           WResidentBuildTiming *timing) {
     struct timespec t0, t1;
-    if (timing) clock_gettime(CLOCK_MONOTONIC, &t0);
+    if (timing) wrb_now(&t0);
     if (!world_resident_validate_cpu(candidate, x, y, z)) return 0;
-    if (timing) { clock_gettime(CLOCK_MONOTONIC, &t1);
+    if (timing) { wrb_now(&t1);
                   timing->validate_ms = wrb_ms(&t0, &t1); t0 = t1; }
 
     if (!world_resident_resources_build(&candidate->resources,
