@@ -47,4 +47,12 @@ static void limits_parser(void){
 #undef PUT
 }
 static void dynamic_clock(void){Trace ref,t;dynamic_init(&ref,10);ref.drive.body_observe=NULL;for(int i=0;i<60;i++)tick_body(&ref,-.3f,.1f);assert(isfinite(ref.drive.motion.position[2]));for(int rate=30;rate<=144;rate+=114){dynamic_init(&t,10);t.drive.body_observe=NULL;PhysClock clock={0};for(int frame=0;frame<rate;frame++){int ticks=phys_clock_steps(&clock,1.0/rate);for(int k=0;k<ticks;k++)tick_body(&t,-.3f,.1f);}assert(t.tick==60&&!memcmp(&ref.drive,&t.drive,sizeof t.drive));}}
-int main(void){trace_file=fopen("build/body_feedback.csv","w");assert(trace_file);fputs("sample,boundary,h,Xx,Xy,Xz,fx,fy,fz,lx,ly,lz,ux,uy,uz,Px,Py,Pz,Lx,Ly,Lz,Vx,Vy,Vz,Ox,Oy,Oz,z,s,Fx,Fy,Fz,Tx,Ty,Tz,previous_contacts",trace_file);for(int i=0;i<4;i++)fprintf(trace_file,",w%d_contact,w%d_travel,w%d_rate,w%d_load",i,i,i,i);fputc('\n',trace_file);pitch_feedback();roll_feedback();heave_feedback();impulses_and_restore();limits_parser();dynamic_clock();fclose(trace_file);puts("BR-7 dynamic feedback acceptance passed; trace: build/body_feedback.csv");return 0;}
+/* Rollover onto flat road: a kerb strike under the right wheels flips the car.
+ * Wheels lose contact once tilted, so only the chassis can hold the body on
+ * the road; the centre of mass must never pass below the surface. */
+static void rollover_ground(void){Trace t;dynamic_init(&t,15);t.drive.body_observe=NULL;for(int i=0;i<30;i++)tick_body(&t,0,0);
+ float strike[3]={0,0,4},arm[3]={0,-.9f,-.3f};body_impulse(&t.drive.motion,&t.drive.body,strike,arm,1);body_post(&t.drive.motion,&t.drive.body,&t.drive.body_car,t.drive.body_gravity);
+ float lowest=1e9f,lowest_up=1;for(int i=0;i<300;i++){tick_body(&t,0,0);float z=t.drive.motion.position[2]-ground_z;if(z<lowest)lowest=z;if(t.drive.motion.axes.up[2]<lowest_up)lowest_up=t.drive.motion.axes.up[2];}
+ printf("Rollover: lowest up.z %.3f, lowest centre %.3f m, final centre %.3f m, final vz %.3f\n",lowest_up,lowest,t.drive.motion.position[2]-ground_z,t.drive.body.velocity[2]);
+ assert(lowest_up<0);assert(lowest>0);assert(fabsf(t.drive.body.velocity[2])<.5f);}
+int main(void){trace_file=fopen("build/body_feedback.csv","w");assert(trace_file);fputs("sample,boundary,h,Xx,Xy,Xz,fx,fy,fz,lx,ly,lz,ux,uy,uz,Px,Py,Pz,Lx,Ly,Lz,Vx,Vy,Vz,Ox,Oy,Oz,z,s,Fx,Fy,Fz,Tx,Ty,Tz,previous_contacts",trace_file);for(int i=0;i<4;i++)fprintf(trace_file,",w%d_contact,w%d_travel,w%d_rate,w%d_load",i,i,i,i);fputc('\n',trace_file);pitch_feedback();roll_feedback();heave_feedback();impulses_and_restore();limits_parser();dynamic_clock();rollover_ground();fclose(trace_file);puts("BR-7 dynamic feedback acceptance passed; trace: build/body_feedback.csv");return 0;}

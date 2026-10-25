@@ -3,27 +3,71 @@
 #include <stdlib.h>
 #include <string.h>
 #include <dirent.h>
+#include <limits.h>
+#include <stdint.h>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#endif
 
 #include "resource.h"
 
 unsigned char *res_map_file(const char *path, long *len) {
+    if (!path || !len) return NULL;
+#ifdef _WIN32
+    int count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, NULL, 0);
+    if (!count) return NULL;
+    wchar_t *wide = malloc((size_t)count * sizeof *wide);
+    if (!wide) return NULL;
+    if (!MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, wide, count)) {
+        free(wide);
+        return NULL;
+    }
+    HANDLE file = CreateFileW(wide, GENERIC_READ, FILE_SHARE_READ, NULL,
+                              OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    free(wide);
+    if (file == INVALID_HANDLE_VALUE) return NULL;
+    LARGE_INTEGER size;
+    /* The parser's public length is long, which remains 32-bit on Win64. */
+    if (!GetFileSizeEx(file, &size) || size.QuadPart <= 0 ||
+        (uint64_t)size.QuadPart > LONG_MAX ||
+        (uint64_t)size.QuadPart > SIZE_MAX) {
+        CloseHandle(file);
+        return NULL;
+    }
+    HANDLE mapping = CreateFileMappingW(file, NULL, PAGE_READONLY, 0, 0, NULL);
+    CloseHandle(file);
+    if (!mapping) return NULL;
+    void *p = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, (SIZE_T)size.QuadPart);
+    CloseHandle(mapping);
+    if (!p) return NULL;
+    *len = (long)size.QuadPart;
+#else
     int fd = open(path, O_RDONLY);
     if (fd < 0) return NULL;
     struct stat st;
-    if (fstat(fd, &st) != 0 || st.st_size <= 0) { close(fd); return NULL; }
+    if (fstat(fd, &st) != 0 || st.st_size <= 0 ||
+        (uintmax_t)st.st_size > LONG_MAX ||
+        (uintmax_t)st.st_size > SIZE_MAX) { close(fd); return NULL; }
     void *p = mmap(NULL, (size_t)st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
     close(fd);
     if (p == MAP_FAILED) return NULL;
     *len = (long)st.st_size;
+#endif
     return (unsigned char *)p;
 }
 
 void res_unmap_file(unsigned char *data, long len) {
+#ifdef _WIN32
+    if (data && len > 0) UnmapViewOfFile(data);
+#else
     if (data && len > 0) munmap(data, (size_t)len);
+#endif
 }
 
 int res_list_tracks(const char *troot, char (*list)[64], int max,

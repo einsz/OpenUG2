@@ -69,6 +69,38 @@ static void geometry(Stage1Drive*s,float h){
   ct_post(&s->contacts,&s->contact_pose,s->wheel_angle,0,s->contact_query,s->contact_user);
  }
 }
+/* Host chassis contact. The wheels are otherwise the body's only ground
+ * support, and they give none once the car is tilted past its travel, so a
+ * rolled car fell through the road. Hull: wheel footprint from hub height (zero
+ * travel) to the roof. A tyre carrying load keeps its hub radius-upper above
+ * the road, so the hull floor cannot touch flat ground while the wheels drive.
+ * Inelastic normal impulse plus positional push-out; no friction.
+ * ponytail: 8 hull corners, no edge/face test; a crest between corners is missed. */
+static void chassis_ground(Stage1Drive*s){
+ const CtCar*car=&s->contacts.car;BodyMotion*m=&s->motion;ResBody*b=&s->body;
+ float roof=host_bottom(s)+car->dimensions[2],push=0,normal[3]={0,0,1};
+ float inertia[3]={s->body_car.inertia[0],s->body_car.inertia[1],s->body_car.inertia[2]*(m->adjusted?s->body_car.yaw_scale:1)};
+ for(int i=0;i<8;i++){
+  const float*mount=car->mount[i&3];float local[3]={mount[0]-car->centre[0],mount[1]-car->centre[1],(i<4?mount[2]:roof)-car->centre[2]},arm[3],q[3];
+  for(int k=0;k<3;k++){arm[k]=m->axes.forward[k]*local[0]+m->axes.lateral[k]*local[1]+m->axes.up[k]*local[2];q[k]=m->position[k]+arm[k];}
+  q[2]+=car->radius[i&3]; /* the query subtracts the wheel radius from the probe */
+  CtGround g=s->contact_query(s->contact_user,q,i&3);
+  float depth=(g.height+g.height_offset-(q[2]-car->radius[i&3]))*g.normal[2];
+  if(!g.found||depth<=0)continue;
+  if(depth>push){push=depth;memcpy(normal,g.normal,sizeof normal);}
+  float v[3]={b->velocity[0]+m->omega[1]*arm[2]-m->omega[2]*arm[1],b->velocity[1]+m->omega[2]*arm[0]-m->omega[0]*arm[2],b->velocity[2]+m->omega[0]*arm[1]-m->omega[1]*arm[0]};
+  float closing=-(float)res_dot(v,g.normal);if(closing<=0)continue;
+  /* Effective mass at the corner: 1/m + sum over body axes of (r x n)^2/I. */
+  float r[3]={(float)res_dot(arm,m->axes.forward),(float)res_dot(arm,m->axes.lateral),(float)res_dot(arm,m->axes.up)};
+  float n[3]={(float)res_dot(g.normal,m->axes.forward),(float)res_dot(g.normal,m->axes.lateral),(float)res_dot(g.normal,m->axes.up)};
+  float rn[3]={r[1]*n[2]-r[2]*n[1],r[2]*n[0]-r[0]*n[2],r[0]*n[1]-r[1]*n[0]},inverse=1/b->mass;
+  for(int k=0;k<3;k++)inverse+=rn[k]*rn[k]/inertia[k];
+  float impulse[3];for(int k=0;k<3;k++)impulse[k]=g.normal[k]*closing/inverse;
+  body_impulse(m,b,impulse,arm,1);res_post(b,0);body_publish_angular(m,&s->body_car);
+ }
+ for(int k=0;k<3;k++)m->position[k]+=normal[k]*push;
+ dynamic_pose(s);
+}
 static void sample(Stage1Drive*s,DrvEnv*env){
  CtPose*p=&s->contact_pose;CtState*c=&s->contacts;env->body_speed=(float)sqrt(res_dot(p->velocity,p->velocity));env->signed_forward=(float)res_dot(p->velocity,p->axes.forward);env->planar_tyres=1;env->supplied_frame_grip=1;env->frame_grip[0]=c->grip_front;env->frame_grip[1]=c->grip_rear;
  for(int i=0;i<4;i++){CtWheel*w=c->wheel+i;DrvWheelEnv*e=env->wheel+i;ResBasis axes;ct_wheel_axes(&p->axes,s->wheel_angle[i],&axes);float velocity[3]={p->velocity[0]+p->omega[1]*w->arm[2]-p->omega[2]*w->arm[1],p->velocity[1]+p->omega[2]*w->arm[0]-p->omega[0]*w->arm[2],p->velocity[2]+p->omega[0]*w->arm[1]-p->omega[1]*w->arm[0]};e->vx=(float)res_dot(velocity,axes.forward);e->vy=(float)res_dot(velocity,axes.lateral);e->slip_angle=lat_slip(e->vx,e->vy);e->contact=w->contact;e->load=w->load;const CtSurface*sf=ct_surface(w->surface);e->mu_peak_surface=sf->peak;e->mu_slide_surface=sf->slide;e->roll_drag=sf->spin;e->locked=s->drivetrain.brakes.locked[i];e->drag_flag=(s->damage_mask>>i)&1u;e->lateral_grip_force=lat_grip(e->load,s->lateral_car.angle[i/2],s->lateral_car.reference[i/2],s->lateral_car.factor[i/2],e->slip_angle,e->vx,1);}
@@ -141,7 +173,7 @@ float stage5_drive_step(Stage1Drive*s,float pos[3],float vel[2],float*heading,fl
    if(s->body_observe)s->body_observe(s->body_observe_user,s,h,0);
    for(int i=0;i<4;i++){float angle=h*d->wheel[i].omega;s->wheel_angular_travel[i]+=angle;s->wheel_travel+=angle*.25f;}
    body_integrate(&s->motion,b,&derivative,h);drv_integrate(d,h);body_post(&s->motion,b,&s->body_car,s->body_gravity);dynamic_pose(s);
-   geometry(s,h);sample(s,&env);prepare(s,&env);
+   chassis_ground(s);geometry(s,h);sample(s,&env);prepare(s,&env);
    if(s->body_observe)s->body_observe(s->body_observe_user,s,h,1);
    body_repair(&s->motion.axes);dynamic_pose(s);continue;
   }

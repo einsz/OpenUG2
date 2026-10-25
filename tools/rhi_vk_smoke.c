@@ -25,6 +25,7 @@ extern void rhi_vk_test_force_arena(size_t bytes);
 extern void rhi_vk_test_force_stream_arena(size_t bytes);
 extern size_t rhi_vk_test_arena_size(void);                   /* size of the per-frame parameter arena */
 extern void rhi_vk_test_fail_pending_alloc(unsigned n);       /* the next n deferred-free list growths fail */
+extern uint32_t rhi_vk_test_last_absent_offset(void);          /* largest attribute offset used on an absent stream by the last pipeline built */
 extern uint32_t rhi_vk_test_last_stride(uint32_t stream);     /* binding stride of `stream` in the last draw's pipeline */
 extern int rhi_vk_test_sync_hazard(void);                    /* two unsynchronised clears (WAW) */   /* the STREAM-version arena */
 /* Test-only backend path: reads buffer contents (STREAM mapping, or a STATIC
@@ -48,7 +49,8 @@ static int is_green(const unsigned char *p) { return p[0] == 0 && p[1] == 255 &&
 static int is_blue(const unsigned char *p)  { return p[0] == 0 && p[1] == 0 && p[2] == 255 && p[3] == 255; }
 static int is_black(const unsigned char *p) { return p[0] == 0 && p[1] == 0 && p[2] == 0 && p[3] == 255; }
 
-int main(void) {
+int main(int argc, char **argv) {
+    (void)argc; (void)argv;
     if (SDL_Init(SDL_INIT_VIDEO) != 0) { fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError()); return 2; }
     printf("SDL video driver: %s\n", SDL_GetCurrentVideoDriver());
 
@@ -56,16 +58,10 @@ int main(void) {
     uint32_t flags = rhi_window_flags(RHI_BACKEND_VULKAN);
     EXPECT(flags != 0, "rhi_window_flags(VULKAN) should be nonzero");
 
-    /* The offscreen SDL driver has no Vulkan surface support, so SDL_WINDOW_VULKAN
-     * is rejected. Offscreen v0 creates no surface and uses the window only for
-     * its size, so fall back to a plain hidden window there (like the spike). */
+    /* Offscreen Vulkan uses the window size only; it creates no SDL surface. */
+    flags &= ~(uint32_t)SDL_WINDOW_VULKAN;
     SDL_Window *win = SDL_CreateWindow("rhi_vk_smoke", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
                                        W, H, flags | SDL_WINDOW_HIDDEN);
-    if (!win) {
-        fprintf(stderr, "note: SDL_WINDOW_VULKAN unavailable (%s); using a plain hidden window\n", SDL_GetError());
-        win = SDL_CreateWindow("rhi_vk_smoke", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-                               W, H, SDL_WINDOW_HIDDEN);
-    }
     if (!win) { fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError()); SDL_Quit(); return 2; }
 
     RhiDeviceDesc desc = { RHI_BACKEND_VULKAN, 0, win };
@@ -1865,6 +1861,25 @@ int main(void) {
             EXPECT(s1 == 0, "F1: the unbound stream must use a stride-0 binding so the dummy buffer is always enough (got %u)", s1);
             EXPECT(c[0] == 255 && c[1] == 255 && c[2] == 255, "F1: the draw with the absent stream still renders");
             EXPECT(rhi_vk_validation_messages == v1, "F1 raised %u validation message(s)", rhi_vk_validation_messages - v1);
+            /* The same stream declared as FLOAT4 at offset 256, stride 272, still left unbound: the binding keeps no offset past the dummy. */
+            RhiPipelineDesc od = hd;
+            od.vertex.attribs[1] = (RhiVertexAttrib){ 1, 1, 256, RHI_VERTEX_FLOAT4 }; od.vertex.stride[1] = 272;
+            RhiPipeline opipe = rhi_pipeline_create(&od);
+            EXPECT(opipe.id != 0, "F1 offset pipeline");
+            if (opipe.id) {
+                unsigned v2 = rhi_vk_validation_messages;
+                EXPECT(rhi_frame_begin(NULL) == RHI_OK, "F1 offset frame_begin");
+                EXPECT(rhi_cmd_clear_main(black, 1.0f) == RHI_OK, "F1 offset clear");
+                rhi_cmd_bind_pipeline(opipe); rhi_cmd_bind_vertex_buffer(0, pvb, 0); rhi_cmd_bind_vertex_buffer(1, (RhiBuffer){0}, 0); rhi_cmd_bind_texture(0, art);
+                rhi_cmd_draw(NV, 0);
+                uint32_t off1 = rhi_vk_test_last_absent_offset();
+                EXPECT(rhi_read_pixels(0, 0, W, H, RHI_READ_RGBA8, frame, 0) == RHI_OK, "F1 offset read");
+                EXPECT(rhi_frame_end() == RHI_OK, "F1 offset frame_end");
+                printf("F1 absent stream with a large declared offset: attribute offset used = %u (declared 256), stride %u; validation messages %u\n",
+                       off1, rhi_vk_test_last_stride(1), rhi_vk_validation_messages - v2);
+                EXPECT(off1 == 0, "F1: an attribute on an unbound stream must be fetched at offset 0, not past the dummy (got %u)", off1);
+                EXPECT(rhi_vk_validation_messages == v2, "F1 offset raised %u validation message(s)", rhi_vk_validation_messages - v2);
+            }
         }
         free(frame); free(pos);
         rhi_buffer_destroy(pvb); rhi_buffer_destroy(pib); rhi_texture_destroy(art); rhi_shader_destroy(hs);

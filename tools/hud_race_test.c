@@ -53,6 +53,8 @@ static void fields(void) {
     s.race_phase=HUD_RACE_RUNNING;s.have_race_time=1;s.elapsed_seconds=.1;
     assert(hud_race_text(&s,HR_BANNER,out)&&!strcmp(out,"GO!"));
     s.elapsed_seconds=1;assert(!hud_race_text(&s,HR_BANNER,out));
+    s.notice="OUTRUN WON";assert(hud_race_text(&s,HR_BANNER,out)&&!strcmp(out,"OUTRUN WON")); /* outrun banner */
+    s.notice="";assert(!hud_race_text(&s,HR_BANNER,out));s.notice=NULL;
     s.race_phase=HUD_RACE_FINISHED;s.position=1;s.cars=4;
     assert(hud_race_text(&s,HR_BANNER,out)&&!strcmp(out,"WINNER"));
     s.race_phase=HUD_RACE_FAILED;s.engine_failed=1;

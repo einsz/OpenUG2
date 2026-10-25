@@ -334,6 +334,60 @@ static void parallel_lane_file(const char *root) {
     FILE *f=fopen(file,"wb");assert(f);assert(fwrite(bytes,1,SIZE,f)==SIZE);assert(!fclose(f));
 }
 
+static void lane_heights(const char *root,float along,float across,float base) {
+    char file[512];snprintf(file,sizeof file,"%s/ROUTESTEST/Routes1F.bin",root);
+    FILE *f=fopen(file,"r+b");assert(f);assert(!fseek(f,0,SEEK_END));long size=ftell(f);
+    unsigned char *data=malloc((size_t)size);assert(data);rewind(f);assert(fread(data,1,(size_t)size,f)==(size_t)size);
+    for(long at=24;at<size;) {
+        unsigned count=(unsigned)data[at+44]|(unsigned)data[at+45]<<8;
+        for(unsigned j=0;j<count;j++) {
+            unsigned char *p=data+at+128+56*j;float x,y;memcpy(&x,p+4,4);memcpy(&y,p+8,4);
+            int16_t z=(int16_t)lroundf(8*(along*x+across*y+base));
+            p[22]=(unsigned char)z;p[23]=(unsigned char)((uint16_t)z>>8);
+        }
+        at+=140+56*count;
+    }
+    rewind(f);assert(fwrite(data,1,(size_t)size,f)==(size_t)size);free(data);assert(!fclose(f));
+}
+
+/* Prefer the physically supported route whose authored height matches the
+   grid's deck over a closer XY chain authored for an unreachable upper road. */
+static void authored_layer_test(const char *root) {
+    for(int below=0;below<2;below++) {
+    float base=below?-12.25f:0;
+    parallel_lane_file(root);lane_heights(root,0,-.5f,base+10);
+    float lower[]={-50,-25,0,0,0,110,-25,0,0,0,110,25,0,0,0,-50,25,0,0,0};
+    for(int k=0;k<4;k++)lower[5*k+2]=base;
+    float upper[20];memcpy(upper,lower,sizeof upper);for(int k=0;k<4;k++)upper[5*k+2]=base+10;
+    uint16_t idx[]={0,1,2,0,2,3};
+    N2Mesh meshes[]={{.verts=lower,.cat=N2_ROAD},{.verts=upper,.cat=N2_ROAD}};
+    for(int k=0;k<2;k++){meshes[k].nverts=4;meshes[k].idx=idx;meshes[k].nidx=6;}
+    N2Scene scene={meshes,2,2};float bounds[][4]={{-50,-25,110,25},{-50,-25,110,25}};
+    WGroundGrid grid={0};assert(world_ground_grid_build(&grid,&scene,bounds));world_ground_grid_activate(&grid);
+    phys_wall_index_build(NULL,NULL,0);AiTrafficWorld world={.scene=&scene};
+    AiCar cars[N_RACE_AI]={0},player={.pos={-30,0,base},.half_length=2,.half_width=.85f,.height=1.5f};
+    for(int k=0;k<N_RACE_AI;k++)cars[k]=player;
+    AiRace drivers[N_RACE_AI]={0};N2Path path={0};
+    WEvent event={.id=1,.reg="TEST",.npoly=2,.poly={{-20,0},{60,0}},.info={.kind=N2_RACE_SPRINT}};
+    WRace seed={.active=1,.maxlaps=1,.ngate=3,.ngrid=3,
+        .gate={{.x=-20,.dx=1,.half=25},{.x=20,.dx=1,.half=25},{.x=60,.y=20,.dx=1,.half=25}},
+        .grid={{-10,0,base},{-4,0,base},{2,0,base}}};
+    assert(ai_race_prepare(root,&event,&seed,&world,&path,cars,drivers,&player)==3);
+    assert(fabsf(path.xy[1]-20)<.01f);
+    for(int tick=0;tick<3000;tick++) {
+        AiCar *contacts[N_RACE_AI];int done=0;
+        for(int k=0;k<3;k++) {
+            ai_race_step(cars,drivers,k,3,0,&world,NULL);contacts[k]=cars+k;
+            assert(!drivers[k].drive.failed && fabsf(cars[k].pos[2]-base)<.01f);done+=drivers[k].progress.finished;
+        }
+        ai_car_contacts(contacts,3,&world,NULL);if(done==3)break;
+    }
+    for(int k=0;k<3;k++)assert(drivers[k].progress.finished && cars[k].ride.contact_mask==15);
+    free(path.xy);world_ground_grid_activate(NULL);world_ground_grid_free(&grid);
+    }
+    puts("race authored height: matching deck preferred, including negative heights PASS");
+}
+
 /* One isolated distance spike must not force a source lane through a divider.
    The same geometry in reverse record order must retain the safe lane too. */
 static void progress_outlier_course_test(const char *root,int reverse) {
@@ -506,10 +560,95 @@ static void branch_terrain_test(const char *root) {
     free(path.xy);phys_wall_index_build(NULL,NULL,0);world_ground_grid_activate(NULL);world_ground_grid_free(&grid);
 }
 
+/* One lane chain ends where the next begins 10 m aside. The decoded course
+   must change lanes gradually, never through the wall beside the first chain. */
+static void sidestep_course_test(const char *root) {
+    segmented_file(root,0);
+    const float chains[2][4][3]={{{-40,0,0},{-20,0,20},{0,0,40},{20,0,60}},{{25,10,65},{45,10,85},{65,10,105},{85,10,125}}};
+    enum { N=4, RECORD=140+56*N, SIZE=16+2*RECORD };
+    unsigned char bytes[SIZE]={0};uint32_t heads[]={0x80034120,SIZE-8,0x34121,SIZE-16};memcpy(bytes,heads,16);
+    for(int lane=0;lane<2;lane++) {
+        unsigned char *record=bytes+24+lane*RECORD;uint32_t pair=N|(N<<16);memcpy(record+44,&pair,4);
+        for(int k=0;k<N;k++) {
+            memcpy(record+128+k*56+4,chains[lane][k],sizeof chains[lane][k]);
+            uint16_t widths[]={32*256,32*256};memcpy(record+128+k*56+24,widths,4);
+        }
+    }
+    char file[512];snprintf(file,sizeof file,"%s/ROUTESTEST/Routes1F.bin",root);
+    FILE *f=fopen(file,"wb");assert(f);assert(fwrite(bytes,1,SIZE,f)==SIZE);assert(!fclose(f));
+    for(int walled=0;walled<2;walled++) {
+        float floor[]={-60,-25,0,0,0,110,-25,0,0,0,110,25,0,0,0,-60,25,0,0,0};
+        float wall[]={-60,3,0,0,0,10,3,0,0,0,10,3,4,0,0,-60,3,4,0,0};
+        uint16_t idx[]={0,1,2,0,2,3};
+        N2Mesh meshes[]={{.verts=floor,.cat=N2_ROAD},{.verts=wall,.cat=N2_OTHER,.scen=N2_SC_WALL}};
+        for(int k=0;k<2;k++){meshes[k].nverts=4;meshes[k].idx=idx;meshes[k].nidx=6;}
+        N2Scene scene={meshes,1+walled,1+walled};float bounds[][4]={{-60,-25,110,25},{-60,3,10,3}};
+        WGroundGrid grid={0};assert(world_ground_grid_build(&grid,&scene,bounds));world_ground_grid_activate(&grid);
+        float obs[2][4],oz[2][2];int src[2],n=phys_collect_walls(&scene,obs,src,oz,2);phys_wall_index_build(obs,oz,n);
+        AiTrafficWorld world={.scene=&scene,.obst=obs,.obstz=oz,.obstsrc=src,.nobst=n};
+        AiCar cars[N_RACE_AI]={0};AiRace drivers[N_RACE_AI]={0};
+        for(int k=0;k<N_RACE_AI;k++)cars[k]=(AiCar){.half_length=2,.half_width=.85f,.height=1.5f};
+        AiCar player={.pos={-36,-1,0},.half_length=2,.half_width=.85f,.height=1.5f};
+        WEvent event={.id=1,.reg="TEST",.npoly=2,.poly={{-40,0},{85,10}},.info={.kind=N2_RACE_SPRINT}};
+        WRace seed={.active=1,.maxlaps=1,.ngate=3,.ngrid=3,.gate={{.x=-30,.dx=1,.half=25},{.x=20,.dx=1,.half=25},{.x=80,.y=10,.dx=1,.half=25}},
+            .grid={{-30,-2,0},{-24,1,0},{-18,-2,0}}};
+        N2Path path={0};int count=ai_race_prepare(root,&event,&seed,&world,&path,cars,drivers,&player);
+        assert(count==3);
+        float sharpest=0;
+        for(int j=1;j+1<path.n;j++) {
+            float ux=path.xy[2*j]-path.xy[2*j-2],uy=path.xy[2*j+1]-path.xy[2*j-1];
+            float vx=path.xy[2*j+2]-path.xy[2*j],vy=path.xy[2*j+3]-path.xy[2*j+1];
+            sharpest=fmaxf(sharpest,fabsf(atan2f(ux*vy-uy*vx,ux*vx+uy*vy)));
+            /* The car body never straddles the wall line. */
+            if(walled && path.xy[2*j]<10+2)assert(path.xy[2*j+1]<3-.85f || path.xy[2*j+1]>3+.85f);
+        }
+        fprintf(stderr,"sidestep course walled%d nodes%d sharpest%.1fdeg\n",walled,path.n,sharpest*57.2958f);
+        assert(sharpest<.35f);
+        for(int tick=0;tick<3000;tick++) {
+            AiCar *contacts[N_RACE_AI];int done=0;
+            for(int k=0;k<count;k++){ai_race_step(cars,drivers,k,count,0,&world,NULL);contacts[k]=cars+k;done+=drivers[k].progress.finished;assert(!drivers[k].drive.failed);}
+            ai_car_contacts(contacts,count,&world,NULL);if(done==count)break;
+        }
+        for(int k=0;k<count;k++)assert(drivers[k].progress.finished && cars[k].ride.contact_mask==15);
+        free(path.xy);phys_wall_index_build(NULL,NULL,0);world_ground_grid_activate(NULL);world_ground_grid_free(&grid);
+    }
+}
+
+/* A gore median begins just past the grid. The other lane is cheaper and its
+   entrance is clear beside the grid, but the field cannot reach it. */
+static void gore_entrance_test(const char *root) {
+    parallel_lane_file(root);lane_heights(root,0,.05f,0);
+    float floor[]={-50,-25,0,0,0,110,-25,0,0,0,110,25,0,0,0,-50,25,0,0,0};
+    float median[]={-2,10,0,0,0,110,10,0,0,0,110,10,4,0,0,-2,10,4,0,0};
+    uint16_t idx[]={0,1,2,0,2,3};
+    N2Mesh meshes[]={{.verts=floor,.cat=N2_ROAD},{.verts=median,.cat=N2_OTHER,.scen=N2_SC_WALL}};
+    for(int k=0;k<2;k++){meshes[k].nverts=4;meshes[k].idx=idx;meshes[k].nidx=6;}
+    N2Scene scene={meshes,2,2};float bounds[][4]={{-50,-25,110,25},{-2,10,110,10}};
+    WGroundGrid grid={0};assert(world_ground_grid_build(&grid,&scene,bounds));world_ground_grid_activate(&grid);
+    float obs[2][4],oz[2][2];int src[2],n=phys_collect_walls(&scene,obs,src,oz,2);phys_wall_index_build(obs,oz,n);
+    AiTrafficWorld world={.scene=&scene,.obst=obs,.obstz=oz,.obstsrc=src,.nobst=n};
+    AiCar cars[N_RACE_AI]={0};AiRace drivers[N_RACE_AI]={0};
+    for(int k=0;k<N_RACE_AI;k++)cars[k]=(AiCar){.half_length=2,.half_width=.85f,.height=1.5f};
+    AiCar player={.pos={-16,20,0},.half_length=2,.half_width=.85f,.height=1.5f};
+    WEvent event={.id=1,.reg="TEST",.npoly=2,.poly={{-20,0},{60,0}},.info={.kind=N2_RACE_SPRINT}};
+    WRace seed={.active=1,.maxlaps=1,.ngate=3,.ngrid=3,.gate={{.x=-20,.dx=1,.half=25},{.x=20,.dx=1,.half=25},{.x=60,.dx=1,.half=25}},.grid={{-10,16,0},{-10,24,0},{-4,20,0}}};
+    N2Path path={0};int count=ai_race_prepare(root,&event,&seed,&world,&path,cars,drivers,&player);
+    fprintf(stderr,"gore entrance count%d course y%.2f\n",count,path.n?path.xy[1]:NAN);
+    assert(count==3 && fabsf(path.xy[1]-20)<.01f);
+    for(int tick=0;tick<3000;tick++) {
+        AiCar *contacts[N_RACE_AI];int done=0;
+        for(int k=0;k<count;k++){ai_race_step(cars,drivers,k,count,0,&world,NULL);contacts[k]=cars+k;done+=drivers[k].progress.finished;assert(!drivers[k].drive.failed);}
+        ai_car_contacts(contacts,count,&world,NULL);if(done==count)break;
+    }
+    for(int k=0;k<count;k++)assert(drivers[k].progress.finished && cars[k].ride.contact_mask==15);
+    free(path.xy);phys_wall_index_build(NULL,NULL,0);world_ground_grid_activate(NULL);world_ground_grid_free(&grid);
+}
+
 /* Clear upper-deck endpoints cannot join through a lower floor.
    The side bridge is continuous; all grid cars must physically finish there. */
 static void connection_layer_test(const char *root,int wide_gap) {
     parallel_lane_file(root);
+    lane_heights(root,0,0,10);
     float left[]={-50,-25,10,0,0,26.2f,-25,10,0,0,26.2f,25,10,0,0,-50,25,10,0,0};
     float right[]={29.2f,-25,10,0,0,110,-25,10,0,0,110,25,10,0,0,29.2f,25,10,0,0};
     float lower[]={-50,-25,0,0,0,110,-25,0,0,0,110,25,0,0,0,-50,25,0,0,0};
@@ -544,6 +683,7 @@ static void connection_layer_test(const char *root,int wide_gap) {
    The lower road's wall must not displace the reachable upper-deck route. */
 static void route_height_test(const char *root) {
     parallel_lane_file(root);
+    lane_heights(root,.3f,0,6);
     float ramp[]={-50,-25,-9,0,0,40,-25,18,0,0,40,25,18,0,0,-50,25,-9,0,0};
     float upper[]={40,-3,18,0,0,110,-3,39,0,0,110,3,39,0,0,40,3,18,0,0};
     float side[]={40,15,18,0,0,110,15,39,0,0,110,25,39,0,0,40,25,18,0,0};
@@ -578,6 +718,7 @@ static void route_height_test(const char *root) {
    The lower deck hides an upper-deck wall from a wrongly seeded planner. */
 static void grid_layer_loop_test(const char *root) {
     loop_file(root,2);
+    lane_heights(root,.3f,0,0);
     float upper[]={-20,-120,-6,0,0,220,-120,66,0,0,220,120,66,0,0,-20,120,-6,0,0};
     float lower[]={-20,-120,0,0,0,220,-120,0,0,0,220,120,0,0,0,-20,120,0,0,0};
     float wall[]={140,-5,40,0,0,140,5,40,0,0,140,5,46,0,0,140,-5,46,0,0};
@@ -912,6 +1053,66 @@ static void bend_rival_test(void) {
     puts("race bend rivals: faster rival ignored, slower rival passed without side reversals PASS");
 }
 
+/* Losing the passed rival must not cancel an unfinished, supported lane change. */
+static void held_lane_test(void) {
+    float floor[]={-20,-20,0,0,0,600,-20,0,0,0,600,20,0,0,0,-20,20,0,0,0};
+    uint16_t idx[]={0,1,2,0,2,3};N2Mesh mesh={.verts=floor,.nverts=4,.idx=idx,.nidx=6,.cat=N2_ROAD};
+    N2Scene scene={&mesh,1,1};WGroundGrid grid={0};float bounds[][4]={{-20,-20,600,20}};
+    assert(world_ground_grid_build(&grid,&scene,bounds));world_ground_grid_activate(&grid);
+    phys_wall_index_build(NULL,NULL,0);
+    float xy[]={0,0,100,0,200,0,300,0,400,0,500,0,600,0};N2Path path={.xy=xy,.n=7};
+    AiTrafficWorld world={.scene=&scene,.race_pace=110};
+    for(int narrowing=0;narrowing<2;narrowing++)
+    for(int direction=-1;direction<=1;direction+=2)for(int side=-1;side<=1;side+=2) {
+        AiCar cars[N_RACE_AI]={0};AiRace drivers[N_RACE_AI]={0};
+        float heading=(direction>0?0:3.1415926536f)+direction*side*.06f;
+        cars[0]=(AiCar){.pos={direction>0?5:505,side*1.1f,0},.head=heading,
+            .spd=90/3.6f/PHYS_TICKRATE,.half_length=2,.half_width=.85f,.height=1.5f};
+        drivers[0]=(AiRace){.offset=side*2.35f,.pass_side=side,
+            .progress={.active=1,.kind=N2_RACE_SPRINT,.ngate=2,.maxlaps=1,
+                .gate={{.x=direction>0?0:510,.dx=direction,.half=10},
+                    {.x=direction>0?500:10,.dx=direction,.half=10}}}};
+        assert(ai_drive_init(&drivers[0].drive,&path,cars[0].pos,heading));
+        /* The passed rival has left: finish entering the safe selected lane,
+           including offsets between the planner's fixed lane samples. */
+        for(int tick=0;tick<600;tick++) {
+            ai_race_step(cars,drivers,0,1,0,&world,NULL);
+            assert(fabsf(drivers[0].offset-side*2.35f)<.001f);
+            assert(!drivers[0].blocked && !drivers[0].drive.failed && cars[0].ride.contact_mask==15);
+        }
+        assert(fabsf(cars[0].pos[1]-side*2.35f)<.5f);
+        if(narrowing) {
+            /* A taper ahead makes this lane unsupported. Leave it before
+               reaching the narrow road, keeping all four wheels supported. */
+            float taper[40],a=cars[0].pos[0]+direction*20,b=cars[0].pos[0]+direction*60;
+            float x[]={-20,fminf(a,b),fmaxf(a,b),600};
+            uint16_t strip[]={0,1,5,0,5,4,1,2,6,1,6,5,2,3,7,2,7,6};
+            for(int v=0;v<8;v++) {
+                int near=v%4<2;float width=(near==(direction>0))?20:2;
+                taper[5*v]=x[v%4];taper[5*v+1]=(v<4?-1:1)*width;
+                taper[5*v+2]=taper[5*v+3]=taper[5*v+4]=0;
+            }
+            mesh.verts=taper;mesh.nverts=8;mesh.idx=strip;mesh.nidx=18;cars[0].t=0;
+            for(int tick=0;tick<600;tick++) {
+                ai_race_step(cars,drivers,0,1,0,&world,NULL);
+                assert(!drivers[0].drive.failed && cars[0].ride.contact_mask==15);
+            }
+            assert(fabsf(drivers[0].offset)<.001f && fabsf(cars[0].pos[1])<.5f);
+            mesh.verts=floor;mesh.nverts=4;mesh.idx=idx;mesh.nidx=6;
+            continue;
+        }
+        /* Holding a lane must still yield it to a stopped body ahead. */
+        cars[1]=(AiCar){.pos={cars[0].pos[0]+direction*35,side*2.35f,0},
+            .head=direction>0?0:3.1415926536f,.half_length=2,.half_width=.85f,.height=1.5f};
+        cars[0].t=0;
+        ai_race_step(cars,drivers,0,1,0,&world,cars+1);
+        assert(!drivers[0].blocked && !drivers[0].drive.failed);
+        assert(fabsf(drivers[0].offset-side*2.35f)>1);
+    }
+    world_ground_grid_activate(NULL);world_ground_grid_free(&grid);
+    puts("race held lane: unfinished passes retain their safe lane; occupied or unsupported lanes replan PASS");
+}
+
 /* A narrow road still has room to widen a pass around a swaying slower car. */
 static void narrow_passing_test(void) {
     float floor[]={-20,-3.9f,0,0,0,600,-3.9f,0,0,0,600,3.9f,0,0,0,-20,3.9f,0,0,0};
@@ -921,7 +1122,7 @@ static void narrow_passing_test(void) {
     phys_wall_index_build(NULL,NULL,0);
     float xy[]={0,0,100,0,200,0,300,0,400,0,500,0,600,0};N2Path path={.xy=xy,.n=7};
     AiTrafficWorld world={.scene=&scene,.race_pace=110};
-    for(int direction=-1;direction<=1;direction+=2)for(int side=-1;side<=1;side++) {
+    for(int role=0;role<3;role++)for(int direction=-1;direction<=1;direction+=2)for(int side=-1;side<=1;side++) {
         AiCar cars[N_RACE_AI]={0};AiRace drivers[N_RACE_AI]={0};
         float heading=direction>0?0:3.1415926536f;
         cars[0]=(AiCar){.pos={direction>0?5:505,0,0},.head=heading,.spd=100/3.6f/PHYS_TICKRATE,
@@ -933,10 +1134,12 @@ static void narrow_passing_test(void) {
                 .gate={{.x=direction>0?0:510,.dx=direction,.half=10},
                     {.x=direction>0?500:10,.dx=direction,.half=10}}}};
         assert(ai_drive_init(&drivers[0].drive,&path,cars[0].pos,heading));
+        AiTraffic ambient_route={.present=1};
+        world.ambient=role==2?cars+1:NULL;world.ambient_routes=role==2?&ambient_route:NULL;world.ambient_count=role==2;
         float previous=drivers[0].offset;int flips=0,passed=0;
         for(int tick=0;tick<3000 && !drivers[0].progress.finished;tick++) {
             cars[1].pos[0]+=direction*cars[1].spd;cars[1].pos[1]=.3f*sinf(tick*.05f);
-            ai_race_step(cars,drivers,0,2,0,&world,NULL);
+            ai_race_step(cars,drivers,0,role?1:2,0,&world,role==1?cars+1:NULL);
             if(drivers[0].offset*previous<-.1f && PHYS_KMH(cars[0].spd)>30)flips++;
             previous=drivers[0].offset;
             if(drivers[0].drive.failed || phys_ai_overlap(cars,cars+1) || cars[0].ride.contact_mask!=15)
@@ -948,28 +1151,30 @@ static void narrow_passing_test(void) {
             for(int w=0;w<4;w++)assert(cars[0].support.valid[w]);
             passed|=direction*(cars[0].pos[0]-cars[1].pos[0])>10;
         }
-        fprintf(stderr,"narrow pass direction%d side%d: flips%d passed%d finished%d\n",
-            direction,side,flips,passed,drivers[0].progress.finished);
+        fprintf(stderr,"narrow pass role%d direction%d side%d: flips%d passed%d finished%d\n",
+            role,direction,side,flips,passed,drivers[0].progress.finished);
         assert(passed && !flips && drivers[0].progress.finished);
     }
+    world.ambient=NULL;world.ambient_routes=NULL;world.ambient_count=0;
     /* Entry commitment must not hide oncoming or stopped bodies in any role. */
-    for(int role=0;role<4;role++) {
+    for(int role=0;role<6;role++) {
+        int actor=role%3,stopped=role>=3;
         AiCar cars[N_RACE_AI]={0};AiRace drivers[N_RACE_AI]={0};AiTraffic route={.present=1};
         cars[0]=(AiCar){.pos={5,0,0},.head=.05f,.spd=100/3.6f/PHYS_TICKRATE,
             .half_length=2,.half_width=.85f,.height=1.5f};
-        cars[1]=(AiCar){.pos={55,2.05f,0},.head=role==3?0:3.1415926536f,
-            .spd=role==3?0:100/3.6f/PHYS_TICKRATE,.half_length=2,.half_width=.85f,.height=1.5f};
+        cars[1]=(AiCar){.pos={55,2.05f,0},.head=stopped?0:3.1415926536f,
+            .spd=stopped?0:100/3.6f/PHYS_TICKRATE,.half_length=2,.half_width=.85f,.height=1.5f};
         drivers[0]=(AiRace){.offset=2.05f,.pass_side=1,
             .progress={.active=1,.kind=N2_RACE_SPRINT,.ngate=2,.maxlaps=1,
                 .gate={{.dx=1,.half=10},{.x=500,.dx=1,.half=10}}}};
         assert(ai_drive_init(&drivers[0].drive,&path,cars[0].pos,cars[0].head));
         AiTrafficWorld blocked_world={.scene=&scene,.race_pace=110};
-        if(role==2){blocked_world.ambient=cars+1;blocked_world.ambient_routes=&route;blocked_world.ambient_count=1;}
-        ai_race_step(cars,drivers,0,role==1 || role==2?1:2,0,&blocked_world,role==1?cars+1:NULL);
+        if(actor==2){blocked_world.ambient=cars+1;blocked_world.ambient_routes=&route;blocked_world.ambient_count=1;}
+        ai_race_step(cars,drivers,0,actor?1:2,0,&blocked_world,actor==1?cars+1:NULL);
         assert(!drivers[0].drive.failed && drivers[0].offset<=0);
     }
     world_ground_grid_activate(NULL);world_ground_grid_free(&grid);
-    puts("race narrow passing: slower swaying rival passed on either side without reversals PASS");
+    puts("race narrow passing: swaying racer/player/traffic passed in both directions without reversals PASS");
 }
 
 /* A reviewed guardrail replacement (model rule with a height) must include
@@ -1096,10 +1301,273 @@ static void starting_grid_test(const char *root) {
     puts("source starting grids: four abreast, two by two, three-column subset, URL and rotated headings PASS");
 }
 
+/* An apparently clear destination lane is not a clear merge: the body
+   alongside us occupies the intermediate lane during the transition. */
+static void adjacent_merge_test(void) {
+    float floor[]={-50,-20,0,0,0,500,-20,0,0,0,500,20,0,0,0,-50,20,0,0,0};
+    uint16_t idx[]={0,1,2,0,2,3};N2Mesh mesh={.verts=floor,.nverts=4,.idx=idx,.nidx=6,.cat=N2_ROAD};
+    N2Scene scene={&mesh,1,1};WGroundGrid grid={0};float bounds[][4]={{-50,-20,500,20}};
+    assert(world_ground_grid_build(&grid,&scene,bounds));world_ground_grid_activate(&grid);
+    phys_wall_index_build(NULL,NULL,0);AiTrafficWorld world={.scene=&scene,.race_pace=100};
+    float xy[]={0,0,100,0,200,0,300,0,400,0};N2Path path={.xy=xy,.n=5};
+    {
+        AiCar cars[N_RACE_AI]={0};AiRace drivers[N_RACE_AI]={0};
+        cars[0]=(AiCar){.pos={20,6,0},.spd=100/3.6f/PHYS_TICKRATE,.t=1,
+            .half_length=2,.half_width=.85f,.height=1.5f};
+        drivers[0]=(AiRace){.blocked=1,.offset=6,.progress={.active=1,.lap=1,.maxlaps=1,.ngate=2,
+            .gate={{.dx=1,.half=10},{.x=390,.dx=1,.half=10}}}};
+        assert(ai_drive_init(&drivers[0].drive,&path,cars[0].pos,0));
+        ai_race_step(cars,drivers,0,1,0,&world,NULL);
+        fprintf(stderr,"blocked lane steering%.4f braking%d\n",cars[0].steer,cars[0].braking);
+        assert(fabsf(cars[0].steer)<.001f && cars[0].braking);
+    }
+    /* Centimetres of correction within a clear held lane are not a new
+       merge through a faster car in the neighbouring lane. */
+    for(int side=-1;side<=1;side+=2) {
+        AiCar cars[N_RACE_AI]={0};AiRace drivers[N_RACE_AI]={0};
+        cars[0]=(AiCar){.pos={20,.01f*side,0},.spd=100/3.6f/PHYS_TICKRATE,
+            .half_length=2,.half_width=.85f,.height=1.5f};
+        cars[1]=cars[0];cars[1].pos[0]-=10;cars[1].pos[1]=-1.95f*side;cars[1].spd=140/3.6f/PHYS_TICKRATE;
+        drivers[0]=(AiRace){.progress={.active=1,.lap=1,.maxlaps=1,.ngate=2,
+            .gate={{.dx=1,.half=10},{.x=390,.dx=1,.half=10}}}};
+        assert(ai_drive_init(&drivers[0].drive,&path,cars[0].pos,0));
+        ai_race_step(cars,drivers,0,2,0,&world,NULL);
+        fprintf(stderr,"held lane with rear side%d offset%.3f\n",side,drivers[0].offset);
+        assert(fabsf(drivers[0].offset)<.001f && !drivers[0].blocked);
+    }
+    for(int rear=0;rear<2;rear++)for(int side=-1;side<=1;side+=2) {
+        AiCar cars[N_RACE_AI]={0};AiRace drivers[N_RACE_AI]={0};
+        cars[0]=(AiCar){.pos={20,6*side,0},.spd=100/3.6f/PHYS_TICKRATE,
+            .half_length=2,.half_width=.85f,.height=1.5f};
+        cars[1]=cars[0];cars[1].pos[1]=2*side;
+        if(rear){cars[1].pos[0]-=10;cars[1].spd=140/3.6f/PHYS_TICKRATE;}
+        drivers[0]=(AiRace){.offset=-2*side,.progress={.active=1,.lap=1,.maxlaps=1,.ngate=2,
+            .gate={{.dx=1,.half=10},{.x=390,.dx=1,.half=10}}}};
+        assert(ai_drive_init(&drivers[0].drive,&path,cars[0].pos,0));
+        int overlap=0;
+        for(int tick=0;tick<120;tick++) {
+            ai_race_step(cars,drivers,0,2,0,&world,NULL);
+            overlap+=phys_ai_overlap(cars,cars+1);cars[1].pos[0]+=cars[1].spd;
+        }
+        fprintf(stderr,"adjacent merge side%d rear%d overlap%d\n",side,rear,overlap);assert(!overlap && !drivers[0].drive.failed);
+    }
+    world_ground_grid_activate(NULL);world_ground_grid_free(&grid);
+}
+
+/* A fixed lane crossing a source vertex must not jump the steering target
+   when the raw segment normal changes. Both mirrored turns are covered. */
+static void lane_vertex_test(void) {
+    float floor[]={-100,-100,0,0,0,200,-100,0,0,0,200,100,0,0,0,-100,100,0,0,0};
+    uint16_t idx[]={0,1,2,0,2,3};N2Mesh mesh={.verts=floor,.nverts=4,.idx=idx,.nidx=6,.cat=N2_ROAD};
+    N2Scene scene={&mesh,1,1};WGroundGrid grid={0};float bounds[][4]={{-100,-100,200,100}};
+    assert(world_ground_grid_build(&grid,&scene,bounds));world_ground_grid_activate(&grid);
+    phys_wall_index_build(NULL,NULL,0);AiTrafficWorld world={.scene=&scene,.race_pace=60};
+    for(int side=-1;side<=1;side+=2) {
+        float xy[]={-40,0,0,0,20,0,40,10*side,80,10*side};N2Path path={.xy=xy,.n=5};
+        float previous=0,jump=0;
+        for(int sample=0;sample<=500;sample++) {
+            AiCar cars[N_RACE_AI]={0};AiRace drivers[N_RACE_AI]={0};
+            cars[0]=(AiCar){.pos={10+sample*.01f,3*side,0},.spd=10/PHYS_TICKRATE,.t=1,
+                .half_length=2,.half_width=.85f,.height=1.5f};
+            drivers[0]=(AiRace){.offset=3*side,.progress={.active=1,.lap=1,.maxlaps=1,.ngate=2,
+                .gate={{.dx=1,.half=10},{.x=75,.dx=1,.half=10}}}};
+            assert(ai_drive_init(&drivers[0].drive,&path,cars[0].pos,0));
+            ai_race_step(cars,drivers,0,1,0,&world,NULL);
+            if(sample)jump=fmaxf(jump,fabsf(cars[0].steer-previous));previous=cars[0].steer;
+        }
+        fprintf(stderr,"lane vertex side%d steering-step%.5f\n",side,jump);assert(jump<.01f);
+    }
+    world_ground_grid_activate(NULL);world_ground_grid_free(&grid);
+}
+
+/* A moving leader at a steady course gap must not be treated as a wall.
+   The same geometry with a stopped leader must still command braking. */
+static void moving_gap_test(void) {
+    float floor[]={-50,-50,0,0,0,500,-50,0,0,0,500,50,0,0,0,-50,50,0,0,0};
+    uint16_t idx[]={0,1,2,0,2,3};N2Mesh mesh={.verts=floor,.nverts=4,.idx=idx,.nidx=6,.cat=N2_ROAD};
+    N2Scene scene={&mesh,1,1};WGroundGrid grid={0};float bounds[][4]={{-50,-50,500,50}};
+    assert(world_ground_grid_build(&grid,&scene,bounds));world_ground_grid_activate(&grid);
+    phys_wall_index_build(NULL,NULL,0);
+    float xy[]={0,0,100,0,200,0,300,0,400,0};N2Path path={.xy=xy,.n=5};
+    AiTrafficWorld world={.scene=&scene,.race_pace=100};
+    for(int moving=0;moving<2;moving++) {
+        AiCar cars[N_RACE_AI]={0};AiRace drivers[N_RACE_AI]={0};
+        cars[0]=(AiCar){.pos={20,0,0},.spd=60/3.6f/PHYS_TICKRATE,.t=1,
+            .half_length=2,.half_width=.85f,.height=1.5f};
+        cars[1]=cars[0];cars[1].pos[0]+=12;cars[1].spd=moving?cars[0].spd:0;
+        drivers[0].progress=(WRace){.active=1,.lap=1,.maxlaps=1,.ngate=2,
+            .gate={{.dx=1,.half=10},{.x=390,.dx=1,.half=10}}};
+        assert(ai_drive_init(&drivers[0].drive,&path,cars[0].pos,0));
+        ai_race_step(cars,drivers,0,2,0,&world,NULL);
+        fprintf(stderr,"course gap moving%d target%.2f\n",moving,PHYS_KMH(cars[0].target_speed));
+        if(moving)assert(PHYS_KMH(cars[0].target_speed)>=50);
+        else assert(cars[0].braking && PHYS_KMH(cars[0].target_speed)<50);
+    }
+    /* A dense route must still reveal stopped traffic inside braking
+       distance when weak brakes need more than two seconds of preview. */
+    {
+        float dense[802];N2Path straight={.xy=dense,.n=401};
+        for(int i=0;i<=400;i++){dense[2*i]=(float)i;dense[2*i+1]=0;}
+        AiCar cars[N_RACE_AI]={0};AiRace drivers[N_RACE_AI]={0};
+        cars[0]=(AiCar){.pos={20,0,0},.spd=160/3.6f/PHYS_TICKRATE,.t=1,
+            .half_length=2,.half_width=.85f,.height=1.5f,
+            .vehicle={1,.25f,1,1,1,1}};
+        cars[1]=cars[0];cars[1].pos[0]+=180;cars[1].spd=0;
+        drivers[0].progress=(WRace){.active=1,.lap=1,.maxlaps=1,.ngate=2,
+            .gate={{.dx=1,.half=10},{.x=390,.dx=1,.half=10}}};
+        assert(ai_drive_init(&drivers[0].drive,&straight,cars[0].pos,0));
+        world.race_pace=180;
+        ai_race_step(cars,drivers,0,2,0,&world,NULL);
+        fprintf(stderr,"distant stopped lead target%.2f\n",PHYS_KMH(cars[0].target_speed));
+        assert(cars[0].braking && PHYS_KMH(cars[0].target_speed)<100);
+        world.race_pace=100;
+    }
+    /* A collision spin must turn back toward the initialized route, not
+       accelerate away because a directly rearward target has zero curvature. */
+    for(int side=-1;side<=1;side+=2) {
+        AiCar cars[N_RACE_AI]={0};AiRace drivers[N_RACE_AI]={0};
+        cars[0]=(AiCar){.pos={100,0,0},.spd=40/3.6f/PHYS_TICKRATE,.t=1,
+            .half_length=2,.half_width=.85f,.height=1.5f};
+        drivers[0].progress=(WRace){.active=1,.lap=1,.maxlaps=1,.ngate=2,
+            .gate={{.dx=1,.half=10},{.x=390,.dx=1,.half=10}}};
+        assert(ai_drive_init(&drivers[0].drive,&path,cars[0].pos,0));
+        cars[0].head=side*3.12159265f;
+        ai_race_step(cars,drivers,0,1,0,&world,NULL);
+        fprintf(stderr,"spun racer side%d steering%.3f target%.2f\n",side,cars[0].steer,PHYS_KMH(cars[0].target_speed));
+        assert(cars[0].steer*side<-.1f && PHYS_KMH(cars[0].target_speed)<20 && !drivers[0].drive.failed);
+    }
+    /* The leader is around a bend, outside our straight body ray. */
+    float arc[202];N2Path curve={.xy=arc,.n=101};
+    for(int i=0;i<=100;i++){float a=6.283185307f*i/100;arc[2*i]=40*cosf(a);arc[2*i+1]=40*sinf(a);}
+    arc[200]=arc[0];arc[201]=arc[1];
+    AiCar cars[N_RACE_AI]={0};AiRace drivers[N_RACE_AI]={0};
+    cars[0]=(AiCar){.pos={40,0,0},.head=1.570796327f,.spd=60/3.6f/PHYS_TICKRATE,.t=1,
+        .half_length=2,.half_width=.85f,.height=1.5f};
+    cars[1]=cars[0];cars[1].pos[0]=40*cosf(.4f);cars[1].pos[1]=40*sinf(.4f);
+    cars[1].head+=.4f;cars[1].spd=30/3.6f/PHYS_TICKRATE;
+    drivers[0].progress=(WRace){.active=1,.lap=1,.maxlaps=20,.ngate=2,
+        .gate={{.x=40,.dy=1,.half=10},{.x=-40,.dy=-1,.half=10}}};
+    assert(ai_drive_init(&drivers[0].drive,&curve,cars[0].pos,cars[0].head));
+    ai_race_step(cars,drivers,0,2,1,&world,NULL);
+    fprintf(stderr,"curved gap target%.2f\n",PHYS_KMH(cars[0].target_speed));
+    assert(PHYS_KMH(cars[0].target_speed)<65 && !drivers[0].drive.failed);
+    world_ground_grid_activate(NULL);world_ground_grid_free(&grid);
+}
+
+/* A coarse authored bend must not make clear adjacent lanes crawl as if
+   occupied. Exercise actual steering/braking, support and body separation. */
+static void side_by_side_corner_test(void) {
+    float floor[]={-100,-300,0,0,0,600,-300,0,0,0,600,300,0,0,0,-100,300,0,0,0};
+    uint16_t idx[]={0,1,2,0,2,3};N2Mesh mesh={.verts=floor,.nverts=4,.idx=idx,.nidx=6,.cat=N2_ROAD};
+    N2Scene scene={&mesh,1,1};WGroundGrid grid={0};float bounds[][4]={{-100,-300,600,300}};
+    assert(world_ground_grid_build(&grid,&scene,bounds));world_ground_grid_activate(&grid);
+    phys_wall_index_build(NULL,NULL,0);AiTrafficWorld world={.scene=&scene,.race_pace=110,.race_difficulty=2};
+    for(int side=-1;side<=1;side+=2) {
+        float xy[162];N2Path path={.xy=xy,.n=81};
+        for(int i=0;i<=80;i++) {
+            float s=5.0f*i;
+            xy[2*i]=s<=60?s:60+(s-60)*.8660254f;
+            xy[2*i+1]=s<=60?0:side*(s-60)*.5f;
+        }
+        AiCar cars[N_RACE_AI]={0};AiRace drivers[N_RACE_AI]={0};float lowest=INFINITY;
+        for(int k=0;k<2;k++) {
+            cars[k]=(AiCar){.pos={0,k?2.3f:-2.3f,0},.spd=80/3.6f/PHYS_TICKRATE,
+                .half_length=2,.half_width=.85f,.height=1.5f};
+            drivers[k]=(AiRace){.offset=cars[k].pos[1],.progress={.active=1,.lap=1,.maxlaps=1,.ngate=2,
+                .gate={{.dx=1,.half=20},{.x=300,.dx=1,.half=300}}}};
+            assert(ai_drive_init(&drivers[k].drive,&path,cars[k].pos,0));
+        }
+        int passed[2]={0};
+        for(int tick=0;tick<1200;tick++) {
+            for(int k=0;k<2;k++) {
+                ai_race_step(cars,drivers,k,2,0,&world,NULL);
+                if(cars[k].pos[0]>40 && cars[k].pos[0]<85)lowest=fminf(lowest,PHYS_KMH(cars[k].spd));
+                passed[k]|=cars[k].pos[0]>120;
+                assert(!drivers[k].drive.failed && cars[k].ride.contact_mask==15);
+                assert(fabsf(ai_course_lateral(&path,cars[k].pos)-drivers[k].offset)<3);
+            }
+            assert(!phys_ai_overlap(cars,cars+1));
+            if(passed[0] && passed[1])break;
+        }
+        fprintf(stderr,"side-by-side corner side%d minimum%.2f passed%d/%d\n",side,lowest,passed[0],passed[1]);
+        assert(passed[0] && passed[1] && lowest>40);
+    }
+    world_ground_grid_activate(NULL);world_ground_grid_free(&grid);
+}
+
+/* Steady circular lanes expose a bearing-only controller's persistent
+   understeer. Test both turn directions and physical integration. */
+static void steady_lane_test(void) {
+    float floor[]={-100,-100,0,0,0,100,-100,0,0,0,100,100,0,0,0,-100,100,0,0,0};
+    uint16_t idx[]={0,1,2,0,2,3};N2Mesh mesh={.verts=floor,.nverts=4,.idx=idx,.nidx=6,.cat=N2_ROAD};
+    N2Scene scene={&mesh,1,1};WGroundGrid grid={0};float bounds[][4]={{-100,-100,100,100}};
+    assert(world_ground_grid_build(&grid,&scene,bounds));world_ground_grid_activate(&grid);
+    phys_wall_index_build(NULL,NULL,0);
+    for(int side=-1;side<=1;side+=2) {
+        float xy[202];N2Path path={.xy=xy,.n=101};
+        for(int i=0;i<=100;i++){float a=side*6.283185307f*i/100;xy[2*i]=40*cosf(a);xy[2*i+1]=40*sinf(a);}
+        xy[200]=xy[0];xy[201]=xy[1];
+        AiCar cars[N_RACE_AI]={0};AiRace drivers[N_RACE_AI]={0};
+        cars[0]=(AiCar){.pos={40,0,0},.head=side*1.570796327f,.spd=60/3.6f/PHYS_TICKRATE,
+            .half_length=2,.half_width=.85f,.height=1.5f};
+        drivers[0].progress=(WRace){.active=1,.lap=1,.maxlaps=20,.ngate=2,
+            .gate={{.x=40,.dy=side,.half=10},{.x=-40,.dy=-side,.half=10}}};
+        assert(ai_drive_init(&drivers[0].drive,&path,cars[0].pos,cars[0].head));
+        AiTrafficWorld world={.scene=&scene,.race_pace=60};float error=0;
+        for(int tick=0;tick<1200;tick++) {
+            ai_race_step(cars,drivers,0,1,1,&world,NULL);
+            if(tick>180)error=fmaxf(error,fabsf(hypotf(cars[0].pos[0],cars[0].pos[1])-40));
+            assert(!drivers[0].drive.failed && !drivers[0].blocked && cars[0].ride.contact_mask==15);
+        }
+        fprintf(stderr,"steady lane side%d peak-error%.3f speed%.1f\n",side,error,PHYS_KMH(cars[0].spd));
+        assert(error<1 && PHYS_KMH(cars[0].spd)>55);
+    }
+    world_ground_grid_activate(NULL);world_ground_grid_free(&grid);
+}
+
+/* With pace far above it, a steady 40 m corner is driven close to the
+   chassis corner speed: the margin, not extra caution, sets the speed. */
+static void corner_margin_test(void) {
+    float floor[]={-100,-100,0,0,0,100,-100,0,0,0,100,100,0,0,0,-100,100,0,0,0};
+    uint16_t idx[]={0,1,2,0,2,3};N2Mesh mesh={.verts=floor,.nverts=4,.idx=idx,.nidx=6,.cat=N2_ROAD};
+    N2Scene scene={&mesh,1,1};WGroundGrid grid={0};float bounds[][4]={{-100,-100,100,100}};
+    assert(world_ground_grid_build(&grid,&scene,bounds));world_ground_grid_activate(&grid);
+    phys_wall_index_build(NULL,NULL,0);
+    float corner=PHYS_KMH(phys_vehicle_corner_speed(NULL,40));
+    for(int side=-1;side<=1;side+=2) {
+        float xy[202];N2Path path={.xy=xy,.n=101};
+        for(int i=0;i<=100;i++){float a=side*6.283185307f*i/100;xy[2*i]=40*cosf(a);xy[2*i+1]=40*sinf(a);}
+        xy[200]=xy[0];xy[201]=xy[1];
+        AiCar cars[N_RACE_AI]={0};AiRace drivers[N_RACE_AI]={0};
+        cars[0]=(AiCar){.pos={40,0,0},.head=side*1.570796327f,.spd=40/3.6f/PHYS_TICKRATE,
+            .half_length=2,.half_width=.85f,.height=1.5f};
+        drivers[0].progress=(WRace){.active=1,.lap=1,.maxlaps=20,.ngate=2,
+            .gate={{.x=40,.dy=side,.half=10},{.x=-40,.dy=-side,.half=10}}};
+        assert(ai_drive_init(&drivers[0].drive,&path,cars[0].pos,cars[0].head));
+        AiTrafficWorld world={.scene=&scene,.race_pace=180};float error=0,sum=0;int n=0;
+        for(int tick=0;tick<1200;tick++) {
+            ai_race_step(cars,drivers,0,1,1,&world,NULL);
+            if(tick>600){error=fmaxf(error,fabsf(hypotf(cars[0].pos[0],cars[0].pos[1])-40));sum+=PHYS_KMH(cars[0].spd);n++;}
+            assert(!drivers[0].drive.failed && !drivers[0].blocked && cars[0].ride.contact_mask==15);
+        }
+        fprintf(stderr,"corner margin side%d speed%.1f corner%.1f ratio%.3f peak-error%.3f\n",side,sum/n,corner,sum/n/corner,error);
+        /* Measured: .815 of corner speed with the old .85 margin, .905 with .95. */
+        assert(sum/n>.87f*corner && sum/n<corner && error<2);
+    }
+    world_ground_grid_activate(NULL);world_ground_grid_free(&grid);
+}
+
 int main(void) {
+    corner_margin_test();
+    side_by_side_corner_test();
+    adjacent_merge_test();
+    lane_vertex_test();
+    moving_gap_test();
+    steady_lane_test();
     race_testdrive_test();
     oriented_rival_test();
     bend_rival_test();
+    held_lane_test();
     narrow_passing_test();
     rail_replacement_test();
     descending_deck_test();
@@ -1370,7 +1838,9 @@ int main(void) {
             if(fabsf(cars[0].pos[0]-60)<2.1f)assert(fabsf(cars[0].pos[1])>6.9f);
         }
         assert(shifted_early && drivers[0].progress.finished && !drivers[0].drive.failed);
-        assert(fabsf(cars[0].pos[1])<.5f); /* rejoin after the divider */
+        /* On this wide road the safe passing lane remains valid after the
+           divider. Settle into it rather than forcing a return to centre. */
+        assert(fabsf(cars[0].pos[1]-(reverse?-1:1)*drivers[0].offset)<.5f);
     }
     /* A source-width grid can be on a narrow parallel lane beyond the fixed
        offsets. Only the current offset fits; its fence must remain solid. */
@@ -1504,6 +1974,7 @@ int main(void) {
     /* Uphill samples must stay on the road above a nearby terrain layer.
        A stale endpoint height can select that lower layer and change lanes. */
     loop_file(root,2);
+    lane_heights(root,.12f,0,0);
     float hill[20],under[20];memcpy(hill,floor,sizeof hill);
     for(int k=0;k<4;k++)hill[5*k+2]=hill[5*k]*.12f;
     memcpy(under,hill,sizeof under);for(int k=0;k<4;k++)under[5*k+2]-=1.2f;
@@ -1607,6 +2078,7 @@ int main(void) {
     cars[0]=(AiCar){.pos={20,0,0},.half_length=2,.half_width=1,.height=1.5f};drivers[0]=(AiRace){.progress=connected};
     assert(ai_drive_init(&drivers[0].drive,&path,cars[0].pos,0));
     for(int tick=0;tick<12000 && !drivers[0].progress.finished;tick++)ai_race_step(cars,drivers,0,1,1,&world,NULL);
+    fprintf(stderr,"junction finish%d failed%d blocked%d pos%.2f %.2f segment%d error%.2f speed%.2f\n",drivers[0].progress.finished,drivers[0].drive.failed,drivers[0].blocked,cars[0].pos[0],cars[0].pos[1],drivers[0].drive.segment,drivers[0].drive.error,PHYS_KMH(cars[0].spd));
     assert(drivers[0].progress.finished && !drivers[0].drive.failed && cars[0].ride.contact_mask==15);
     free(circle.xy);free(path.xy);
     snprintf(dir,sizeof dir,"%s/ROUTESTEST/Routes1F.bin",root);assert(!unlink(dir));
@@ -1614,10 +2086,13 @@ int main(void) {
     narrow_course_test(root,0);
     narrow_course_test(root,1);
     source_ai_test(root);
+    authored_layer_test(root);
     progress_outlier_course_test(root,0);
     progress_outlier_course_test(root,1);
     route_height_test(root);
     branch_terrain_test(root);
+    gore_entrance_test(root);
+    sidestep_course_test(root);
     connection_layer_test(root,0);connection_layer_test(root,1);
     grid_layer_loop_test(root);
     snprintf(dir,sizeof dir,"%s/ROUTESTEST/Paths1.bin",root);assert(!unlink(dir));

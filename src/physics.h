@@ -320,7 +320,8 @@ int collide_body_walls_preview(float *pos,float *vel,float heading,const float b
         const N2Scene *scene,const int *src);
 /* World owns prop state; 0 = solid, 1 = new impact, 2 = already fallen.
    The standalone wall solver remains usable without this hook. */
-typedef int (*PhysPropImpactHook)(const N2Scene *scene,int mesh,float inward_speed,
+/* Incoming world velocity is in m/s, before collision response. */
+typedef int (*PhysPropImpactHook)(const N2Scene *scene,int mesh,const float velocity[2],
                                  float nx,float ny);
 extern PhysPropImpactHook g_phys_prop_impact_hook;
 /* World support can hide a foundation below the body's continuous road layer.

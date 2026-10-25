@@ -28,20 +28,50 @@ void world_collision_init(void){(void)world_collision_init_source(WCOLLISION_BUN
 static void grid_build(World *w);
 static void nav_build_adj(World *w);
 
-typedef struct { uint64_t id;float pivot[3],direction[2],angle; } Knockdown;
+typedef struct { uint64_t id;float pivot[3],direction[2],travel[2],angle,offset[3],speed,base,height,width,vz,spark_clock;int debris; } Knockdown;
+static void world_prop_slide(Knockdown *p,float dt,const N2Scene *scene,const float (*walls)[4],const float (*heights)[2],const int *sources,int count);
 /* ponytail: one active city and a linear list of struck panels; a city-owned
    index is needed only if independent worlds or large debris populations appear. */
 static Knockdown *knockdowns;
 static int nknockdowns,knockdown_cap;
 float g_world_prop_impact_kmh=12;
+enum { PROP_SPARK_CAP=64 };
+typedef struct { WorldPropSpark draw;float velocity[3],life,ttl,floor; } PropSpark;
+static PropSpark prop_sparks[PROP_SPARK_CAP];
+static unsigned prop_spark_next;
+static void world_prop_spark_emit(const Knockdown *p,float ground) {
+    for(int i=0;i<2;i++) {
+        unsigned sequence=prop_spark_next++;PropSpark *s=prop_sparks+sequence%PROP_SPARK_CAP;
+        unsigned seed=(unsigned)p->id ^ (sequence*1664525u+1013904223u);
+        float spread=((seed>>8)&255)/255.f-.5f;
+        *s=(PropSpark){.ttl=.16f+.08f*((seed>>16)&255)/255.f,.floor=ground+.025f};s->life=s->ttl;
+        float along=p->height*.5f*(1-sinf(p->angle));
+        s->draw.pos[0]=p->pivot[0]+p->offset[0]+p->direction[0]*along;
+        s->draw.pos[1]=p->pivot[1]+p->offset[1]+p->direction[1]*along;
+        s->draw.pos[2]=s->floor;memcpy(s->draw.tail,s->draw.pos,sizeof s->draw.pos);
+        s->velocity[0]=-p->travel[0]*.7f-p->travel[1]*spread;
+        s->velocity[1]=-p->travel[1]*.7f+p->travel[0]*spread;
+        s->velocity[2]=.6f+.4f*fabsf(spread);
+    }
+}
+int world_prop_sparks(WorldPropSpark *out,int capacity) {
+    if(!out || capacity<=0)return 0;
+    int n=0;for(int i=0;i<PROP_SPARK_CAP && n<capacity;i++)if(prop_sparks[i].life>0) {
+        out[n]=prop_sparks[i].draw;out[n++].alpha=prop_sparks[i].life/prop_sparks[i].ttl;
+    }
+    return n;
+}
 
 static Knockdown *world_prop_find(uint64_t id) {
     for(int k=0;k<nknockdowns;k++)if(knockdowns[k].id==id)return knockdowns+k;
     return NULL;
 }
 
-static int world_prop_impact(const N2Scene *scene,int mesh,float speed,float nx,float ny) {
-    if(!isfinite(speed) || !isfinite(nx) || !isfinite(ny))return 0;
+static int world_prop_impact(const N2Scene *scene,int mesh,const float velocity[2],float nx,float ny) {
+    if(!velocity || !isfinite(velocity[0]) || !isfinite(velocity[1]) || !isfinite(nx) || !isfinite(ny))return 0;
+    float speed=-(velocity[0]*nx+velocity[1]*ny);
+    float length=hypotf(velocity[0],velocity[1]);
+    if(!isfinite(speed) || !isfinite(length))return 0;
     uint64_t id=scene->meshes[mesh].prop_id;
     Knockdown *p=world_prop_find(id);int struck=p==NULL;
     if(struck) {
@@ -87,35 +117,77 @@ static int world_prop_impact(const N2Scene *scene,int mesh,float speed,float nx,
                 (m->verts[5*v]-p->pivot[0])*p->direction[0]+(m->verts[5*v+1]-p->pivot[1])*p->direction[1]);
         }
         p->pivot[2]=lo[2]+depth; /* fallen thickness stays above the original base */
+        p->base=lo[2];p->height=hi[2]-lo[2];p->width=.1f;
+        for(int k=0;k<scene->count;k++)if(scene->meshes[k].prop_id==id) {
+            const N2Mesh *m=scene->meshes+k;
+            for(int v=0;v<m->nverts;v++)p->width=fmaxf(p->width,fabsf(
+                -(m->verts[5*v]-p->pivot[0])*p->direction[1]+(m->verts[5*v+1]-p->pivot[1])*p->direction[0]));
+        }
+        /* Calibrated light-debris response; no retail mass/friction claim.
+           Fence panels keep their existing hinged fall. */
+        if(n2_road_sign(scene->meshes[mesh].sname)) {
+            p->speed=fminf(8,speed*.5f);p->debris=1;
+            /* The panel's face sets its flat resting orientation; vehicle
+               momentum sets travel, including glancing and reverse impacts. */
+            p->travel[0]=velocity[0]/length;p->travel[1]=velocity[1]/length;
+            /* Authored posts can start embedded in the pavement. Release
+               that existing overlap once; later upward steps still stop debris. */
+            float ground;
+            if(world_ground_at(scene,p->pivot[0],p->pivot[1],p->base,&ground) &&
+                ground>p->base && ground-p->base<=.5f)p->offset[2]=ground-p->base;
+        }
     }
     for(int k=0;k<scene->count;k++)if(scene->meshes[k].prop_id==id)scene->meshes[k].prop_broken=1;
     return struck?1:2;
 }
 
-void world_props_step(float dt) {
+void world_props_step_collisions(float dt,const N2Scene *scene,const float (*walls)[4],
+        const float (*heights)[2],const int *sources,int count) {
     if(!isfinite(dt) || dt<=0)return;
+    for(int i=0;i<PROP_SPARK_CAP;i++)if(prop_sparks[i].life>0) {
+        PropSpark *s=prop_sparks+i;s->life=fmaxf(0,s->life-dt);if(!s->life)continue;
+        memcpy(s->draw.tail,s->draw.pos,sizeof s->draw.pos);
+        s->velocity[2]-=9.81f*dt;
+        for(int a=0;a<3;a++)s->draw.pos[a]+=s->velocity[a]*dt;
+        s->draw.pos[2]=fmaxf(s->floor,s->draw.pos[2]);
+    }
     /* ponytail: a kinematic fall, not loose rigid-body debris; replace when
        prop mass/impact parameters and debris-ground contact are decoded. */
-    for(int k=0;k<nknockdowns;k++)knockdowns[k].angle=fminf(1.570796327f,knockdowns[k].angle+dt*5.235987756f);
+    for(int k=0;k<nknockdowns;k++) {
+        knockdowns[k].angle=fminf(1.570796327f,knockdowns[k].angle+dt*5.235987756f);
+        world_prop_slide(knockdowns+k,dt,scene,walls,heights,sources,count);
+    }
+}
+
+void world_props_step(float dt) {
+    world_props_step_collisions(dt,NULL,NULL,NULL,NULL,0);
 }
 
 void world_props_reset(void) {
     free(knockdowns);knockdowns=NULL;nknockdowns=knockdown_cap=0;
+    memset(prop_sparks,0,sizeof prop_sparks);prop_spark_next=0;
 }
 
 int world_prop_update_mesh(N2Mesh *m) {
     if(!m || !m->prop_id)return 0;
     Knockdown *p=world_prop_find(m->prop_id);if(!p)return 0;
-    if(m->prop_angle==p->angle && m->prop_revision)return 0;
+    float offset[3];memcpy(offset,p->offset,sizeof offset);
+    /* A detached sign turns about its centre rather than swinging away from
+       the incoming momentum on an imaginary fixed hinge. */
+    if(p->debris)for(int a=0;a<2;a++)offset[a]-=p->direction[a]*p->height*.5f*sinf(p->angle);
+    if(m->prop_angle==p->angle && !memcmp(m->prop_offset,offset,sizeof offset) && m->prop_revision)return 0;
     float angle=p->angle-m->prop_angle,c=cosf(angle),s=sinf(angle);
     for(int v=0;v<m->nverts;v++) {
         float *x=m->verts+v*5;
+        for(int a=0;a<3;a++)x[a]-=m->prop_offset[a];
         float d=(x[0]-p->pivot[0])*p->direction[0]+(x[1]-p->pivot[1])*p->direction[1];
         float z=x[2]-p->pivot[2],move=d*c+z*s-d;
         x[0]+=p->direction[0]*move;x[1]+=p->direction[1]*move;
         x[2]=p->pivot[2]+z*c-d*s;
+        for(int a=0;a<3;a++)x[a]+=offset[a];
     }
     m->prop_angle=p->angle;m->prop_broken=1;m->prop_revision++;
+    memcpy(m->prop_offset,offset,sizeof offset);
     return 1;
 }
 
@@ -817,6 +889,45 @@ int world_bind_textures(World *w, uint32_t *keys, RhiTexture *texs,
 static WGroundGrid g_empty_grid;
 static const WGroundGrid *g_active_grid = &g_empty_grid;
 #define g_grid (*g_active_grid)
+static void world_prop_slide(Knockdown *p,float dt,const N2Scene *collision_scene,
+        const float (*walls)[4],const float (*heights)[2],const int *sources,int count) {
+    if(p->debris!=1)return;
+    /* Bounded steps keep height queries local and avoid drifting across voids. */
+    int steps=(int)ceilf(fminf(dt,1)*60);dt=fminf(dt,1)/steps;
+    N2Scene scene={(N2Mesh *)g_grid.meshes,g_grid.mesh_count,g_grid.mesh_count};
+    for(int k=0;k<steps;k++) {
+        float next=fmaxf(0,p->speed-4*dt),distance=(p->speed+next)*.5f*dt;
+        float x=p->pivot[0]+p->offset[0]+p->travel[0]*distance;
+        float y=p->pivot[1]+p->offset[1]+p->travel[1]*distance,z=p->base+p->offset[2];
+        float ground=z;
+        if(!scene.meshes || !world_ground_at(&scene,x,y,z+.05f,&ground) || ground-z>.25f) {
+            p->speed=0;break;
+        }
+        if(collision_scene && walls && sources && count>0) {
+            float half=fmaxf(.1f,p->height*.5f);
+            float centre=half*(1-sinf(p->angle));
+            float pose[]={x+p->direction[0]*centre,y+p->direction[1]*centre,ground};
+            float vel[]={p->travel[0],p->travel[1]};
+            float bb[]={-half,-p->width,0,half,p->width,.2f};
+            if(collide_body_walls_preview(pose,vel,atan2f(p->direction[1],p->direction[0]),bb,
+                walls,heights,count,ground+.02f,ground+.2f,collision_scene,sources)) {
+                /* A wall stops translation, not gravity on a detached panel. */
+                next=0;distance=0;ground=z;
+                world_ground_at(&scene,p->pivot[0]+p->offset[0],p->pivot[1]+p->offset[1],z+.05f,&ground);
+            }
+        }
+        p->offset[0]+=p->travel[0]*distance;p->offset[1]+=p->travel[1]*distance;
+        p->vz-=9.81f*dt;
+        p->offset[2]=fmaxf(ground-p->base,p->offset[2]+p->vz*dt);
+        if(p->offset[2]<=ground-p->base)p->vz=0;
+        p->speed=next;
+        if(distance>0 && p->speed>.5f && p->angle>1.3f && p->vz==0) {
+            p->spark_clock+=dt;
+            if(p->spark_clock>=.05f){p->spark_clock=0;world_prop_spark_emit(p,ground);}
+        }
+        if(p->speed==0 && p->vz==0 && p->angle>=1.570796327f)p->debris=2;
+    }
+}
 static int world_wall_buried(const N2Scene *scene,float x,float y,float z,
                              float fx,float fy,float top);
 
@@ -831,6 +942,7 @@ void world_ground_grid_free(WGroundGrid *grid) {
     if (g_active_grid == grid) world_ground_grid_activate(NULL);
     free(grid->start);
     free(grid->list);
+    free(grid->bounds);
     memset(grid, 0, sizeof *grid);
 }
 
@@ -889,8 +1001,19 @@ int world_ground_grid_build(WGroundGrid *grid, const N2Scene *scene,
             }
     }
     free(cursor);
+    next.bounds = (float (*)[4])malloc((size_t)scene->count * sizeof *next.bounds);
+    if (!next.bounds) { free(start); free(list); return 0; }
+    for (int i = 0; i < scene->count; i++) {
+        const N2Mesh *m = &scene->meshes[i];
+        float *b = next.bounds[i]; b[0]=b[1]=1e30f; b[2]=b[3]=-1e30f;
+        for (int t = 0; t < m->nidx; t++) {
+            const float *v = m->verts + m->idx[t]*5;
+            b[0]=fminf(b[0],v[0]); b[1]=fminf(b[1],v[1]);
+            b[2]=fmaxf(b[2],v[0]); b[3]=fmaxf(b[3],v[1]);
+        }
+    }
 
-    next.meshes = scene->meshes;
+    next.meshes = scene->meshes;next.mesh_count=scene->count;
     next.x0 = x0; next.y0 = y0;
     next.gw = gw; next.gh = gh;
     next.start = start; next.list = list;
@@ -1819,6 +1942,23 @@ int world_district_at(const World *w, float x, float y, float maxdist) {
    ROAD/TERRAIN only, barycentric coverage with the -0.01 edge tolerance, and
    the reference key that biases UP-steps by 3x so a curb lip above the car
    never beats the road just below it. */
+/* Exact early-out for the barycentric tests in wg_pick/wws_pick: weights
+   >= -0.01 that sum to 1 keep an accepted point within 2% of the triangle's
+   span outside its XY bounds, so a 5% + 1 cm margin skips only rejects. */
+static int wg_tri_far(const float *a, const float *b, const float *c, float x, float y) {
+    float x0=fminf(a[0],fminf(b[0],c[0])), x1=fmaxf(a[0],fmaxf(b[0],c[0]));
+    float y0=fminf(a[1],fminf(b[1],c[1])), y1=fmaxf(a[1],fmaxf(b[1],c[1]));
+    float mx=.05f*(x1-x0)+.01f, my=.05f*(y1-y0)+.01f;
+    return x<x0-mx || x>x1+mx || y<y0-my || y>y1+my;
+}
+/* The same test for a whole mesh: each triangle's box and margin lie within
+   the mesh's, so a far mesh holds only triangles wg_tri_far would skip. */
+static int wg_mesh_far(int mesh, float x, float y) {
+    if (!g_grid.bounds) return 0;
+    const float *b = g_grid.bounds[mesh];
+    float mx=.05f*(b[2]-b[0])+.01f, my=.05f*(b[3]-b[1])+.01f;
+    return x<b[0]-mx || x>b[2]+mx || y<b[1]-my || y>b[3]+my;
+}
 static int wg_pick(const N2Scene *s, const int *srcmap, float x, float y, float refz,
                    float *outz, float outn[3], WGroundHit *hit) {
     float best = 0.0f, bestkey = 1e30f; int found = 0, bestcat = WSURF_NONE;
@@ -1832,6 +1972,7 @@ static int wg_pick(const N2Scene *s, const int *srcmap, float x, float y, float 
             const float *a = me->verts + me->idx[t]*5;
             const float *b = me->verts + me->idx[t+1]*5;
             const float *c = me->verts + me->idx[t+2]*5;
+            if (wg_tri_far(a, b, c, x, y)) continue;
             float d = (b[1]-c[1])*(a[0]-c[0]) + (c[0]-b[0])*(a[1]-c[1]);
             if (d > -1e-9f && d < 1e-9f) continue;
             float u = ((b[1]-c[1])*(x-c[0]) + (c[0]-b[0])*(y-c[1])) / d;
@@ -1929,6 +2070,7 @@ static int wg_at(const N2Scene *s, float x, float y, float fallback,
     int c = cy*g_grid.gw + cx;
     for (int k = g_grid.start[c]; k < g_grid.start[c+1] && sub.count < 512; k++) {
         int src = g_grid.list[k];
+        if (wg_mesh_far(src, x, y)) continue;
         srcmap[sub.count] = src;
         scratch[sub.count++] = s->meshes[src];
     }
@@ -1973,6 +2115,7 @@ static int wws_pick(const N2Scene *s, const int *srcmap, float x, float y,
             const float *a = me->verts + me->idx[t]*5;
             const float *b = me->verts + me->idx[t+1]*5;
             const float *c = me->verts + me->idx[t+2]*5;
+            if (wg_tri_far(a, b, c, x, y)) continue;
             float d = (b[1]-c[1])*(a[0]-c[0]) + (c[0]-b[0])*(a[1]-c[1]);
             if (d > -1e-9f && d < 1e-9f) continue;
             float u = ((b[1]-c[1])*(x-c[0]) + (c[0]-b[0])*(y-c[1])) / d;
@@ -2084,7 +2227,8 @@ int world_wheel_support(const N2Scene *s, float x, float y, float wheel_z,
         N2Scene sub = { scratch, 0, 512 };
         int c = cy*g_grid.gw + cx;
         for (int k = g_grid.start[c]; k < g_grid.start[c+1] && sub.count < 512; k++) {
-            int src = g_grid.list[k]; srcmap[sub.count] = src; scratch[sub.count++] = s->meshes[src];
+            int src = g_grid.list[k]; if (wg_mesh_far(src, x, y)) continue;
+            srcmap[sub.count] = src; scratch[sub.count++] = s->meshes[src];
         }
         cat = wws_pick(&sub, srcmap, x, y, wheel_z, reach_up, reach_down, hit, &near, &neard);
     }

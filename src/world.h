@@ -56,10 +56,12 @@ typedef struct {
  * it. */
 typedef struct {
     const N2Mesh *meshes;
+    int mesh_count;
     float x0, y0;
     int gw, gh;
     int *start;
     int *list;
+    float (*bounds)[4]; /* per mesh: XY bounds of its indexed triangles */
 } WGroundGrid;
 
 typedef struct {
@@ -219,8 +221,13 @@ void world_city_free(WorldCity *city);
 /* Knockdown state survives resident swaps; reset only on a committed map change. */
 extern float g_world_prop_impact_kmh; /* calibrated fallback, not a decoded retail value */
 void world_props_step(float dt);
+void world_props_step_collisions(float dt,const N2Scene *scene,const float (*walls)[4],
+        const float (*heights)[2],const int *sources,int count);
 void world_props_reset(void);
 int world_prop_update_mesh(N2Mesh *mesh);
+typedef struct { float pos[3],tail[3],alpha; } WorldPropSpark;
+/* Read-only render snapshot; sparks originate only from ground sliding. */
+int world_prop_sparks(WorldPropSpark *out,int capacity);
 
 int  world_ground_grid_build(WGroundGrid *grid, const N2Scene *scene,
                              const float (*mbb)[4]);

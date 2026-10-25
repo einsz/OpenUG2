@@ -1181,6 +1181,25 @@ static void rim_tier_test(void) {
 
 /* Car offset-slot TPK, literal-only JDLZ payload: exercise the same loader
  * used by stock tyres and aftermarket rims, not the world TPK decoder. */
+/* Driver head billboards: INTERIOR + authored DRIVER (blend) or TRAFFIC_DRIVER*
+ * (cutout) texture. Fleet census: 42 such slices; none on painted/glass parts. */
+static void driver_head_cutout_test(void) {
+    printf("\n  In-car driver head is alpha-tested\n");
+    chk("INTERIOR + blend texture (DRIVER) is cut out", n2_car_cutout(N2_CAR_INTERIOR, N2_DRAW_BLEND,N2_MAT_INTERIOR));
+    chk("INTERIOR + cutout texture (TRAFFIC_DRIVER*) is cut out", n2_car_cutout(N2_CAR_INTERIOR, N2_DRAW_CUTOUT,N2_MAT_INTERIOR));
+    chk("INTERIOR + opaque texture stays opaque", !n2_car_cutout(N2_CAR_INTERIOR, N2_DRAW_OPAQUE,N2_MAT_INTERIOR));
+    chk("BODY decal texture keeps its paint path", !n2_car_cutout(N2_CAR_BODY, N2_DRAW_BLEND,N2_MAT_CARSKIN));
+    chk("DECAL tow-hook card discards its transparent background",
+        n2_car_cutout(N2_CAR_BODY,N2_DRAW_BLEND,N2_MAT_DECAL));
+    chk("DECAL trim cutout discards its transparent background",
+        n2_car_cutout(N2_CAR_MISC,N2_DRAW_CUTOUT,N2_MAT_DECAL));
+    chk("DECAL retains its geometry category for bounds and physical fitting",
+        n2_mat_class(N2_MAT_DECAL,N2_CAR_BODY)==N2_CAR_BODY);
+    chk("DECAL uses its pixel mask even when the TPK mode says opaque",
+        n2_car_cutout(N2_CAR_BODY,N2_DRAW_OPAQUE,N2_MAT_DECAL));
+    chk("unknown material alpha cannot cut holes in the painted body",
+        !n2_car_cutout(N2_CAR_BODY,N2_DRAW_BLEND,0));
+}
 static void car_texture_alpha_test(void) {
     printf("\n  Car texture cutout metadata and portable alpha\n");
     for (int mode=0;mode<6;mode++) {
@@ -1565,6 +1584,10 @@ static void brakelight_material_test(void) {
     chk("shared traffic and window-mask names match source hashes",
         mat_hash("TRAFFICWINDOWS")==N2_MAT_TRAFFICWINDOWS &&
         mat_hash("WINDOWMASK")==N2_MAT_WINDOWMASK);
+    chk("DECAL source name matches the tow-hook/badge material hash",
+        mat_hash("DECAL")==N2_MAT_DECAL);
+    chk("GRILL source name matches the unpainted grille material hash",
+        mat_hash("GRILL")==N2_MAT_GRILL);
     chk("literal INTERIOR name matches the additional cabin hash",
         mat_hash("INTERIOR")==N2_MAT_INTERIOR_NAMED);
     chk("BRAKELIGHT constant is the hash of \"BRAKELIGHT\"",
@@ -1608,7 +1631,95 @@ static void brakelight_material_test(void) {
     printf("\n");
 }
 
+static void rear_plate_test(void) {
+    const uint32_t tex[]={0x029a22f7u},mat[]={0x4c95c6f8u};
+    const float pos[][3]={{-.01f,-.15f,0},{-.01f,.15f,0},{-.01f,-.15f,-.14f}};
+    const uint16_t idx[]={0,1,2};const SubSpec sub[]={{3,0,0,0}};
+    Buf plate={.n=0};object(&plate,"LICENSE_PLATE_STYLE01_A",tex,1,mat,1,sub,1,pos,3,idx,3);
+    N2Leaf vb[1];int nv=0;n2_find_leaves(plate.b,0,plate.n,0x134b01u,vb,&nv,1);
+    for(int i=0;i<3;i++) {
+        float normal=-1,zero=0,u=.2f+i*.1f,v=.3f+i*.1f;
+        unsigned char *p=plate.b+vb[0].off+3+i*36;
+        memcpy(p+12,&normal,4);memcpy(p+20,&zero,4);memcpy(p+28,&u,4);memcpy(p+32,&v,4);
+    }
+    for(int kit=0;kit<2;kit++)for(int mode=0;mode<8;mode++) {
+        Buf car={.n=0};
+        for(int k=0;k<2;k++) {
+            char name[64];snprintf(name,sizeof name,"TEST_KIT%02d_REAR_BUMPER_A",k);
+            long start=car.n;object(&car,name,NULL,0,NULL,0,NULL,0,pos,3,idx,3);
+            Buf marks={.n=0};int count=mode==2?0:mode==4?2:1;
+            for(int copy=0;copy<count;copy++) {
+                bu32(&marks,0xc805f7e0u);bu32(&marks,0);bu32(&marks,0);bu32(&marks,0);
+                float m[]={0,0,1,0,0,mode==1?-1.f:1.f,0,0,-1,0,0,0,-2.f-k,.1f,.8f,1};
+                if(mode==3)m[0]=NAN;
+                if(mode==7)m[5]=.975f; /* Authored CIVIC KIT09 plate width scale. */
+                if(copy)m[12]-=.1f;
+                for(int a=0;a<16;a++)bf32(&marks,m[a]);
+            }
+            if(mode==5)marks.n--;
+            chunk(&car,0x13401au,&marks);uint32_t bytes=(uint32_t)(car.n-start-8);
+            memcpy(car.b+start+4,&bytes,4);
+        }
+        N2Scene s={0};N2CarConfig cfg={.body_kit=kit};n2_load_car(car.b,car.n,&s,tex,1,&cfg);
+        int before=s.count;N2Mesh *saved=s.meshes;float *vertices=s.meshes[0].verts;
+        N2CarProfile old_profile,new_profile;
+        n2_car_profile(&s,"TEST",.7f,.7f,.8f,.1f,&old_profile);
+        int got=n2_mod_plate_data(car.b,car.n,&s,plate.b,plate.n,mode==6?NULL:tex,mode==6?0:1);
+        if(mode<2 || mode==7) {
+            chk("rear plate adds one complete source model at the selected bumper",got==1 && s.count==before+1);
+            if(got==1) {
+                n2_car_profile(&s,"TEST",.7f,.7f,.8f,.1f,&new_profile);
+                chk("visual plate cannot change body bounds, wheel fit or physics profile",
+                    !memcmp(&old_profile,&new_profile,sizeof old_profile));
+                N2Mesh *m=s.meshes+before;
+                chk("rear plate source UV/material/texture and unpainted mount survive",
+                    m->texkey==tex[0] && m->car_material==mat[0] && m->cat==N2_CAR_MECH &&
+                    m->car_mount==N2_MOUNT_BODY && !m->car_source && !m->famkey &&
+                    m->nidx==3 && m->authored_normals &&
+                    fabsf(m->verts[3]-.2f)<1e-6f && fabsf(m->verts[14]-.5f)<1e-6f &&
+                    fabsf(m->verts[m->nverts*5]+1)<1e-6f);
+                chk("rear plate axes face rearward with its top at the source socket",
+                    fabsf(m->verts[0]-(-2.f-kit-.01f))<1e-5f &&
+                    fabsf(m->verts[1]-(.1f+(mode==1?.15f:mode==7?-.14625f:-.15f)))<1e-5f &&
+                    fabsf(m->verts[2]-.8f)<1e-5f && fabsf(m->verts[12]-.66f)<1e-5f &&
+                    m->idx[1]==(mode==1?2:1));
+                chk("plate assembly is idempotent without moving the existing plate",
+                    n2_mod_plate_data(car.b,car.n,&s,plate.b,plate.n,tex,1)==0 && s.count==before+1);
+            }
+        } else chk("absent/invalid plate socket or missing texture leaves car unchanged",
+            got==(mode==2?0:-1) && s.count==before && s.meshes==saved && s.meshes[0].verts==vertices);
+        n2_free_scene(&s);
+    }
+    float skin[]={-2.056f,-.5f,.3f,0,0, -1.936f,-.5f,.9f,0,0,
+                  -1.936f,.5f,.9f,0,0, -2.056f,.5f,.3f,0,0};
+    uint16_t faces[]={0,1,2,0,2,3};
+    N2Mesh body={.verts=skin,.idx=faces,.nverts=4,.nidx=6,
+                 .car_material=0x19e0ecbeu,.car_mount=N2_MOUNT_BODY};
+    N2Scene traffic={.meshes=&body,.count=1};float frame[16];
+    chk("socketless traffic plate follows its actual sloped rear skin",
+        n2_mod_plate_frame(NULL,0,&traffic,frame)==1 && frame[8]<-.98f && frame[10]>.19f &&
+        fabsf(frame[12]-(-2+.071f*frame[0]-.003f))<1e-5f &&
+        fabsf(frame[14]-(.58f+.071f*frame[2]))<1e-5f);
+    body.car_material=N2_MAT_CARSKIN;
+    chk("socketless player body is never assigned a traffic mount",n2_mod_plate_frame(NULL,0,&traffic,frame)==0);
+    body.car_material=0x19e0ecbeu;body.car_mount=N2_MOUNT_WHEEL;
+    chk("traffic wheel surface cannot supply a rear plate mount",n2_mod_plate_frame(NULL,0,&traffic,frame)==0);
+    body.car_mount=N2_MOUNT_BODY;faces[0]=4;
+    chk("invalid traffic indices reject the mount",n2_mod_plate_frame(NULL,0,&traffic,frame)==-1);
+    faces[0]=0;skin[0]=NAN;
+    chk("nonfinite traffic skin rejects the mount",n2_mod_plate_frame(NULL,0,&traffic,frame)==-1);
+    skin[0]=-2.056f;skin[1]=.3f;skin[6]=.3f;
+    chk("traffic mount requires skin across the plate footprint",n2_mod_plate_frame(NULL,0,&traffic,frame)==0);
+}
+
 static void stock_attachment_and_trim_test(void) {
+    chk("authored GRILL surfaces do not receive body paint or vinyl",
+        n2_car_dark_trim(N2_MAT_GRILL));
+    chk("grille shading cannot change the source geometry category",
+        n2_mat_class(N2_MAT_GRILL,N2_CAR_BODY)==N2_CAR_BODY);
+    chk("grille shading cannot recolor paint, badges or chrome",
+        !n2_car_dark_trim(N2_MAT_CARSKIN) && !n2_car_dark_trim(N2_MAT_DECAL) &&
+        !n2_car_dark_trim(N2_MAT_CHROME) && !n2_car_metal_trim(N2_MAT_GRILL));
     chk("chrome/aluminium stay unpainted; glass, plastic and body paint stay distinct",
         n2_car_metal_trim(N2_MAT_CHROME) && n2_car_metal_trim(N2_MAT_ALUMINUM) &&
         n2_car_metal_trim(N2_MAT_MAGCHROME) && n2_car_metal_trim(N2_MAT_MAGSILVER) &&
@@ -1759,6 +1870,7 @@ int main(int argc,char **argv) {
     if(argc>1)real_car_table_test(argv[1]);
     recursive_chunks_test();
     authored_normals_test();
+    rear_plate_test();
     stock_attachment_and_trim_test();
     headlight_material_test();
     wheel_tyre_rounding_test();
@@ -1767,6 +1879,7 @@ int main(int argc,char **argv) {
     independent_parts_test();
     wheel_material_identity_test();
     car_texture_alpha_test();
+    driver_head_cutout_test();
     rim_tier_test();
     rim_orientation_test();
     car_mount_test();

@@ -1,6 +1,6 @@
 /* Vulkan present path: a real (shown) window with a swapchain, presented frames, resize and minimise.
- * Needs a video driver with Vulkan surface support (x11, wayland, cocoa); under the offscreen driver
- * it prints a note and exits 0 so `make` stays green on headless machines.
+ * Needs a desktop video driver with Vulkan surface support (x11, wayland, cocoa, windows).
+ * Setup failures, including unsupported headless drivers, fail the test instead of passing without coverage.
  *
  *   SDL_VIDEODRIVER=x11 DISPLAY=:N ./build/rhi_vk_present_test
  *
@@ -49,15 +49,20 @@ static int wait_for_size(SDL_Window *win, int w, int h, const float c[4]) {
     return 0;
 }
 
-int main(void) {
+int main(int argc, char **argv) {
+    (void)argc; (void)argv;
     if (SDL_Init(SDL_INIT_VIDEO) != 0) { fprintf(stderr, "SDL_Init: %s\n", SDL_GetError()); return 2; }
-    EXPECT(rhi_prepare_window(RHI_BACKEND_VULKAN) == RHI_OK, "prepare_window");
+    if (rhi_prepare_window(RHI_BACKEND_VULKAN) != RHI_OK) {
+        fprintf(stderr, "prepare_window failed\n");
+        SDL_Quit();
+        return 2;
+    }
     SDL_Window *win = SDL_CreateWindow("rhi_vk_present_test", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
                                        320, 200, rhi_window_flags(RHI_BACKEND_VULKAN) | SDL_WINDOW_RESIZABLE);
     if (!win) {
-        printf("present test: no Vulkan window (%s); skipped\n", SDL_GetError());
+        fprintf(stderr, "present test: Vulkan window required (%s)\n", SDL_GetError());
         SDL_Quit();
-        return 0;
+        return 2;
     }
     /* RHI_VK_PRESENT_NOVSYNC=1 asks for MAILBOX/IMMEDIATE instead of FIFO. */
     RhiDeviceDesc desc = { RHI_BACKEND_VULKAN, getenv("RHI_VK_PRESENT_NOVSYNC") ? 0u : RHI_DEVICE_VSYNC, win };
@@ -65,7 +70,7 @@ int main(void) {
 
     const float colors[3][4] = { { 1, 0, 0, 1 }, { 0, 1, 0, 1 }, { 0, 0, 1, 1 } };
     for (int i = 0; i < 9; i++) {
-        RhiFrameInfo fi; unsigned char px[4] = { 0 };
+        RhiFrameInfo fi = {0}; unsigned char px[4] = { 0 };
         EXPECT(frame(colors[i % 3], &fi, px) == RHI_OK, "frame %d", i);
         EXPECT(fi.width == 320 && fi.height == 200, "frame size %dx%d", fi.width, fi.height);
         EXPECT(near8(px[0], colors[i % 3][0] * 255) && near8(px[1], colors[i % 3][1] * 255) &&
@@ -77,7 +82,7 @@ int main(void) {
         static const int sz[3][2] = { { 480, 300 }, { 200, 120 }, { 400, 240 } };
         SDL_SetWindowSize(win, sz[step][0], sz[step][1]);
         EXPECT(wait_for_size(win, sz[step][0], sz[step][1], colors[step]), "frame size never became %dx%d", sz[step][0], sz[step][1]);
-        RhiFrameInfo fi; unsigned char px[4] = { 0 };
+        RhiFrameInfo fi = {0}; unsigned char px[4] = { 0 };
         EXPECT(frame(colors[step], &fi, px) == RHI_OK, "frame after resize");
         int32_t dw, dh; rhi_drawable_size(&dw, &dh);
         EXPECT(fi.width == sz[step][0] && fi.height == sz[step][1] && dw == fi.width && dh == fi.height,

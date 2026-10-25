@@ -658,6 +658,44 @@ static void test_builder_authored_model_keys(void) {
     remove(companion_path); remove(stream_path); rmdir(root);
 }
 
+static void test_road_sign_family_placements(void) {
+    const char *root="build/world_instance_sign_fixture";
+    const char *cp="build/world_instance_sign_fixture/L4RA.BUN";
+    const char *sp="build/world_instance_sign_fixture/STREAML4RA.BUN";
+    const struct {const char *name;int movable;} cases[]={
+        {"XS_Speed35_1a_00",1},{"XS_WarnCurve_1a_00",1},
+        {"XS_NoParkAnytime_1a_00",1},{"XS_NoParkingA_1a_00",1},
+        {"XS_SignalAhead_1a_00",1},{"XS_DoNotEnter_1a_00",1},
+        {"XS_Yeild_1a_00",1},{"XS_SlowTraffic_1a_00",1},
+        {"XS_CurvyRd_1a_00",1},{"XS_FreewayEnds_1a_00",1},
+        {"XS_35FT_1a_00",1},{"XS_MedianPoleL_1a_00",1},
+        {"XS_ChevronTallA_1a_00",1},
+        {"XS_BurgerKing_1a_00",0},{"XS_Freeway_Navy_G_1a_00",0},
+        {"XS_SignBoardF_1a_00",0},{"XB_BUILDING_1a_00",0}
+    };
+    assert(mkdir(root,0777)==0 || errno==EEXIST);
+    unsigned char companion[256],stream[4096],placements[128];
+    long clen=make_regions(companion,sizeof companion);assert(write_fixture_file(cp,companion,clen));
+    for(unsigned c=0;c<sizeof cases/sizeof cases[0];c++) {
+        long len=add_keyed_model(stream,0,cases[c].name,0xabc000u+c,1);
+        make_instance_record(placements,0,-1,-1,1,1);
+        make_instance_record(placements+64,0,2,-1,4,1);
+        long section=len;len=add_section(stream,len,17,cases[c].name,placements,2);
+        N2Leaf types[1];int nt=0;n2_find_leaves(stream,section+8,len,0x34102,types,&nt,1);assert(nt==1);
+        /* Unknown first key uses a valid source LOD, without changing eligibility. */
+        put_u32(stream+types[0].off+0x20,0xeee000u+c);
+        put_u32(stream+types[0].off+0x24,0xabc000u+c);
+        assert(write_fixture_file(sp,stream,len));
+        const char *requested[]={"STREAML4RA"};N2Scene scene={0},vista={0};WInstStats stats={0};
+        assert(world_instance_build(&scene,&vista,root,requested,1,0,0,10,NULL,0,&stats));
+        assert(scene.count==2 && vista.count==0 && stats.lod_fallbacks==2);
+        for(int i=0;i<2;i++)assert((scene.meshes[i].prop_id!=0)==cases[c].movable);
+        if(cases[c].movable)assert(scene.meshes[0].prop_id!=scene.meshes[1].prop_id);
+        free_scene(&scene);free_scene(&vista);
+    }
+    remove(cp);remove(sp);rmdir(root);
+}
+
 static long fixture_group(unsigned char *dst, const char *name,
                            const unsigned *refs, int count) {
     long size = (52 + 2 * count + 3) & ~3;
@@ -1461,6 +1499,7 @@ int main(void) {
     test_selection_never_hides_ground();
     test_ground_prototype_follows_its_instance_transform();
     test_builder_authored_model_keys();
+    test_road_sign_family_placements();
     test_positioned_model_name_boundaries();
     test_regions();
     test_default_focus_uses_a_region_present_in_stream();
