@@ -263,6 +263,18 @@ static void test_car_switch_archive(const char *root) {
             assert(fabsf(candidate.profile.wheel_r*candidate.wheel.visual_radius_scale[k]-shape.wheel[k].radius)<1e-6f);
             assert(fabsf(candidate.profile.wheel_w*candidate.wheel.visual_width_scale[k]-shape.wheel[k].width)<1e-6f);
         }
+        /* Same car, zero travel: AI body bottom vs the Stage5 player body
+           bottom. Only the tyre-mesh vs source radius may separate them. */
+        CtCar contact;
+        if(stage5_car_read(global,len,cars[i],&contact)) {
+            float floor=car_body_floor(&candidate.scene,candidate.bb[2]),bottom=0;
+            for(int k=0;k<4;k++)bottom+=(contact.mount[k][2]-contact.radius[k])*.25f;
+            float ride=candidate.profile.ride;
+            float player=-bottom+body_ride_height(ride,floor,0)-ride+floor;
+            float ai=ai_body_ride(&candidate.profile,floor,&candidate.wheel,1)+floor;
+            printf("CAR SWITCH %s body bottom: AI %.3f player %.3f\n",cars[i],ai,player);
+            assert(fabsf(ai-player)<.06f);
+        }
         Stage1Drive untouched=g_stage1;
         publish_performance_source(candidate.has_physics?&candidate.physics:NULL,global,len,cars[i]);
         assert(!memcmp(&untouched,&g_stage1,sizeof untouched));
@@ -326,10 +338,10 @@ static void test_source_wheel_visual_fit(void) {
     FIT_F(0x220,1);FIT_F(0x224,4);FIT_F(0x228,2);FIT_F(0x22c,1.5f);
     FIT_F(0x230,1);FIT_F(0x244,1);FIT_F(0x258,1);
     for(uint32_t i=0;i<4;i++){int w=0x120+0x30*i;
-        FIT_F(w,i<2?1.2f:-1.3f);FIT_F(w+4,(i&1)?-.8f:.8f);
+        FIT_F(w,i<2?1.2f:-1.3f);FIT_F(w+4,(i&1)?-.8f:.8f);FIT_F(w+8,.15f);
         FIT_F(w+0x10,i<2?.3f:.32f);FIT_F(w+0x14,i<2?.24f:.26f);memcpy(row+w+0x18,&i,4);}
 #undef FIT_F
-    N2CarProfile profile={.wheel_r=.4f,.wheel_w=.2f};int source=0;
+    N2CarProfile profile={.wheel_r=.4f,.wheel_w=.2f,.ride=.4f};int source=0;
     VehicleWheelConfig wheel=wheel_config_for("FITCAR",&profile,data,sizeof data,&source);assert(source);
     PhysRideState ride={0};ride.compression[0]=.02f;
     float actual[4][16],brake[4][16];ai_wheel_matrices(&wheel,1,.3f,.2f,&ride,actual,brake);
@@ -341,7 +353,13 @@ static void test_source_wheel_visual_fit(void) {
         assert(fabsf(sqrtf(brake[i][0]*brake[i][0]+brake[i][1]*brake[i][1])-1)<1e-6f);
     }
     assert(profile.wheel_r==.4f&&profile.wheel_w==.2f&&ride.compression[0]==.02f);
+    /* AI body sits the source mount height below its rest hub, as the Stage5
+       player body does; it must not take the tyre-mesh hub as its origin. */
+    ai_wheel_matrices(&wheel,1,0,0,NULL,actual,brake);
+    for(int i=0;i<4;i++)
+        assert(fabsf(profile.ride+actual[i][14]-ai_body_ride(&profile,-.1f,&wheel,1)-.15f)<1e-6f);
     wheel=wheel_config_for("FITCAR",&profile,NULL,0,&source);assert(!source);
+    assert(ai_body_ride(&profile,-.1f,&wheel,1)==body_ride_height(.4f,-.1f,0));
     ai_wheel_matrices(&wheel,1,0,0,NULL,actual,brake);assert(actual[0][0]==1&&actual[0][5]==1&&actual[0][10]==1);
     assert(g_dbg.body_drop==0);
     publish_performance_source(NULL,NULL,0,"missing");assert(!g_dbg.perf_source_available&&!g_dbg.perf_stock_available);

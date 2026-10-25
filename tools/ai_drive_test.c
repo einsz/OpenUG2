@@ -306,6 +306,59 @@ static void traffic_density_test(void) {
     puts("traffic density: default/increase/zero/decrease/restore, safe visibility, racer roles and retry fairness PASS");
 }
 
+/* Node ordering must not turn one safe spawn into dozens of clearance sweeps. */
+static void traffic_spawn_search(void) {
+    float floor[]={-400,-100,0,0,0,50,-100,0,0,0,50,200,0,0,0,-400,200,0,0,0};
+    uint16_t idx[]={0,1,2,0,2,3};
+    N2Mesh mesh={.verts=floor,.nverts=4,.idx=idx,.nidx=6,.cat=N2_ROAD};
+    N2Scene scene={&mesh,1,1};float bounds[][4]={{-400,-100,50,200}};WGroundGrid grid={0};
+    assert(world_ground_grid_build(&grid,&scene,bounds));world_ground_grid_activate(&grid);
+    phys_wall_index_build(NULL,NULL,0);
+    float xy[41*5*2],width[41*5];int next[41*5];
+    for(int chain=0;chain<41;chain++)for(int j=0;j<5;j++) {
+        int at=chain*5+j;
+        xy[2*at]=-300+5.0f*(chain==40?39:chain);xy[2*at+1]=20+10.0f*j;
+        next[at]=j<4?at+1:-1;width[at]=5;
+    }
+    AiRoadNet roads={.xy=xy,.next=next,.half_width=width,.n=205};
+    AiTrafficWorld world={.scene=&scene,.view={1,0}};
+    AiCar cars[N_OPENWORLD_AI]={0};AiTraffic routes[N_OPENWORLD_AI]={0};
+    g_ai_perf.spawn_checks=0;
+    assert(ai_traffic_respawn(&roads,&world,cars,routes,0,(float[3]){0},0));
+    /* Closest eligible node is chain39, point1; chain40 ties but has a later index. */
+    assert(routes[0].from==196 && routes[0].to==197);
+    assert(fabsf(cars[0].pos[0]+103)<.001f && fabsf(cars[0].pos[1]-30)<.001f);
+    fprintf(stderr,"spawn search: selected%d full clearance checks%ld\n",routes[0].from,g_ai_perf.spawn_checks);
+    assert(g_ai_perf.spawn_checks==1);
+    /* Reject the closest chain if a solid wall blocks its fifteen-metre run. */
+    float wall[]={-104,35,0,0,0,-94,35,0,0,0,-94,35,5,0,0,-104,35,5,0,0};
+    N2Mesh meshes[]={mesh,{.verts=wall,.nverts=4,.idx=idx,.nidx=6,.cat=N2_OTHER,.scen=N2_SC_WALL}};
+    float wbounds[][4]={{-400,-100,50,200},{-104,35,-94,35}};
+    scene.meshes=meshes;scene.count=scene.cap=2;
+    world_ground_grid_free(&grid);assert(world_ground_grid_build(&grid,&scene,wbounds));world_ground_grid_activate(&grid);
+    float obs[2][4],oz[2][2];int src[2];
+    world.nobst=phys_collect_walls(&scene,obs,src,oz,2);assert(world.nobst>0);
+    world.obst=obs;world.obstz=oz;world.obstsrc=src;phys_wall_index_build(obs,oz,world.nobst);
+    for(int chain=0;chain<2;chain++)for(int j=0;j<5;j++)xy[2*(chain*5+j)]=-100-100.0f*chain;
+    roads.n=10;memset(routes,0,sizeof routes);g_ai_perf.spawn_checks=0;
+    assert(ai_traffic_respawn(&roads,&world,cars,routes,0,(float[3]){0},0));
+    assert(routes[0].from==6 && routes[0].to==7);
+    assert(fabsf(cars[0].pos[0]+198)<.001f && fabsf(cars[0].pos[1]-30)<.001f);
+    assert(g_ai_perf.spawn_checks>1);
+    /* The first-pass side-street preference still outranks a closer parallel road. */
+    world.scene=NULL;world.obst=NULL;world.nobst=0;
+    for(int j=0;j<5;j++) {
+        xy[2*j]=-300;xy[2*j+1]=30+10.0f*j;
+        xy[2*(j+5)]=-120+10.0f*j;xy[2*(j+5)+1]=0;
+    }
+    memset(routes,0,sizeof routes);
+    assert(ai_traffic_respawn(&roads,&world,cars,routes,0,(float[3]){0},0));
+    assert(routes[0].from==0 && routes[0].to==1);
+    phys_wall_index_build(NULL,NULL,0);
+    world_ground_grid_activate(NULL);world_ground_grid_free(&grid);
+    puts("traffic spawn search: bounded sweeps, nearest safe node, ties, blocked runs and side-street priority PASS");
+}
+
 static void traffic_spawn_distribution(void) {
     float xy[180*3*2];int next[180*3];
     for(int r=0;r<180;r++)for(int j=0;j<3;j++) {
@@ -684,7 +737,185 @@ static void traffic_narrowing(int direction,int width_mode,int spacing) {
     world_ground_grid_activate(NULL);world_ground_grid_free(&grid);
 }
 
+/* Free-roam racers: a chain driven backwards continues onto an overlapping
+   chain (STREAML4RA 8496), a forward stub keeps its authored dead end, opposing
+   cars that clear do not both stop for good, and a racer passes slow traffic. */
+static void roam_racer_regressions(void) {
+    /* A: 0->1->2; B: 3->4->5->6 with 5 beside A's start; C: 7->8 beside A's end. */
+    float xy[]={0,0,50,0,100,0, -60,0,-25,0,.5f,.3f,30,5, 101,.3f,140,0};
+    int next[]={1,2,-1, 4,5,6,-1, 8,-1},join[][2]={{6,7}};
+    AiRoadNet roads={.xy=xy,.next=next,.n=9,.join=join,.njoin=1,.joins_present=1};
+    assert(ai_road_next(&roads,NULL,NULL,0,1,0)==4); /* backwards: B backwards */
+    assert(ai_road_next(&roads,NULL,NULL,2,1,0)<0);  /* forward stub stays an end */
+
+    float line[]={0,0,2000,0};int line_next[]={1,-1};
+    AiRoadNet road={.xy=line,.next=line_next,.n=2};
+    AiCar cars[N_OPENWORLD_AI]={0};AiTraffic routes[N_OPENWORLD_AI]={0};
+    cars[0]=(AiCar){.pos={100,0,0},.half_length=2,.half_width=.85f};
+    cars[1]=(AiCar){.pos={110,1.9f,0},.head=3.1415927f,.half_length=2,.half_width=.85f};
+    for(int k=0;k<2;k++)routes[k]=(AiTraffic){.from=k,.to=1-k,.after=-1,.present=1,
+        .along=k?1890:100,.cruise_speed=8.0f/PHYS_TICKRATE};
+    ai_traffic_follow(cars,routes,&road,0,2,NULL);
+    ai_traffic_follow(cars,routes,&road,1,2,NULL);
+    assert(cars[0].target_speed>0 && cars[1].target_speed==0); /* lower slot passes */
+    cars[1].pos[1]=1.5f; /* bodies overlap: both still wait */
+    ai_traffic_follow(cars,routes,&road,0,2,NULL);
+    assert(cars[0].target_speed==0);
+
+    memset(cars,0,sizeof cars);memset(routes,0,sizeof routes);
+    cars[0]=(AiCar){.pos={0,-2,0},.spd=25.0f/PHYS_TICKRATE,.half_length=2,.half_width=.85f,.height=1.5f};
+    cars[1]=(AiCar){.pos={60,-2,0},.spd=8.0f/PHYS_TICKRATE,.half_length=2,.half_width=.85f,.height=1.5f};
+    for(int k=0;k<2;k++)routes[k]=(AiTraffic){.prev=-1,.from=0,.to=1,.after=-1,.present=1,
+        .along=cars[k].pos[0],.cruise_speed=k?cars[1].spd:40.0f/PHYS_TICKRATE,
+        .racer=!k,.racer_limit=INFINITY,.plan_end=-1};
+    cars[2]=(AiCar){.pos={140,1,0},.head=3.1415927f,.spd=8.0f/PHYS_TICKRATE,.half_length=2,.half_width=.85f};
+    routes[2].present=1;routes[0].pass_ok=1;
+    ai_traffic_follow(cars,routes,&road,0,3,NULL);
+    assert(routes[0].pass_want==0); /* opposing car in the passing band */
+    int passed=0;
+    for(int f=0;f<900;f++) {
+        ai_traffic_follow(cars,routes,&road,0,2,NULL);
+        ai_traffic_follow(cars,routes,&road,1,2,NULL);
+        ai_traffic_step(&cars[0],&routes[0],&road,NULL);
+        ai_traffic_step(&cars[1],&routes[1],&road,NULL);
+        assert(!phys_ai_overlap(&cars[0],&cars[1]));
+        if(cars[0].pos[0]>cars[1].pos[0]+10)passed=1;
+    }
+    assert(passed && routes[0].pass_shift==0 && fabsf(cars[0].pos[1]-cars[1].pos[1])<.5f);
+    /* An adjacent same-direction car owns the passing lane, including a
+       faster car approaching from just behind. Another deck does not. */
+    for(int at=0;at<3;at++) {
+        cars[0]=(AiCar){.pos={100,-2,0},.spd=25.0f/PHYS_TICKRATE,.half_length=2,.half_width=.85f};
+        cars[1]=(AiCar){.pos={115,-2,0},.spd=8.0f/PHYS_TICKRATE,.half_length=2,.half_width=.85f};
+        cars[2]=(AiCar){.pos={at==1?90:100,.7f,at==2?10:0},.spd=30.0f/PHYS_TICKRATE,
+                       .half_length=2,.half_width=.85f};
+        routes[0]=(AiTraffic){.from=0,.to=1,.after=-1,.present=1,.along=100,
+            .cruise_speed=40.0f/PHYS_TICKRATE,.racer=1,.racer_limit=INFINITY,.pass_ok=1};
+        routes[1].present=routes[2].present=1;
+        ai_traffic_follow(cars,routes,&road,0,3,NULL);
+        assert(at==2?routes[0].pass_want>0:routes[0].pass_want==0);
+    }
+    /* Outrun: challenged nearby, one at a time; a pass takes the lead; the
+       leader wins 300 m clear; no re-challenge until respawn. */
+    memset(cars,0,sizeof cars);memset(routes,0,sizeof routes);
+    for(int k=N_AI;k<N_AI+2;k++) {
+        cars[k]=(AiCar){.pos={100.0f+400*(k-N_AI),-2,0},.spd=10.0f/PHYS_TICKRATE,
+                        .half_length=2,.half_width=.85f,.height=1.5f};
+        routes[k]=(AiTraffic){.prev=-1,.from=0,.to=1,.after=-1,.present=1,.along=cars[k].pos[0],
+            .racer=1,.racer_limit=INFINITY,.plan_end=-1,
+            .cruise_speed=.45f*phys_vehicle_top_speed(NULL)};
+    }
+    AiCar player={.pos={60,-2,0},.spd=15.0f/PHYS_TICKRATE,.half_length=2,.half_width=.85f};
+    assert(ai_outrun_challengeable(cars,routes,N_AI+2,&player)<0); /* 40 m: too far */
+    player.pos[0]=90;
+    assert(ai_outrun_challengeable(cars,routes,N_AI+2,&player)==N_AI);
+    float cruise=routes[N_AI].cruise_speed;
+    ai_outrun_begin(cars,routes,N_AI,&player);
+    assert(routes[N_AI].encounter==AI_ENCOUNTER_RACING && !routes[N_AI].player_leads &&
+           routes[N_AI].cruise_speed>cruise);
+    player.pos[0]=490;
+    assert(ai_outrun_challengeable(cars,routes,N_AI+2,&player)<0); /* one at a time */
+    player.pos[0]=90;
+    ai_traffic_follow(cars,routes,&road,N_AI,N_AI+2,&player);
+    assert(!routes[N_AI].chase && routes[N_AI].outrun_lead<0); /* rival leads: player trails */
+    player.pos[0]=105; /* passed the rival */
+    ai_traffic_follow(cars,routes,&road,N_AI,N_AI+2,&player);
+    assert(routes[N_AI].player_leads && routes[N_AI].lead_changes==1 && routes[N_AI].chase);
+    player.pos[0]=100+AI_OUTRUN_LEAD_M+1;
+    ai_traffic_follow(cars,routes,&road,N_AI,N_AI+2,&player);
+    assert(routes[N_AI].encounter==AI_ENCOUNTER_WON && routes[N_AI].cruise_speed==cruise);
+    player.pos[0]=90;
+    assert(ai_outrun_challengeable(cars,routes,N_AI+2,&player)<0); /* never re-challenged */
+    player.pos[0]=490;
+    assert(ai_outrun_challengeable(cars,routes,N_AI+2,&player)==N_AI+1);
+    ai_outrun_begin(cars,routes,N_AI+1,&player);
+    player.pos[0]=500-AI_OUTRUN_LEAD_M-1;
+    ai_traffic_follow(cars,routes,&road,N_AI+1,N_AI+2,&player);
+    assert(routes[N_AI+1].encounter==AI_ENCOUNTER_LOST);
+    /* A terminal route must not erase an active challenge offscreen. The
+       lead/result still advances while the stopped rival has no next node. */
+    player.pos[0]=105;
+    ai_outrun_begin(cars,routes,N_AI,&player);
+    routes[N_AI].to=-1;
+    AiTrafficWorld terminal={.eye={300,-2,0},.view={1,0},.traffic_target=0};
+    unsigned respawns=routes[N_AI].respawns;
+    ai_traffic_update(&road,&terminal,cars,routes,player.pos,player.head);
+    assert(routes[N_AI].present && routes[N_AI].to<0 &&
+           routes[N_AI].encounter==AI_ENCOUNTER_RACING && routes[N_AI].respawns==respawns);
+    player.pos[0]=100+AI_OUTRUN_LEAD_M+1;
+    ai_traffic_follow(cars,routes,&road,N_AI,N_AI+2,&player);
+    assert(routes[N_AI].encounter==AI_ENCOUNTER_WON && routes[N_AI].outrun_ticks==1);
+    routes[N_AI].present=0; /* A fallen rival is removed before population update. */
+    ai_traffic_update(&road,&terminal,cars,routes,player.pos,player.head);
+    assert(routes[N_AI].encounter==AI_ENCOUNTER_WON && routes[N_AI].respawns==respawns);
+    for(int tick=0;tick<4*PHYS_TICKRATE;tick++)
+        ai_traffic_follow(cars,routes,&road,N_AI,N_AI+2,&player);
+    ai_traffic_update(&road,&terminal,cars,routes,player.pos,player.head);
+    assert(routes[N_AI].respawns>respawns); /* Eligible again after result display. */
+    /* A trailing racer takes the junction exit toward the leading player. */
+    {
+        float cj[]={0,0,50,0,100,0,150,0,200,0,250,0, 100.5f,.3f,150,25,200,50,250,75};
+        int cj_next[]={1,2,3,4,5,-1, 7,8,9,-1};
+        AiRoadNet cr={.xy=cj,.next=cj_next,.n=10};
+        assert(ai_road_next(&cr,NULL,NULL,2,1,0)==3); /* uninvolved: straight on */
+        AiCar cc[N_OPENWORLD_AI]={0};AiTraffic ct[N_OPENWORLD_AI]={0};
+        cc[0]=(AiCar){.pos={20,-2,0},.spd=15.0f/PHYS_TICKRATE,.half_length=2,.half_width=.85f,.height=1.5f};
+        ct[0]=(AiTraffic){.prev=-1,.from=0,.to=1,.after=2,.present=1,.racer=1,.racer_limit=INFINITY,
+                          .plan_end=-1,.along=20,.encounter=AI_ENCOUNTER_RACING,.player_leads=1,
+                          .cruise_speed=20.0f/PHYS_TICKRATE};
+        AiCar quarry={.pos={240,70,0},.head=.46f,.half_length=2,.half_width=.85f};
+        int branch=0;
+        for(int f=0;f<1200 && ct[0].to>=0 && !branch;f++) {
+            ai_traffic_follow(cc,ct,&cr,0,1,&quarry);
+            ai_traffic_step(&cc[0],&ct[0],&cr,NULL);
+            branch=ct[0].from>=6;
+            assert(ct[0].from!=3 && ct[0].from!=4);
+        }
+        assert(branch);
+    }
+    /* Node zig-zags are not corners; a real right angle still is. */
+    {
+        float zig[2*40];int zig_next[40];
+        for(int i=0;i<40;i++){zig[2*i]=i*6.0f;zig[2*i+1]=i%2?1.5f:0;zig_next[i]=i+1<40?i+1:-1;}
+        AiRoadNet zr={.xy=zig,.next=zig_next,.n=40};
+        AiCar zc[N_OPENWORLD_AI]={0};AiTraffic zt[N_OPENWORLD_AI]={0};
+        zc[0]=(AiCar){.pos={0,-2,0},.spd=30.0f/PHYS_TICKRATE,.half_length=2,.half_width=.85f,.height=1.5f};
+        zt[0]=(AiTraffic){.prev=-1,.from=0,.to=1,.after=2,.present=1,.racer=1,.racer_limit=INFINITY,
+                          .plan_end=-1,.cruise_speed=60.0f/PHYS_TICKRATE};
+        ai_traffic_step(&zc[0],&zt[0],&zr,NULL);
+        assert(zt[0].racer_limit>120/3.6f);
+        float bend[]={0,0,60,0,120,0,120,60,120,120};int bend_next[]={1,2,3,4,-1};
+        AiRoadNet br={.xy=bend,.next=bend_next,.n=5};
+        zc[0]=(AiCar){.pos={40,-2,0},.spd=30.0f/PHYS_TICKRATE,.half_length=2,.half_width=.85f,.height=1.5f};
+        zt[0]=(AiTraffic){.prev=0,.from=1,.to=2,.after=3,.present=1,.racer=1,.racer_limit=INFINITY,
+                          .plan_end=-1,.along=40,.cruise_speed=60.0f/PHYS_TICKRATE};
+        ai_traffic_step(&zc[0],&zt[0],&br,NULL);
+        assert(zt[0].racer_limit<100/3.6f); /* braking for the 90 degree corner */
+    }
+    /* A racer detours at the last junction before a dead end; traffic does not. */
+    {
+        float dj[]={0,0,50,0,100,0,150,0, 50.5f,.3f,100,20,150,35,200,50,250,65};
+        int dj_next[]={1,2,3,-1, 5,6,7,8,-1};
+        AiRoadNet dr={.xy=dj,.next=dj_next,.n=9};
+        assert(ai_road_next(&dr,NULL,NULL,1,0,0)==2);
+        AiCar dc[N_OPENWORLD_AI]={0};AiTraffic dt[N_OPENWORLD_AI]={0};
+        dc[0]=(AiCar){.pos={20,-2,0},.spd=15.0f/PHYS_TICKRATE,.half_length=2,.half_width=.85f,.height=1.5f};
+        dt[0]=(AiTraffic){.prev=-1,.from=0,.to=1,.after=2,.present=1,.racer=1,.racer_limit=INFINITY,
+                          .plan_end=-1,.along=20,.cruise_speed=20.0f/PHYS_TICKRATE};
+        int branch=0;
+        for(int f=0;f<1800 && dt[0].to>=0;f++) {
+            ai_traffic_follow(dc,dt,&dr,0,1,NULL);
+            ai_traffic_step(&dc[0],&dt[0],&dr,NULL);
+            branch|=dt[0].from>=4;
+            assert(dt[0].from!=2 && dt[0].from!=3);
+        }
+        assert(branch && dt[0].stop_reason!=2);
+    }
+    puts("roam racers: backwards chain exit, forward stub end, opposing clearance, overtaking, outrun challenge/lead/chase, corner window, dead-end detour PASS");
+}
+
 int main(void) {
+    traffic_spawn_search();
     for(int reverse=0;reverse<2;reverse++)for(int tail=0;tail<2;tail++)traffic_junction_exit(reverse,tail);
     traffic_default_footprint();
     traffic_spawn_distribution();
@@ -697,6 +928,7 @@ int main(void) {
     traffic_source_connections();
     traffic_preview_cache();
     traffic_closed_road();
+    roam_racer_regressions();
     traffic_authored_terrain();
     traffic_density_test();
     phys_selftest();
@@ -807,10 +1039,12 @@ int main(void) {
             float dx=nodes[to*2]-nodes[from*2],dy=nodes[to*2+1]-nodes[from*2+1];
             assert(fabsf(traffic[k].lane_offset-2.0f)<1e-4f);
             assert(dx*(y-nodes[from*2+1])-dy*(x-nodes[from*2])<0);
-            assert(PHYS_KMH(traffic[k].cruise_speed)>=26 &&
-                   PHYS_KMH(traffic[k].cruise_speed)<=80.01f);
+            assert(PHYS_KMH(traffic[k].cruise_speed)>=26);
             assert(cars[k].spd<=traffic[k].cruise_speed);
-            if(k>=N_AI)assert(PHYS_KMH(traffic[k].cruise_speed)>=75);
+            /* Roaming racers cruise briskly until an outrun engages them. */
+            if(k>=N_AI)assert(traffic[k].racer && traffic[k].encounter==AI_ENCOUNTER_CRUISE &&
+                fabsf(traffic[k].cruise_speed-.45f*phys_vehicle_top_speed(NULL))<1e-6f);
+            else assert(!traffic[k].racer && PHYS_KMH(traffic[k].cruise_speed)<=40);
             float furthest=0;
             for(int f=0;f<600;f++) {
                 ai_traffic_step(&cars[k],&traffic[k],&road,NULL);

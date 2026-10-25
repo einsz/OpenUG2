@@ -902,6 +902,10 @@ void hud_baseline_draw(HudBaseline *h, const RProg *rp, GpuMesh *quad,
         }
         hud_baseline_draw_status(&dc,&s);
     } else if (s.message_waiting) hud_baseline_draw_message(h,&dc,&s);
+    if (!s.racing && s.notice && s.notice[0]) {   /* outrun prompt / result */
+        float x, y; hud_baseline_dc_place(&dc, 0.0f, 1.0f, 0.0f, -0.22f, &x, &y);
+        hud_baseline_label(&dc, s.notice, x, y, 0.055f, 1.0f, 0.70f, 0.25f, 1.0f);
+    }
     hud_baseline_draw_nav_arrow(h,&dc,&s);
 
     if (h->preview) {

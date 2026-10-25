@@ -89,7 +89,8 @@ int hud_race_text(const HudState *s,int field,char out[64]) {
     case HR_TIME_LABEL:if(s->have_race_time&&s->race_kind!=N2_RACE_DRIFT)snprintf(out,64,"Time:");break;
     case HR_TIME:if(s->have_race_time&&s->race_kind!=N2_RACE_DRIFT)hud_race_time(s->elapsed_seconds,out);break;
     case HR_BANNER:
-        if(s->race_phase==HUD_RACE_COUNTDOWN&&isfinite(s->countdown_seconds)&&s->countdown_seconds>0&&s->countdown_seconds<=3)
+        if(s->notice && s->notice[0])snprintf(out,64,"%s",s->notice);
+        else if(s->race_phase==HUD_RACE_COUNTDOWN&&isfinite(s->countdown_seconds)&&s->countdown_seconds>0&&s->countdown_seconds<=3)
             snprintf(out,64,"%d",(int)ceil(s->countdown_seconds));
         else if(s->race_phase==HUD_RACE_RUNNING&&s->have_race_time&&s->elapsed_seconds>=0&&s->elapsed_seconds<.4)snprintf(out,64,"GO!");
         else if(s->race_phase==HUD_RACE_FINISHED)snprintf(out,64,"%s",position&&s->position==1?"WINNER":"FINISHED");

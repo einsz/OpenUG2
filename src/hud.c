@@ -334,7 +334,9 @@ static void quad(Hud*h,int i,const float rect[4],const float uv[4],Texture t,flo
  h->hud_params->roads=(float)roads;
  h->hud_params->tint[0]=c[0]/255.0f;h->hud_params->tint[1]=c[1]/255.0f;h->hud_params->tint[2]=c[2]/255.0f;h->hud_params->tint[3]=c[3]/255.0f;
  h->hud_params->dialClip[0]=h->clip[0];h->hud_params->dialClip[1]=h->clip[1];h->hud_params->dialClip[2]=h->clip[2];h->hud_params->dialClip[3]=h->clip[3];
- rhi_buffer_update(h->vbo,0,sizeof v,v);
+ /* STREAM contract: fresh storage per draw. Updating storage that earlier HUD
+    draws still read made the GL driver wait for the GPU before every glyph. */
+ rhi_buffer_replace(h->vbo,sizeof v,v);
  rhi_cmd_bind_pipeline(h->tri_pipe);rhi_cmd_bind_vertex_buffer(0,h->vbo,0);rhi_cmd_bind_index_buffer(h->ibo);
  rhi_cmd_bind_texture(0,t.id);
  rhi_cmd_draw_indexed(6,0);
@@ -379,16 +381,16 @@ static void map_vertices(Hud*h,const float*v,int count,int lines,float r,float g
  h->hud_params->roads=2;
  h->hud_params->tint[0]=r;h->hud_params->tint[1]=g;h->hud_params->tint[2]=b;h->hud_params->tint[3]=1;
  h->hud_params->dialClip[0]=h->hud_params->dialClip[1]=h->hud_params->dialClip[2]=h->hud_params->dialClip[3]=0;
- rhi_buffer_update(h->vbo,0,(size_t)count*6*sizeof(float),v);
+ rhi_buffer_replace(h->vbo,(size_t)count*6*sizeof(float),v);
  rhi_cmd_bind_vertex_buffer(0,h->vbo,0);
  if(lines){rhi_cmd_bind_pipeline(h->line_pipe);rhi_cmd_bind_index_buffer(h->line_ibo);rhi_cmd_draw_indexed((uint32_t)(count-1)*2,0);}
  else{rhi_cmd_bind_pipeline(h->tri_pipe);rhi_cmd_bind_index_buffer(h->ibo);rhi_cmd_draw_indexed(6,0);}
 }
 static void map_overlay(Hud*h,const HudState*s){
- if(!h->pick_frame.enabled||!s->racing)return;
+ if(!h->pick_frame.enabled)return;
  float vertices[(HA_LIMIT+1)*6];
  /* shortcut: overlays accept up to HA_LIMIT points; stream larger decoded courses when needed. */
- if(s->route_xy&&s->route_n>1&&s->route_n<=HA_LIMIT){
+ if(s->racing&&s->route_xy&&s->route_n>1&&s->route_n<=HA_LIMIT){
   int ok=1;for(int i=0;i<s->route_n;i++)if(!map_vertex(h,s->route_xy[i*2],s->route_xy[i*2+1],vertices+i*6)){ok=0;break;}
   if(ok){int n=s->route_n;if(s->route_loop){memcpy(vertices+n*6,vertices,6*sizeof(float));n++;}
    map_vertices(h,vertices,n,1,.2f,.8f,1);}
@@ -397,9 +399,11 @@ static void map_overlay(Hud*h,const HudState*s){
   float center[6];if(!map_vertex(h,s->opponent_xy[i*2],s->opponent_xy[i*2+1],center))continue;
   /* Marker size is a display policy in world metres, following the same mask. */
   double d=h->pick_frame.window*.025;
-  const double offsets[4][2]={{-1,0},{0,-1},{1,0},{0,1}};int ok=1;
+  /* Race opponents are diamonds; free-roam rivals orange triangles. */
+  const double diamond[4][2]={{-1,0},{0,-1},{1,0},{0,1}},triangle[4][2]={{-1,-.8},{1,-.8},{0,1.2},{0,1.2}};
+  const double (*offsets)[2]=s->racing?diamond:triangle;int ok=1;
   for(int j=0;j<4;j++)if(!map_vertex(h,s->opponent_xy[i*2]+offsets[j][0]*d,s->opponent_xy[i*2+1]+offsets[j][1]*d,vertices+j*6))ok=0;
-  if(ok)map_vertices(h,vertices,4,0,1,.3f,.15f);
+  if(ok)map_vertices(h,vertices,4,0,1,s->racing?.3f:.55f,s->racing?.15f:.05f);
  }
 }
 /* Text with its role's tint (C1-3/E1 gear colour; others authored). */
@@ -411,6 +415,7 @@ void hud_draw(Hud*h,const RProg*rp,GpuMesh*unused,const HudState*s,int w,int hei
   /* Set 4 D4: while the authored widget is drawn, inherited message visuals are suppressed. */
   if(rp&&unused&&(!s->racing||s->nav_active)){HudState base=*s;
    base.racing=0;
+   if(s->racing)base.notice=NULL; /* The authored race banner owns this notice. */
    if(s->racing||!ha_inherited_message_visuals(0,shown.visible,s->message_waiting!=0))base.message_waiting=0;
    hud_baseline_set_preview(h->auxiliary,h->preview&&!s->racing);
    hud_baseline_draw(h->auxiliary,rp,unused,&base,w,height);}}

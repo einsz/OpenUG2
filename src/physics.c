@@ -1144,7 +1144,8 @@ static int cw_resolve_one(int o, float *pos, float *vel, const float obst[][4],
                 return 0;
             float vn = vel[0]*c.nx + vel[1]*c.ny;
             if(!preview && scene->meshes[src[o]].prop_id && g_phys_prop_impact_hook) {
-                int impact=g_phys_prop_impact_hook(scene,src[o],-vn*PHYS_TICKRATE,c.nx,c.ny);
+                float incoming[]={vel[0]*PHYS_TICKRATE,vel[1]*PHYS_TICKRATE};
+                int impact=g_phys_prop_impact_hook(scene,src[o],incoming,c.nx,c.ny);
                 if(impact==2)return 0; /* resident reload of an already fallen panel */
                 if(impact) {
                     vel[0]*=.9f;vel[1]*=.9f;
@@ -1364,7 +1365,7 @@ int phys_collect_walls(const N2Scene *s, float (*obst)[4], int *src,
     for (int i = 0; i < s->count && nobst < max; i++) {
         const N2Mesh *mesh=&s->meshes[i];
         if(n2_world_effect_only(mesh) || n2_world_body_disabled(mesh))continue;
-        int sc = mesh->wall_verts?N2_SC_WALL:mesh->scen;
+        int sc = mesh->wall_verts || mesh->prop_id?N2_SC_WALL:mesh->scen;
         int baked_props=embedded_prop_mesh(mesh);
         int prop_check = 0;
         if (sc != N2_SC_NONE) {                 /* named: decide semantically */
@@ -1374,7 +1375,7 @@ int phys_collect_walls(const N2Scene *s, float (*obst)[4], int *src,
                XS includes small roadside signs as well as large storefront
                signs; the measured footprint keeps only the latter solid. */
             if ((!scen_is_wall(sc) && !baked_props) ||
-                (sc == N2_SC_STRUCT && !strncmp(s->meshes[i].sname,"XS_",3)))
+                (!mesh->prop_id && sc == N2_SC_STRUCT && !strncmp(s->meshes[i].sname,"XS_",3)))
                 prop_check = 1;
         } else if (s->meshes[i].cat != N2_OTHER) continue;   /* unnamed fallback */
         if (s->meshes[i].nverts < 3) continue;

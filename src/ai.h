@@ -55,6 +55,12 @@ int ai_roads_index(AiRoadNet *roads);
 int ai_roads_load(AiRoadNet *roads, const char *tracks_root);
 void ai_roads_free(AiRoadNet *roads);
 
+#define AI_RACER_PLAN 40
+#define AI_RACER_AVOID 8
+/* Free-roam outrun encounters with roaming racers (see roam_encounter). */
+enum { AI_ENCOUNTER_CRUISE, AI_ENCOUNTER_RACING, AI_ENCOUNTER_WON, AI_ENCOUNTER_LOST };
+#define AI_OUTRUN_ENGAGE_M 25.0f /* challenge range */
+#define AI_OUTRUN_LEAD_M 300.0f
 /* Free-roam cars follow the authored road paths, independently of circuits. */
 typedef struct {
     int prev, from, to, after;
@@ -70,6 +76,17 @@ typedef struct {
     unsigned preview_valid;
     float lane_limit;
     int clearance_valid;
+    int racer; /* free-roam rival: plans corners and gaps like circuit racers */
+    float racer_limit; /* m/s for the road ahead, refreshed every 5 ticks */
+    int plan[AI_RACER_PLAN], nplan, plan_end; /* racer's nodes from `to` on */
+    float pass_want, pass_shift; /* racer's overtaking shift left of its lane, m */
+    int pass_ok; /* the shifted line is wall-clear and supported */
+    int encounter, outrun_ticks; /* AI_ENCOUNTER_*, racers only */
+    unsigned result_ticks; /* Retain the result through the four-second HUD display. */
+    int player_leads, lead_changes, chase; /* chase: route choices head for goal */
+    float outrun_lead, goal[2]; /* lead: m, positive while the player leads */
+    int avoid[AI_RACER_AVOID][2], navoid; /* racer's banned dead-end branches */
+    unsigned avoid_next;
 } AiTraffic;
 typedef struct {
     N2Scene *scene;
@@ -112,7 +129,7 @@ extern AiAuditHook g_ai_audit_hook;
 typedef void (*AiContactHook)(const float before[3],const float after[3],int kind);
 extern AiContactHook g_ai_contact_hook;
 /* Work counters for the optional frame profiler; the caller resets them. */
-typedef struct { long passes, pairs, hits, world_fixes, wall_candidates; } AiPerf;
+typedef struct { long passes, pairs, hits, world_fixes, wall_candidates, spawn_checks; } AiPerf;
 extern AiPerf g_ai_perf;
 /* Resolve all live player/AI contacts together; return the player's hit level.
    Pass each car once. player may be NULL for AI-only simulation. */
@@ -135,7 +152,12 @@ int ai_traffic_respawn(const AiRoadNet *roads, const AiTrafficWorld *world,
 int ai_traffic_update(const AiRoadNet *roads,const AiTrafficWorld *world,
                        AiCar cars[N_OPENWORLD_AI],AiTraffic routes[N_OPENWORLD_AI],
                        const float player[3],float heading);
-void ai_traffic_follow(AiCar cars[N_OPENWORLD_AI], const AiTraffic routes[N_OPENWORLD_AI],
+/* Outrun: the nearest cruising rival the player may challenge now, or -1;
+   ai_outrun_begin starts it (the player pressed Enter Race). */
+int ai_outrun_challengeable(const AiCar cars[], const AiTraffic routes[], int count,
+                            const AiCar *player);
+void ai_outrun_begin(AiCar cars[], AiTraffic routes[], int k, const AiCar *player);
+void ai_traffic_follow(AiCar cars[N_OPENWORLD_AI], AiTraffic routes[N_OPENWORLD_AI],
                        const AiRoadNet *roads, int k, int count, const AiCar *player);
 void ai_traffic_step(AiCar *car, AiTraffic *route, const AiRoadNet *roads,
                      const AiTrafficWorld *world);

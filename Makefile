@@ -57,6 +57,7 @@ HDRS += src/ug2_track_collision.h src/drivetrain.h src/braking.h src/resistance.
 HDRS += src/drive_trace.h src/drive_presentation.h src/drive_session.h
 SRC += src/hud_race.c
 HDRS += src/hud_race.h src/dir_scan.h
+HDRS += src/player_motion.h
 
 hud-race-test: tools/hud_race_test.c src/hud_race.c src/hud_race.h src/hud.h src/hud_asset.c src/hud_asset.h src/ugui/ugui_codec.c
 	@mkdir -p build
