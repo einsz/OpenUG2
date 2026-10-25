@@ -1029,6 +1029,87 @@ static int swapchain_create(void) {
     return 1;
 }
 
+/* Offscreen main target: colour + depth images, their views and the readback buffer, sized
+ * g_vk.width x g_vk.height. Created at device creation and again whenever the window resizes. */
+static int main_target_create(void) {
+    /* ---- offscreen main target: RGBA8 colour + depth-stencil (GL asks for 24+8) ----
+     * The colour image needs TRANSFER_DST for vkCmdClearColorImage and
+     * TRANSFER_SRC for the readback copy, besides COLOR_ATTACHMENT for draws
+     * (P11e). The depth image needs TRANSFER_DST for vkCmdClearDepthStencilImage
+     * and TRANSFER_SRC so P11f can copy it into a RHI_FORMAT_DEPTH texture. */
+    if (!make_image(VK_FORMAT_R8G8B8A8_UNORM,
+                    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                        VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                    &g_vk.color, &g_vk.color_mem)) return 0;
+    g_vk.color_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+    g_vk.depth_fmt = pick_depth_format();
+    if (g_vk.depth_fmt == VK_FORMAT_UNDEFINED) {
+        fprintf(stderr, "rhi_vk: no usable depth-stencil format (D24S8/D32S8)\n"); return 0;
+    }
+    if (!make_image(g_vk.depth_fmt,
+                    VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                        VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                    &g_vk.depth, &g_vk.depth_mem)) return 0;
+    g_vk.depth_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    /* Attachment views for dynamic rendering (P11a made the images, not views). */
+    {
+        VkImageViewCreateInfo cv = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, NULL, 0, g_vk.color,
+            VK_IMAGE_VIEW_TYPE_2D, VK_FORMAT_R8G8B8A8_UNORM,
+            { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY,
+              VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY },
+            { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 } };
+        if (!vk_ok(vkCreateImageView(g_vk.device, &cv, NULL, &g_vk.color_view), "vkCreateImageView(color)")) return 0;
+        VkImageViewCreateInfo dv = cv;
+        dv.image = g_vk.depth; dv.format = g_vk.depth_fmt;
+        dv.subresourceRange.aspectMask = VK_DS_ASPECT;
+        if (!vk_ok(vkCreateImageView(g_vk.device, &dv, NULL, &g_vk.depth_view), "vkCreateImageView(depth)")) return 0;
+    }
+
+    /* ---- host-visible readback buffer, full-frame sized (reused each read) ---- */
+    VkDeviceSize bsize = (VkDeviceSize)g_vk.width * g_vk.height * 4;
+    VkBufferCreateInfo bci = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, NULL, 0, bsize,
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_SHARING_MODE_EXCLUSIVE, 0, NULL };
+    if (!vk_ok(vkCreateBuffer(g_vk.device, &bci, NULL, &g_vk.readback), "vkCreateBuffer")) return 0;
+    VkMemoryRequirements bmr; vkGetBufferMemoryRequirements(g_vk.device, g_vk.readback, &bmr);
+    uint32_t bmt = find_mem(bmr.memoryTypeBits,
+                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    if (bmt == UINT32_MAX) { fprintf(stderr, "rhi_vk: no host-visible memory type\n"); return 0; }
+    VkMemoryAllocateInfo bmai = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, NULL, bmr.size, bmt };
+    if (!vk_ok(vkAllocateMemory(g_vk.device, &bmai, NULL, &g_vk.readback_mem), "vkAllocateMemory(buffer)")) return 0;
+    if (!vk_ok(vkBindBufferMemory(g_vk.device, g_vk.readback, g_vk.readback_mem, 0), "vkBindBufferMemory")) return 0;
+    return 1;
+}
+
+/* Callers guarantee the GPU is idle with the target (frame_begin, after the previous frame's wait). */
+static void main_target_destroy(void) {
+    if (g_vk.color_view)   vkDestroyImageView(g_vk.device, g_vk.color_view, NULL);
+    if (g_vk.depth_view)   vkDestroyImageView(g_vk.device, g_vk.depth_view, NULL);
+    if (g_vk.readback)     vkDestroyBuffer(g_vk.device, g_vk.readback, NULL);
+    if (g_vk.readback_mem) vkFreeMemory(g_vk.device, g_vk.readback_mem, NULL);
+    if (g_vk.depth)        vkDestroyImage(g_vk.device, g_vk.depth, NULL);
+    if (g_vk.depth_mem)    vkFreeMemory(g_vk.device, g_vk.depth_mem, NULL);
+    if (g_vk.color)        vkDestroyImage(g_vk.device, g_vk.color, NULL);
+    if (g_vk.color_mem)    vkFreeMemory(g_vk.device, g_vk.color_mem, NULL);
+    g_vk.color_view = g_vk.depth_view = VK_NULL_HANDLE;
+    g_vk.readback = VK_NULL_HANDLE; g_vk.readback_mem = VK_NULL_HANDLE;
+    g_vk.depth = VK_NULL_HANDLE; g_vk.depth_mem = VK_NULL_HANDLE;
+    g_vk.color = VK_NULL_HANDLE; g_vk.color_mem = VK_NULL_HANDLE;
+}
+
+/* Present mode: follow the window. The main target takes the new size, the swapchain is rebuilt
+ * before the next present, and the default viewport covers the new target. */
+static int main_target_resize(int32_t w, int32_t h) {
+    vkDeviceWaitIdle(g_vk.device);
+    main_target_destroy();
+    g_vk.width = w; g_vk.height = h;
+    if (!main_target_create()) return 0;
+    g_vk.viewport[0] = 0; g_vk.viewport[1] = 0;
+    g_vk.viewport[2] = w; g_vk.viewport[3] = h;
+    g_vk.sc_dirty = 1;
+    return 1;
+}
+
 RhiResult rhi_device_create(const RhiDeviceDesc *desc) {
     if (!desc || !desc->window || g_vk.device) return RHI_ERR_INVALID;
     if (desc->backend != RHI_BACKEND_DEFAULT && desc->backend != RHI_BACKEND_VULKAN)
@@ -1231,52 +1312,7 @@ RhiResult rhi_device_create(const RhiDeviceDesc *desc) {
         }
     }
 
-    /* ---- offscreen main target: RGBA8 colour + depth-stencil (GL asks for 24+8) ----
-     * The colour image needs TRANSFER_DST for vkCmdClearColorImage and
-     * TRANSFER_SRC for the readback copy, besides COLOR_ATTACHMENT for draws
-     * (P11e). The depth image needs TRANSFER_DST for vkCmdClearDepthStencilImage
-     * and TRANSFER_SRC so P11f can copy it into a RHI_FORMAT_DEPTH texture. */
-    if (!make_image(VK_FORMAT_R8G8B8A8_UNORM,
-                    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-                        VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-                    &g_vk.color, &g_vk.color_mem)) goto fail;
-    g_vk.color_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-    g_vk.depth_fmt = pick_depth_format();
-    if (g_vk.depth_fmt == VK_FORMAT_UNDEFINED) {
-        fprintf(stderr, "rhi_vk: no usable depth-stencil format (D24S8/D32S8)\n"); goto fail;
-    }
-    if (!make_image(g_vk.depth_fmt,
-                    VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-                        VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-                    &g_vk.depth, &g_vk.depth_mem)) goto fail;
-    g_vk.depth_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-
-    /* Attachment views for dynamic rendering (P11a made the images, not views). */
-    {
-        VkImageViewCreateInfo cv = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, NULL, 0, g_vk.color,
-            VK_IMAGE_VIEW_TYPE_2D, VK_FORMAT_R8G8B8A8_UNORM,
-            { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY,
-              VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY },
-            { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 } };
-        if (!vk_ok(vkCreateImageView(g_vk.device, &cv, NULL, &g_vk.color_view), "vkCreateImageView(color)")) goto fail;
-        VkImageViewCreateInfo dv = cv;
-        dv.image = g_vk.depth; dv.format = g_vk.depth_fmt;
-        dv.subresourceRange.aspectMask = VK_DS_ASPECT;
-        if (!vk_ok(vkCreateImageView(g_vk.device, &dv, NULL, &g_vk.depth_view), "vkCreateImageView(depth)")) goto fail;
-    }
-
-    /* ---- host-visible readback buffer, full-frame sized (reused each read) ---- */
-    VkDeviceSize bsize = (VkDeviceSize)g_vk.width * g_vk.height * 4;
-    VkBufferCreateInfo bci = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, NULL, 0, bsize,
-        VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_SHARING_MODE_EXCLUSIVE, 0, NULL };
-    if (!vk_ok(vkCreateBuffer(g_vk.device, &bci, NULL, &g_vk.readback), "vkCreateBuffer")) goto fail;
-    VkMemoryRequirements bmr; vkGetBufferMemoryRequirements(g_vk.device, g_vk.readback, &bmr);
-    uint32_t bmt = find_mem(bmr.memoryTypeBits,
-                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    if (bmt == UINT32_MAX) { fprintf(stderr, "rhi_vk: no host-visible memory type\n"); goto fail; }
-    VkMemoryAllocateInfo bmai = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, NULL, bmr.size, bmt };
-    if (!vk_ok(vkAllocateMemory(g_vk.device, &bmai, NULL, &g_vk.readback_mem), "vkAllocateMemory(buffer)")) goto fail;
-    if (!vk_ok(vkBindBufferMemory(g_vk.device, g_vk.readback, g_vk.readback_mem, 0), "vkBindBufferMemory")) goto fail;
+    if (!main_target_create()) goto fail;
 
     /* ---- 1x1 white dummy texture (for unbound sampler slots) ---- */
     if (!make_image(VK_FORMAT_R8G8B8A8_UNORM,
@@ -1482,14 +1518,7 @@ void rhi_device_destroy(void) {
     if (g_vk.dummy_attr_mem) vkFreeMemory(g_vk.device, g_vk.dummy_attr_mem, NULL);
     if (g_vk.dummy_vbuf)     vkDestroyBuffer(g_vk.device, g_vk.dummy_vbuf, NULL);
     if (g_vk.dummy_vbuf_mem) vkFreeMemory(g_vk.device, g_vk.dummy_vbuf_mem, NULL);
-    if (g_vk.color_view)   vkDestroyImageView(g_vk.device, g_vk.color_view, NULL);
-    if (g_vk.depth_view)   vkDestroyImageView(g_vk.device, g_vk.depth_view, NULL);
-    if (g_vk.readback)     vkDestroyBuffer(g_vk.device, g_vk.readback, NULL);
-    if (g_vk.readback_mem) vkFreeMemory(g_vk.device, g_vk.readback_mem, NULL);
-    if (g_vk.depth)        vkDestroyImage(g_vk.device, g_vk.depth, NULL);
-    if (g_vk.depth_mem)    vkFreeMemory(g_vk.device, g_vk.depth_mem, NULL);
-    if (g_vk.color)        vkDestroyImage(g_vk.device, g_vk.color, NULL);
-    if (g_vk.color_mem)    vkFreeMemory(g_vk.device, g_vk.color_mem, NULL);
+    main_target_destroy();
     if (g_vk.timer_pool)   vkDestroyQueryPool(g_vk.device, g_vk.timer_pool, NULL);
     swapchain_destroy();
     if (g_vk.acquire_sem)  vkDestroySemaphore(g_vk.device, g_vk.acquire_sem, NULL);
@@ -1506,9 +1535,17 @@ void rhi_device_destroy(void) {
     memset(&g_vk, 0, sizeof g_vk);
 }
 
+/* Present mode: the window's current drawable size (what the next frame_begin will adopt). Offscreen:
+ * the fixed target size. */
 void rhi_drawable_size(int32_t *width, int32_t *height) {
-    if (width)  *width  = g_vk.width;
-    if (height) *height = g_vk.height;
+    int w = g_vk.width, h = g_vk.height;
+    if (g_vk.present) {
+        int dw = 0, dh = 0;
+        SDL_Vulkan_GetDrawableSize(g_vk.window, &dw, &dh);
+        w = dw; h = dh;
+    }
+    if (width)  *width  = w;
+    if (height) *height = h;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1516,6 +1553,17 @@ void rhi_drawable_size(int32_t *width, int32_t *height) {
 /* -------------------------------------------------------------------------- */
 RhiResult rhi_frame_begin(RhiFrameInfo *out) {
     if (!g_vk.device) return RHI_ERR_INVALID;
+    if (g_vk.present) {
+        /* A minimised or zero-sized window has nothing to present. Otherwise follow its size
+         * (the previous frame was submitted and waited for, so the target is idle). */
+        int dw = 0, dh = 0;
+        SDL_Vulkan_GetDrawableSize(g_vk.window, &dw, &dh);
+        if ((SDL_GetWindowFlags(g_vk.window) & SDL_WINDOW_MINIMIZED) || dw <= 0 || dh <= 0)
+            return RHI_ERR_SKIP_FRAME;
+        if (dw != g_vk.width || dh != g_vk.height) {
+            if (!main_target_resize(dw, dh)) return RHI_ERR_DEVICE_LOST;
+        }
+    }
     /* Grow the arena if last frame's demand overflowed it (safe here: the prior
      * frame was already submitted + waited at frame_end), then restart the bump
      * allocator for this frame (P11-review Fix 1). */
