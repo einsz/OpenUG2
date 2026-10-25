@@ -110,6 +110,7 @@ typedef struct {
     uint64_t placement_id; /* All world placement slices, including fixed scenery. */
     uint64_t prop_id;
     float prop_angle;
+    float prop_offset[3]; /* Applied debris translation, relative to the source placement. */
     unsigned prop_revision;
     unsigned char prop_broken;
 } N2Mesh;
@@ -220,7 +221,6 @@ static int n2_tex_mode(const N2Tex *t) {
     if (t->blend == 2) return N2_DRAW_ADD;
     return N2_DRAW_OPAQUE;
 }
-
 /* Authored transparency is safe only when the mesh-to-material association is
  * structural. This is separate from n2_tex_mode: that function decodes what a
  * texture wants; this function decides whether this particular world mesh has
@@ -836,6 +836,38 @@ typedef struct {
     float area;
 } N2Geom;
 
+/* The small roadside signs carry XYZ/normal/D3DCOLOR/UV (36 bytes), unlike
+   ordinary 24-byte prelit world streams. Require the source vertex count and
+   exact padded buffer length; never infer this from apparent corrupt floats. */
+static int n2_road_sign(const char *name) {
+    /* Source traffic-sign families, independent of placement and selected LOD.
+       XS also contains shops and gantries, which are not light roadside props. */
+    static const char *const prefixes[]={"XS_WARN","XS_SPEED","XS_NOPARK",
+        "XS_SIGNALAHEAD","XS_DONOT","XS_YEILD","XS_SLOWTRAFFIC",
+        "XS_CURVYRD","XS_FREEWAYENDS","XS_35FT","XS_MEDIANPOLE","XS_CHEVRON"};
+    if(!name)return 0;
+    size_t n=strlen(name);
+    for(unsigned i=0;i<sizeof prefixes/sizeof prefixes[0];i++) {
+        size_t len=strlen(prefixes[i]);
+        if(n>=len && n2_icontains((const unsigned char *)name,(long)len,prefixes[i]))return 1;
+    }
+    return 0;
+}
+static int n2_world_vertex_stride(const unsigned char *d,long beg,long end,N2Leaf vtx) {
+    char name[40];n2_mesh_name(d,beg,end,name,sizeof name);
+    if(!n2_road_sign(name))return 24;
+    N2Leaf header[1];int count=0;n2_find_leaves(d,beg,end,0x134900u,header,&count,1);
+    if(!count || header[0].size>INT32_MAX)return 24;
+    int hp=n2_skip_filler(d+header[0].off,(int)header[0].size);
+    if(header[0].size-(unsigned)hp<56)return 24;
+    uint32_t n=n2_u32(d+header[0].off+hp+52);
+    if(!n || n>65535 || (uint64_t)n*36>vtx.size)return 24;
+    if(vtx.size>INT32_MAX)return 24;
+    unsigned pad=vtx.size-n*36;
+    if(n2_vertex_filler(d+vtx.off,(int)vtx.size,36)!=(int)pad)return 24;
+    return 36;
+}
+
 /* Measure one 0x80134010 object exactly as n2_walk_meshes would build it:
  * every 0x134B01/0x134B03 leaf pair, stride 24, placed by the object matrix. */
 static int n2_obj_geom(const unsigned char *d, long beg, long end,
@@ -1280,7 +1312,8 @@ static void n2_walk_meshes(const unsigned char *d, long beg, long end, N2Scene *
                     int exact = sk != 0;
                     if (!sk) { sk = tk; if (n2_m102) n2_m102_rng_unres++; }
                     else if (n2_m102) n2_m102_rng_res++;
-                    n2_add_pair(d, vtx[0], idx[0], cat, scene, 24, 16, 12, cull,
+                    int stride=n2_world_vertex_stride(d,ds,ds+size,vtx[0]);
+                    n2_add_pair(d, vtx[0], idx[0], cat, scene, stride, stride==36?28:16, stride==36?24:12, cull,
                                   sk, objm,
                                   (long)sub[a].start, (long)sub[a].count,
                                   (unsigned char)N2_DRAW_OPAQUE);
@@ -1295,7 +1328,8 @@ static void n2_walk_meshes(const unsigned char *d, long beg, long end, N2Scene *
                 int exact_single_slot = nslot == 1 && slot[0] != 0;
                 for (int k = 0; k < pairs; k++) {
                     int before = scene->count;
-                    n2_add_pair(d, vtx[k], idx[k], cat, scene, 24, 16, 12, cull,
+                    int stride=n2_world_vertex_stride(d,ds,ds+size,vtx[k]);
+                    n2_add_pair(d, vtx[k], idx[k], cat, scene, stride, stride==36?28:16, stride==36?24:12, cull,
                                   tk, objm, 0, -1,
                                   (unsigned char)N2_DRAW_OPAQUE);
                     for (int m2 = before; m2 < scene->count; m2++) {
@@ -3113,8 +3147,9 @@ static long n2_global_car_record(const unsigned char *g,long glen,const char *ca
 
 /* Source dimensions/inertia for diagnostics and subsequent dynamics work.
  * No render bounds, contact footprint or handling constants are replaced here.
- * The four wheel entries stay in source index order; wheel Z is still unverified. */
-typedef struct { float x,y,radius,width; } N2WheelShapeAttr;
+ * The four wheel entries stay in source index order. Wheel Z is the hub height
+ * above the body origin (the Stage5 contact mount Z). */
+typedef struct { float x,y,z,radius,width; } N2WheelShapeAttr;
 typedef struct {
     long record_offset;
     float mass_tonnes,body[3],inertia[3]; /* L/W/H metres; Ixx/Iyy/Izz tonne*m^2 */
@@ -3138,9 +3173,9 @@ static int n2_global_car_shape(const unsigned char *g,long glen,const char *name
         long w=at+0x120+0x30*k;
         if(n2_u32(g+w+0x18)!=(uint32_t)k)return 0;
         N2WheelShapeAttr *v=&a.wheel[k];
-        memcpy(&v->x,g+w,4);memcpy(&v->y,g+w+4,4);
+        memcpy(&v->x,g+w,4);memcpy(&v->y,g+w+4,4);memcpy(&v->z,g+w+8,4);
         memcpy(&v->radius,g+w+0x10,4);memcpy(&v->width,g+w+0x14,4);
-        if(!isfinite(v->x) || !isfinite(v->y) || !isfinite(v->radius) ||
+        if(!isfinite(v->x) || !isfinite(v->y) || !isfinite(v->z) || !isfinite(v->radius) ||
            v->radius<=0 || !isfinite(v->width) || v->width<=0)return 0;
     }
     *out=a;return 1;

@@ -155,6 +155,9 @@ fail:
 static int wce_roadside(const WCollisionEdits *e,N2Scene *s,int local) {
     for (int n=0;n<s->count;n++) {
         N2Mesh *m=s->meshes+n;
+        /* Marked movable scenery has its own contact/knockdown path. Do not
+           disable it as decorative scenery before the BUN pass preserves it. */
+        if(m->prop_id){m->wall_policy=0;m->ground_disabled=1;continue;}
         const unsigned char *name=(const unsigned char*)m->sname;size_t len=strlen(m->sname);
         int water=n2_icontains(name,len,"WATER") || n2_icontains(name,len,"OCEAN");
         /* Race guide panels and hanging foliage are not permanent roadside walls. */

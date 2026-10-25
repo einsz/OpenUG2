@@ -75,7 +75,32 @@ static void vertex_padding(void) {
     assert(!scene.count);free(scene.meshes);
 }
 
+static void road_sign_stream(void) {
+    unsigned char header[208]={0},desc[76]={0},verts[144]={0},padded[196]={0};
+    strcpy((char*)header+164,"XS_NOPARKANYTIME_1A_00");
+    for(int i=0;i<16;i++)put_f32(header+64+i*4,i%5==0?1:0);
+    memset(desc,0x11,8);put_u32(desc+8+52,4);
+    const float xyz[4][3]={{0,0,0},{1,0,0},{1,0,3},{0,0,3}};
+    for(int i=0;i<4;i++) {
+        for(int k=0;k<3;k++)put_f32(verts+i*36+k*4,xyz[i][k]);
+        put_f32(verts+i*36+20,1);put_u32(verts+i*36+24,0xff505050u);
+        put_f32(verts+i*36+28,i==1||i==2);put_f32(verts+i*36+32,i>=2);
+    }
+    uint16_t ix[]={0,1,2,0,2,3};TestBuf body={{0},0},obj={{0},0};
+    chunk(&body,0x134011,header,sizeof header);chunk(&body,0x134900,desc,sizeof desc);
+    memset(padded,0x11,52);memcpy(padded+52,verts,sizeof verts);
+    chunk(&body,0x134b01,padded,sizeof padded);chunk(&body,0x134b03,(unsigned char*)ix,sizeof ix);
+    chunk(&obj,0x80134010,body.b,body.n);N2Scene scene={0};
+    n2_walk_meshes(obj.b,0,obj.n,&scene,NULL,0);
+    assert(scene.count==1 && scene.meshes[0].nverts==4 && scene.meshes[0].nidx==6);
+    N2Mesh *m=scene.meshes;
+    for(int i=0;i<4;i++)for(int k=0;k<3;k++)assert(near(m->verts[i*5+k],xyz[i][k]));
+    assert(m->verts[8]==1 && m->verts[14]==1 && m->vcol[0]==80 && !m->vrepair);
+    free(m->verts);free(m->idx);free(m->vcol);free(scene.meshes);
+}
+
 int main(void) {
+    road_sign_stream();
     vertex_padding();
     const char *ground_names[]={"TRN_SI_DRIFTMARKER01_CHOP_A", "TRN_SI_ROAD01_CHOP_A3_R4", "TRN_TEST_TERRAINA",
         "TRN_PARKINGLOT_02_CHOP_C5_R", "TRN_GRASS_C5_R", "TRN_FOUNDATION_C5_R",

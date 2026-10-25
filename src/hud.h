@@ -75,6 +75,7 @@ typedef struct {
 
     /* --- message indicator (free roam only) --- */
     int   message_waiting;    /* engine never sets this yet; see HUD_MSG_* */
+    const char *notice;       /* short banner text (outrun prompt/result), NULL = none */
 
     /* --- capture-amendment inputs (approved SPEC capture sets 1-3) ---
        Explicit "supplied" flags: an absent value hides the opt-in element

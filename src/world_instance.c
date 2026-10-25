@@ -363,7 +363,8 @@ static void winst_collect_model(WInstLibrary *library, const unsigned char *data
                             ? authored : n2_resolve_key(authored, keys, nkeys);
             int exact = subkey != 0;
             int before = local.count;
-            n2_add_pair(data, vtx[0], idx[0], cat, &local, 24, 16, 12, cat != N2_SKY,
+            int stride=n2_world_vertex_stride(data,begin,end,vtx[0]);
+            n2_add_pair(data, vtx[0], idx[0], cat, &local, stride, stride==36?28:16, stride==36?24:12, cat != N2_SKY,
                         subkey ? subkey : texkey, NULL,
                         (long)sub[i].start, (long)sub[i].count,
                         (unsigned char)N2_DRAW_OPAQUE);
@@ -374,7 +375,8 @@ static void winst_collect_model(WInstLibrary *library, const unsigned char *data
         int exact_single_slot = nslot == 1 && slot[0] != 0;
         for (int i = 0; i < pairs; i++) {
             int before = local.count;
-            n2_add_pair(data, vtx[i], idx[i], cat, &local, 24, 16, 12, cat != N2_SKY,
+            int stride=n2_world_vertex_stride(data,begin,end,vtx[i]);
+            n2_add_pair(data, vtx[i], idx[i], cat, &local, stride, stride==36?28:16, stride==36?24:12, cat != N2_SKY,
                         texkey, NULL, 0, -1, (unsigned char)N2_DRAW_OPAQUE);
             for (int j = before; j < local.count; j++)
                 local.meshes[j].mat_exact = (unsigned char)exact_single_slot;
@@ -740,9 +742,9 @@ static int winst_visit_section(const WInstSection *section,
             placement.model_keys[lod] = n2_u32(type + 0x20 + lod * 4);
         const WGSelected *role=wg_selection_find(scenery,(unsigned)section->region_id,(unsigned)i);
         /* Narrow OpenUG2 eligibility policy, not decoded retail impact flags. */
-        placement.knockdown=role && (role->membership&WG_KNOCKDOWN) &&
+        placement.knockdown=n2_road_sign(type_name) || (role && (role->membership&WG_KNOCKDOWN) &&
             strlen(type_name)>=8 && !strncmp(type_name,"XO_",3) &&
-            n2_icontains((const unsigned char *)type_name+3,5,"FENCE");
+            n2_icontains((const unsigned char *)type_name+3,5,"FENCE"));
         placement.placement_id=((uint32_t)section->region_id<<16)|(unsigned)i;
         if (visit && !visit(&placement, type_name, userdata)) return 0;
     }
