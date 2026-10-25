@@ -1,6 +1,6 @@
 /* rhi_vk.c - Vulkan backend of rhi.h (issue #14, P11a slice).
  *
- * Offscreen v0: no swapchain, no surface. The "main target" is a single RGBA8
+ * Offscreen v0: no swapchain. (P12a adds a window surface when the window can take one.) The "main target" is a single RGBA8
  * VkImage (plus a D16 depth image) sized to the window, which we clear and read
  * back. This slice implements only device/frame/readback/clear/caps; buffers,
  * textures, shaders, pipelines, draws and passes are stubs returning {0} /
@@ -14,6 +14,7 @@
 #include "rhi.h"
 #include "generated_shaders_vk.h"   /* build-time SPIR-V for the src/shaders/vk shaders */
 #include <SDL.h>
+#include <SDL_vulkan.h>
 #include <vulkan/vulkan.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -129,6 +130,8 @@ static struct {
     SDL_Window              *window;
     VkInstance               instance;
     VkDebugUtilsMessengerEXT messenger;
+    VkSurfaceKHR             surface;      /* present mode only (P12a: created, not yet presented to) */
+    int                      present;      /* 1 = window surface + present-capable queue, 0 = offscreen */
     VkPhysicalDevice         phys;
     VkDevice                 device;
     uint32_t                 queue_family;
@@ -898,6 +901,20 @@ const RhiCaps *rhi_caps(void) {
 /* -------------------------------------------------------------------------- */
 /* Device lifetime                                                            */
 /* -------------------------------------------------------------------------- */
+static int has_ext(const VkExtensionProperties *ep, uint32_t n, const char *name) {
+    for (uint32_t i = 0; i < n; i++) if (!strcmp(ep[i].extensionName, name)) return 1;
+    return 0;
+}
+
+static int device_has_ext(VkPhysicalDevice pd, const char *name) {
+    uint32_t ec = 0; vkEnumerateDeviceExtensionProperties(pd, NULL, &ec, NULL);
+    VkExtensionProperties *ep = calloc(ec ? ec : 1, sizeof *ep);
+    vkEnumerateDeviceExtensionProperties(pd, NULL, &ec, ep);
+    int r = has_ext(ep, ec, name);
+    free(ep);
+    return r;
+}
+
 RhiResult rhi_device_create(const RhiDeviceDesc *desc) {
     if (!desc || !desc->window || g_vk.device) return RHI_ERR_INVALID;
     if (desc->backend != RHI_BACKEND_DEFAULT && desc->backend != RHI_BACKEND_VULKAN)
@@ -911,8 +928,32 @@ RhiResult rhi_device_create(const RhiDeviceDesc *desc) {
 
     /* ---- instance: validation layer + debug messenger when present ---- */
     const char *layers[1]; uint32_t n_layers = 0;
-    const char *exts[2]; uint32_t n_exts = 0;
+    const char *exts[16]; uint32_t n_exts = 0;
     int have_debug = 0, have_features = 0;
+    VkInstanceCreateFlags ici_flags = 0;
+    /* Present mode needs a window created with SDL_WINDOW_VULKAN (the offscreen video driver
+     * and the headless shim refuse it) and the instance extensions SDL asks for. */
+    int want_present = (SDL_GetWindowFlags(g_vk.window) & SDL_WINDOW_VULKAN) != 0;
+    if (want_present) {
+        unsigned sdl_n = 0;
+        if (!SDL_Vulkan_GetInstanceExtensions(g_vk.window, &sdl_n, NULL) || sdl_n == 0 || sdl_n > 8) {
+            fprintf(stderr, "rhi_vk: no SDL Vulkan surface extensions (%s); offscreen\n", SDL_GetError());
+            want_present = 0;
+        } else {
+            SDL_Vulkan_GetInstanceExtensions(g_vk.window, &sdl_n, &exts[n_exts]);
+            n_exts += sdl_n;
+        }
+    }
+    {   /* MoltenVK (and other portability drivers) are only enumerated with this opt-in. */
+        uint32_t ec = 0; vkEnumerateInstanceExtensionProperties(NULL, &ec, NULL);
+        VkExtensionProperties *ep = calloc(ec ? ec : 1, sizeof *ep);
+        vkEnumerateInstanceExtensionProperties(NULL, &ec, ep);
+        if (has_ext(ep, ec, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME)) {
+            exts[n_exts++] = VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME;
+            ici_flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+        }
+        free(ep);
+    }
     {
         uint32_t lc = 0; vkEnumerateInstanceLayerProperties(&lc, NULL);
         VkLayerProperties *lp = calloc(lc ? lc : 1, sizeof *lp);
@@ -960,7 +1001,7 @@ RhiResult rhi_device_create(const RhiDeviceDesc *desc) {
     VkDebugUtilsMessengerCreateInfoEXT dci_ici = dci;
     dci_ici.pNext = have_features ? &vfe : NULL;
     VkInstanceCreateInfo ici = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-                                 have_debug ? (const void *)&dci_ici : have_features ? (const void *)&vfe : NULL, 0, &app,
+                                 have_debug ? (const void *)&dci_ici : have_features ? (const void *)&vfe : NULL, ici_flags, &app,
                                  n_layers, layers, n_exts, exts };
     if (!vk_ok(vkCreateInstance(&ici, NULL, &g_vk.instance), "vkCreateInstance")) goto fail;
     if (have_debug) {
@@ -969,20 +1010,47 @@ RhiResult rhi_device_create(const RhiDeviceDesc *desc) {
         if (cdm && !vk_ok(cdm(g_vk.instance, &dci, NULL, &g_vk.messenger), "vkCreateDebugUtilsMessengerEXT")) goto fail;
     }
 
-    /* ---- physical device + graphics queue family (no present: offscreen) ---- */
+    if (want_present) {
+        if (SDL_Vulkan_CreateSurface(g_vk.window, g_vk.instance, &g_vk.surface)) {
+            g_vk.present = 1;
+            fprintf(stderr, "rhi_vk: window surface created (present mode)\n");
+        }
+        else {
+            fprintf(stderr, "rhi_vk: SDL_Vulkan_CreateSurface: %s; offscreen\n", SDL_GetError());
+            g_vk.surface = VK_NULL_HANDLE;
+        }
+    }
+
+    /* ---- physical device + graphics queue family (that can present, in present mode) ---- */
     uint32_t pdc = 0;
     if (!vk_ok(vkEnumeratePhysicalDevices(g_vk.instance, &pdc, NULL), "vkEnumeratePhysicalDevices") || !pdc) {
         fprintf(stderr, "rhi_vk: no Vulkan devices (check VK_DRIVER_FILES)\n"); goto fail;
     }
     VkPhysicalDevice *pds = calloc(pdc, sizeof *pds);
     vkEnumeratePhysicalDevices(g_vk.instance, &pdc, pds);
+    for (;;) {
     for (uint32_t i = 0; i < pdc && !g_vk.phys; i++) {
+        if (g_vk.present && !device_has_ext(pds[i], VK_KHR_SWAPCHAIN_EXTENSION_NAME)) continue;
         uint32_t qc = 0; vkGetPhysicalDeviceQueueFamilyProperties(pds[i], &qc, NULL);
         VkQueueFamilyProperties *qp = calloc(qc ? qc : 1, sizeof *qp);
         vkGetPhysicalDeviceQueueFamilyProperties(pds[i], &qc, qp);
         for (uint32_t q = 0; q < qc; q++)
-            if (qp[q].queueFlags & VK_QUEUE_GRAPHICS_BIT) { g_vk.phys = pds[i]; g_vk.queue_family = q; break; }
+            if (qp[q].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+                VkBool32 can_present = VK_TRUE;
+                if (g_vk.present) {
+                    can_present = VK_FALSE;
+                    vkGetPhysicalDeviceSurfaceSupportKHR(pds[i], q, g_vk.surface, &can_present);
+                }
+                if (can_present) { g_vk.phys = pds[i]; g_vk.queue_family = q; break; }
+            }
         free(qp);
+    }
+    if (g_vk.phys || !g_vk.present) break;
+    /* No device can present to this window: keep the offscreen target, as before the surface existed. */
+    fprintf(stderr, "rhi_vk: no device with a graphics+present queue and VK_KHR_swapchain; offscreen\n");
+    vkDestroySurfaceKHR(g_vk.instance, g_vk.surface, NULL);
+    g_vk.surface = VK_NULL_HANDLE;
+    g_vk.present = 0;
     }
     free(pds);
     if (!g_vk.phys) { fprintf(stderr, "rhi_vk: no device with a graphics queue\n"); goto fail; }
@@ -1009,8 +1077,16 @@ RhiResult rhi_device_create(const RhiDeviceDesc *desc) {
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES, &en12, VK_TRUE };
     /* Push descriptors (set 0 written per draw, no descriptor pool). Not core
      * before 1.4, so enable the extension and fetch its entry point by name. */
-    const char *dev_exts[1]; uint32_t n_dev_exts = 0;
+    const char *dev_exts[3]; uint32_t n_dev_exts = 0;
     dev_exts[n_dev_exts++] = VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME;
+    if (g_vk.present) dev_exts[n_dev_exts++] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
+    {   /* A portability device (MoltenVK) must enable VK_KHR_portability_subset when it offers it. */
+        uint32_t ec = 0; vkEnumerateDeviceExtensionProperties(g_vk.phys, NULL, &ec, NULL);
+        VkExtensionProperties *ep = calloc(ec ? ec : 1, sizeof *ep);
+        vkEnumerateDeviceExtensionProperties(g_vk.phys, NULL, &ec, ep);
+        if (has_ext(ep, ec, "VK_KHR_portability_subset")) dev_exts[n_dev_exts++] = "VK_KHR_portability_subset";
+        free(ep);
+    }
     float prio = 1.0f;
     VkDeviceQueueCreateInfo qci = { VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, NULL, 0, g_vk.queue_family, 1, &prio };
     VkDeviceCreateInfo dc = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, &dyn, 0, 1, &qci, 0, NULL,
@@ -1299,6 +1375,7 @@ void rhi_device_destroy(void) {
             (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(g_vk.instance, "vkDestroyDebugUtilsMessengerEXT");
         if (ddm) ddm(g_vk.instance, g_vk.messenger, NULL);
     }
+    if (g_vk.surface)  vkDestroySurfaceKHR(g_vk.instance, g_vk.surface, NULL);
     if (g_vk.instance) vkDestroyInstance(g_vk.instance, NULL);
     memset(&g_vk, 0, sizeof g_vk);
 }

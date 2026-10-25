@@ -3900,8 +3900,10 @@ int main(int argc, char **argv) {
     const int capture_window = shot || raudit || resident_route_audit;
     uint32_t window_flags = rhi_window_flags(RHI_BACKEND_DEFAULT);
 #ifdef N2_VULKAN
-    /* Offscreen Vulkan uses the window size only; it creates no SDL surface. */
-    window_flags &= ~(uint32_t)SDL_WINDOW_VULKAN;
+    /* Headless SDL drivers cannot create a Vulkan surface; desktop drivers keep presentation. */
+    const char *video_driver = SDL_GetCurrentVideoDriver();
+    if (video_driver && (!strcmp(video_driver, "offscreen") || !strcmp(video_driver, "dummy")))
+        window_flags &= ~(uint32_t)SDL_WINDOW_VULKAN;
 #endif
     SDL_Window *win = SDL_CreateWindow("OpenUG2",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, render_width, render_height,
